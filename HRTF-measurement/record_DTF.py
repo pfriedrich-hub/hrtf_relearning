@@ -1,7 +1,6 @@
 import numpy as np
 import math
 import os
-import time
 import matplotlib
 matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
@@ -71,110 +70,112 @@ def HRTF_estimate(recordings):
         yl = recfile[:, 0]
         HRTF[0, i] = csd(yr, x, NFFT=nfft, Fs=fs)[0] / psd(x, NFFT=nfft, Fs=fs)[0]
         HRTF[1, i] = csd(yl, x, NFFT=nfft, Fs=fs)[0] / psd(x, NFFT=nfft, Fs=fs)[0]
-
     return HRTF
 
 def tfe(x, y, *args, **kwargs):
    """estimate transfer function from x to y, see csd for calling convention"""
    return csd(y, x, *args, **kwargs) / psd(x, *args, **kwargs)
 
-# psd examples
-# chirp
-chirp = slab.Sound.chirp(duration=0.5, level=90)
+""" MATLAB PSD and CSD -> HRTF """
+import os
+import math
+import numpy as np
+import matplotlib
+matplotlib.use('TkAgg')
+import matplotlib.pyplot as plt
+from matplotlib.mlab import psd, csd
+import slab
+fs = 48828  # sampling rate
+slab.Signal.set_default_samplerate(fs)
 
+# generate signals
+chirp = slab.Sound.chirp(duration=0.5, level=90)
+snd = slab.Binaural(data=slab.Sound.read(os.getcwd() + '/data/in-ear_recordings/in-ear_paul_hrtf_0.0_0.0.wav'))
+x = chirp.data[:, 0]
+y = snd.left.data[:, 0]
+
+nfft_window = 512  # window size for welch approach, default = 256
+n_overlap = int(nfft_window / 2) # overlap of the hanning windows
+zero_padding = 2 ** (math.ceil(math.log(len(x), 2))) # frequency resolution (zero pad signal)
+
+pxx_x, freqs_x = psd(x, Fs=fs, NFFT=nfft_window, noverlap=n_overlap, pad_to=zero_padding)
+pxx_y, freqs_y = psd(y, Fs=fs, NFFT=nfft_window, noverlap=n_overlap, pad_to=zero_padding)
+pxx_yx, freqs = csd(y, x, Fs=fs, NFFT=nfft_window, noverlap=n_overlap, pad_to=zero_padding)
+hrtf = np.abs(pxx_yx / pxx_x)
+
+fig, ax = plt.subplots(2, 2, sharex=True, sharey=True)
+ax[0, 0].set_xlim(10**2, 2*10**3)
+# ax[0, 0].set_ylim()
+ax[0, 0].semilogx(freqs_x, np.log(pxx_x), label='signal PSD')
+ax[0, 1].semilogx(freqs_y, np.log(pxx_y), label='in-ear PSD')
+ax[1, 0].semilogx(freqs, np.log(hrtf), label='HRTF')
+ax[1, 1].semilogx(freqs, np.log(hrtf*pxx_x), label='signal PSD * HRTF')
+ax[1, 1].semilogx(freqs, np.log(pxx_y), label='in-ear PSD')
+
+
+ax.set_title('nfft window: ' +str(nfft_window) + ' zero_pad: ' + str(zero_padding))
+ax.legend()
+
+
+# original signal
+plt.plot(np.arange(0, len(x)/fs, 1/fs), x)
+
+
+
+
+
+
+
+""" mpl PSD """
+# fft / psd parameters for mpl.psd (welch's method)
+nfft_window = 256  # window size for welch approach, default = 256
+n_overlap = int(nfft_window / 2) # overlap of the hanning windows
+zero_padding = 2 ** (math.ceil(math.log(len(x), 2))) # frequency resolution (zero pad signal)
+# estimate psd
+pxx_m, freqs_m = psd(x, Fs=fs, NFFT=nfft_window, noverlap=n_overlap, pad_to=zero_padding)
+
+""" numpy fft - PSD """
+freqs_n = np.fft.rfftfreq(len(x), d=1 / fs)  # frequency array to plot DFT across
+rfft = np.fft.rfft(x, axis=0)  # compute discrete fourier transform
+rfft = np.abs(rfft)  # euclidian distance of complex output array
+rfft = rfft / len(freqs_n)  # rescale so magnitude is independent of signal length
+pxx_n = rfft ** 2  # square to estimate PSD
+
+"""plot mpl and np psd estimation """
+fig, ax = plt.subplots(1,1)
+ax.semilogx(freqs_n, np.log(pxx_n), label='numpy PSD')  # plot on logarithmic scale
+ax.semilogx(freqs_m, np.log(pxx_m), label='mpl PSD')
+ax.set_title('nfft window: ' +str(nfft_window) + ' zero_pad: ' + str(zero_padding))
+ax.legend()
+
+""" HRTF: csd(y,x)/psd(x) """
+pxx_csd, freqs = csd(y, x, NFFT=nfft_window, Fs=fs, pad_to=zero_padding)
+hrtf = np.abs(pxx_csd / pxx_m)
+#plot hrtf transformed signal psd (mpl)
+ax.plot(freqs, np.log(hrtf * pxx_m), label='mpl hrtf transformed signal')
+
+
+
+
+# todo calculate PSD with numpy
+## Pyx is calculated (after appropriate windowing and normalization) as the average of fft(y) * conj(fft(x))
+## over the individual windows. Similarly, the PSD Pxx is calculated as averaging fft(x) * conj(fft(x))
+
+""" NFFT """
 # various ways to calculate nfft: (transform length)
-# The length is typically specified as a power of 2 or a value
-# that can be factored into a product of small prime numbers.
+# The length is typically specified as a power of 2
 # double the number of time points (zero padding) -> double frequency resolution of fft
 
-# 1. think about NFFT as a way to "increase" the spectral resolution,
-# use NFFT = 10*N; to increase it by x10
-N = len(chirp.data)
-nfft = 10*N
-
-# 2. nfft depends on the spectral resolution you want to achieve.
+# nfft depends on the spectral resolution you want to achieve.
 # Given a sampling rate fS and a minimum resolution fResMin,
 # can simply compute the number of points nFFT by
 # nFFT = ceil(fS/fResMin)
-
 fResMin = 2 # Hz
 nfft = math.ceil(fs/fResMin)
 
-# 3. marcs matlab approach:
-Npoints = len(chirp.data[:,0])
+# marcs matlab approach:
+Npoints = len(x)
 nfft = 2 ** (math.ceil(math.log(Npoints, 2)))
 
-# 4. set arbitrary nffp
-nfft = 1024
-# NumUniquePts = math.ceil((nfft + 1) / 2)
 
-# try different nfft parameters
-x = chirp.data[:, 0]
-for nfft in range(len(chirp.data), len(chirp.data)*2, int(len(chirp.data)/5)):
-    psdx = psd(x, NFFT=nfft, Fs=fs, window=np.hamming(len(x)))
-    _, ax = plt.subplots()
-    ax.plot(psdx[1], np.log(psdx[0]))
-    ax.set_title('nfft: ' + str(nfft))
-
-
-
-
-dt = 1/fs
-t = np.arange(0, len(chirp.data)/fs, dt)
-fig, (ax0, ax1) = plt.subplots(2, 1)
-ax0.plot(t, chirp.data)
-ax1.psd(chirp.data[:,0], nfft, 1 / fs)
-
-# recording
-dt = 1/fs
-t = np.arange(0, len(recordings[0, :, 0])/fs, 1/fs)
-fig, (ax0, ax1) = plt.subplots(2, 1)
-ax0.plot(t, recordings[0, :, 0])
-ax1.psd(recordings[0, :, 0], nfft, 1 / fs)
-plt.show()
-
-# csd examples
-fig, (ax0, ax1, ax2) = plt.subplots(3, 1)
-ax0.psd(chirp.data, nfft, fs)
-ax1.psd(recordings[0, :, 0], nfft, fs)
-ax2.csd(chirp.data, recordings[0, :, 0], nfft, fs)
-
-# hrtf example: csd(y,x)/psd(x)
-x = chirp.data
-y = recordings[0, :, 0]
-
-psdx = psd(x, NFFT=nfft, Fs=fs)
-psdy = psd(y, NFFT=nfft, Fs=fs)
-csdyx = csd(y, x, NFFT=nfft, Fs=fs)
-## csdxy = csd(x, y, NFFT=nfft, Fs=fs) # why is csdyx==csdxy?
-hrtf = np.abs(csdyx[0] / psdx[0])
-
-fig, [[ax0, ax1], [ax2, ax3]] = plt.subplots(2, 2, sharex=True)
-ax0.plot(psdx[1], np.log(psdx[0]))
-ax1.plot(psdy[1], np.log(psdy[0]))
-ax2.plot(csdyx[1], np.log(csdyx[0]))
-ax3.plot(csdyx[1], np.log(hrtf))
-
-ax0.set_title('PSD (x)')
-ax0.set_ylabel('dB/Hz')
-ax1.set_title('PSD (y)')
-ax2.set_title('CSD (yx)')
-ax2.set_ylabel('dB/Hz')
-ax2.set_xlabel('Frequency')
-ax2.set_yticks([-25, -20, -15, -10])
-ax3.set_yticks([-10, -5, -0, 5])
-ax3.set_title('HRTF CSD(yx)/PSD(x)')
-ax3.set_xlabel('Frequency')
-
-
-test1 = psdx[0]*hrtf# should return ear recordings!
-
-plt.plot(psdx[1], np.log(test1))
-plt.plot(psdx[1], np.log(psdy[0]))
-
-
-test2 = psdy[0]/hrtf # should return original signal?
-
-plt.plot(psdx[1], np.log(test2))
-plt.plot(psdy)
-
+""" WINDOWING """

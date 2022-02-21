@@ -8,6 +8,7 @@ from matplotlib.mlab import psd, csd
 from pathlib import Path
 import slab
 import freefield
+import sofar as sf
 
 table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')
 fs = 48828  # sampling rate
@@ -20,7 +21,7 @@ speakers = table[20:27]  # for now only use positive az (half dome)
 #tone = slab.Sound.whitenoise(duration=probe_len) # chirp?
 chirp = slab.Sound.chirp(duration=probe_len, level=90)  # create chirp from 100 to fs/2 Hz
 
-def dome_rec_wav(speakers, subject='dummy_head', n_reps=50):
+def dome_rec(speakers, subject='dummy_head', n_reps=50):
     # initialize setup
     freefield.initialize('dome', default='play_birec')
     freefield.load_equalization()
@@ -31,7 +32,7 @@ def dome_rec_wav(speakers, subject='dummy_head', n_reps=50):
     # play , record  and average n_reps times, from all speakers in the list + save as .wav
     freefield.set_logger('WARNING')
     recordings = np.zeros([len(speakers), int(probe_len*fs), 2])  # array to store recordings as data arrays
-    slab_obj_list = []  # list to hold recordings as slab binaural objects
+    avg_rec_list = []  # list to hold recordings as slab binaural objects
     for i, source_location in enumerate(speakers):
         print(source_location)
         speaker = freefield.pick_speakers(tuple((source_location[1], source_location[2])))
@@ -46,9 +47,9 @@ def dome_rec_wav(speakers, subject='dummy_head', n_reps=50):
         avgrec.write(os.getcwd() + '/data/in-ear_recordings/in-ear_%s_%s_%s.wav'
                      % (subject, str(source_location[1]), str(source_location[2])))
         recordings[i] = avgrec.data # as np.array
-        slab_obj_list.append(avgrec)
+        avg_rec_list.append(avgrec)
     freefield.set_logger('INFO')
-    return slab_obj_list
+    return avg_rec_list
 
 def read_wav(speakers, subject):
     recordings = np.zeros([len(speakers), int(probe_len*fs), 2])  # array to store recordings
@@ -57,24 +58,42 @@ def read_wav(speakers, subject):
                                            % (subject, str(source_location[1]), str(source_location[2]))).data
     return recordings
 
-def HRTF_estimate(recordings):
-    Npoints = len(recordings[0])
-    nfft = 2 ** (math.ceil(math.log(Npoints, 2)))
-
-    NumUniquePts = math.ceil((nfft+1)/2)
-
-    HRTF = np.zeros([2, len(recordings), NumUniquePts])
+# safe HRTFs in MRN array  shape(measurements, receivers, number_datapoints)
+def HRTF_estimate(signal, recordings):
+    x = signal.data[:, 0]
+    N = int(len(x)/2)+1
+    hrtf = np.zeros([len(recordings), 2, N], dtype=complex)
     for i, recfile in enumerate(recordings):
-        x = chirp.data[:Npoints]
         yr = recfile[:, 1]
         yl = recfile[:, 0]
-        HRTF[0, i] = csd(yr, x, NFFT=nfft, Fs=fs)[0] / psd(x, NFFT=nfft, Fs=fs)[0]
-        HRTF[1, i] = csd(yl, x, NFFT=nfft, Fs=fs)[0] / psd(x, NFFT=nfft, Fs=fs)[0]
-    return HRTF
 
-def tfe(x, y, *args, **kwargs):
-   """estimate transfer function from x to y, see csd for calling convention"""
-   return csd(y, x, *args, **kwargs) / psd(x, *args, **kwargs)
+        # input
+        xfft = np.fft.rfft(x, axis=0)  # compute discrete fourier transform
+        # output
+        yr_fft = np.fft.rfft(yr, axis=0)  # compute discrete fourier transform
+        yl_fft = np.fft.rfft(yl, axis=0)  # compute discrete fourier transform
+
+        # transfer function: h = y / x
+        tf_r = yr_fft / xfft
+        tf_l = yl_fft / xfft
+        hrtf[i, 0] = tf_r
+        hrtf[i, 1] = tf_l
+    return hrtf
+
+def write_sofa(hrtf, speakers, radius):
+    sofa = sf.Sofa("SimpleFreeFieldHRTF")
+
+    radii = np.ones([len(speakers), 1]) * radius
+    sofa.SourcePosition = np.hstack([speakers[:, [2, 1]], radii])
+
+    sofa.Data_Real = np.real(hrtf)
+    sofa.Data_Imag = np.imag(hrtf)
+
+    sofa.list_dimensions
+    sofa.verify()
+    sofa.get_dimension("N")
+    sofa.get_dimension("E")
+
 
 """ MATLAB PSD and CSD -> HRTF """
 import os
@@ -94,13 +113,13 @@ snd = slab.Binaural(data=slab.Sound.read(os.getcwd() + '/data/in-ear_recordings/
 x = chirp.data[:, 0]
 y = snd.left.data[:, 0]
 
-nfft_window = 512  # window size for welch approach, default = 256
-n_overlap = int(nfft_window / 2) # overlap of the hanning windows
-zero_padding = 2 ** (math.ceil(math.log(len(x), 2))) # frequency resolution (zero pad signal)
+fft_window = 512  # window size for welch approach, default = 256
+overlap = int(fft_window / 2) # overlap of the hanning windows
+zero_pad = 2 ** (math.ceil(math.log(len(x), 2))) # frequency resolution (zero pad signal)
 
-pxx_x, freqs_x = psd(x, Fs=fs, NFFT=nfft_window, noverlap=n_overlap, pad_to=zero_padding)
-pxx_y, freqs_y = psd(y, Fs=fs, NFFT=nfft_window, noverlap=n_overlap, pad_to=zero_padding)
-pxx_yx, freqs = csd(y, x, Fs=fs, NFFT=nfft_window, noverlap=n_overlap, pad_to=zero_padding)
+pxx_x, freqs_x = psd(x, Fs=fs, NFFT=fft_window, noverlap=overlap, pad_to=zero_pad)
+pxx_y, freqs_y = psd(y, Fs=fs, NFFT=fft_window, noverlap=overlap, pad_to=zero_pad)
+pxx_yx, freqs = csd(y, x, Fs=fs, NFFT=fft_window, noverlap=overlap, pad_to=zero_pad)
 hrtf = np.abs(pxx_yx / pxx_x)
 
 fig, ax = plt.subplots(2, 2, sharex=True, sharey=True)
@@ -113,7 +132,7 @@ ax[1, 1].semilogx(freqs, np.log(hrtf*pxx_x), label='signal PSD * HRTF')
 ax[1, 1].semilogx(freqs, np.log(pxx_y), label='in-ear PSD')
 
 
-ax.set_title('nfft window: ' +str(nfft_window) + ' zero_pad: ' + str(zero_padding))
+ax.set_title('nfft window: ' +str(fft_window) + ' zero_pad: ' + str(zero_pad))
 ax.legend()
 
 
@@ -128,11 +147,11 @@ plt.plot(np.arange(0, len(x)/fs, 1/fs), x)
 
 """ mpl PSD """
 # fft / psd parameters for mpl.psd (welch's method)
-nfft_window = 256  # window size for welch approach, default = 256
-n_overlap = int(nfft_window / 2) # overlap of the hanning windows
-zero_padding = 2 ** (math.ceil(math.log(len(x), 2))) # frequency resolution (zero pad signal)
+fft_window = 256  # window size for welch approach, default = 256
+overlap = int(fft_window / 2) # overlap of the hanning windows
+zero_pad = 2 ** (math.ceil(math.log(len(x), 2))) # frequency resolution (zero pad signal)
 # estimate psd
-pxx_m, freqs_m = psd(x, Fs=fs, NFFT=nfft_window, noverlap=n_overlap, pad_to=zero_padding)
+pxx_m, freqs_m = psd(x, Fs=fs, NFFT=fft_window, noverlap=overlap, pad_to=zero_pad)
 
 """ numpy fft - PSD """
 freqs_n = np.fft.rfftfreq(len(x), d=1 / fs)  # frequency array to plot DFT across
@@ -145,11 +164,11 @@ pxx_n = rfft ** 2  # square to estimate PSD
 fig, ax = plt.subplots(1,1)
 ax.semilogx(freqs_n, np.log(pxx_n), label='numpy PSD')  # plot on logarithmic scale
 ax.semilogx(freqs_m, np.log(pxx_m), label='mpl PSD')
-ax.set_title('nfft window: ' +str(nfft_window) + ' zero_pad: ' + str(zero_padding))
+ax.set_title('nfft window: ' +str(fft_window) + ' zero_pad: ' + str(zero_pad))
 ax.legend()
 
 """ HRTF: csd(y,x)/psd(x) """
-pxx_csd, freqs = csd(y, x, NFFT=nfft_window, Fs=fs, pad_to=zero_padding)
+pxx_csd, freqs = csd(y, x, NFFT=fft_window, Fs=fs, pad_to=zero_pad)
 hrtf = np.abs(pxx_csd / pxx_m)
 #plot hrtf transformed signal psd (mpl)
 ax.plot(freqs, np.log(hrtf * pxx_m), label='mpl hrtf transformed signal')
@@ -179,3 +198,38 @@ nfft = 2 ** (math.ceil(math.log(Npoints, 2)))
 
 
 """ WINDOWING """
+
+
+""" numpy fft for complex TFs """
+# input
+xfreqs = np.fft.rfftfreq(len(x), d=1 / fs)  # frequency array to plot DFT across
+xfft = np.fft.rfft(x, axis=0)  # compute discrete fourier transform
+
+# output
+yfreqs = np.fft.rfftfreq(len(y), d=1 / fs)  # frequency array to plot DFT across
+yfft = np.fft.rfft(y, axis=0)  # compute discrete fourier transform
+
+# transfer function: h = y / x
+TF = yfft / xfft
+
+# separate real and imaginary part
+TF_r = np.real(TF)  # power and phase information in
+TF_i = np.imag(TF)  # complex array
+
+to_output = TF * xfft  # works!
+
+# go to PSD
+signal = TF
+signal = np.abs(signal)  # euclidian distance of complex output array
+signal = signal / len(xfreqs)  # rescale so magnitude is independent of signal length
+signal = signal ** 2  # square to estimate PSD
+
+# plot
+fig, ax = plt.subplots(1, 1)
+ax.semilogx(xfreqs, np.log(signal), label='numpy PSD')  # plot on logarithmic scale
+
+
+ax.plot(freqs_n, xfft_i)
+ax.plot(freqs_n, xfft_r)
+ax.semilogx(freqs_n, (xfft_r), label='numpy PSD')  # plot on logarithmic scale
+ax.semilogx(freqs_n, (xfft_i), label='numpy PSD')  # plot on logarithmic scale

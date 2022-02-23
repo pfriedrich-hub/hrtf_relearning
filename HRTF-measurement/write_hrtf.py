@@ -13,13 +13,13 @@ import freefield
 from pathlib import Path
 import argparse
 
-ap = argparse.ArgumentParser()
-ap.add_argument("-t", "--id", type=str,
-	default="paul_hrtf",
-	help="enter subject id")
-args = vars(ap.parse_args())
-subject = args["id"]
-print('record from %s speakers, subj_id: %i'%(id, 9))
+# ap = argparse.ArgumentParser()
+# ap.add_argument("-t", "--id", type=str,
+# 	default="paul_hrtf",
+# 	help="enter subject id")
+# args = vars(ap.parse_args())
+# subject = args["id"]
+# print('record from %s speakers, subj_id: %i' %(id, 9))
 
 #---------Load Recordings-----------#
 
@@ -158,6 +158,10 @@ NVar = rootgrp.createVariable('N', 'f8', ('N'))
 NVar.LongName        = 'frequency'
 NVar.Units       = 'hertz'
 NVar[:] = n
+
+samplingRateVar =   rootgrp.createVariable('Data.SamplingRate', 'f8',   ('I'))
+samplingRateVar.Units = 'hertz'
+samplingRateVar[:] = fs
 
 #----------Close it----------#
 

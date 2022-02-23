@@ -80,22 +80,12 @@ def HRTF_estimate(signal, recordings):
         hrtf[i, 1] = tf_l
     return hrtf
 
-def write_sofa(hrtf, speakers, radius):
-    sofa = sf.Sofa("SimpleFreeFieldHRTF")
-
-    radii = np.ones([len(speakers), 1]) * radius
-    sofa.SourcePosition = np.hstack([speakers[:, [2, 1]], radii])
-
-    sofa.Data_Real = np.real(hrtf)
-    sofa.Data_Imag = np.imag(hrtf)
-
-    sofa.list_dimensions
-    sofa.verify()
-    sofa.get_dimension("N")
-    sofa.get_dimension("E")
 
 
-""" MATLAB PSD and CSD -> HRTF """
+
+
+"""
+# MATLAB PSD and CSD -> HRTF 
 import os
 import math
 import numpy as np
@@ -145,7 +135,7 @@ plt.plot(np.arange(0, len(x)/fs, 1/fs), x)
 
 
 
-""" mpl PSD """
+# mpl PSD
 # fft / psd parameters for mpl.psd (welch's method)
 fft_window = 256  # window size for welch approach, default = 256
 overlap = int(fft_window / 2) # overlap of the hanning windows
@@ -153,21 +143,21 @@ zero_pad = 2 ** (math.ceil(math.log(len(x), 2))) # frequency resolution (zero pa
 # estimate psd
 pxx_m, freqs_m = psd(x, Fs=fs, NFFT=fft_window, noverlap=overlap, pad_to=zero_pad)
 
-""" numpy fft - PSD """
+# numpy fft - PSD
 freqs_n = np.fft.rfftfreq(len(x), d=1 / fs)  # frequency array to plot DFT across
 rfft = np.fft.rfft(x, axis=0)  # compute discrete fourier transform
 rfft = np.abs(rfft)  # euclidian distance of complex output array
 rfft = rfft / len(freqs_n)  # rescale so magnitude is independent of signal length
 pxx_n = rfft ** 2  # square to estimate PSD
 
-"""plot mpl and np psd estimation """
+# plot mpl and np psd estimation
 fig, ax = plt.subplots(1,1)
 ax.semilogx(freqs_n, np.log(pxx_n), label='numpy PSD')  # plot on logarithmic scale
 ax.semilogx(freqs_m, np.log(pxx_m), label='mpl PSD')
 ax.set_title('nfft window: ' +str(fft_window) + ' zero_pad: ' + str(zero_pad))
 ax.legend()
 
-""" HRTF: csd(y,x)/psd(x) """
+# HRTF: csd(y,x)/psd(x) 
 pxx_csd, freqs = csd(y, x, NFFT=fft_window, Fs=fs, pad_to=zero_pad)
 hrtf = np.abs(pxx_csd / pxx_m)
 #plot hrtf transformed signal psd (mpl)
@@ -180,7 +170,7 @@ ax.plot(freqs, np.log(hrtf * pxx_m), label='mpl hrtf transformed signal')
 ## Pyx is calculated (after appropriate windowing and normalization) as the average of fft(y) * conj(fft(x))
 ## over the individual windows. Similarly, the PSD Pxx is calculated as averaging fft(x) * conj(fft(x))
 
-""" NFFT """
+# NFFT 
 # various ways to calculate nfft: (transform length)
 # The length is typically specified as a power of 2
 # double the number of time points (zero padding) -> double frequency resolution of fft
@@ -197,10 +187,10 @@ Npoints = len(x)
 nfft = 2 ** (math.ceil(math.log(Npoints, 2)))
 
 
-""" WINDOWING """
+# WINDOWING 
 
 
-""" numpy fft for complex TFs """
+# numpy fft for complex TFs
 # input
 xfreqs = np.fft.rfftfreq(len(x), d=1 / fs)  # frequency array to plot DFT across
 xfft = np.fft.rfft(x, axis=0)  # compute discrete fourier transform
@@ -233,3 +223,4 @@ ax.plot(freqs_n, xfft_i)
 ax.plot(freqs_n, xfft_r)
 ax.semilogx(freqs_n, (xfft_r), label='numpy PSD')  # plot on logarithmic scale
 ax.semilogx(freqs_n, (xfft_i), label='numpy PSD')  # plot on logarithmic scale
+"""

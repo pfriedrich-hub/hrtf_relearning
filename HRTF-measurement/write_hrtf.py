@@ -26,8 +26,7 @@ fs = 48828  # sampling rate
 def read_wav(speakers, subject):
     recs = np.zeros([len(speakers), int(probe_len*fs), 2])  # array to store recordings
     for i, source_location in enumerate(speakers):
-        recs[i] = slab.Binaural.read(Path.cwd() / 'data' / 'in-ear_recordings' / ('in-ear_%s_%s_%s.wav'
-                                % (subject, str(source_location[1]), str(source_location[2])))).data
+        recs[i] = slab.Binaural.read(Path.cwd() / 'data' / 'in-ear_recordings' / ('in-ear_%s_%s_%s.wav' % (subject, str(source_location[1]), str(source_location[2])))).data
     return recs.reshape(recs.shape[0], 2, recs.shape[1])
 rec = read_wav(speakers, subject)
 

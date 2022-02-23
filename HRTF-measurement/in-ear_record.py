@@ -1,27 +1,34 @@
 import numpy as np
-import math
 import os
 import matplotlib
 matplotlib.use('TkAgg')
-import matplotlib.pyplot as plt
-from matplotlib.mlab import psd, csd
 from pathlib import Path
 import slab
 import freefield
-import sofar as sf
+import argparse
 
-table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')
-fs = 48828  # sampling rate
-slab.Signal.set_default_samplerate(fs)  # default samplerate for generating sounds, filters etc.
-probe_len = 0.5  # length of the sound probe in seconds
+ap = argparse.ArgumentParser()
+ap.add_argument("-t", "--id", type=str,
+	default="paul_hrtf",
+	help="enter subject id")
+args = vars(ap.parse_args())
+id = args["id"]
+print('record from %s speakers, subj_id: %i'%(id, 9))
+
 # get speakers and locations(az,ele) to play from
+table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')
 table = np.loadtxt(table_file, skiprows=1, usecols=(0, 3, 4), delimiter=",", dtype=float)
 # todo record from whole dome
 speakers = table[20:27]  # for now only use positive az (half dome)
+
+fs = 48828  # sampling rate
+slab.Signal.set_default_samplerate(fs)  # default samplerate for generating sounds, filters etc.
+probe_len = 0.5  # length of the sound probe in seconds
+
 #tone = slab.Sound.whitenoise(duration=probe_len) # chirp?
 chirp = slab.Sound.chirp(duration=probe_len, level=90)  # create chirp from 100 to fs/2 Hz
 
-def dome_rec(speakers, subject='dummy_head', n_reps=50):
+def dome_rec(speakers, subject=id, n_reps=50):
     # initialize setup
     freefield.initialize('dome', default='play_birec')
     freefield.load_equalization()
@@ -81,6 +88,8 @@ def HRTF_estimate(signal, recordings):
     return hrtf
 
 
+if __name__ == "__main__":
+    dome_rec(speakers, )
 
 
 

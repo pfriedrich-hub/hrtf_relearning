@@ -11,7 +11,15 @@ import os
 import slab
 import freefield
 from pathlib import Path
-subject = 'paul_hrtf'
+import argparse
+
+ap = argparse.ArgumentParser()
+ap.add_argument("-t", "--id", type=str,
+	default="paul_hrtf",
+	help="enter subject id")
+args = vars(ap.parse_args())
+subject = args["id"]
+print('record from %s speakers, subj_id: %i'%(id, 9))
 
 #---------Load Recordings-----------#
 

@@ -34,12 +34,17 @@ Adafruit_Mahony filter;  // fastest/smalleset
 
 uint32_t timestamp;
 
-int analogPinAz = A0;     //initializing pin 
-//int analogPinEle = A1;     //initializing pin 
-const int min_input = 0;
-const int max_input = 180;
+int analogPinAz = DAC0;     //initializing pin 
+int analogPinEle = DAC1;     //initializing pin 
+
+const int az_min_input = 0;
+const int az_max_input = 360;
+const int ele_min_input = -90;
+const int ele_max_input = 90;
+
 const int min_output = 0;
-const int max_output = 1023;
+const int max_output = 4096;
+
 float output = 0;
 float az = 0;
 float ele = 0;
@@ -48,11 +53,37 @@ void setup() {
   analogWriteResolution(10);
   Serial.begin(115200);
   while (!Serial) yield();
-  if (!cal.begin()) {
-    Serial.println("Failed to initialize calibration helper");
-  } else if (! cal.loadCalibration()) {
-    Serial.println("No calibration loaded/found");
-  }
+  //if (!cal.begin()) {
+  //  Serial.println("Failed to initialize calibration helper");
+  //} else if (! cal.loadCalibration()) {
+  //  Serial.println("No calibration loaded/found");
+  //}
+
+  // in uTesla
+  cal.mag_hardiron[0] = -61.65; // no drift
+  cal.mag_hardiron[1] = 13.25;
+  cal.mag_hardiron[2] = 1.86;
+
+  // in uTesla
+  cal.mag_softiron[0] = 1.094;
+  cal.mag_softiron[1] = 0.037;
+  cal.mag_softiron[2] = 0.011;  
+  cal.mag_softiron[3] = 0.037;
+  cal.mag_softiron[4] = 0.945;
+  cal.mag_softiron[5] = 0.008;  
+  cal.mag_softiron[6] = 0.011;
+  cal.mag_softiron[7] = 0.008;
+  cal.mag_softiron[8] = 0.969;
+  // Earth total magnetic field strength in uTesla (dependent on location and time of the year),
+  // visit: https://www.ngdc.noaa.gov/geomag/calculators/magcalc.shtml#igrfwmm)
+  cal.mag_field = 35.51; // approximate value for locations along the equator
+
+  // in Radians/s
+  cal.gyro_zerorate[0] = 0.05;
+  cal.gyro_zerorate[1] = -0.01;
+  cal.gyro_zerorate[2] = -0.01;
+
+  
 
   if (!init_sensors()) {
     Serial.println("Failed to find sensors");
@@ -123,27 +154,27 @@ void loop() {
 #endif
 
   // print the heading, pitch and roll
-  roll = -filter.getRoll();
+  roll = filter.getRoll();
   pitch = filter.getPitch();
-  heading = filter.getYaw();
+  heading = -filter.getYaw();
   //Serial.print("Orientation: ");
-  
+  Serial.print("az in: "); 
   Serial.print(heading);
-  Serial.print(", ");
+  Serial.print(", ele in: ");
   //Serial.print(pitch);
   //Serial.print(", ");
   Serial.println(roll);
 
-
   // write to analog pin
-  
-  az = map(heading, min_input, max_input, min_output, max_output);
+  analogWriteResolution(12);
+  az = map(heading, az_min_input, az_max_input, min_output, max_output);
   analogWrite(analogPinAz,az) ;     //setting  
-  ele = map(roll, min_input, max_input, min_output, max_output);
-  //analogWrite(analogPinEle,ele) ; 
-  Serial.println(az);
-  //Serial.print(", ");
-  //Serial.print(ele);
+  ele = map(roll, ele_min_input, ele_max_input, min_output, max_output);
+  //analogWrite(analogPinEle,ele) ;
+  Serial.print("az out: "); 
+  Serial.print(az);
+  Serial.print(", ele out: ");
+  Serial.println(ele);
   
   float qw, qx, qy, qz;
   filter.getQuaternion(&qw, &qx, &qy, &qz);

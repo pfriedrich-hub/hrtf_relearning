@@ -1,3 +1,7 @@
+# record form in-ear microphones
+# example - from terminal/shell:
+# python in-ear_record.py --id paul_hrtf
+
 import numpy as np
 import os
 import matplotlib

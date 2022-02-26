@@ -36,8 +36,9 @@ attr = dict(f.variables['Data.SamplingRate'].attrs.items())  # get attributes as
 
 # todo option 2: find smart way to measure IR data and write sofa file in HRIR format
 
-# todo option 3: dont simulate sounds (not my job). instead modify slab.HRTF functions like 'tfs_from_sources'
+# todo option 3: dont simulate sounds (not my job). instead modify slabs HRIR functions like 'tfs_from_sources'
 #  or write your own functions utilizing HRTF sofa format to do the job <-- PRIORITY
+
 
 if datatype != 'FIR':
     print('something')

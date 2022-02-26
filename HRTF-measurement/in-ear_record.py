@@ -11,13 +11,13 @@ import slab
 import freefield
 import argparse
 
-ap = argparse.ArgumentParser()
-ap.add_argument("-t", "--id", type=str,
-	default="paul_hrtf",
-	help="enter subject id")
-args = vars(ap.parse_args())
-id = args["id"]
-print('record from %s speakers, subj_id: %i'%(id, 9))
+# ap = argparse.ArgumentParser()
+# ap.add_argument("-t", "--id", type=str,
+# 	default="paul_hrtf",
+# 	help="enter subject id")
+# args = vars(ap.parse_args())
+# id = args["id"]
+# print('record from %s speakers, subj_id: %i'%(id, 9))
 
 # get speakers and locations(az,ele) to play from
 table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')
@@ -63,10 +63,13 @@ def dome_rec(speakers, subject=id, n_reps=50):
     return avg_rec_list
 
 def read_wav(speakers, subject):
+    slabobj_rec = []
     recordings = np.zeros([len(speakers), int(probe_len*fs), 2])  # array to store recordings
     for i, source_location in enumerate(speakers):
-        recordings[i] = slab.Binaural.read(os.getcwd() + '/data/in-ear_recordings/in-ear_%s_%s_%s.wav'
-                                           % (subject, str(source_location[1]), str(source_location[2]))).data
+        rec = slab.Binaural(slab.Sound.read(os.getcwd() + '/data/in-ear_recordings/in-ear_%s_%s_%s.wav'
+                                           % (subject, str(source_location[1]), str(source_location[2]))))
+        slabobj_rec.append(rec) # append slab objects to list
+        recordings[i] = rec.data
     return recordings
 
 # safe HRTFs in MRN array  shape(measurements, receivers, number_datapoints)
@@ -103,7 +106,7 @@ import os
 import math
 import numpy as np
 import matplotlib
-matplotlib.use('TkAgg')
+#matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 from matplotlib.mlab import psd, csd
 import slab
@@ -162,6 +165,7 @@ rfft = np.fft.rfft(x, axis=0)  # compute discrete fourier transform
 rfft = np.abs(rfft)  # euclidian distance of complex output array
 rfft = rfft / len(freqs_n)  # rescale so magnitude is independent of signal length
 pxx_n = rfft ** 2  # square to estimate PSD
+
 
 # plot mpl and np psd estimation
 fig, ax = plt.subplots(1,1)

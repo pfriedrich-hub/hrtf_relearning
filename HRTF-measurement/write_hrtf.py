@@ -13,6 +13,7 @@ import freefield
 from pathlib import Path
 import argparse
 
+subject = 'paul_hrtf'
 # ap = argparse.ArgumentParser()
 # ap.add_argument("-t", "--id", type=str,
 # 	default="paul_hrtf",
@@ -32,11 +33,13 @@ fs = 48828  # sampling rate
 
 # read recorded .wav files and return slab object list
 def read_wav(speakers, subject):
-    recs = np.zeros([len(speakers), int(probe_len*fs), 2])  # array to store recordings
+    recordings = np.zeros([len(speakers), int(probe_len*fs), 2])  # array to store recordings
     for i, source_location in enumerate(speakers):
-        recs[i] = slab.Binaural.read(Path.cwd() / 'data' / 'in-ear_recordings' / ('in-ear_%s_%s_%s.wav' % (subject, str(source_location[1]), str(source_location[2])))).data
-    return recs.reshape(recs.shape[0], 2, recs.shape[1])
-rec = read_wav(speakers, subject)
+        recording = slab.Sound.read(Path.cwd() / 'data' / 'in-ear_recordings' / ('in-ear_%s_%s_%s.wav'\
+                    %(subject, str(source_location[1]), str(source_location[2]))))
+        recordings[i] = recording.data
+    return recordings.reshape(recordings.shape[0], 2, recordings.shape[1])
+recs = read_wav(speakers, subject)
 
 #---------compute HRTFs-----------#
 
@@ -62,7 +65,13 @@ def HRTF_estimate(signal, recordings):
         hrtfs[i, 0] = tf_r
         hrtfs[i, 1] = tf_l
     return hrtfs
-hrtfs = HRTF_estimate(signal=chirp, recordings=rec)
+
+hrtfs = HRTF_estimate(signal=chirp, recordings=recs)
+
+#----------Create sound source array---------#
+radius = 1
+# sound source array should be of shape [azimuths, elevation, radius]
+sources = np.c_[speakers[:, 1:], np.ones(speakers.shape[0])*radius]
 
 #----------Create SOFA file----------#
 
@@ -126,7 +135,7 @@ receiverPositionVar[:]      = np.zeros((r, c, i))
 sourcePositionVar = rootgrp.createVariable('SourcePosition', 'f8', ('M', 'C'))
 sourcePositionVar.Units   = 'degree, degree, metre'
 sourcePositionVar.Type    = 'spherical'
-sourcePositionVar[:]      = speakers  # array of speaker positions
+sourcePositionVar[:]      = sources  # array of speaker positions
 
     # emitter position
 emitterPositionVar  = rootgrp.createVariable('EmitterPosition', 'f8', ('E', 'C', 'I'))

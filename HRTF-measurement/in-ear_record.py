@@ -44,6 +44,7 @@ def dome_rec(speakers, subject=id, n_reps=50):
     freefield.set_logger('WARNING')
     recordings = np.zeros([len(speakers), int(probe_len*fs), 2])  # array to store recordings as data arrays
     avg_rec_list = []  # list to hold recordings as slab binaural objects
+    #todo sort out left and right (ff setup uses [0] as right, while slab uses [0] as left -> change in ff lab
     for i, source_location in enumerate(speakers):
         print(source_location)
         speaker = freefield.pick_speakers(tuple((source_location[1], source_location[2])))
@@ -62,6 +63,8 @@ def dome_rec(speakers, subject=id, n_reps=50):
     freefield.set_logger('INFO')
     return avg_rec_list
 
+
+"""
 def read_wav(speakers, subject):
     slabobj_rec = []
     recordings = np.zeros([len(speakers), int(probe_len*fs), 2])  # array to store recordings
@@ -92,7 +95,7 @@ def HRTF_estimate(signal, recordings):
         tf_l = yl_fft / xfft
         hrtf[i, 0] = tf_r
         hrtf[i, 1] = tf_l
-    return hrtf
+    return hrtf"""
 
 
 if __name__ == "__main__":
@@ -205,31 +208,65 @@ nfft = 2 ** (math.ceil(math.log(Npoints, 2)))
 
 
 # WINDOWING 
-
+"""
 
 # numpy fft for complex TFs
-# input
-xfreqs = np.fft.rfftfreq(len(x), d=1 / fs)  # frequency array to plot DFT across
-xfft = np.fft.rfft(x, axis=0)  # compute discrete fourier transform
 
+import os
+import math
+import numpy as np
+from pathlib import Path
+import matplotlib
+matplotlib.use('TkAgg')
+import matplotlib.pyplot as plt
+from matplotlib.mlab import psd, csd
+import slab
+fs = 48828  # sampling rate
+slab.Signal.set_default_samplerate(fs)
+
+# generate signals
+chirp = slab.Binaural.chirp(duration=0.5, level=90)
+#snd = slab.Binaural(data=slab.Sound.read(os.getcwd() + '/data/in-ear_recordings/in-ear_paul_hrtf_0.0_0.0.wav').data)
+az = 0.0
+ele = 0.0
+snd = slab.Binaural.read(Path.cwd() / 'data' / 'in-ear_recordings' / ('in-ear_%s_%s_%s.wav' \
+                                                                   %('paul_hrtf', az,  ele)))
+x = chirp.data
+y = snd.data
+
+
+# input
+xfreqs = np.fft.rfftfreq(len(x), d=1/fs)  # frequency array to plot DFT across
+xfft_l = np.fft.rfft(x[:,0], n=fs)  # compute discrete fourier transform
+xfft_r = np.fft.rfft(x[:,1], axis=0)
 # output
 yfreqs = np.fft.rfftfreq(len(y), d=1 / fs)  # frequency array to plot DFT across
-yfft = np.fft.rfft(y, axis=0)  # compute discrete fourier transform
-
+yfft_l = np.fft.rfft(y[:,0], axis=0)  # compute discrete fourier transform
+yfft_r = np.fft.rfft(y[:,1], axis=0)
 # transfer function: h = y / x
-TF = yfft / xfft
+TF_r = yfft_r / xfft_r
+TF_l = yfft_l / xfft_l
 
+# show that complex TF data is necessary to reconstruct output from TF*input
 # separate real and imaginary part
-TF_r = np.real(TF)  # power and phase information in
-TF_i = np.imag(TF)  # complex array
+TF_real = np.real(TF_l)  # power and phase information in
+TF_imag = np.imag(TF_l)  # complex array
+real = TF_real * xfft_l
+out_real = np.fft.irfft(real)
+comp = TF_l * xfft_l
+out_comp = np.fft.irfft(comp)
+fig, ax = plt.subplots(3, 1)
+ax[0].plot(y[:,0])
+ax[1].plot(out_comp)
+ax[2].plot(out_real)
 
-to_output = TF * xfft  # works!
 
 # go to PSD
-signal = TF
+signal = TF_l
 signal = np.abs(signal)  # euclidian distance of complex output array
 signal = signal / len(xfreqs)  # rescale so magnitude is independent of signal length
 signal = signal ** 2  # square to estimate PSD
+signal = np.log(signal)
 
 # plot
 fig, ax = plt.subplots(1, 1)

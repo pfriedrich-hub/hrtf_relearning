@@ -33,12 +33,14 @@ fs = 48828  # sampling rate
 
 # read recorded .wav files and return slab object list
 def read_wav(speakers, subject):
-    recordings = np.zeros([len(speakers), int(probe_len*fs), 2])  # array to store recordings
+    recordings = np.zeros([len(speakers), 2, int(probe_len*fs)])  # array to store recordings
     for i, source_location in enumerate(speakers):
+        azimuth = source_location[1]
+        elevation = source_location[2]
         recording = slab.Sound.read(Path.cwd() / 'data' / 'in-ear_recordings' / ('in-ear_%s_%s_%s.wav'\
-                    %(subject, str(source_location[1]), str(source_location[2]))))
-        recordings[i] = recording.data
-    return recordings.reshape(recordings.shape[0], 2, recordings.shape[1])
+                    %(subject, azimuth,  elevation)))
+        recordings[i] = recording.data.T
+    return recordings
 recs = read_wav(speakers, subject)
 
 #---------compute HRTFs-----------#
@@ -49,16 +51,16 @@ chirp = slab.Sound.chirp(duration=probe_len, level=90)  # create chirp from 100 
 # compute HRTFs and safe them in MRN array - Measurements, Receivers, N_frequencies
 def HRTF_estimate(signal, recordings):
     x = signal.data[:, 0]
-    N = int(len(x)/2)+1
+    N = int(fs/2+1)
     hrtfs = np.zeros([len(recordings), 2, N], dtype=complex)
     for i, recfile in enumerate(recordings):
         yr = recfile[1, :]
         yl = recfile[0, :]
         # input
-        xfft = np.fft.rfft(x, axis=0)  # compute discrete fourier transform
+        xfft = np.fft.rfft(x, n=fs, axis=0)  # compute discrete fourier transform
         # output
-        yr_fft = np.fft.rfft(yr, axis=0)  # compute discrete fourier transform
-        yl_fft = np.fft.rfft(yl, axis=0)  # compute discrete fourier transform
+        yr_fft = np.fft.rfft(yr, n=fs, axis=0)  # compute discrete fourier transform
+        yl_fft = np.fft.rfft(yl, n=fs, axis=0)  # compute discrete fourier transform
         # transfer function: h = y / x
         tf_r = yr_fft / xfft
         tf_l = yl_fft / xfft

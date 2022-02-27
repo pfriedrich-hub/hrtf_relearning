@@ -44,3 +44,21 @@ if datatype != 'FIR':
     print('something')
     #warnings.warn('Non-FIR data: ' + datatype)
 retrn = numpy.array(f.variables['Data.IR'], dtype='float')
+
+import matplotlib
+matplotlib.use('TkAgg')
+import matplotlib.pyplot as plt
+Backend TkAgg is interactive backend. Turning interactive mode on.
+import slab
+import os
+import numpy as np
+hrtf = slab.HRTF(os.getcwd() + '/data/hrtfs/paul_hrtf.sofa')
+plt.plot(hrtf[3].data)
+
+signal = hrtf[3].data
+signal = np.abs(signal)  # euclidian distance of complex output array
+#signal = signal / len(xfreqs)  # rescale so magnitude is independent of signal length
+signal = signal ** 2  # square to estimate PSD
+signal = 10*np.log(signal)
+
+plt.semilogx(10*np.log(signal))

@@ -75,10 +75,11 @@ if __name__ == "__main__":
 
 """
 ### extra: arrange dome ####
+import numpy as np
 radius = 1.5 # meter
+radius = 1.4 # meter
 az_angles = np.radians((17.5, 35, 52.5))
 ele_angles = np.radians((12.5, 25, 37.5, 50))
 horizontal_dist = np.sin(az_angles) * radius
 vertical_dist = np.sin(ele_angles) * radius
 """
-

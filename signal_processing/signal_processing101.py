@@ -2,9 +2,12 @@ import numpy as np
 import matplotlib
 matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
+import matplotlib.colors as colors
 import mne
 from pathlib import Path
 import os
+import scipy.io
+import math
 
 fs = 48000
 # time axis for time traces
@@ -83,6 +86,7 @@ ax[1].set_title('Gaussian (kernel)')
 ax[2].plot(time, c)
 ax[2].set_title('result of convolution')
 
+
 # -------- CHAPTER XII -------- #
 # creating Morlet wavelets
 # to make a morlet wavelet, create a gaussian and a sine wave and multiply them point by point
@@ -109,6 +113,7 @@ ax[1].set_title('Gaussian window')
 ax[2].plot(time, wavelet)
 ax[2].set_title('resulting wavelet')
 
+# -------- CHAPTER XIII -------- #
 # Complex Morlet Wavelets - extracting power and phase
 # parameters...
 srate = 500  # sampling rate in Hz
@@ -127,53 +132,120 @@ ax.set_xlabel('Time (ms)')
 ax.set_ylabel('real amplitude')
 ax.set_zlabel('imag amplitude')
 
-
 # convolve EEG signal with a complex morlet wavelet
-# load sample eeg data
+# load sample eeg data - brain vision
 DIR = Path(os.getcwd())
 folder_path = DIR / 'signal_processing' / 'sample_data'
 for header_file in folder_path.glob('*.vhdr'):
     eeg = mne.io.read_raw_brainvision(header_file, preload=True)
 fs = eeg.info['sfreq']
-eeg_data = eeg._data[0, 15000:15500] # one second of eeg data channel 0
+eeg_data = eeg._data[0, 15500:17500] # 4 seconds of eeg data channel 0
 eeg_time = np.arange(0, len(eeg_data) / fs, 1 / fs)  # start, stop, step size
+# load sample eeg data - eeglab - does not work yet
+mat = scipy.io.loadmat(folder_path / 'sampleEEGdata.mat')
 
 # create wavelet
-frequency = 6 # in Hz, as usual
+frequency = 6  # in Hz, as usual
 time = np.arange(-1, 1, 1/fs)
-s = (4 / (2 * np.pi * frequency)) ** 2 # note that s is squared here rather than in the next line...
-wavelet = np.exp(2 * 1j * np.pi * frequency * time) * np.exp(-time ** 2 / (2 * s) / frequency)
+n = 4  # number of cycles of gaussian taper
+s = (n / (2 * np.pi * frequency))  # note that s is squared here rather than in the next line
+wavelet = np.exp(2 * 1j * np.pi * frequency * time) * np.exp(-time ** 2 / (2 * s ** 2) / frequency)
 
 # FFT parameters
 n_wavelet = len(wavelet)
 n_data = len(eeg_data)
 n_convolution = n_wavelet + n_data - 1
-half_of_wavelet_size = int((n_wavelet - 1) / 2)
-
+half_of_wavelet_size = math.ceil((n_wavelet - 1) / 2)
 # FFT of wavelet and EEG data
 fft_wavelet = np.fft.fft(wavelet, n_convolution)
-# fft_data = np.fft.fft(np.squeeze(EEG.data(47,:,1)), n_convolution)  # FCz, trial 1
 fft_data = np.fft.fft(eeg_data, n_convolution)  # FCz, trial 1
 
 # convolve and get inverse  of fft
-convolution_result_fft = np.fft.ifft(fft_wavelet * fft_data, n_convolution) * np.sqrt(s)
-
+convolution_result_fft = np.fft.ifft(fft_wavelet * fft_data, n_convolution) * np.sqrt(s) # scale by root of cycles
 # cut off edges
 convolution_result_fft = convolution_result_fft[half_of_wavelet_size + 1:n_convolution - half_of_wavelet_size]
-
 # plot for comparison
 fig, ax = plt.subplots(3, 1)
 ax[0].plot(eeg_time, convolution_result_fft.real)
 ax[0].set_title('Projection onto real axis is filtered signal at %i Hz.'%frequency)
 ax[0].set_xlabel('Time (ms)')
 ax[0].set_ylabel('Voltage (\muV)')
-
 ax[1].plot(eeg_time, np.abs(convolution_result_fft) ** 2)
 ax[1].set_title('Magnitude of projection vector squared is power at %i Hz.'%frequency)
 ax[1].set_xlabel('Time (ms)')
 ax[1].set_ylabel('Voltage (\muV)')
-
 ax[2].plot(eeg_time, np.angle(convolution_result_fft))
 ax[2].set_title('Angle of vector is phase angle time series at %i Hz.'%frequency)
 ax[2].set_xlabel('Time (ms)')
 ax[2].set_ylabel('Phase angle (rad.)')
+
+# some notes on convolution parameters:
+# NUMBER OF CYCLES on the gaussian taper - defines width of gaussian - in turn defines width of wavelet
+# trade-off between temporal and frequency precision
+# a larger number of cycles results in better frequency precision at the cost of worse temporal precision
+# number of cycles can also change as a function on wavelet frequency
+# in general, you should use at least 3 cycles and at most 14 cycles, for >7 cycles, check if wavelet tapers to zero
+
+# WAVELET LENGTH - should be long enough so that lowest frequency wavelets taper to zero
+
+# one final note: data should be stationary during the period in which the wavelet is nonzero
+
+# full blown wavelet convolution!
+# get eeg data
+DIR = Path(os.getcwd())
+folder_path = DIR / 'signal_processing' / 'sample_data'
+for header_file in folder_path.glob('*.vhdr'):
+    eeg = mne.io.read_raw_brainvision(header_file, preload=True)
+fs = eeg.info['sfreq']
+eeg_len = int(fs * 4)
+eeg_data = eeg._data[5, 0:eeg_len]  # one minute of eeg data
+eeg_time = np.arange(0, len(eeg_data) / fs, 1 / fs)  # start, stop, step size
+
+# define frequency range
+min_freq = 2
+max_freq = 80
+num_frex = 30
+# define wavelet parameters
+time = np.arange(-1, 1, 1 / fs)
+frex = np.logspace(np.log10(min_freq), np.log10(max_freq), num_frex)
+# number of cycles of morlet wavelet as function of frequency (more cycles with increasing wavelet frequency)
+s = np.logspace(np.log10(3), np.log10(10), num_frex) / (2 * np.pi * frex)
+# define convolution parameters
+n_wavelet = len(time)
+n_data = len(eeg_data)
+n_convolution = n_wavelet + n_data - 1
+n_conv_pow2 = 2 ** (math.ceil(math.log(n_convolution, 2)))
+half_of_wavelet_size = int((n_wavelet - 1) / 2)
+# get FFT of data
+eeg_fft = np.fft.fft(eeg_data, n_conv_pow2)
+# initialize
+eeg_power = np.zeros((num_frex, n_data))  # frequencies X time
+base_idx = [0, 500]  # eeg data used for baseline normalization
+# loop through frequencies and compute synchronization
+for fi in range(num_frex):
+    wavelet_fft = \
+    np.fft.fft(np.sqrt(1 / (s[fi] * np.sqrt(np.pi)))  #todo empirical scaling factor for varying wavelet cycles
+               # complex sine at different frequencies
+               * np.exp(2 * 1j * np.pi * frex[fi] * time)
+               # gaussian with s cycles
+               * np.exp(-time ** 2 / (2 * (s[fi] ** 2))), n_conv_pow2)  # more cycles with increasing wavelet frequency
+    # convolution
+    eeg_conv = np.fft.ifft(wavelet_fft * eeg_fft)  # convolve
+    eeg_conv = eeg_conv[:n_convolution]  # cut result to length of n_convolution
+    eeg_conv = eeg_conv[half_of_wavelet_size + 1: n_convolution - half_of_wavelet_size]
+    # calculate power
+    temp_power = (np.abs(eeg_conv) ** 2)
+    # baseline normalization
+    eeg_power[fi] = 10 * np.log10(temp_power[fi] / np.mean(temp_power[base_idx[0]:base_idx[1]]))
+
+# plot
+x, y = np.meshgrid(eeg_time, frex)
+fig, ax = plt.subplots(1, 1, sharex=True, sharey=True)
+c_ax = ax.contour(x, y, eeg_power, linewidths=0.3, colors="k", norm=colors.Normalize())
+c_ax = ax.contourf(x, y, eeg_power, norm=colors.Normalize(), cmap=plt.cm.jet)
+cbar = fig.colorbar(c_ax)
+plt.show()
+
+
+
+

@@ -247,5 +247,46 @@ cbar = fig.colorbar(c_ax)
 plt.show()
 
 
+# -------- CHAPTER XIV -------- #
+# Hilbert transform
+# used to extract complex information from a real-valued signal (alternative to convolution with complex wavelet)
+# can be applied to bandpass filtered signal to obtain band specific power and phase over time
+## the FFT-based hilbert transform
+# generate random signal
+signal_len = 21
+signal = np.random.rand(signal_len)
+# take FFT of signal
+signal_fft = np.fft.fft(signal)
+# create copy of fourier transform that has been multiplied by complex operator (i);
+# this turns Mcos(2pift) into iMcos(2pift)
+complex_copy = 1j * signal_fft
+
+# find indices of positive and negative frequencies
+# zero and nyquist frequency should stay untouched
+posF = np.arange(1, int(np.floor(signal_len/2)))
+negF = np.arange(int(np.ceil(signal_len/2)), signal_len)
+# rotate Fourier coefficients
+# (note 1: this works by computing the iAsin(2pft) component, i.e., the phase quadrature)
+# (note 2: positive frequencies are rotated counter-clockwise negative frequencies are rotated clockwise)
+signal_fft[posF] = signal_fft[posF] + -1j * complex_copy[posF]
+signal_fft[negF] = signal_fft[negF] +  1j * complex_copy[negF]
+# The next two lines are an alternative and slightly faster method. 
+# The book explains why this is equivalent to the previous two lines.
+# f(posF) = f(posF)*2
+# f(negF) = f(negF)*0
+# take inverse FFT
+hilbert_x = np.fft.ifft(signal_fft)
+# compare with scipy function hilbert
+from scipy.signal import hilbert
+hilbert_s = hilbert(signal)
+
+# plot results
+plt.figure()
+plt.plot(np.abs(hilbert_s), label='scipy')
+plt.plot(np.abs(hilbert_x), label='manual')
+plt.legend()
+plt.title('magnitude of Hilbert transform')
+
+
 
 

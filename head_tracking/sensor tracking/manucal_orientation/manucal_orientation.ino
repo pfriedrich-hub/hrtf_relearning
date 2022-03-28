@@ -60,10 +60,11 @@ void setup() {
   //}
 
   // in uTesla
-  cal.mag_hardiron[0] = -77.95; 
-  cal.mag_hardiron[1] = 27.23;
+  cal.mag_hardiron[0] = -77.95; // occasional drift (28.3.)
+  cal.mag_hardiron[1] = 27.23;  // settles in 10 sec
   cal.mag_hardiron[2] = -16.34;
 
+  
   // in uTesla
   cal.mag_softiron[0] = 1.094;
   cal.mag_softiron[1] = 0.037;
@@ -156,11 +157,11 @@ void loop() {
   // print the heading, pitch and roll
   roll = -filter.getRoll();
   pitch = filter.getPitch();
-  heading = filter.getYaw();
+  heading = 360-filter.getYaw();
   //Serial.print("Orientation: ");
-  Serial.print("az in: "); 
-  Serial.print(heading);
-  Serial.print(", ele in: ");
+  Serial.print("az: "); 
+  Serial.println(heading);
+  Serial.print(", ele: ");
   Serial.println(roll);
   //Serial.print(pitch);
   //Serial.print(", ");

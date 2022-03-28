@@ -15,17 +15,18 @@ freefield.initialize('dome', zbus=True, device=proc_list)
 # freefield.write(tag="playbuflen", value=sampling_rate*5, processors="RP2")
 # freefield.play(kind='zBusA',proc='RP2')
 # time.sleep(5)
+# data = freefield.read(tag='azimuth',processor='RP2',n_samples=500)
+# plt.figure()
+# plt.plot(data)
 
-
-data = freefield.read(tag='azimuth',processor='RP2',n_samples=1)
-x = np.linspace(0,10,len(data))
-plt.figure()
-plt.plot(x,data)
-
+freefield.set_logger('WARNING')
 
 while True:
     az = freefield.read(tag='azimuth', processor='RP2', n_samples=1)
-    print(az)
+    ele = freefield.read(tag='elevation', processor='RP2', n_samples=1)
+    az = 360-np.interp(az, [0.55, 2.75], [0, 360])
+    ele = np.interp(ele, [0.55, 2.75], [-90, 90])
+    print('azimuth: %i, elevation: %i '%(int(az), int(ele)))
 
 
 

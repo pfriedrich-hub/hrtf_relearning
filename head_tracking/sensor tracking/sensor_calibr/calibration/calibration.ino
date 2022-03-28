@@ -57,14 +57,14 @@ void setup(void) {
 
   setup_sensors();
   
-  Wire.setClock(400000); // 400KHz
+  //Wire.setClock(400000); // 400KHz
+  //Wire.begin();
 }
 
 void loop() {
   magnetometer->getEvent(&mag_event);
   gyroscope->getEvent(&gyro_event);
   accelerometer->getEvent(&accel_event);
-  
   // 'Raw' values to match expectation of MotionCal
   Serial.print("Raw:");
   Serial.print(int(accel_event.acceleration.x*8192/9.8)); Serial.print(",");

@@ -19,8 +19,8 @@ Adafruit_Sensor *accelerometer, *gyroscope, *magnetometer;
 
 // pick your filter! slower == better quality output
 //Adafruit_NXPSensorFusion filter; // slowest
-//Adafruit_Madgwick filter;  // faster than NXP
-Adafruit_Mahony filter;  // fastest/smalleset
+Adafruit_Madgwick filter;  // faster than NXP
+//Adafruit_Mahony filter;  // fastest/smalleset
 
 #if defined(ADAFRUIT_SENSOR_CALIBRATION_USE_EEPROM)
   Adafruit_Sensor_Calibration_EEPROM cal;
@@ -43,7 +43,7 @@ const int ele_min_input = -90;
 const int ele_max_input = 90;
 
 const int min_output = 0;
-const int max_output = 4096;
+const int max_output = 4095;
 
 float output = 0;
 float az = 0;
@@ -60,9 +60,9 @@ void setup() {
   //}
 
   // in uTesla
-  cal.mag_hardiron[0] = -61.65; // no drift
-  cal.mag_hardiron[1] = 13.25;
-  cal.mag_hardiron[2] = 1.86;
+  cal.mag_hardiron[0] = -77.95; 
+  cal.mag_hardiron[1] = 27.23;
+  cal.mag_hardiron[2] = -16.34;
 
   // in uTesla
   cal.mag_softiron[0] = 1.094;
@@ -154,30 +154,27 @@ void loop() {
 #endif
 
   // print the heading, pitch and roll
-  roll = filter.getRoll();
+  roll = -filter.getRoll();
   pitch = filter.getPitch();
-  heading = -filter.getYaw();
+  heading = filter.getYaw();
   //Serial.print("Orientation: ");
   Serial.print("az in: "); 
   Serial.print(heading);
   Serial.print(", ele in: ");
+  Serial.println(roll);
   //Serial.print(pitch);
   //Serial.print(", ");
-  Serial.println(roll);
 
   // write to analog pin
   analogWriteResolution(12);
   az = map(heading, az_min_input, az_max_input, min_output, max_output);
   analogWrite(analogPinAz,az) ;     //setting  
   ele = map(roll, ele_min_input, ele_max_input, min_output, max_output);
-  //analogWrite(analogPinEle,ele) ;
-  Serial.print("az out: "); 
-  Serial.print(az);
-  Serial.print(", ele out: ");
-  Serial.println(ele);
-  
-  float qw, qx, qy, qz;
-  filter.getQuaternion(&qw, &qx, &qy, &qz);
+  analogWrite(analogPinEle,ele) ;
+  //Serial.print("az out: "); 
+  //Serial.print(az);
+  //Serial.print(", ele out: ");
+  //Serial.println(ele);
   
 #if defined(AHRS_DEBUG_OUTPUT)
  // Serial.print("Took "); Serial.print(millis()-timestamp); Serial.println(" ms");

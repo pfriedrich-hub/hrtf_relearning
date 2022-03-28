@@ -22,30 +22,30 @@ fs = 48828  # sampling rate
 # id = args["id"]
 # print('record from %s speakers, subj_id: %i'%(id, 9))
 slab.Signal.set_default_samplerate(fs)  # default samplerate for generating sounds, filters etc.
-signal = slab.Sound.chirp(duration=0.5, level=90, from_frequency=200, to_frequency=16000)
+signal = slab.Sound.chirp(duration=0.05, level=90, from_frequency=200, to_frequency=16000)
 
-def record_hrtfs(subject=id, repetitions=50, signal=signal):
+def record_hrtfs(subject_id, repetitions, signal):
     # initialize setup
     freefield.initialize('dome', default='play_birec')
     freefield.load_equalization()
     freefield.set_logger('WARNING')
-    # get speaker coordinates
-    table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')
-    source_locations = np.loadtxt(table_file, skiprows=1, usecols=(0, 3, 4), delimiter=",", dtype=float)
-    speaker_ids = source_locations[:,0]
-    # record
-    n = 2 # record for n listener positions, 2 = front and back
-    recordings = []
-    for i in range(n):
-        print('face straight and press button to start recording')
-        recordings.append(dome_rec(signal, speaker_ids, source_locations, repetitions))
-        source_locations = rotate(source_locations, angle=int(360/n))  # rotate listener 180°
-    for bi_rec in recordings:
-        bi_rec[2].write(os.getcwd() + '/data/in-ear_recordings/in-ear_%s_%i_%i.wav'%(subject, bi_rec[2], bi_rec[2]))
-
     # equalize speaker transfer functions
     # freefield.equalize_speakers(speakers=speaker_coordinates)
     # rec_raw, rec_lvl, rec_full = freefield.test_equalization(speakers=speaker_speaker_coordinates)
+    # get speaker coordinates
+    table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')
+    source_locations = np.loadtxt(table_file, skiprows=1, usecols=(0, 3, 4), delimiter=",", dtype=float)
+    speaker_ids = source_locations[:, 0].astype('int')
+    # record
+    n = 2  # record for n listener positions, 2 = front and back
+    recordings = []
+    for i in range(n):
+        print('face straight and press button to start recording')
+        freefield.wait_for_button()
+        recordings = recordings + (dome_rec(signal, speaker_ids, source_locations, repetitions))
+        source_locations = rotate(source_locations, angle=int(360/n))  # rotate listener 180°
+    for bi_rec in recordings:
+        bi_rec[2].write(os.getcwd() + '\data\in-ear_recordings\in-ear_%s_az%i_el%i.wav'%(subject_id, bi_rec[0], bi_rec[1]))
     freefield.set_logger('INFO')
     return recordings
 
@@ -55,7 +55,6 @@ def dome_rec(signal, speaker_ids, source_locations, repetitions):
     #todo sort out left and right (ff setup uses [0] as right, while slab uses [0] as left -> change in ff lab
     for speaker_id in speaker_ids:
         [speaker] = freefield.pick_speakers(speaker_id)
-        speaker
         # get avg of n recordings from each sound source location
         recs = []
         for r in range(repetitions):
@@ -73,15 +72,14 @@ def rotate(source_locations, angle):
     # rotate speaker coordinates by 90 degrees
     source_locations[:, 1] += angle
     print('Rotate chair 90 degrees clockwise \nLook at fixpoint. Press button to start recording.')
-    freefield.wait_for_button()
     return source_locations
 
 # def remove_mic_tf(recordings):
 #     mic_tf = ?
 #     recordings = recordings * mic_tf
 
-# if __name__ == "__main__":
-#     dome_rec(speakers, )
+if __name__ == "__main__":
+    recordings = record_hrtfs('pf_0', repetitions=1, signal=signal)
 
 
 

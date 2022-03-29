@@ -60,25 +60,19 @@ void setup() {
   //}
 
   // in uTesla
-  cal.mag_hardiron[0] = -77.95; // occasional drift (28.3.)
-  cal.mag_hardiron[1] = 27.23;  // settles in 10 sec
-  cal.mag_hardiron[2] = -16.34;
-
-  
-  // in uTesla
-  cal.mag_softiron[0] = 1.094;
-  cal.mag_softiron[1] = 0.037;
-  cal.mag_softiron[2] = 0.011;  
-  cal.mag_softiron[3] = 0.037;
-  cal.mag_softiron[4] = 0.945;
-  cal.mag_softiron[5] = 0.008;  
-  cal.mag_softiron[6] = 0.011;
-  cal.mag_softiron[7] = 0.008;
-  cal.mag_softiron[8] = 0.969;
-  // Earth total magnetic field strength in uTesla (dependent on location and time of the year),
-  // visit: https://www.ngdc.noaa.gov/geomag/calculators/magcalc.shtml#igrfwmm)
-  cal.mag_field = 35.51; // approximate value for locations along the equator
-
+  cal.mag_hardiron[0] = -98; 
+  cal.mag_hardiron[1] = 50;
+  cal.mag_hardiron[2] = 30;
+  cal.mag_softiron[0] = 1.506;
+  cal.mag_softiron[1] = 0.553;
+  cal.mag_softiron[2] = 0.292;  
+  cal.mag_softiron[3] = 0.553;
+  cal.mag_softiron[4] = 1.381;
+  cal.mag_softiron[5] = -0.357;  
+  cal.mag_softiron[6] = 0.292;
+  cal.mag_softiron[7] = -0.357;
+  cal.mag_softiron[8] = 0.803;
+  cal.mag_field = 27.33; 
   // in Radians/s
   cal.gyro_zerorate[0] = 0.05;
   cal.gyro_zerorate[1] = -0.01;

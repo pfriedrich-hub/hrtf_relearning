@@ -1,8 +1,61 @@
+
+#### motioncal calibration without chair iron bar
+  cal.mag_hardiron[0] = -79.27; # slow drift - lets keep trying to do hard and softiron
+  cal.mag_hardiron[1] = 24.33;
+  cal.mag_hardiron[2] = 18.08;
+  cal.mag_softiron[0] = 1.033;
+  cal.mag_softiron[1] = 0.076;
+  cal.mag_softiron[2] = 0.081;  
+  cal.mag_softiron[3] = 0.076;
+  cal.mag_softiron[4] = 0.922;
+  cal.mag_softiron[5] = -0.016;  
+  cal.mag_softiron[6] = 0.081;
+  cal.mag_softiron[7] = -0.016;
+  cal.mag_softiron[8] = 1.063;
+  cal.mag_field = 30.91; 
+
+
+#### motioncal calibration without chair iron bar
+  cal.mag_hardiron[0] = -98; # slow drift - lets keep trying to do hard and softiron
+  cal.mag_hardiron[1] = 50;
+  cal.mag_hardiron[2] = 30;
+  cal.mag_softiron[0] = 1.506;
+  cal.mag_softiron[1] = 0.553;
+  cal.mag_softiron[2] = 0.292;  
+  cal.mag_softiron[3] = 0.553;
+  cal.mag_softiron[4] = 1.381;
+  cal.mag_softiron[5] = -0.357;  
+  cal.mag_softiron[6] = 0.292;
+  cal.mag_softiron[7] = -0.357;
+  cal.mag_softiron[8] = 0.803;
+  cal.mag_field = 27.33; 
+
+
+#### motioncal calibration without chair iron bar
+cal.mag_hardiron[0] = -122.53; # messy
+cal.mag_hardiron[1] = 219.83;
+cal.mag_hardiron[2] = -4.47;
+
+#### motioncal calibration without chair iron bar
+cal.mag_hardiron[0] = -63.14; // settles in 20 sec
+cal.mag_hardiron[1] = 7.81;	// drifts like crazy
+cal.mag_hardiron[2] = -56.01;
+
+#### motioncal calibration without chair iron bar
+cal.mag_hardiron[0] = -93.23; // settles in 4 sec
+cal.mag_hardiron[1] = 16.61;	// occasional STRONG drift (28.3.)
+cal.mag_hardiron[2] = 21.39;
+
+
+cal.mag_hardiron[0] = -77.95; // occasional drift (28.3.)
+cal.mag_hardiron[1] = 27.23;	// settles in 10 sec
+cal.mag_hardiron[2] = -16.34;	// works okay --
+
 #### motioncal calibration without chair iron bar
 ### +-2 degrees
 ### even with iron bar, still works best
 // in uTesla
-  cal.mag_hardiron[0] = -61.65; ## no drift
+  cal.mag_hardiron[0] = -61.65; // no drift
   cal.mag_hardiron[1] = 13.25;
   cal.mag_hardiron[2] = 1.86;
 

@@ -1,8 +1,45 @@
+HARDIRON
+	motioncal
+  cal.mag_hardiron[0] = -77.95; // occasional drift (28.3.)
+  cal.mag_hardiron[1] = 27.23;	// settles in 10 sec
+  cal.mag_hardiron[2] = -16.34;	// works okay --
 
-#### motioncal calibration without chair iron bar
-  cal.mag_hardiron[0] = -79.27; # slow drift - lets keep trying to do hard and softiron
-  cal.mag_hardiron[1] = 24.33;
-  cal.mag_hardiron[2] = 18.08;
+	simplecal
+  cal.mag_hardiron[0] = -76.51; // 
+  cal.mag_hardiron[1] = 22.18;  // settles in 3 sec
+  cal.mag_hardiron[2] = -11.43; // drifts after change in az
+
+
+	imucal (jupyter)
+  cal.mag_hardiron[0] = -77.28; // 
+  cal.mag_hardiron[1] = 21.47;  // settles in 3 sec
+  cal.mag_hardiron[2] = -11.38; // drifts after change in az
+
+GYRO
+  cal.gyro_zerorate[0] = 0.075;
+  cal.gyro_zerorate[1] = -0.019;
+  cal.gyro_zerorate[2] = -0.0672; 
+
+
+
+
+ 
+  cal.mag_softiron[0] = 1.011;
+  cal.mag_softiron[1] = 0.121;
+  cal.mag_softiron[2] = -0.019;  
+  cal.mag_softiron[3] = 0.121;
+  cal.mag_softiron[4] = 1.053;
+  cal.mag_softiron[5] = -0.008;  
+  cal.mag_softiron[6] = -0.019;
+  cal.mag_softiron[7] = -0.008;
+  cal.mag_softiron[8] = 0.953;
+  
+
+
+#### motioncal calibration without chair iron bar  29.3.
+  cal.mag_hardiron[0] = -79.27; # doesnt work
+  cal.mag_hardiron[1] = 27.33;
+  cal.mag_hardiron[2] = -12.08;
   cal.mag_softiron[0] = 1.033;
   cal.mag_softiron[1] = 0.076;
   cal.mag_softiron[2] = 0.081;  
@@ -42,14 +79,18 @@ cal.mag_hardiron[1] = 7.81;	// drifts like crazy
 cal.mag_hardiron[2] = -56.01;
 
 #### motioncal calibration without chair iron bar
-cal.mag_hardiron[0] = -93.23; // settles in 4 sec
-cal.mag_hardiron[1] = 16.61;	// occasional STRONG drift (28.3.)
-cal.mag_hardiron[2] = 21.39;
+  cal.mag_hardiron[0] = -93.23; // settles in 4 sec
+  cal.mag_hardiron[1] = 16.61;	// occasional STRONG drift (28.3.)
+  cal.mag_hardiron[2] = 21.39;
 
 
-cal.mag_hardiron[0] = -77.95; // occasional drift (28.3.)
-cal.mag_hardiron[1] = 27.23;	// settles in 10 sec
-cal.mag_hardiron[2] = -16.34;	// works okay --
+
+
+  cal.mag_hardiron[0] = -77.95; // occasional drift (28.3.)
+  cal.mag_hardiron[1] = 27.23;	// settles in 10 sec
+  cal.mag_hardiron[2] = -16.34;	// works okay --
+
+
 
 #### motioncal calibration without chair iron bar
 ### +-2 degrees

@@ -10,6 +10,7 @@ from pathlib import Path
 import slab
 import freefield
 import argparse
+from copy import deepcopy
 data_dir = Path.cwd() / 'data'
 fs = 48828  # sampling rate
 
@@ -54,6 +55,8 @@ def record_hrtfs(subject_id, repetitions, signal):
     for bi_rec in recordings:
         filename = 'in-ear_recordings\in-ear_%s_az%i_el%i.wav'%(subject_id, bi_rec[0], bi_rec[1])
         bi_rec[2].write(data_dir / filename)
+    np.savetxt(str(data_dir) + '\in-ear_recordings\sources_%s.txt'%(subject_id),
+               create_sources(source_locations, angle=180), fmt='%1.1f')
     freefield.set_logger('INFO')
     return recordings
 
@@ -80,6 +83,15 @@ def rotate(source_locations, angle):
     source_locations[:, 1] += angle
     print('Rotate chair 90 degrees clockwise \nLook at fixpoint. Press button to start recording.')
     return source_locations
+
+def create_sources(source_locations, angle):
+    front_sources = source_locations
+    back_sources = deepcopy(source_locations)
+    back_sources[:, 1] += angle
+    back_sources[:, 0] += len(back_sources)
+    sources = np.vstack((front_sources, back_sources))
+    sources = np.c_[sources, np.ones(len(sources))*1.4]
+    return sources
 
 # def remove_mic_tf(recordings):
 #     mic_tf = ?

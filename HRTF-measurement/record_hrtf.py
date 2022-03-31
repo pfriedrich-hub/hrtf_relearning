@@ -93,6 +93,15 @@ def create_src_txt(recordings):
     sources = np.c_[np.arange(len(sources)), sources, np.ones(len(sources))*1.4].astype('float16')
     return sources
 
+
+# def remove_mic_tf(recordings):
+#     mic_tf = ?
+#     recordings = recordings * mic_tf
+#
+# if __name__ == "__main__":
+#     recordings = record_hrtfs(subject_id='kemar_test', repetitions=5, signal=signal)
+
+# write sofa
 def read_wav(path):
     from natsort import natsorted
     recordings = []  # list to hold slab.Binaural objects
@@ -104,20 +113,15 @@ def read_wav(path):
         recordings.append(slab.Sound.read(file_path).data)
     return slab.Sound(data=recordings)
 
-# def remove_mic_tf(recordings):
-#     mic_tf = ?
-#     recordings = recordings * mic_tf
-#
-# if __name__ == "__main__":
-#     recordings = record_hrtfs(subject_id='kemar_test', repetitions=5, signal=signal)
-
-# write sofa
 slab.Signal.set_default_samplerate(fs)  # default samplerate for generating sounds, filters etc.
 signal = slab.Sound.chirp(duration=0.1, level=90, from_frequency=200, to_frequency=16000)
 recs = read_wav(path = data_dir / 'in-ear_recordings' / 'KEMAR')
 sources = np.loadtxt(data_dir / 'in-ear_recordings' / 'KEMAR' /'sources_KEMAR.txt')
-kemar_hrtf = slab.HRTF.estimate_hrtf(recs, signal, sources)
-kemar_hrtf.write_sofa(filename=data_dir / 'hrtfs' / 'KEMAR.sofa')
+recorded_hrtf = slab.HRTF.estimate_hrtf(recs, signal, sources)
+recorded_hrtf.write_sofa(filename=data_dir / 'hrtfs' / 'KEMAR')
+
+# read back
+read_hrtf = slab.HRTF(str(data_dir) + '\hrtfs\KEMAR.sofa')
 
 
 """

@@ -3,7 +3,6 @@
 # python record_hrtf.py --id paul_hrtf
 
 import numpy as np
-import os
 import matplotlib
 matplotlib.use('TkAgg')
 from pathlib import Path
@@ -55,7 +54,7 @@ def record_hrtfs(subject_id, repetitions, signal):
         if i < n:
             sources = rotate(sources, angle=int(360/n))  # rotate listener 180°
     for idx, bi_rec in enumerate(recordings):
-        filename = 'in-ear_recordings\in-ear_%s_src_idx%i_az%i_el%i.wav'%(subject_id,
+        filename = 'in-ear_recordings\in-ear_%s_src_idx%02d_az%i_el%i.wav'%(subject_id,
                     idx, bi_rec[0], bi_rec[1])
         bi_rec[2].write(data_dir / filename)
     np.savetxt(str(data_dir) + '\in-ear_recordings\sources_%s.txt'%(subject_id),

@@ -9,7 +9,7 @@ import re
 from pathlib import Path
 import time
 import serial as srl
-DIR = pathlib.Path(os.getcwd()) # path for sound and rcx files
+DIR = Path.cwd()# path for sound and rcx files
 port = 'COM6' # set port for arduino serial read
 tmin = 0  # minimal inter stim interval in ms(if pose and sound source match)
 tmax = 600  # max ISI in ms

@@ -11,7 +11,6 @@ chirp = slab.Sound.chirp(duration=probe_len, level=90)  # create chirp from 100 
 
 hrtf = slab.HRTF(data=str(Path.cwd() / 'data' / 'hrtfs' / 'test_hrtf.sofa'))
 
-
 # on headphones
 for source in range(hrtf.n_sources):
     print(source)

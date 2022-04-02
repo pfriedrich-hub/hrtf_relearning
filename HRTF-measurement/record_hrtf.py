@@ -57,7 +57,7 @@ def record_hrtfs(subject_id, repetitions, signal):
         filename = 'in-ear_recordings\in-ear_%s_src_idx%02d_az%i_el%i.wav'%(subject_id,
                     idx, bi_rec[0], bi_rec[1])
         bi_rec[2].write(data_dir / filename)
-    np.savetxt(str(data_dir) + '\in-ear_recordings\sources_%s.txt'%(subject_id),
+    np.savetxt(str(data_dir / 'in-ear_recordings') + '/sources_%s.txt'%(subject_id),
                create_src_txt(recordings), fmt='%1.1f')
     freefield.set_logger('INFO')
     return recordings
@@ -87,9 +87,9 @@ def rotate(source_locations, angle):
     print('Rotate chair %i degrees clockwise \nLook at fixpoint. Press button to start recording.'%angle)
     return source_locations
 
-def create_src_txt(recordings):
-    sources = np.asarray(recordings)[:,:2]
-    sources = np.c_[np.arange(len(sources)), sources, np.ones(len(sources))*1.4].astype('float16')
+def create_src_txt(recordings): #todo check if this works without source ID
+    sources = np.asarray(recordings)[:, :2]
+    sources = np.c_[sources, np.ones(len(sources))*1.4].astype('float16')
     return sources
 
 
@@ -110,12 +110,13 @@ def read_wav(path):
     path_list = natsorted(path_list)
     for file_path in path_list:
         recordings.append(slab.Sound.read(file_path).data)
-    return slab.Sound(data=recordings)
+    return slab.Sound(data=recordings, samplerate=fs)
 
 slab.Signal.set_default_samplerate(fs)  # default samplerate for generating sounds, filters etc.
-signal = slab.Sound.chirp(duration=0.1, level=90, from_frequency=200, to_frequency=16000)
-recs = read_wav(path = data_dir / 'in-ear_recordings' / 'KEMAR')
+signal = slab.Sound.chirp(duration=0.1, level=90, from_frequency=200, to_frequency=16000, samplerate=fs)
+recs = read_wav(path=data_dir / 'in-ear_recordings' / 'KEMAR')
 sources = np.loadtxt(data_dir / 'in-ear_recordings' / 'KEMAR' /'sources_KEMAR.txt')
+sources = sources[:, 1:]
 recorded_hrtf = slab.HRTF.estimate_hrtf(recs, signal, sources)
 recorded_hrtf.write_sofa(filename=data_dir / 'hrtfs' / 'KEMAR')
 

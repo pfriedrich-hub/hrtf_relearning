@@ -1,15 +1,41 @@
 import slab
+import numpy as np
+import matplotlib
+# matplotlib.use('MacOSX')
+# from matplotlib import pyplot as plt
 from pathlib import Path
-import numpy
-rec_path = Path.cwd() /'data' / 'in-ear_recordings' / 'pilot'
-source_file = rec_path / 'in-ear_paul_sources.txt'  # csv containing sound source coordinates
-sources = numpy.loadtxt(source_file, skiprows=1, usecols=(1, 2, 3), delimiter=",")
-probe_len = 0.5  # length of the sound probe in seconds
+data_dir = Path.cwd() / 'data'
 fs = 48828  # sampling rate
 
-chirp = slab.Sound.chirp(duration=probe_len, level=90)  # create chirp from 100 to fs/2 Hz
+# write sofa
+def read_wav(path):
+    from natsort import natsorted
+    recordings = []  # list to hold slab.Binaural objects
+    path_list = []
+    for file_path in path.rglob('*.wav'):
+        path_list.append(str(file_path))
+    path_list = natsorted(path_list)
+    for file_path in path_list:
+        recordings.append(slab.Sound.read(file_path).data)
+    return slab.Sound(data=recordings, samplerate=fs)
 
-hrtf = slab.HRTF(data=str(Path.cwd() / 'data' / 'hrtfs' / 'test_hrtf.sofa'))
+slab.Signal.set_default_samplerate(fs)  # default samplerate for generating sounds, filters etc.
+signal = slab.Sound.chirp(duration=0.1, level=90, from_frequency=200, to_frequency=16000, samplerate=fs)
+recs = read_wav(path=data_dir / 'in-ear_recordings' / 'KEMAR')
+sources = np.loadtxt(data_dir / 'in-ear_recordings' / 'KEMAR' /'sources_KEMAR.txt')
+sources = sources[:, 1:]
+recorded_hrtf = slab.HRTF.estimate_hrtf(recs, signal, sources)
+recorded_hrtf.write_sofa(filename=data_dir / 'hrtfs' / 'KEMAR')
+
+# read back
+hrtf = slab.HRTF(str(data_dir) + '/hrtfs/KEMAR.sofa')
+# get azimuths
+azs = np.unique(hrtf.sources[:, 0])
+
+cone_src = hrtf.sources[hrtf.cone_sources(17.5)]
+cone_idx = hrtf.cone_sources(1)
+    hrtf.apply(cone_idx)
+
 
 # on headphones
 for source in range(hrtf.n_sources):
@@ -18,9 +44,12 @@ for source in range(hrtf.n_sources):
     snd.play()
 
 # play from cones of confusion and get hit rate for front-back confusion
-for source in range(hrtf.cone_sources):
-    print(source)
-    snd = hrtf.apply(source, chirp)
-    snd.play()
+for i in
+    for source in range(hrtf.cone_sources(i)):
+        print(source)
+        snd = hrtf.apply(source, chirp)
+        snd.play()
 
 # move sound (use slab transition) around using hrtfs
+
+

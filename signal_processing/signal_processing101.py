@@ -246,7 +246,6 @@ c_ax = ax.contourf(x, y, eeg_power, norm=colors.Normalize(), cmap=plt.cm.jet)
 cbar = fig.colorbar(c_ax)
 plt.show()
 
-
 # -------- CHAPTER XIV -------- #
 # Hilbert transform
 # used to extract complex information from a real-valued signal (alternative to convolution with complex wavelet)

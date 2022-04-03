@@ -20,12 +20,12 @@ def read_wav(path):
     return slab.Sound(data=recordings, samplerate=fs)
 
 slab.Signal.set_default_samplerate(fs)  # default samplerate for generating sounds, filters etc.
-signal = slab.Sound.chirp(duration=0.1, level=90, from_frequency=200, to_frequency=16000, samplerate=fs)
+signal = slab.Sound.chirp(duration=1.0, level=90, from_frequency=200, to_frequency=16000, samplerate=fs)
 recs = read_wav(path=data_dir / 'in-ear_recordings' / 'KEMAR')
-sources = np.loadtxt(data_dir / 'in-ear_recordings' / 'KEMAR' /'sources_KEMAR.txt')
-sources = sources[:, 1:]
+sources = np.loadtxt(data_dir / 'in-ear_recordings' / 'KEMAR' /'sources_kemar_test.txt')
+# sources = sources[:, 1:]
 recorded_hrtf = slab.HRTF.estimate_hrtf(recs, signal, sources)
-recorded_hrtf.write_sofa(filename=data_dir / 'hrtfs' / 'KEMAR')
+recorded_hrtf.write_sofa(filename=data_dir / 'hrtfs' / 'kemar')
 
 # read back
 hrtf = slab.HRTF(str(data_dir) + '/hrtfs/KEMAR.sofa')

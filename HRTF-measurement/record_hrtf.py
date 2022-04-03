@@ -12,6 +12,9 @@ import argparse
 from copy import deepcopy
 data_dir = Path.cwd() / 'data'
 fs = 48828  # sampling rate
+import os
+os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
+
 
 # todo: implement this into freefield?
 # ap = argparse.ArgumentParser()
@@ -31,7 +34,7 @@ fs = 48828  # sampling rate
 
 # generate probe signal
 slab.Signal.set_default_samplerate(fs)  # default samplerate for generating sounds, filters etc.
-signal = slab.Sound.chirp(duration=4.0, level=90, from_frequency=200, to_frequency=16000)
+signal = slab.Sound.chirp(duration=1.0, level=90, from_frequency=200, to_frequency=16000)
 signal = signal.ramp('both', duration=0.01)
 
 def record_hrtfs(subject_id, repetitions, signal):
@@ -52,12 +55,12 @@ def record_hrtfs(subject_id, repetitions, signal):
     for i in range(n):
         freefield.wait_for_button()
         recordings = recordings + (dome_rec(signal, speaker_ids, sources, repetitions))
-        if i < n:
+        if i < n-1:
             sources[:, 1] += 360/n
-            print('Rotate chair %i degrees clockwise \nLook at fixpoint. Press button to start recording.' % angle)
+            print('Rotate chair 180 degrees clockwise \nLook at fixpoint. Press button to start recording.')
     # save recordings as .wav
     for idx, bi_rec in enumerate(recordings):
-        filename = 'in-ear_recordings\in-ear_%s_src_idx%02d_az%i_el%i.wav'%(subject_id,
+        filename = 'in-ear_recordings\in-ear_%s_src_id%02d_az%i_el%i.wav'%(subject_id,
                     idx, bi_rec[0], bi_rec[1])
         bi_rec[2].write(data_dir / filename)
     # save source coordinates to a text file
@@ -66,7 +69,7 @@ def record_hrtfs(subject_id, repetitions, signal):
     freefield.set_logger('INFO')
     return recordings
 
-def dome_rec(signal, speaker_ids, source_locations, repetitions):
+def dome_rec(signal, speaker_ids, sources, repetitions):
     print('Recording from various sound source locations..')
     recordings = []  # list to store binaural recordings and source coordinates
     for speaker_id in speaker_ids:
@@ -78,14 +81,14 @@ def dome_rec(signal, speaker_ids, source_locations, repetitions):
                   compensate_attenuation=False, equalize=True)
             recs.append(rec.data)
         recs = np.mean(np.asarray(recs), axis=0)
-        azimuth = source_locations[speaker.index, 1]
-        elevation = source_locations[speaker.index, 2]
+        azimuth = sources[speaker.index, 1]
+        elevation = sources[speaker.index, 2]
         rec = [azimuth, elevation, slab.Binaural(data=recs)]
         recordings.append(rec)
         print('Progress: %i %%'%(speaker_id*2))
     return recordings
 
-def create_src_txt(recordings): #todo check if this works without source ID
+def create_src_txt(recordings):
     sources = np.asarray(recordings)[:, :2]
     sources = np.c_[sources, np.ones(len(sources))*1.4].astype('float16')
     return sources
@@ -95,8 +98,8 @@ def create_src_txt(recordings): #todo check if this works without source ID
 #     mic_tf = ?
 #     recordings = recordings * mic_tf
 #
-# if __name__ == "__main__":
-#     recordings = record_hrtfs(subject_id='kemar_test', repetitions=5, signal=signal)
+if __name__ == "__main__":
+    recordings = record_hrtfs(subject_id='kemar_test', repetitions=5, signal=signal)
 
 
 """

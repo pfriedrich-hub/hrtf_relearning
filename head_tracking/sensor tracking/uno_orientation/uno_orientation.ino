@@ -20,7 +20,7 @@ Adafruit_Sensor *accelerometer, *gyroscope, *magnetometer;
 // pick your filter! slower == better quality output
 //Adafruit_NXPSensorFusion filter; // slowest
 //Adafruit_Madgwick filter;  // faster than NXP
-//Adafruit_Mahony filter;  // fastest/smalleset
+Adafruit_Mahony filter;  // fastest/smalleset
 
 #if defined(ADAFRUIT_SENSOR_CALIBRATION_USE_EEPROM)
   Adafruit_Sensor_Calibration_EEPROM cal;
@@ -59,21 +59,19 @@ void setup() {
   //  Serial.println("No calibration loaded/found");
   //}
   
-  cal.mag_hardiron[0] = -77.28; // 
-  cal.mag_hardiron[1] = 21.47;  // settles sec
-  cal.mag_hardiron[2] = -11.38; // 
-  
-  cal.mag_softiron[0] = 1.011;
-  cal.mag_softiron[1] = 0.121;
-  cal.mag_softiron[2] = -0.019;  
-  cal.mag_softiron[3] = 0.121;
-  cal.mag_softiron[4] = 1.053;
-  cal.mag_softiron[5] = -0.008;  
-  cal.mag_softiron[6] = -0.019;
-  cal.mag_softiron[7] = -0.008;
-  cal.mag_softiron[8] = 0.953;
-  
-  cal.mag_field = 35.51; 
+  cal.mag_hardiron[0] = 478.84; // 
+  cal.mag_hardiron[1] = -2739.88;  
+  cal.mag_hardiron[2] = -478.91;
+  cal.mag_softiron[0] = 10.855;
+  cal.mag_softiron[1] = 0;
+  cal.mag_softiron[2] = 0;  
+  cal.mag_softiron[3] = 0;
+  cal.mag_softiron[4] = 0;
+  cal.mag_softiron[5] = 0.008;  
+  cal.mag_softiron[6] = 0;
+  cal.mag_softiron[7] = 0;
+  cal.mag_softiron[8] = 10.855;
+  cal.mag_field = 27.73; 
 
   cal.gyro_zerorate[0] = 0.075;
   cal.gyro_zerorate[1] = -0.019;

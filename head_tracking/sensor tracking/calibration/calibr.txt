@@ -1,3 +1,18 @@
+	motioncal with helmholtz coil
+  cal.mag_hardiron[0] = 478.84; // 
+  cal.mag_hardiron[1] = -2739.88;	// you need to keep hardiron values as small as possible!
+  cal.mag_hardiron[2] = -478.91;
+  cal.mag_softiron[0] = 10.855;
+  cal.mag_softiron[1] = 0;
+  cal.mag_softiron[2] = 0;  
+  cal.mag_softiron[3] = 0;
+  cal.mag_softiron[4] = 0;
+  cal.mag_softiron[5] = 0.008;  
+  cal.mag_softiron[6] = 0;
+  cal.mag_softiron[7] = 0;
+  cal.mag_softiron[8] = 10.855;	
+  cal.mag_field = 27.73; 
+
 HARDIRON
 	motioncal
   cal.mag_hardiron[0] = -77.95; // occasional drift (28.3.)

@@ -1,7 +1,7 @@
 # record form in-ear microphones
 import numpy
 import matplotlib
-matplotlib.use('TkAgg')
+#matplotlib.use('TkAgg')
 from pathlib import Path
 import slab
 import freefield
@@ -12,12 +12,13 @@ fs = 48828  # sampling rate
 import os
 os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
 slab.Signal.set_default_samplerate(fs)  # default samplerate for generating sounds, filters etc.
-signal = slab.Sound.chirp(duration=0.05, level=90, from_frequency=0, to_frequency=18000)
+signal = slab.Sound.chirp(duration=0.05, level=80, from_frequency=0, to_frequency=18000)
+signal = signal.ramp(duration=0.005)
 repetitions = 50
-subject_id = 'kemar_test3'
-n_directions = 1
-speakers = numpy.arange(19, 28).tolist()  # central cone
-#speakers = 'all'
+subject_id = 'ms'
+n_directions = 2
+# speakers = numpy.arange(19, 28).tolist()  # central cone
+speakers = 'all'
 
 def record_hrtfs(subject_id, repetitions, signal, n_directions, safe='sofa', speakers='all'):
     freefield.initialize('dome', default='play_birec')  # initialize setup

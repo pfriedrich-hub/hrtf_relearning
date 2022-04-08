@@ -14,13 +14,13 @@ os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
 slab.Signal.set_default_samplerate(fs)  # default samplerate for generating sounds, filters etc.
 signal = slab.Sound.chirp(duration=0.05, level=80, from_frequency=0, to_frequency=18000)
 signal = signal.ramp(duration=0.005)
-repetitions = 50
+repetitions = 25
 subject_id = 'ms'
 n_directions = 2
 # speakers = numpy.arange(19, 28).tolist()  # central cone
 speakers = 'all'
 
-def record_hrtfs(subject_id, repetitions, signal, n_directions, safe='sofa', speakers='all'):
+def record_hrtfs(subject_id, repetitions, signal, n_directions, safe='both', speakers='all'):
     freefield.initialize('dome', default='play_birec')  # initialize setup
     # freefield.load_equalization(data_dir / 'dome_equalization_65')
     freefield.set_logger('WARNING')
@@ -45,7 +45,7 @@ def record_hrtfs(subject_id, repetitions, signal, n_directions, safe='sofa', spe
             sources[:, 1] += 360/n_directions
             print('Rotate chair 180 degrees clockwise \nLook at fixpoint. Press button to start recording.')
     sources = create_src_txt(recordings)
-    if safe == 'wav':
+    if safe == 'wav' or 'both':
         print('Creating wav files...')
         for idx, bi_rec in enumerate(recordings):    # save recordings as .wav
             filename = 'in-ear_recordings\in-ear_%s_src_id%02d_az%i_el%i.wav' % (subject_id,
@@ -53,7 +53,7 @@ def record_hrtfs(subject_id, repetitions, signal, n_directions, safe='sofa', spe
             bi_rec[2].write(data_dir / filename)
         numpy.savetxt(str(data_dir / 'in-ear_recordings') + '/sources_%s.txt' % subject_id,
                    sources, fmt='%1.1f')   # save source coordinates to a text file
-    if safe == 'sofa':
+    if safe == 'sofa' or 'both':
         print('Creating sofa file...')
         recorded_hrtf = slab.HRTF.estimate_hrtf([rec[2] for rec in recordings], signal, sources)
         recorded_hrtf.write_sofa(data_dir / 'hrtfs' / str('%s.sofa' % subject_id))

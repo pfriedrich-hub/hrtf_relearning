@@ -12,10 +12,10 @@ fs = 48828  # sampling rate
 import os
 os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
 slab.Signal.set_default_samplerate(fs)  # default samplerate for generating sounds, filters etc.
-signal = slab.Sound.chirp(duration=0.05, level=80, from_frequency=0, to_frequency=18000)
+signal = slab.Sound.chirp(duration=0.05, level=70, from_frequency=0, to_frequency=18000)
 signal = signal.ramp(duration=0.005)
 repetitions = 25
-subject_id = 'ms'
+subject_id = 'vk'
 n_directions = 2
 # speakers = numpy.arange(19, 28).tolist()  # central cone
 speakers = 'all'

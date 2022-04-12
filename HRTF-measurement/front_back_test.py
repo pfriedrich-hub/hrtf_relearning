@@ -12,10 +12,10 @@ os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
 slab.Signal.set_default_samplerate(48828)  # default samplerate for generating sounds, filters etc.
 
 # pinknoise
-sound = slab.Binaural.pinknoise(duration=2.0)
+# sound = slab.Binaural.pinknoise(duration=2.0)
 
 # chirp
-sound = slab.Binaural.chirp(duration=0.5, level=70, from_frequency=0, to_frequency=18000)
+# sound = slab.Binaural.chirp(duration=0.5, level=70, from_frequency=0, to_frequency=18000)
 
 #  bark
 sound = slab.Binaural(data_dir / 'bark.wav')
@@ -23,7 +23,7 @@ sound.right.data = sound.left.data
 sound = sound.resample(48828)
 
 sound = sound.ramp(duration=0.005, when='both')
-sofa_file = 'jp.sofa'
+sofa_file = 'vk.sofa'
 ff = True
 
 def front_back_test(sofa_file, sound, ff):

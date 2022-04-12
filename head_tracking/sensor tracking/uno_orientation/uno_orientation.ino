@@ -58,24 +58,28 @@ void setup() {
   //} else if (! cal.loadCalibration()) {
   //  Serial.println("No calibration loaded/found");
   //}
-  
-  cal.mag_hardiron[0] = 478.84; // 
-  cal.mag_hardiron[1] = -2739.88;  
-  cal.mag_hardiron[2] = -478.91;
-  cal.mag_softiron[0] = 10.855;
-  cal.mag_softiron[1] = 0;
-  cal.mag_softiron[2] = 0;  
-  cal.mag_softiron[3] = 0;
-  cal.mag_softiron[4] = 0;
-  cal.mag_softiron[5] = 0.008;  
-  cal.mag_softiron[6] = 0;
-  cal.mag_softiron[7] = 0;
-  cal.mag_softiron[8] = 10.855;
-  cal.mag_field = 27.73; 
+ // in uTesla
 
-  cal.gyro_zerorate[0] = 0.075;
-  cal.gyro_zerorate[1] = -0.019;
-  cal.gyro_zerorate[2] = -0.0672; 
+  cal.mag_hardiron[0] = -61.65; // no drift
+  cal.mag_hardiron[1] = 13.25;
+  cal.mag_hardiron[2] = 1.86;
+
+  // in uTesla
+  cal.mag_softiron[0] = 1.094;
+  cal.mag_softiron[1] = 0.037;
+  cal.mag_softiron[2] = 0.011;  
+  cal.mag_softiron[3] = 0.037;
+  cal.mag_softiron[4] = 0.945;
+  cal.mag_softiron[5] = 0.008;  
+  cal.mag_softiron[6] = 0.011;
+  cal.mag_softiron[7] = 0.008;
+  cal.mag_softiron[8] = 0.969;
+  cal.mag_field = 35.73; 
+
+  // in Radians/s
+  cal.gyro_zerorate[0] = 0.05;
+  cal.gyro_zerorate[1] = -0.01;
+  cal.gyro_zerorate[2] = -0.01;
 
   if (!init_sensors()) {
     Serial.println("Failed to find sensors");
@@ -152,8 +156,8 @@ void loop() {
   //Serial.print("Orientation: ");
   Serial.print("az: "); 
   Serial.println(heading);
-  Serial.print(", ele: ");
-  Serial.println(roll);
+  //Serial.print(", ele: ");
+  //Serial.println(roll);
   //Serial.print(pitch);
   //Serial.print(", ");
 

@@ -11,16 +11,16 @@ def aruco_test():
     print('starting..')
     system = PySpin.System.GetInstance()
     cams = system.GetCameras()
-    for cam in cams: # initialize cameras
+    for cam in cams:  # initialize cameras
         cam.Init()
         cam.ExposureAuto.SetValue(PySpin.ExposureAuto_Off) # disable auto exposure time
-        cam.ExposureTime.SetValue(10000)  # (100000.0)
+        cam.ExposureTime.SetValue(30000)  # (100000.0)
         cam.BeginAcquisition()
 
     while True: # get pose and draw on marker orientation on image for each camera
         for i_cam, cam in enumerate(cams):
             image = get_image(cam)
-            image = change_image_res(image, 1)
+            image = change_image_res(image, 0.5)
             pose, info = pose_from_image(image)
             image = draw_markers(image, pose, info)
             cv2.imshow('camera %i' % i_cam, image)
@@ -57,7 +57,7 @@ def change_image_res(image, resolution):
 def pose_from_image(image): # get pose
     arucoDict = cv2.aruco.Dictionary_get(cv2.aruco.DICT_5X5_100)
     params = cv2.aruco.DetectorParameters_create()
-    params.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_SUBPIX  # set parameters
+    # params.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_SUBPIX  # set parameters
     # params.adaptiveThreshWinSizeMin=5
     # params.adaptiveThreshWinSizeMax=5
     # params.adaptiveThreshWinSizeStep=100

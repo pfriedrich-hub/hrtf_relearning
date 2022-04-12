@@ -1,3 +1,65 @@
+and one in the corner of fflab
+  cal.mag_hardiron[0] = -78.78; // some magnets removed 2nd try
+  cal.mag_hardiron[1] = 27.84;	// you need to keep hardiron values as small as possible!
+  cal.mag_hardiron[2] = -15;
+  cal.mag_softiron[0] = 1.038;
+  cal.mag_softiron[1] = 0.122;
+  cal.mag_softiron[2] = -0.027;  
+  cal.mag_softiron[3] = 0.122;
+  cal.mag_softiron[4] = 1.048;
+  cal.mag_softiron[5] = -0.06;  
+  cal.mag_softiron[6] = -0.027;
+  cal.mag_softiron[7] = -0.06;
+  cal.mag_softiron[8] = 0.936;	
+  cal.mag_field = 23.5; 
+
+
+another one outside:
+  cal.mag_hardiron[0] = -76.31; // some magnets removed 2nd try
+  cal.mag_hardiron[1] = 22.93;	// you need to keep hardiron values as small as possible!
+  cal.mag_hardiron[2] = -11.89;
+  cal.mag_softiron[0] = 0.998;
+  cal.mag_softiron[1] = 0.061;
+  cal.mag_softiron[2] = 0.014;  
+  cal.mag_softiron[3] = 0.061;
+  cal.mag_softiron[4] = 0.995;
+  cal.mag_softiron[5] = 0.023;  
+  cal.mag_softiron[6] = 0.014;
+  cal.mag_softiron[7] = 0.023;
+  cal.mag_softiron[8] = 1.012;	
+  cal.mag_field = 35.09; 
+
+
+  cal.mag_hardiron[0] = -69.15; // some magnets removed 2nd try
+  cal.mag_hardiron[1] = 20.40;	// you need to keep hardiron values as small as possible!
+  cal.mag_hardiron[2] = -12.59;
+  cal.mag_softiron[0] = 0.798;
+  cal.mag_softiron[1] = 0.564;
+  cal.mag_softiron[2] = 0.016;  
+  cal.mag_softiron[3] = 0.564;
+  cal.mag_softiron[4] = 2.508;
+  cal.mag_softiron[5] = -0.163;  
+  cal.mag_softiron[6] = 0.016;
+  cal.mag_softiron[7] = -0.163;
+  cal.mag_softiron[8] = 0.609;	
+  cal.mag_field = 23.73; 
+
+
+
+  cal.mag_hardiron[0] = -151; // some magnets removed
+  cal.mag_hardiron[1] = 14;	// you need to keep hardiron values as small as possible!
+  cal.mag_hardiron[2] = -50;
+  cal.mag_softiron[0] = 0.65;
+  cal.mag_softiron[1] = -0.023;
+  cal.mag_softiron[2] = -0.792;  
+  cal.mag_softiron[3] = -0.023;
+  cal.mag_softiron[4] = 1.4;
+  cal.mag_softiron[5] = -0.43;  
+  cal.mag_softiron[6] = -0.79;
+  cal.mag_softiron[7] = -0.432;
+  cal.mag_softiron[8] = 2.204;	
+  cal.mag_field = 34.27; 
+
 	motioncal with helmholtz coil
   cal.mag_hardiron[0] = 478.84; // 
   cal.mag_hardiron[1] = -2739.88;	// you need to keep hardiron values as small as possible!
@@ -34,10 +96,6 @@ GYRO
   cal.gyro_zerorate[0] = 0.075;
   cal.gyro_zerorate[1] = -0.019;
   cal.gyro_zerorate[2] = -0.0672; 
-
-
-
-
  
   cal.mag_softiron[0] = 1.011;
   cal.mag_softiron[1] = 0.121;

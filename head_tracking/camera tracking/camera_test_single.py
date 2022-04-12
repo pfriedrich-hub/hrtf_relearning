@@ -14,13 +14,13 @@ def aruco_test():
     for cam in cams: # initialize cameras
         cam.Init()
         cam.ExposureAuto.SetValue(PySpin.ExposureAuto_Off) # disable auto exposure time
-        cam.ExposureTime.SetValue(100000.0)
+        cam.ExposureTime.SetValue(10000)  # (100000.0)
         cam.BeginAcquisition()
 
     while True: # get pose and draw on marker orientation on image for each camera
         for i_cam, cam in enumerate(cams):
             image = get_image(cam)
-            image = change_image_res(image, 0.5)
+            image = change_image_res(image, 1)
             pose, info = pose_from_image(image)
             image = draw_markers(image, pose, info)
             cv2.imshow('camera %i' % i_cam, image)
@@ -68,7 +68,7 @@ def pose_from_image(image): # get pose
 
     (corners, ids, rejected) = cv2.aruco.detectMarkers(image, arucoDict, parameters=params)
     if len(corners) == 0:
-        return None, [0,0,0,0]
+        return None, [0, 0, 0, 0]
     else:
 
         size = image.shape

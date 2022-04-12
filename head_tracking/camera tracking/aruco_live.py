@@ -99,7 +99,7 @@ while True:
     # grab the frame from the threaded video stream and resize it
 	# to have a maximum width of 1000 pixels
     image = get_image(cam)
-    frame = change_image_res(image, 0.5)
+    # frame = change_image_res(image, 0.5)
     #frame = vs.read()
 	#frame = imutils.resize(frame, width=1000)
 	# detect ArUco markers in the input frame
@@ -146,7 +146,6 @@ while True:
 
 # cleanup
 cv2.destroyAllWindows()
-vs.stop()
 
 """
 

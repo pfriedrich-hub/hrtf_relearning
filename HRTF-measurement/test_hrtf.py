@@ -1,9 +1,7 @@
 import slab
 import numpy
 import matplotlib
-import random
-# matplotlib.use('MacOSX')
-import freefield
+#matplotlib.use('TkAgg')
 from matplotlib import pyplot as plt
 from pathlib import Path
 data_dir = Path.cwd() / 'data'
@@ -15,17 +13,19 @@ os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
 # compare hrtfs
 # get hrtfs with similar source coordinates
 filename = 'kemar_fflab.sofa'
-filename = 'kemar_test3.sofa'
+filename = 'ms.sofa'
 filename = 'mit_kemar_large_pinna.sofa'
 
 hrtf = slab.HRTF(data_dir / 'hrtfs' / filename)
 azs = numpy.unique(hrtf.sources[:, 0])
+az=0
 for az in azs:
     sources = hrtf.cone_sources(az, coords='interaural')
     hrtf.plot_tf(sources, xlim=(0, 25e3))
     plt.title('cone at azimuth: %f' % az)
 
 kemar = slab.HRTF.kemar()
+hrtf = slab.HRTF(data_dir / 'hrtfs' / str(filename + '.sofa'))
 # kemar = slab.HRTF(str(data_dir) + '/hrtfs/examples/mit_kemar_large_pinna.sofa')
 # compare waterfall
 cs1 = hrtf.cone_sources(cone=35, coord_system='interaural', full_cone=False)
@@ -55,8 +55,8 @@ slab.Signal.set_default_samplerate(fs)  # default samplerate for generating soun
 signal = slab.Sound.chirp(duration=0.05, level=90, from_frequency=0, to_frequency=18000, samplerate=fs)
 recs = read_wav(path=data_dir / 'in-ear_recordings' / 'kemar_fflab')
 sources = numpy.loadtxt(data_dir / 'in-ear_recordings' / 'kemar_fflab' /'sources_kemar_fflab.txt')
-hrtf = slab.HRTF.estimate_hrtf(recs, signal, sources)
-hrtf.write_sofa(filename=data_dir / 'hrtfs' / 'kemar_fflab.sofa')
+hrtf1 = slab.HRTF.estimate_hrtf(recs, signal, sources)
+hrtf1.write_sofa(filename=data_dir / 'hrtfs' / 'kemar_fflab.sofa')
 
 # move sound (use slab transition) around using hrtfs
 

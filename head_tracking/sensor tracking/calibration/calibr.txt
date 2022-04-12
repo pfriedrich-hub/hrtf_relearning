@@ -49,6 +49,15 @@ GYRO
   cal.mag_softiron[7] = -0.008;
   cal.mag_softiron[8] = 0.953;
   
+  cal.mag_softiron[0] = 1.094;
+  cal.mag_softiron[1] = 0.037;
+  cal.mag_softiron[2] = 0.011;  
+  cal.mag_softiron[3] = 0.037;
+  cal.mag_softiron[4] = 0.945;
+  cal.mag_softiron[5] = 0.008;  
+  cal.mag_softiron[6] = 0.011;
+  cal.mag_softiron[7] = 0.008;
+  cal.mag_softiron[8] = 0.969;
 
 
 #### motioncal calibration without chair iron bar  29.3.

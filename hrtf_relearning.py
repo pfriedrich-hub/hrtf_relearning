@@ -101,7 +101,7 @@ def play_trial(speaker_id):
     print('STARTING..\n TARGET| azimuth: %.1f, elevation %.1f' % (target[0], target[1]))
     time.sleep(3)
     count_down = False
-    isi, pose = compare_pose(target, show=True)  # get pose and return initial isi from la.norm(pose - target)
+    isi, pose = compare_pose(target, show=False)  # get pose and return initial isi from la.norm(pose - target)
     freefield.write('isi', isi, processors=['RX81', 'RX82'])  # write isi to processors
     freefield.play(kind='zBusA', proc='all')
     # start to play stimuli (zBus)
@@ -201,7 +201,6 @@ def pose_from_image(cam, show=False):
         pass
     if show:
         cv2.imshow(cam.DeviceID(), image)
-
 
 def get_image(cam):
     image_result = cam.GetNextImage()

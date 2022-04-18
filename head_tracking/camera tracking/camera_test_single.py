@@ -20,7 +20,7 @@ def aruco_test():
     while True: # get pose and draw on marker orientation on image for each camera
         for i_cam, cam in enumerate(cams):
             image = get_image(cam)
-            image = change_image_res(image, 0.5)
+            image = change_res(image, 0.5)
             pose, info = pose_from_image(image)
             image = draw_markers(image, pose, info)
             cv2.imshow('camera %i' % i_cam, image)
@@ -46,13 +46,6 @@ def get_image(cam):
     image.setflags(write=1)
     image_result.Release()
     return image
-
-def change_image_res(image, resolution):
-    data = PIL.Image.fromarray(image)
-    width = int(data.size[0] * resolution)
-    height = int(data.size[1] * resolution)
-    image = data.resize((width, height), PIL.Image.ANTIALIAS)
-    return np.asarray(image)
 
 def pose_from_image(image): # get pose
     arucoDict = cv2.aruco.Dictionary_get(cv2.aruco.DICT_5X5_100)

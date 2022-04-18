@@ -60,7 +60,7 @@ def hrtf_relearning(n_trials=5):
     return
 
 def play_trial(speaker_id):
-    global arucoDict, arucoParams, mtx, dist, cams
+    global pose, arucoDict, arucoParams, mtx, dist, cams
     # # sensor calibration
     # freefield.set_logger('WARNING')
     # [led_speaker] = freefield.pick_speakers((0, 0)) # get object for center speaker LED
@@ -96,8 +96,6 @@ def play_trial(speaker_id):
     freefield.write('playbuflen', len(stim.data), processors=['RX81', 'RX82'])
     freefield.set_signal_and_speaker(signal=stim, speaker=speaker_id, equalize=False)
     offset_pose = numpy.zeros(2)  # offset_pose is used to normalize head position to 0, 0
-
-    # starting loop over stimuli
     print('STARTING..\n TARGET| azimuth: %.1f, elevation %.1f' % (target[0], target[1]))
     time.sleep(3)
     count_down = False
@@ -139,8 +137,8 @@ def play_trial(speaker_id):
 
 def compare_pose(target, show):
     # pose = pose_from_sensor()
-    azimuth = pose_from_image(cams[1], show=True)
-    elevation = pose_from_image(cams[0], show=False)
+    azimuth = pose_from_image(cams[1], show=show)
+    elevation = pose_from_image(cams[0], show=show)
     pose = numpy.array((azimuth, elevation))
     if not azimuth and not elevation:
         isi = isi_params['tmax']
@@ -161,41 +159,31 @@ def match_pose(target, limit):  # criteria to end experiment (pose matches sound
     return match
 
 def pose_from_image(cam, show=False):
-    image = get_image(cam)  # get seperate pictures
-    # image = change_image_res(image, 0.5)
-    # frame = change_image_res(image, 0.5)
-    # frame = vs.read()
-    # frame = imutils.resize(frame, width=1000)
-    # detect ArUco markers in the inumpyut frame
+    image = get_image(cam)
+    # detect ArUco marker
     (corners, id, rejected) = cv2.aruco.detectMarkers(image, arucoDict, parameters=arucoParams)
     # verify *at least* one ArUco marker was detected
     if len(corners) > 0:
         marker_len = 0.05
         rvecs, tvecs, _objPoints = cv2.aruco.estimatePoseSingleMarkers(corners, marker_len, mtx, dist)
         imaxis = cv2.aruco.drawDetectedMarkers(image.copy(), corners, id)
-        for i in range(len(tvecs)):
-            image = cv2.aruco.drawAxis(imaxis, mtx, dist, rvecs[i], tvecs[i], marker_len)
-            # calculate euler angles (radians)
-            # Convert rvec to a 3x3 matrix using cv2.Rodrigues():
-            rmat = cv2.Rodrigues(rvecs[i])[0]
-            # camera position expressed in the world frame (OXYZ):
-            # cam_pos = -numpy.matrix(rmat).T * numpy.matrix(tvec)
-            # Create the projection matrix P = [ R | t ]:
-            P = numpy.hstack((rmat, tvecs[i].T))
-            # retrieve euler angles from projection matrix (radians)
-            euler_angles_radians = -cv2.decomposeProjectionMatrix(P)[6]
-            # convert to degrees
-            pitch, yaw, roll = [math.radians(_) for _ in euler_angles_radians]
-            # pitch = math.degrees(math.asin(math.sin(pitch)))
-            roll = -math.degrees(math.asin(math.sin(roll)))
-            # yaw = math.degrees(math.asin(math.sin(yaw)))
-            # show orientation on image
-            font = cv2.FONT_HERSHEY_PLAIN
-            bottomLeftCornerOfText = (int(corners[i][0][2][0]), int(corners[i][0][2][1]))
-            cv2.putText(image, 'yaw: %f roll: %f pitch: %f' % (yaw, roll, pitch),
-                        bottomLeftCornerOfText, cv2.FONT_HERSHEY_PLAIN, fontScale=0.7, color=(0, 0, 225), lineType=1,
-                        thickness=1)
-        # show the output frame
+        image = cv2.aruco.drawAxis(imaxis, mtx, dist, rvecs, tvecs, marker_len)
+        # calculate euler angles (radians)
+        rmat = cv2.Rodrigues(rvecs)[0]  # Convert rvec to a 3x3 matrix (cv2.Rodrigues)
+        # Create the projection matrix P = [ R | t ]:
+        P = numpy.hstack((rmat, tvecs.T))
+        # retrieve euler angles from projection matrix (radians)
+        euler_angles_radians = -cv2.decomposeProjectionMatrix(P)[6]
+        # convert to degrees
+        pitch, yaw, roll = [math.radians(_) for _ in euler_angles_radians]
+        # pitch = math.degrees(math.asin(math.sin(pitch)))
+        roll = -math.degrees(math.asin(math.sin(roll)))
+        # yaw = math.degrees(math.asin(math.sin(yaw)))
+        # show orientation on image
+        bottomLeftCornerOfText = (int(corners[0][2][0]), int(corners[0][2][1]))
+        cv2.putText(image, 'yaw: %f roll: %f pitch: %f' % (yaw, roll, pitch),
+                    bottomLeftCornerOfText, cv2.FONT_HERSHEY_PLAIN, fontScale=0.7, color=(0, 0, 225), lineType=1,
+                    thickness=1)
         return roll
     else:
         pass

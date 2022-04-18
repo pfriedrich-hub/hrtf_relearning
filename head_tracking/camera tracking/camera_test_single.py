@@ -1,4 +1,4 @@
-import numpy as np
+import numpy
 import cv2
 import PySpin
 import PIL
@@ -9,6 +9,7 @@ import os
 
 def aruco_test():
     print('starting..')
+    images = []
     system = PySpin.System.GetInstance()
     cams = system.GetCameras()
     for cam in cams:  # initialize cameras
@@ -48,7 +49,7 @@ def get_image(cam):
     return image
 
 def pose_from_image(image): # get pose
-    arucoDict = cv2.aruco.Dictionary_get(cv2.aruco.DICT_5X5_100)
+    arucoDict = cv2.aruco.Dictionary_get(cv2.aruco.DICT_4X4_50)
     params = cv2.aruco.DetectorParameters_create()
     # params.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_SUBPIX  # set parameters
     # params.adaptiveThreshWinSizeMin=5
@@ -67,22 +68,22 @@ def pose_from_image(image): # get pose
         size = image.shape
         focal_length = size[1]
         center = (size[1] / 2, size[0] / 2)
-        camera_matrix = np.array([[focal_length, 0, center[0]],
+        camera_matrix = numpy.array([[focal_length, 0, center[0]],
                                   [0, focal_length, center[1]],
                                   [0, 0, 1]], dtype="double")
-        dist_coeffs = np.zeros((4, 1))  # Assuming no lens distortion
+        dist_coeffs = numpy.zeros((4, 1))  # Assuming no lens distortion
 
-        #camera_matrix = np.loadtxt('mtx.txt')
-        #dist_coeffs = np.loadtxt('dist.txt')
+        #camera_matrix = numpy.loadtxt('mtx.txt')
+        #dist_coeffs = numpy.loadtxt('dist.txt')
         rotation_vec, translation_vec, _objPoints = \
             cv2.aruco.estimatePoseSingleMarkers(corners, .05, camera_matrix, dist_coeffs)
-        pose = [] #np.zeros([len(translation_vec), 2])
-        info = [] #np.zeros([len(translation_vec), 4])
+        pose = [] #numpy.zeros([len(translation_vec), 2])
+        info = [] #numpy.zeros([len(translation_vec), 4])
         for i in range(len(translation_vec)):
 
             # #alternative with solve pnp
-            # obj_points = np.zeros((2*2,3), np.float32)
-            # obj_points[:, :2] = np.mgrid[0:2, 0:2].T.reshape(-1, 2)
+            # obj_points = numpy.zeros((2*2,3), numpy.float32)
+            # obj_points[:, :2] = numpy.mgrid[0:2, 0:2].T.reshape(-1, 2)
             # ret, rotation_vec, translation_vec = cv2.solvePnP(obj_points, corners[i], camera_matrix, dist_coeffs)
             # rotation_mat = cv2.Rodrigues(rotation_vec)[0]
             # pose_mat = cv2.hconcat((rotation_mat, translation_vec))
@@ -99,17 +100,17 @@ def pose_from_image(image): # get pose
             rotation_mat = -cv2.Rodrigues(rotation_vec[i])[0]
             pose_mat = cv2.hconcat((rotation_mat, translation_vec[i].T))
             _, _, _, _, _, _, angles = cv2.decomposeProjectionMatrix(pose_mat)
-            angles[1, 0] = np.radians(angles[1, 0])
-            angles[1, 0] = np.degrees(np.arcsin(np.sin(np.radians(angles[1, 0]))))
+            angles[1, 0] = numpy.radians(angles[1, 0])
+            angles[1, 0] = numpy.degrees(numpy.arcsin(numpy.sin(numpy.radians(angles[1, 0]))))
             angles[0, 0] = -angles[0, 0]
 
             info.append([camera_matrix, dist_coeffs, rotation_vec[i], translation_vec[i]])
             pose.append([angles[1, 0], angles[0, 0], angles[2, 0]])
-    return pose, info
+        return pose, info
 
 def draw_markers(image, pose, info):
     marker_len = .1
-    arucoDict = cv2.aruco.Dictionary_get(cv2.aruco.DICT_5X5_100)
+    arucoDict = cv2.aruco.Dictionary_get(cv2.aruco.DICT_4X4_50)
 
     (corners, ids, rejected) = cv2.aruco.detectMarkers(image, arucoDict)
     if len(corners) > 0:
@@ -123,12 +124,12 @@ def draw_markers(image, pose, info):
                         lineType=1, thickness=1)
     return(image)
 
-def change_res(image, imsize, resolution):
-    image = PIL.Image.fromarray(image)
-    width = int(imsize[1] * resolution)
-    height = int(imsize[0] * resolution)
-    image = image.resize((width, height), PIL.Image.ANTIALIAS)
-    return np.asarray(image)
+def change_res(image, resolution):
+    data = PIL.Image.fromarray(image)
+    width = int(data.size[0] * resolution)
+    height = int(data.size[1] * resolution)
+    image = data.resize((width, height), PIL.Image.ANTIALIAS)
+    return numpy.asarray(image)
 
-if __name__ == "__main__":
-    images = aruco_test()
+# if __name__ == "__main__":
+#     images = aruco_test()

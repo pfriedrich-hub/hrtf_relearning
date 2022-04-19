@@ -144,4 +144,3 @@ def match_pose(target, limit):  # criteria to end experiment (pose matches sound
 
 if __name__ == "__main__":
     hrtf_relearning(n_trials)
-

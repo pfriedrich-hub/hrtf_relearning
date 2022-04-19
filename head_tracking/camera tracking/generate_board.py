@@ -11,14 +11,14 @@ import os
 #generate small board for pose estimation
 aruco_dict = cv2.aruco.Dictionary_get(cv2.aruco.DICT_4X4_50)
 board = cv2.aruco.GridBoard_create(
-    markersX=3,
-    markersY=2,
-    markerLength=0.04,
-    markerSeparation=0.01,
+    markersX=6,
+    markersY=6,
+    markerLength=0.025,
+    markerSeparation=0.0025,
     dictionary=aruco_dict)
 
 im=board.draw([720,1080])
-cv2.imwrite('board.png', im)
+cv2.imwrite('board1.png', im)
 cv2.imshow('im',im)
 
 # calibration

@@ -2,19 +2,24 @@ import numpy
 import cv2
 import PySpin
 import PIL
-import logging
 from PIL import Image
-from scipy.spatial.transform import Rotation as R
-import os
 arucoDict = cv2.aruco.Dictionary_get(cv2.aruco.DICT_4X4_50)
 params = cv2.aruco.DetectorParameters_create()
 
+def show_fast(cam):
+    image = get_image(cam)
+    # image = change_res(image, 0.5)  # bad idea
+    pose, info = pose_from_image(image)
+    #cv2.imshow('camera %s' % cam.DeviceID(), image)
+    print(pose)
+    cv2.waitKey(1) & 0xFF
+
 def get_pose(cam, show):
     image = get_image(cam)
-    image = change_res(image, 0.5)
+    # image = change_res(image, 0.5)
     pose, info = pose_from_image(image)
-    image = draw_markers(image, pose, info)
     if show:
+        image = draw_markers(image, pose, info)
         cv2.imshow('camera %s' % cam.DeviceID(), image)
     cv2.waitKey(1) & 0xFF
     if pose:

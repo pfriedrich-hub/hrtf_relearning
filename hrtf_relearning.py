@@ -55,13 +55,14 @@ def hrtf_relearning(n_trials=5):
 def play_trial(speaker_id):
     global pose, cams
     # # sensor calibration
-    # freefield.set_logger('WARNING')
-    # [led_speaker] = freefield.pick_speakers((0, 0)) # get object for center speaker LED
-    # freefield.write(tag='bitmask', value=led_speaker.digital_channel, processors=led_speaker.digital_proc) # illuminate LED
-    # print('rest at center speaker and press button to start calibration...')
-    # freefield.wait_for_button() # start calibration after button press
+    freefield.set_logger('WARNING')
+    [led_speaker] = freefield.pick_speakers((0, 0))  # get object for center speaker LED
+    freefield.write(tag='bitmask', value=led_speaker.digital_channel, processors=led_speaker.digital_proc) # illuminate LED
+    print('rest at center speaker and press button to start calibration...')
+    freefield.wait_for_button() # start calibration after button press
     # offset_pose = calibrate_sensor()
-    # freefield.write(tag='bitmask', value=0, processors=led_speaker.digital_proc) # turn off LED
+    offet_pose = calibrate_aruco()
+    freefield.write(tag='bitmask', value=0, processors=led_speaker.digital_proc) # turn off LED
     # print('calibration complete, thank you!')
     # freefield.set_logger('info')
 
@@ -71,7 +72,7 @@ def play_trial(speaker_id):
     for cam in cams:  # initialize cameras
         cam.Init()
         cam.ExposureAuto.SetValue(PySpin.ExposureAuto_Off)  # disable auto exposure time
-        cam.ExposureTime.SetValue(100000.0)
+        cam.ExposureTime.SetValue(10000.0)
         cam.BeginAcquisition()
 
     target = speakers[speaker_id, 1:]
@@ -121,8 +122,8 @@ def play_trial(speaker_id):
 
 def compare_pose(target):
     # azimuth, elevation = pose_from_sensor()
-    azimuth = aruco_pose.get_pose(cams[1], show=True)
-    elevation = aruco_pose.get_pose(cams[0], show=True)
+    azimuth = aruco_pose.get_pose(cams[1], show=False)
+    elevation = aruco_pose.get_pose(cams[0], show=False)
     pose = numpy.array((azimuth, elevation))
     if not azimuth and not elevation:
         isi = isi_params['tmax']
@@ -141,6 +142,10 @@ def match_pose(target, limit):  # criteria to end experiment (pose matches sound
         if all(numpy.abs(target - pose) <= limit):  # set target window # todo see how this feels
             match = True
     return match
+
+def calibrate_aruco(cams):
+    while True:
+        pose = [aruco_pose.get_pose(cams[1], show=False), aruco_pose.get_pose(cams[0], show=False)]
 
 if __name__ == "__main__":
     hrtf_relearning(n_trials)

@@ -14,14 +14,14 @@ def show_fast(cam):
     print(pose)
     cv2.waitKey(1) & 0xFF
 
-def get_pose(cam, show):
+def get_pose(cam, show=False):
     image = get_image(cam)
     # image = change_res(image, 0.5)
     pose, info = pose_from_image(image)
     if show:
         image = draw_markers(image, pose, info)
         cv2.imshow('camera %s' % cam.DeviceID(), image)
-    cv2.waitKey(1) & 0xFF
+    cv2.waitKey(0) & 0xFF
     if pose:
         pose = numpy.mean(numpy.asarray(pose)[:, 2]).astype('float16')
     return pose

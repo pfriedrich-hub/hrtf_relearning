@@ -8,7 +8,7 @@ import PySpin
 import math
 import os
 os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
-import aruco_pose
+from aruco_pose import get_pose
 
 DIR = Path.cwd()# path for sound and rcx files
 tmin = 0  # minimal inter stim interval in ms(if pose and sound source match)
@@ -22,7 +22,6 @@ n_trials = 5
 
 def hrtf_relearning(n_trials=5):
     global isi_params, target_window, speakers
-    proceed = True
 
     freefield.set_logger('INFO')
     # initialize processors
@@ -38,10 +37,10 @@ def hrtf_relearning(n_trials=5):
                                      delimiter=",", dtype=float)
     # write parameters for isi #todo set reasonable max range
     isi_params = {'tmin': tmin, 'tmax': tmax, 'trange': tmax - tmin,
-                  'max_dst': la.norm(numpy.min(speakers[:, 1:], axis=0) - [0, 0])} #np.max(speakers, axis=0))}
+                  'max_dst': la.norm(numpy.min(speakers[:, 1:], axis=0) - [0, 0])} #numpy.max(speakers, axis=0))}
     # generate trial sequence with target speaker locations
     trial_sequence = slab.Trialsequence(conditions=speakers[:, 0].astype(int), n_reps=1) #for now only use positive az#
-
+    proceed = True
     # loop over trials
     for index, speaker_id in enumerate(trial_sequence):
         if index < n_trials and proceed:
@@ -54,17 +53,6 @@ def hrtf_relearning(n_trials=5):
 
 def play_trial(speaker_id):
     global pose, cams
-    # # sensor calibration
-    freefield.set_logger('WARNING')
-    [led_speaker] = freefield.pick_speakers((0, 0))  # get object for center speaker LED
-    freefield.write(tag='bitmask', value=led_speaker.digital_channel, processors=led_speaker.digital_proc) # illuminate LED
-    print('rest at center speaker and press button to start calibration...')
-    freefield.wait_for_button() # start calibration after button press
-    # offset_pose = calibrate_sensor()
-    offet_pose = calibrate_aruco()
-    freefield.write(tag='bitmask', value=0, processors=led_speaker.digital_proc) # turn off LED
-    # print('calibration complete, thank you!')
-    # freefield.set_logger('info')
 
     # initiate cameras
     system = PySpin.System.GetInstance()
@@ -75,19 +63,22 @@ def play_trial(speaker_id):
         cam.ExposureTime.SetValue(10000.0)
         cam.BeginAcquisition()
 
-    target = speakers[speaker_id, 1:]
+    # get orientation offset
+    offet_pose = calibrate_aruco(cams, limit=2)
+
     #generate stimuli
     stim = slab.Sound.pinknoise(duration=10.0)
     freefield.write('playbuflen', len(stim.data), processors=['RX81', 'RX82'])
     freefield.set_signal_and_speaker(signal=stim, speaker=speaker_id, equalize=False)
     offset_pose = numpy.zeros(2)  # offset_pose is used to normalize head position to 0, 0
+    target = speakers[speaker_id, 1:]
     print('STARTING..\n TARGET| azimuth: %.1f, elevation %.1f' % (target[0], target[1]))
     time.sleep(3)
     count_down = False
     isi, pose = compare_pose(target)  # get pose and return initial isi from la.norm(pose - target)
     freefield.write('isi', isi, processors=['RX81', 'RX82'])  # write isi to processors
-    freefield.play(kind='zBusA', proc='all')
-    # start to play stimuli (zBus)
+    freefield.play(kind='zBusA', proc='all')    # start to play stimuli (zBus)
+
     freefield.set_logger('warning')
 
     while True:  # loop over trials
@@ -112,7 +103,6 @@ def play_trial(speaker_id):
             break
         else:
             continue
-
     freefield.play(kind='zBusB', proc='all')
     if input('Goal! Conintue? (y/n)') == 'y':
         proceed = True
@@ -122,8 +112,8 @@ def play_trial(speaker_id):
 
 def compare_pose(target):
     # azimuth, elevation = pose_from_sensor()
-    azimuth = aruco_pose.get_pose(cams[1], show=False)
-    elevation = aruco_pose.get_pose(cams[0], show=False)
+    azimuth = get_pose(cams[1])
+    elevation = get_pose(cams[0])
     pose = numpy.array((azimuth, elevation))
     if not azimuth and not elevation:
         isi = isi_params['tmax']
@@ -143,9 +133,28 @@ def match_pose(target, limit):  # criteria to end experiment (pose matches sound
             match = True
     return match
 
-def calibrate_aruco(cams):
-    while True:
-        pose = [aruco_pose.get_pose(cams[1], show=False), aruco_pose.get_pose(cams[0], show=False)]
+def calibrate_aruco(cams, limit=2):
+    freefield.set_logger('WARNING')
+    [led_speaker] = freefield.pick_speakers((0, 0))  # get object for center speaker LED
+    freefield.write(tag='bitmask', value=led_speaker.digital_channel, processors=led_speaker.digital_proc)  # illuminate LED
+    print('rest at center speaker and press button to start calibration...')
+    freefield.wait_for_button()  # start calibration after button press
+    log = numpy.zeros(2)
+    while True:  # wait in loop for sensor to stabilize
+        pose = [get_pose(cams[1]), get_pose(cams[0])]
+        if pose is not None:
+            log = numpy.vstack((log, pose))
+        if len(log) > 50:   # check if orientation is stable for at least 50 data points
+            diff = numpy.mean(numpy.abs(numpy.diff(log[-50:], axis=0)), axis=0).astype('float16')
+            print('az diff: %f,  ele diff: %f'%(diff[0], diff[1]))
+            if diff[0] < limit and diff[1] < limit:  # limit in degree
+                break
+    freefield.write(tag='bitmask', value=0, processors=led_speaker.digital_proc)  # turn off LED
+    pose_offset = numpy.mean(log[-50:], axis=0)
+    print('calibration complete, thank you!')
+    freefield.set_logger('info')
+    return pose_offset
 
-if __name__ == "__main__":
-    hrtf_relearning(n_trials)
+
+# if __name__ == "__main__":
+#     hrtf_relearning(n_trials)

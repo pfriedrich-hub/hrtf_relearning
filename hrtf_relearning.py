@@ -52,7 +52,7 @@ def hrtf_relearning(n_trials=5):
     return
 
 def play_trial(speaker_id):
-    global pose, cams
+    global cams, pose, offset
 
     # initiate cameras
     system = PySpin.System.GetInstance()
@@ -64,13 +64,12 @@ def play_trial(speaker_id):
         cam.BeginAcquisition()
 
     # get orientation offset
-    offet_pose = calibrate_aruco(cams, limit=2)
+    offset = calibrate_aruco(cams, limit=2)
 
     #generate stimuli
     stim = slab.Sound.pinknoise(duration=10.0)
     freefield.write('playbuflen', len(stim.data), processors=['RX81', 'RX82'])
     freefield.set_signal_and_speaker(signal=stim, speaker=speaker_id, equalize=False)
-    offset_pose = numpy.zeros(2)  # offset_pose is used to normalize head position to 0, 0
     target = speakers[speaker_id, 1:]
     print('STARTING..\n TARGET| azimuth: %.1f, elevation %.1f' % (target[0], target[1]))
     time.sleep(3)
@@ -114,7 +113,7 @@ def compare_pose(target):
     # azimuth, elevation = pose_from_sensor()
     azimuth = get_pose(cams[1])
     elevation = get_pose(cams[0])
-    pose = numpy.array((azimuth, elevation))
+    pose = numpy.array((azimuth, elevation)) - offset
     if not azimuth and not elevation:
         isi = isi_params['tmax']
     elif azimuth != None or elevation != None:
@@ -133,7 +132,7 @@ def match_pose(target, limit):  # criteria to end experiment (pose matches sound
             match = True
     return match
 
-def calibrate_aruco(cams, limit=2):
+def calibrate_aruco(cams, limit=0.5):
     freefield.set_logger('WARNING')
     [led_speaker] = freefield.pick_speakers((0, 0))  # get object for center speaker LED
     freefield.write(tag='bitmask', value=led_speaker.digital_channel, processors=led_speaker.digital_proc)  # illuminate LED
@@ -144,17 +143,17 @@ def calibrate_aruco(cams, limit=2):
         pose = [get_pose(cams[1]), get_pose(cams[0])]
         if pose is not None:
             log = numpy.vstack((log, pose))
-        if len(log) > 50:   # check if orientation is stable for at least 50 data points
-            diff = numpy.mean(numpy.abs(numpy.diff(log[-50:], axis=0)), axis=0).astype('float16')
-            print('az diff: %f,  ele diff: %f'%(diff[0], diff[1]))
-            if diff[0] < limit and diff[1] < limit:  # limit in degree
-                break
+            if len(log) > 30:   # check if orientation is stable for at least 50 data points # todo throws error when no marker is detected
+                diff = numpy.mean(numpy.abs(numpy.diff(log[-20:], axis=0)), axis=0).astype('float16')
+                print('az diff: %f,  ele diff: %f'%(diff[0], diff[1]))
+                if diff[0] < limit and diff[1] < limit:  # limit in degree
+                    break
     freefield.write(tag='bitmask', value=0, processors=led_speaker.digital_proc)  # turn off LED
-    pose_offset = numpy.mean(log[-50:], axis=0)
+    pose_offset = numpy.mean(log[-20:], axis=0)
     print('calibration complete, thank you!')
     freefield.set_logger('info')
     return pose_offset
 
 
-# if __name__ == "__main__":
-#     hrtf_relearning(n_trials)
+if __name__ == "__main__":
+    hrtf_relearning(n_trials)

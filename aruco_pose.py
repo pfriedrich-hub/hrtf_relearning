@@ -21,7 +21,9 @@ def get_pose(cam, show=False):
     if show:
         image = draw_markers(image, pose, info)
         cv2.imshow('camera %s' % cam.DeviceID(), image)
-    cv2.waitKey(0) & 0xFF
+        cv2.waitKey(1) & 0xFF
+    else:
+        cv2.waitKey(0)
     if pose:
         pose = numpy.mean(numpy.asarray(pose)[:, 2]).astype('float16')
     return pose

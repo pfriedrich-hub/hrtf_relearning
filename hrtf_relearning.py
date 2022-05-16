@@ -35,7 +35,7 @@ def hrtf_relearning(n_trials=5):
     table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')
     speakers = numpy.loadtxt(table_file, skiprows=1, usecols=(0, 3, 4),
                                      delimiter=",", dtype=float)
-    # write parameters for isi #todo set reasonable max range
+    # write parameters for isi #todo set reasonable maximum time range
     isi_params = {'tmin': tmin, 'tmax': tmax, 'trange': tmax - tmin,
                   'max_dst': la.norm(numpy.min(speakers[:, 1:], axis=0) - [0, 0])} #numpy.max(speakers, axis=0))}
     # generate trial sequence with target speaker locations

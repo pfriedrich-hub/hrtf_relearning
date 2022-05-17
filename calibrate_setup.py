@@ -2,7 +2,11 @@ import freefield
 import slab
 import time
 import numpy
-from matplotlib import pyplot as plt
+import matplotlib
+matplotlib.use('TkAgg')
+import matplotlib.pyplot as plt
+from copy import deepcopy
+
 freefield.initialize('dome', default='play_rec')  # initialize setup
 speaker_id = 23
 [speaker] = freefield.pick_speakers(speaker_id)
@@ -48,11 +52,9 @@ speaker relative to the target speaker(target speaker must be in the list)
 """
 # record from reference speaker
 # proposed change I: average over 20 recordings, filter and ramp each recording
-# filt = slab.Filter.band(frequency=(200, 16000), kind='bp')  # do this in the rcx file
 temp_recs = []
 for i in range(20):
     rec = freefield.play_and_record(reference_speaker, sound, equalize=False)
-    # rec = filt.apply(rec)
     rec = slab.Sound.ramp(rec, when='both', duration=0.01)
     temp_recs.append(rec.data)
 target_recording = slab.Sound(data=numpy.mean(temp_recs, axis=0))
@@ -63,23 +65,18 @@ for speaker in speakers:
     temp_recs = []
     for i in range(20):
         rec = freefield.play_and_record(speaker, sound, equalize=False)
-        # rec = filt.apply(rec)
         rec = slab.Sound.ramp(rec, when='offset', duration=0.01)
         temp_recs.append(rec.data)
     recordings.append(slab.Sound(data=numpy.mean(temp_recs, axis=0)))
 recordings = slab.Sound(recordings)
 
-# recordings.data[:, recordings.level < threshold] = target_recording.data  # old way of thresholding
 # proposed change II:  thresholding: correct level on speakers which deviate more than <threshold> dB from reference
-level_threshold = 0.5  # correct level only for speakers that deviate more than <threshold> dB from reference speaker
+level_threshold = 0.3  # correct level only for speakers that deviate more than <threshold> dB from reference speaker
 recordings.data[:, numpy.logical_and(recordings.level > target_recording.level-level_threshold,
                                      recordings.level < target_recording.level+level_threshold)] = target_recording.data
-equalization_levels = target_recording.level / recordings.level
-
-# from slab
-gain = 10 ** ((level - rms_decibel) / 20.)
-self.data *= gain
-
+# equalization_levels = target_recording.level / recordings.level
+# proposed change
+equalization_levels = target_recording.level - recordings.level
 
 # step 2: frequency equalization
 """
@@ -90,48 +87,63 @@ _frequency_equalization(speakers, sound, reference_speaker, calibration_levels, 
 play the level-equalized signal, record and compute and a bank of inverse filter
 to equalize each speaker relative to the target one. Return filterbank and recordings
 """
-from copy import deepcopy
-bandwidth=1 / 10
-alpha=1.0
-# filt = slab.Filter.band(frequency=(200, 16000), kind='bp')
 
 temp_recs = []
 for i in range(20):
     rec = freefield.play_and_record(reference_speaker, sound, equalize=False)
-    # rec = filt.apply(rec)
     rec = slab.Sound.ramp(rec, when='both', duration=0.01)
     temp_recs.append(rec.data)
 target_recording = slab.Sound(data=numpy.mean(temp_recs, axis=0))
-# reference = freefield.play_and_record(reference_speaker, sound, equalize=False)
 
 recordings = []
 for speaker, level in zip(speakers, equalization_levels):
     attenuated = deepcopy(sound)
-    attenuated.level *= level
+    attenuated.level += level
     temp_recs = []
     for i in range(20):
         rec = freefield.play_and_record(speaker, attenuated, equalize=False)
-        # rec = filt.apply(rec)
         rec = slab.Sound.ramp(rec, when='offset', duration=0.01)
         temp_recs.append(rec.data)
     recordings.append(slab.Sound(data=numpy.mean(temp_recs, axis=0)))
-    # recordings.append(freefield.play_and_record(speaker, attenuated, equalize=False))
 recordings = slab.Sound(recordings)
 
-
-recordings.data[:, recordings.level < threshold] = target_recording.data
+bandwidth=1 / 10
+alpha=1.0
 filter_bank = slab.Filter.equalizing_filterbank(target_recording, recordings, low_cutoff=low_cutoff,
                                                 high_cutoff=high_cutoff, bandwidth=bandwidth, alpha=alpha)
+
 # check for notches in the filter:
 transfer_function = filter_bank.tf(show=False)[1][0:900, :]
 if (transfer_function < -30).sum() > 0:
     print("Some of the equalization filters contain deep notches - try adjusting the parameters.")
-return filter_bank, recordings
+# return filter_bank, recordings
+
+# test filter bank
+recordings = []
+for idx, (speaker, level) in enumerate(zip(speakers, equalization_levels)):
+    # print(idx)
+    # print(level)
+    attenuated = deepcopy(sound)
+    attenuated = filter_bank.channel(idx).apply(attenuated)
+    attenuated.level += level  # which order? doesnt seem to matter much
+    temp_recs = []
+    for i in range(20):
+        rec = freefield.play_and_record(speaker, attenuated, equalize=False)
+        rec = slab.Sound.ramp(rec, when='offset', duration=0.01)
+        temp_recs.append(rec.data)
+    recordings.append(slab.Sound(data=numpy.mean(temp_recs, axis=0)))
+recordings = slab.Sound(recordings)
+
+# adjust level after freq equalization: (?) -- definitely worth it!
+level_threshold = 0.3  # correct level only for speakers that deviate more than <threshold> dB from reference speaker
+recordings.data[:, numpy.logical_and(recordings.level > target_recording.level-level_threshold,
+                                     recordings.level < target_recording.level+level_threshold)] = target_recording.data
+equalization_levels += target_recording.level - recordings.level
 
 
+diff = freefield.spectral_range(recordings)
 
+# write to pkl
+equalization = {f"{speakers[i].index}": {"level": equalization_levels[i], "filter": filter_bank.channel(i)}
+                for i in range(len(speakers))}
 
-
-time.sleep(5)
-freefield.equalize_speakers(speakers=speakers, reference_speaker=23, bandwidth=1 / 10, threshold=80,
-                      low_cutoff=200, high_cutoff=16000, alpha=1.0, file_name=None)

@@ -1,8 +1,6 @@
 import cv2
 import numpy as np
 import cv2
-import PySpin
-import PIL
 import logging
 from PIL import Image
 import time
@@ -12,13 +10,13 @@ import os
 aruco_dict = cv2.aruco.Dictionary_get(cv2.aruco.DICT_4X4_50)
 board = cv2.aruco.GridBoard_create(
     markersX=6,
-    markersY=6,
+    markersY=1,
     markerLength=0.025,
     markerSeparation=0.0025,
     dictionary=aruco_dict)
 
 im=board.draw([720,1080])
-cv2.imwrite('board1.png', im)
+cv2.imwrite('board_4x4_50.png', im)
 cv2.imshow('im',im)
 
 # calibration

@@ -76,6 +76,11 @@ recordings.data[:, numpy.logical_and(recordings.level > target_recording.level-l
                                      recordings.level < target_recording.level+level_threshold)] = target_recording.data
 equalization_levels = target_recording.level / recordings.level
 
+# from slab
+gain = 10 ** ((level - rms_decibel) / 20.)
+self.data *= gain
+
+
 # step 2: frequency equalization
 """
 

@@ -105,7 +105,7 @@ if __name__ == "__main__":
 # # equalize speaker level and transfer functions
 # # todo reduce spectral range
 # freefield.initialize('dome', "play_rec")
-# freefield.equalize_speakers(speakers='all', threshold=70, file_name=data_dir / 'dome_equalization_65')
+# freefield.equalize_speakers(speakers='all', file_name=data_dir / 'dome_equalization_65')
 # rec_raw, rec_lvl, rec_full = freefield.test_equalization(speakers='all')
 # freefield.spectral_range(rec_full)
 

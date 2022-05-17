@@ -10,7 +10,7 @@ import os
 os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
 from aruco_pose import get_pose
 
-DIR = Path.cwd()# path for sound and rcx files
+DIR = Path.cwd()  # path for sound and rcx files
 tmin = 0  # minimal inter stim interval in ms(if pose and sound source match)
 tmax = 600  # max ISI in ms
 

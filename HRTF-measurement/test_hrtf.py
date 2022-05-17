@@ -13,12 +13,13 @@ os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
 # compare hrtfs
 # get hrtfs with similar source coordinates
 filename = 'kemar_fflab.sofa'
-filename = 'ms.sofa'
+filename = 'jp.sofa'
 filename = 'mit_kemar_large_pinna.sofa'
+
 
 hrtf = slab.HRTF(data_dir / 'hrtfs' / filename)
 azs = numpy.unique(hrtf.sources[:, 0])
-az=0
+az = 0
 for az in azs:
     sources = hrtf.cone_sources(az, coords='interaural')
     hrtf.plot_tf(sources, xlim=(0, 25e3))

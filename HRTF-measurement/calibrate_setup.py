@@ -1,5 +1,6 @@
 import freefield
 import slab
+slab.Signal.set_default_samplerate(48828)  # default samplerate for generating sounds, filters etc.
 import time
 import numpy
 import matplotlib
@@ -34,12 +35,13 @@ freefield.set_logger('warning')
 # dome parameters
 reference_speaker = 23
 azimuthal_angles = numpy.array([-52.5, -35, -17.5, 0, 17.5, 35, 52.5])
+speaker_idx = [19,20,21,22,23,24,25,26,27]  # central array
 
 # signal parameters
-low_cutoff=200
-high_cutoff=16000
-rec_time=0.1 # how long should the chirp be?
-rec_repeat=5 # how often to repeat measurement for averaging
+low_cutoff = 200
+high_cutoff = 16000
+signal_length = 0.1  # how long should the chirp be?
+rec_repeat = 50  # how often to repeat measurement for averaging
 
 # filterbank parameters
 freq_bins=1000 # can not be changes as of now
@@ -48,7 +50,10 @@ bandwidth=1 / 8
 alpha=1.0
 
 # change: set sound duration to 0.1 instead of 0.05 - lower frequency detection limited to 10 hz instead of 20 hz
-sound = slab.Sound.chirp(duration=rec_time, from_frequency=low_cutoff, to_frequency=high_cutoff)
+sound = slab.Sound.chirp(duration=signal_length, from_frequency=low_cutoff, to_frequency=high_cutoff)
+sound = slab.Sound.ramp(sound, when='both', duration=0.01)
+
+# sound = slab.Sound.silence(duration=signal_length)
 
 table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')
 speaker_table = numpy.loadtxt(table_file, skiprows=1, usecols=(0, 3, 4),
@@ -76,6 +81,9 @@ for az in azimuthal_angles:
 
     speaker_idx = speaker_table[speaker_table[:, 1] == az][:, 0]
     speakers = freefield.pick_speakers(picks=list(speaker_idx.astype('int')))
+
+    # speakers = freefield.pick_speakers(speaker_idx)  #  central array
+
     # print(speaker_idx)
 
     # step 1: level equalization

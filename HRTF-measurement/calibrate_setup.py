@@ -18,6 +18,7 @@ inverse filters are computed see the documentation of slab.Filter.equalizing_fil
 """
 
 freefield.initialize('dome', default='play_rec')  # initialize setup
+
 freefield.set_logger('warning')
 
 # dictionary to hold equalization parameters
@@ -30,42 +31,42 @@ azimuthal_angles = numpy.array([-52.5, -35, -17.5, 0, 17.5, 35, 52.5])
 
 # signal parameters
 low_cutoff = 200
-high_cutoff = 20000
-signal_length = 0.5  # how long should the chirp be?
+high_cutoff = 18000
+signal_length = 0.1  # how long should the chirp be?
 rec_repeat = 20  # how often to repeat measurement for averaging
+# signal for loudspeaker calibration
+signal = slab.Sound.chirp(duration=signal_length, from_frequency=low_cutoff, to_frequency=high_cutoff, level=80, kind='linear')
+signal = slab.Sound.ramp(signal, when='both', duration=0.001)
 
 # filterbank parameters
-freq_bins=1000 # can not be changes as of now
+freq_bins = 1000  # can not be changes as of now
 level_threshold = 0.3  # correct level only for speakers that deviate more than <threshold> dB from reference speaker
-bandwidth=1 / 8
-alpha=1.0
-
-# sound for loudspeaker calibration
-sound = slab.Sound.chirp(duration=signal_length, from_frequency=low_cutoff, to_frequency=high_cutoff, level=90)
-sound = slab.Sound.ramp(sound, when='both', duration=0.01)
+bandwidth = 1 / 8
+alpha = 1.0
 
 # record from reference speaker
 reference_speaker = freefield.pick_speakers(reference_speaker)[0]
 temp_recs = []
 for i in range(rec_repeat):
-    rec = freefield.play_and_record(reference_speaker, sound, equalize=False)
-    rec = slab.Sound.ramp(rec, when='both', duration=0.01)
+    rec = freefield.play_and_record(reference_speaker, signal, equalize=False)
+    # rec = slab.Sound.ramp(rec, when='both', duration=0.01)
     temp_recs.append(rec.data)
 target_recording = slab.Sound(data=numpy.mean(temp_recs, axis=0))
 
 # get speaker id's for each column in the dome
 table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')
-speaker_table = numpy.loadtxt(table_file, skiprows=1, usecols=(0, 3, 4),
-                         delimiter=",", dtype=float)
+speaker_table = numpy.loadtxt(table_file, skiprows=1, usecols=(0, 3, 4), delimiter=",", dtype=float)
 speaker_list = []
 for az in azimuthal_angles:
     speaker_list.append((speaker_table[speaker_table[:, 1] == az][:, 0]).astype('int'))
 
+
+#------------------- hold on --------------------#
+dome_rec = []  # store all recordings from the dome for final spectral difference
 # pick single column to calibrate speaker_list[0] to speaker_list[6]
 speakers = freefield.pick_speakers(speaker_list[6])
-
-# hold on:
 # place microphone 90° to source column at equal distance (recordings should be done in far field: > 1m)
+
 
 # start calibration
 # step 1: level equalization
@@ -77,8 +78,8 @@ recordings = []
 for speaker in speakers:
     temp_recs = []
     for i in range(rec_repeat):
-        rec = freefield.play_and_record(speaker, sound, equalize=False)
-        rec = slab.Sound.ramp(rec, when='offset', duration=0.01)
+        rec = freefield.play_and_record(speaker, signal, equalize=False)
+        # rec = slab.Sound.ramp(rec, when='offset', duration=0.01)
         temp_recs.append(rec.data)
     recordings.append(slab.Sound(data=numpy.mean(temp_recs, axis=0)))
 recordings = slab.Sound(recordings)
@@ -103,12 +104,12 @@ to equalize each speaker relative to the target one. Return filterbank and recor
 """
 recordings = []
 for speaker, level in zip(speakers, equalization_levels):
-    attenuated = deepcopy(sound)
+    attenuated = deepcopy(signal)
     attenuated.level += level
     temp_recs = []
     for i in range(rec_repeat):
         rec = freefield.play_and_record(speaker, attenuated, equalize=False)
-        rec = slab.Sound.ramp(rec, when='offset', duration=0.01)
+        # rec = slab.Sound.ramp(rec, when='offset', duration=0.01)
         temp_recs.append(rec.data)
     recordings.append(slab.Sound(data=numpy.mean(temp_recs, axis=0)))
 recordings = slab.Sound(recordings)
@@ -127,29 +128,32 @@ if (transfer_function < -30).sum() > 0:
 # step 3: test filter bank
 recordings = []
 for idx, (speaker, level) in enumerate(zip(speakers, equalization_levels)):
-    attenuated = deepcopy(sound)
+    attenuated = deepcopy(signal)
     attenuated = filter_bank.channel(idx).apply(attenuated)
     attenuated.level += level  # which order? doesnt seem to matter much
     temp_recs = []
     for i in range(rec_repeat):
         rec = freefield.play_and_record(speaker, attenuated, equalize=False)
-        rec = slab.Sound.ramp(rec, when='offset', duration=0.01)
+        # rec = slab.Sound.ramp(rec, when='offset', duration=0.01)
         temp_recs.append(rec.data)
     recordings.append(slab.Sound(data=numpy.mean(temp_recs, axis=0)))
+dome_rec.extend(recordings)  # collect equalized recordings from the whole dome for final evaluation
 recordings = slab.Sound(recordings)
 
 # plot
 diff = freefield.spectral_range(recordings, plot=ax[2])
 ax[2].set_title('frequency equalized')
 
-# step 4: adjust level after freq equalization: (?) -- definitely worth it!
+
+#------ OPTIONAL -----#
+# step 4: adjust level after freq equalization: (?) -- sometimes worth doing!
 level_threshold = 0.3  # correct level only for speakers that deviate more than <threshold> dB from reference speaker
 recordings.data[:, numpy.logical_and(recordings.level > target_recording.level-level_threshold,
                                      recordings.level < target_recording.level+level_threshold)] = target_recording.data
 final_equalization_levels = equalization_levels + (target_recording.level - recordings.level)
 recordings = []
 for idx, (speaker, level) in enumerate(zip(speakers, final_equalization_levels)):
-    attenuated = deepcopy(sound)
+    attenuated = deepcopy(signal)
     attenuated = filter_bank.channel(idx).apply(attenuated)
     attenuated.level += level  # which order? doesnt seem to matter much
     temp_recs = []
@@ -159,15 +163,16 @@ for idx, (speaker, level) in enumerate(zip(speakers, final_equalization_levels))
         temp_recs.append(rec.data)
     recordings.append(slab.Sound(data=numpy.mean(temp_recs, axis=0)))
 recordings = slab.Sound(recordings)
-
 # plot
 diff = freefield.spectral_range(recordings, plot=ax[3])
 ax[3].set_title('final level correction')
 az = speakers[0].azimuth
 fig.suptitle('Calibration for dome speaker column at %.1f° azimuth. \n Difference in power spectrum' % az, fontsize=16)
+#------ ------ -----#
+
 
 # save equalization
-array_equalization = {f"{speakers[i].index}": {"level": final_equalization_levels[i], "filter": filter_bank.channel(i)}
+array_equalization = {f"{speakers[i].index}": {"level": equalization_levels[i], "filter": filter_bank.channel(i)}
                 for i in range(len(speakers))}
 equalization.update(array_equalization)
 
@@ -179,7 +184,8 @@ file_name = freefield.DIR / 'data' / f'calibration_dome.pkl'
 with open(file_name, 'wb') as f:  # save the newly recorded calibration
     pickle.dump(equalization, f, pickle.HIGHEST_PROTOCOL)
 
-
+dome_recs = slab.Sound(dome_rec)
+diff = freefield.spectral_range(dome_recs)
 
 # test calibration
 import freefield

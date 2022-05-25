@@ -1,7 +1,7 @@
 # record form in-ear microphones
 import numpy
 import matplotlib
-#matplotlib.use('TkAgg')
+matplotlib.use('TkAgg')
 from pathlib import Path
 import slab
 import freefield
@@ -9,20 +9,19 @@ import argparse
 from copy import deepcopy
 data_dir = Path.cwd() / 'data'
 fs = 48828  # sampling rate
-import os
-os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
 slab.Signal.set_default_samplerate(fs)  # default samplerate for generating sounds, filters etc.
-signal = slab.Sound.chirp(duration=0.05, level=70, from_frequency=0, to_frequency=18000)
-signal = signal.ramp(duration=0.005)
-repetitions = 25
-subject_id = 'vk'
-n_directions = 2
+
+
+signal = slab.Sound.chirp(duration=0.1, level=70, from_frequency=200, to_frequency=18000, kind='linear')
+signal = slab.Sound.ramp(signal, when='both', duration=0.001)
+repetitions = 20
+subject_id = 'kemar_fflab'
+n_directions = 1  # only from the front (1) or front-back recordings (2)
 # speakers = numpy.arange(19, 28).tolist()  # central cone
 speakers = 'all'
 
 def record_hrtfs(subject_id, repetitions, signal, n_directions, safe='both', speakers='all'):
     freefield.initialize('dome', default='play_birec')  # initialize setup
-    # freefield.load_equalization(data_dir / 'dome_equalization_65')
     freefield.set_logger('WARNING')
     table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')  # get speaker coordinates
     if isinstance(speakers, str) and speakers == 'all':
@@ -62,19 +61,21 @@ def record_hrtfs(subject_id, repetitions, signal, n_directions, safe='both', spe
 
 def dome_rec(signal, speaker_ids, sources, repetitions):
     print('Recording from various sound source locations..')
+    filt = slab.Filter.band('hp', 100)
     recordings = []  # list to store binaural recordings and source coordinates
     for speaker_id in speaker_ids:
         [speaker] = freefield.pick_speakers(speaker_id)
         # get avg of n recordings from each sound source location
-        recs = []
+        rec = []
         for r in range(repetitions):
-            rec = freefield.play_and_record(speaker, signal, compensate_delay=True,
-                  compensate_attenuation=False, equalize=False)
-            recs.append(rec.data)
-        recs = numpy.mean(numpy.asarray(recs), axis=0)
+            recs = freefield.play_and_record(speaker, signal, compensate_delay=True,
+                  compensate_attenuation=False, equalize=True)
+            rec.append(recs.data)
+        rec = numpy.mean(numpy.asarray(rec), axis=0)
+        rec = filt.apply(slab.Binaural(rec))
         azimuth = sources[numpy.where(sources[:, 0] == speaker_id)[0][0]][1]
         elevation = sources[numpy.where(sources[:, 0] == speaker_id)[0][0]][2]
-        rec = [azimuth, elevation, slab.Binaural(data=recs, samplerate=rec.samplerate)]
+        rec = [azimuth, elevation, rec]
         recordings.append(rec)
         print('Progress: %i %%' % (speaker_id*2))
     return recordings
@@ -101,13 +102,6 @@ if __name__ == "__main__":
 # args = vars(ap.parse_args())
 # id = args["id"]
 # print('record from %s speakers, subj_id: %i'%(id, 9))
-
-# # equalize speaker level and transfer functions
-# # todo reduce spectral range
-# freefield.initialize('dome', "play_rec")
-# freefield.equalize_speakers(speakers='all', file_name=data_dir / 'dome_equalization_65')
-# rec_raw, rec_lvl, rec_full = freefield.test_equalization(speakers='all')
-# freefield.spectral_range(rec_full)
 
 """
 ### extra: arrange dome ####

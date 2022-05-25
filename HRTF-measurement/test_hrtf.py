@@ -7,8 +7,7 @@ from pathlib import Path
 data_dir = Path.cwd() / 'data'
 fs = 48828  # sampling rate
 slab.Signal.set_default_samplerate(fs)  # default samplerate for generating sounds, filters etc.
-import os
-os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
+
 
 # compare hrtfs
 # get hrtfs with similar source coordinates
@@ -53,7 +52,8 @@ def read_wav(path):
     return recordings
 
 slab.Signal.set_default_samplerate(fs)  # default samplerate for generating sounds, filters etc.
-signal = slab.Sound.chirp(duration=0.05, level=90, from_frequency=0, to_frequency=18000, samplerate=fs)
+signal = slab.Sound.chirp(duration=0.1, level=70, from_frequency=200, to_frequency=18000, kind='linear')
+signal = slab.Sound.ramp(signal, when='both', duration=0.001)
 recs = read_wav(path=data_dir / 'in-ear_recordings' / 'kemar_fflab')
 sources = numpy.loadtxt(data_dir / 'in-ear_recordings' / 'kemar_fflab' /'sources_kemar_fflab.txt')
 hrtf1 = slab.HRTF.estimate_hrtf(recs, signal, sources)

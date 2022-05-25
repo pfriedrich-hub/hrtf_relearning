@@ -12,7 +12,7 @@ fs = 48828  # sampling rate
 slab.Signal.set_default_samplerate(fs)  # default samplerate for generating sounds, filters etc.
 
 
-signal = slab.Sound.chirp(duration=0.1, level=70, from_frequency=200, to_frequency=18000, kind='linear')
+signal = slab.Sound.chirp(duration=0.1, level=70, from_frequency=200, to_frequency=20000, kind='linear')
 signal = slab.Sound.ramp(signal, when='both', duration=0.001)
 repetitions = 20
 subject_id = 'kemar_fflab'

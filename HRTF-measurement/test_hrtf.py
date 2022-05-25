@@ -28,8 +28,8 @@ kemar = slab.HRTF.kemar()
 hrtf = slab.HRTF(data_dir / 'hrtfs' / str(filename + '.sofa'))
 # kemar = slab.HRTF(str(data_dir) + '/hrtfs/examples/mit_kemar_large_pinna.sofa')
 # compare waterfall
-cs1 = hrtf.cone_sources(cone=35, coord_system='interaural', full_cone=False)
-cs2 = kemar.cone_sources(cone=35, coord_system='polar', full_cone=False)
+cs1 = hrtf.cone_sources(cone=0, coords='interaural', full_cone=False)
+cs2 = kemar.cone_sources(cone=0, coords='polar', full_cone=False)
 
 hrtf.plot_tf(cs1, n_bins=400)
 kemar.plot_tf(cs2, n_bins=500)

@@ -12,7 +12,7 @@ fs = 48828  # sampling rate
 slab.Signal.set_default_samplerate(fs)  # default samplerate for generating sounds, filters etc.
 
 
-signal = slab.Sound.chirp(duration=0.1, level=70, from_frequency=200, to_frequency=20000, kind='linear')
+signal = slab.Sound.chirp(duration=0.1, level=80, from_frequency=200, to_frequency=18000, kind='linear')
 signal = slab.Sound.ramp(signal, when='both', duration=0.001)
 repetitions = 20
 subject_id = 'kemar_fflab'
@@ -22,7 +22,7 @@ speakers = 'all'
 
 def record_hrtfs(subject_id, repetitions, signal, n_directions, safe='both', speakers='all'):
     freefield.initialize('dome', default='play_birec')  # initialize setup
-    freefield.set_logger('WARNING')
+    freefield.set_logger('warning')
     table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')  # get speaker coordinates
     if isinstance(speakers, str) and speakers == 'all':
         source_locations = numpy.loadtxt(table_file, skiprows=1, usecols=(0, 3, 4),
@@ -35,10 +35,10 @@ def record_hrtfs(subject_id, repetitions, signal, n_directions, safe='both', spe
     speaker_ids = source_locations[:, 0].astype('int')
     recordings = []
     sources = deepcopy(source_locations)
-    print('Face fixpoint and press button to start recording.')
+    # print('Face fixpoint and press button to start recording.')
     # record from various locations at given listener orientations
     for i in range(n_directions):  # record for n listener orientations, 2 = front + back
-        freefield.wait_for_button()
+        # freefield.wait_for_button()
         recordings = recordings + (dome_rec(signal, speaker_ids, sources, repetitions))
         if i < n_directions-1:
             sources[:, 1] += 360/n_directions
@@ -66,13 +66,13 @@ def dome_rec(signal, speaker_ids, sources, repetitions):
     for speaker_id in speaker_ids:
         [speaker] = freefield.pick_speakers(speaker_id)
         # get avg of n recordings from each sound source location
-        rec = []
+        recs = []
         for r in range(repetitions):
-            recs = freefield.play_and_record(speaker, signal, compensate_delay=True,
+            rec = freefield.play_and_record(speaker, signal, compensate_delay=True,
                   compensate_attenuation=False, equalize=True)
-            rec.append(recs.data)
-        rec = numpy.mean(numpy.asarray(rec), axis=0)
-        rec = filt.apply(slab.Binaural(rec))
+            rec = filt.apply(rec)
+            recs.append(rec.data)
+        rec = slab.Binaural(numpy.mean(numpy.asarray(recs), axis=0))
         azimuth = sources[numpy.where(sources[:, 0] == speaker_id)[0][0]][1]
         elevation = sources[numpy.where(sources[:, 0] == speaker_id)[0][0]][2]
         rec = [azimuth, elevation, rec]

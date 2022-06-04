@@ -29,7 +29,7 @@ azimuthal_angles = numpy.array([-52.5, -35, -17.5, 0, 17.5, 35, 52.5])
 # signal parameters
 low_cutoff = 200
 high_cutoff = 18000
-signal_length = 0.1  # how long should the chirp be?
+signal_length = 1.0  # how long should the chirp be?
 rec_repeat = 20  # how often to repeat measurement for averaging
 # signal for loudspeaker calibration
 signal = slab.Sound.chirp(duration=signal_length, from_frequency=low_cutoff, to_frequency=high_cutoff, level=80, kind='linear')
@@ -44,14 +44,14 @@ alpha = 1.0
 
 # obtain target signal by recording from reference speaker
 # reference_speaker = freefield.pick_speakers(reference_speaker)[0]
-# temp_recs = []
-# for i in range(rec_repeat):
-#     rec = freefield.play_and_record(reference_speaker, signal, equalize=False)
-#     # rec = slab.Sound.ramp(rec, when='both', duration=0.01)
-#     temp_recs.append(rec.data)
-# target = slab.Sound(data=numpy.mean(temp_recs, axis=0))
+temp_recs = []
+for i in range(rec_repeat):
+    rec = freefield.play_and_record(reference_speaker, signal, equalize=False)
+    # rec = slab.Sound.ramp(rec, when='both', duration=0.01)
+    temp_recs.append(rec.data)
+target = slab.Sound(data=numpy.mean(temp_recs, axis=0))
 
-# obtain target signal from original signal - looks good
+# use original signal as reference
 target = deepcopy(signal)
 target.level = 20
 

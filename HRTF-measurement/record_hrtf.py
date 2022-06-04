@@ -14,8 +14,8 @@ slab.Signal.set_default_samplerate(fs)  # default samplerate for generating soun
 
 signal = slab.Sound.chirp(duration=0.1, level=80, from_frequency=200, to_frequency=18000, kind='linear')
 signal = slab.Sound.ramp(signal, when='both', duration=0.001)
-repetitions = 20
-subject_id = 'kemar_fflab'
+repetitions = 30
+subject_id = 'kemar_fflab_in-ear_mic'
 n_directions = 1  # only from the front (1) or front-back recordings (2)
 # speakers = numpy.arange(19, 28).tolist()  # central cone
 speakers = 'all'

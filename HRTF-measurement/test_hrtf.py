@@ -72,7 +72,7 @@ for speaker_column in speaker_list:
 
 
 # load some coin sounds
-coin64 = slab.Sound('/Users/paulfriedrich/Projects/hrtf_relearning/data/Mario64_Coin.wav')
+coin64 = slab.Sound(data_dir / 'sounds' / 'Mario64_Coin.wav')
 coin = coin64.resample(fs)
 coin = slab.Sound('/Users/paulfriedrich/Projects/hrtf_relearning/data/Mario_Coin.wav')
 coins = hrtf.apply(cs1[0], coin)

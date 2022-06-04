@@ -5,9 +5,6 @@ from numpy import linalg as la
 from pathlib import Path
 import time
 import PySpin
-import math
-import os
-os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
 from aruco_pose import get_pose
 
 DIR = Path.cwd()  # path for sound and rcx files

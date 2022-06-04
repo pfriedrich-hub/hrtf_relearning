@@ -131,5 +131,5 @@ def change_res(image, resolution):
     image = data.resize((width, height), PIL.Image.ANTIALIAS)
     return numpy.asarray(image)
 
-# if __name__ == "__main__":
-#     images = aruco_test()
+if __name__ == "__main__":
+    images = aruco_test()

@@ -10,17 +10,18 @@ from aruco_pose import get_pose, calibrate_aruco
 fs = 48828
 slab.set_default_samplerate(fs)
 data_dir = Path.cwd() / 'data'
-# coin = slab.Sound(data=data_dir / 'sounds' / 'Mario_Coin.wav').resample(fs)
-# coin.level = 75
+
 tone = slab.Sound.tone(frequency=1000, duration=0.25, level=70)
 subj_id = '001'
 
+
 def localization_test():
-    global speakers, cams, stim
-    # initialize processors
+    global speakers, stim, cams
+    # # initialize processors
     freefield.initialize('dome', default="loctest_freefield")
     freefield.set_logger('warning')
-    # initiate cameras
+
+    # # initiate cameras
     system = PySpin.System.GetInstance()
     cams = system.GetCameras()
     for cam in cams:  # initialize cameras
@@ -28,6 +29,7 @@ def localization_test():
         cam.ExposureAuto.SetValue(PySpin.ExposureAuto_Off)  # disable auto exposure time
         cam.ExposureTime.SetValue(10000.0)
         cam.BeginAcquisition()
+
     # generate stimulus
     noise = slab.Sound.pinknoise(duration=0.025, level=90)
     noise = noise.ramp(when='both', duration=0.01)
@@ -87,15 +89,29 @@ def play_trial(speaker_id):
     freefield.play()
     return numpy.array((pose, target))
 
-if __name__ == "__main__":
-    trialsequence = localization_test()
+def test_markers(show=True, scale=True):
+    # # initiate cameras
+    system = PySpin.System.GetInstance()
+    cams = system.GetCameras()
+    for cam in cams:  # initialize cameras
+        cam.Init()
+        cam.ExposureAuto.SetValue(PySpin.ExposureAuto_Off)  # disable auto exposure time
+        cam.ExposureTime.SetValue(10000.0)
+        cam.BeginAcquisition()
+    # initialize processors
+    freefield.initialize('dome', default="loctest_freefield")
+    freefield.set_logger('warning')
+    offset = calibrate_aruco(cams, limit=0.5, report=False)
+    response = 0
+    while not response:
+        azimuth = get_pose(cams[1], show=show, scale=scale)
+        elevation = get_pose(cams[0], show=show, scale=scale)
+        if azimuth != None and elevation != None:
+            pose = numpy.array((azimuth, elevation)) - offset
+            print(pose)
+            response = freefield.read('response', processor='RP2')
+        else:
+            print('no marker detected')
 
-"""
-from pathlib import Path
-data_dir = Path.cwd() / 'data'
-subj_id = '001'
-sequence = slab.Trialsequence(conditions=47, n_reps=1)
-sequence.load_pickle(file_name=data_dir/data_dir / 'localization_data' / subj_id)
-data = sequence.data
-"""
-
+# if __name__ == "__main__":
+#     trialsequence = localization_test()

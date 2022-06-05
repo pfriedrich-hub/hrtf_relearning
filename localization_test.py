@@ -1,10 +1,12 @@
 import freefield
 import slab
 import numpy
+import time
+import datetime
+date = datetime.datetime.now()
 from pathlib import Path
 import PySpin
 from aruco_pose import get_pose, calibrate_aruco
-import time
 fs = 48828
 slab.set_default_samplerate(fs)
 data_dir = Path.cwd() / 'data'
@@ -49,7 +51,7 @@ def localization_test():
     # loop over trials
     for index, speaker_id in enumerate(trial_sequence):
         trial_sequence.add_response(play_trial(speaker_id))  # play n trials
-    trial_sequence.save_pickle(data_dir / 'localization_data' / subj_id)
+    trial_sequence.save_pickle(data_dir / 'localization_data' / str(subj_id + date.strftime('_%d_%b')))
     freefield.halt()
     for cam in cams:
         if cam.IsInitialized():
@@ -83,7 +85,7 @@ def play_trial(speaker_id):
             print('no marker detected')
     freefield.set_signal_and_speaker(signal=tone, speaker=23)
     freefield.play()
-    return dict(pose=pose, target=target)
+    return numpy.array((pose, target))
 
 if __name__ == "__main__":
     trialsequence = localization_test()
@@ -96,3 +98,4 @@ sequence = slab.Trialsequence(conditions=47, n_reps=1)
 sequence.load_pickle(file_name=data_dir/data_dir / 'localization_data' / subj_id)
 data = sequence.data
 """
+

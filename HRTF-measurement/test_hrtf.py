@@ -12,26 +12,23 @@ from matplotlib import pyplot as plt
 
 # compare hrtfs
 # get hrtfs with similar source coordinates
+filename = 'kemar_fflab_in-ear_mic.sofa'
 filename = 'kemar_fflab.sofa'
+
 filename = 'jp.sofa'
 filename = 'mit_kemar_large_pinna.sofa'
 
 hrtf = slab.HRTF(data_dir / 'hrtfs' / filename)
-azs = numpy.unique(hrtf.sources[:, 0])
-az = 0
-for az in azs:
-    sources = hrtf.cone_sources(az, coords='interaural')
-    hrtf.plot_tf(sources, xlim=(0, 25e3))
-    plt.title('cone at azimuth: %f' % az)
-
 kemar = slab.HRTF.kemar()
-hrtf = slab.HRTF(data_dir / 'hrtfs' / filename)
 # kemar = slab.HRTF(str(data_dir) + '/hrtfs/examples/mit_kemar_large_pinna.sofa')
 # compare waterfall
 cs1 = hrtf.cone_sources(cone=0, coords='interaural', full_cone=False)
+hrtf.plot_tf(cs1, n_bins=200, kind='image', ear='right')
+
+
 hrtf.plot_sources(cs1, coords='interaural')
 cs2 = kemar.cone_sources(cone=0, coords='polar', full_cone=False)
-hrtf.plot_tf(cs1, n_bins=800, kind='waterfall')
+hrtf.plot_tf(cs1, n_bins=800, kind='heatmap')
 kemar.plot_tf(cs2, n_bins=800, kind='surface')
 hrtf.sources[37] # 35, 12.5, 1.4
 kemar.sources[339] # 35, 10, 1.4
@@ -40,7 +37,7 @@ hrtf.apply(37, chrp).spectrum()
 kemar.apply(339, chrp).spectrum()
 
 # write sofa
-filename = 'kemar_fflab'
+filename = 'kemar_fflab_in-ear_mic'
 slab.Signal.set_default_samplerate(fs)  # default samplerate for generating sounds, filters etc.
 signal = slab.Sound.chirp(duration=0.1, level=70, from_frequency=200, to_frequency=20000, kind='linear')
 signal = slab.Sound.ramp(signal, when='both', duration=0.001)
@@ -69,7 +66,13 @@ for speaker_column in speaker_list:
         fig.suptitle('column at %.1f° azimuth' % speakers[i].azimuth, fontsize=12)
         axis[i].set_title('%.1f elevation' % (speakers[i].elevation), fontsize=8)
 
-
+# get cone sources at each azimuthal angle
+azs = numpy.unique(hrtf.sources[:, 0])
+az = 0
+for az in azs:
+    sources = hrtf.cone_sources(az, coords='interaural')
+    hrtf.plot_tf(sources, xlim=(0, 25e3))
+    plt.title('cone at azimuth: %f' % az)
 
 # load some coin sounds
 coin64 = slab.Sound(data_dir / 'sounds' / 'Mario64_Coin.wav')
@@ -77,6 +80,8 @@ coin = coin64.resample(fs)
 coin = slab.Sound('/Users/paulfriedrich/Projects/hrtf_relearning/data/Mario_Coin.wav')
 coins = hrtf.apply(cs1[0], coin)
 coins.play()
+
+
 
 # linear chirp
 chirp = slab.Sound.chirp(duration=0.5, from_frequency=20, to_frequency=20000, kind='linear')
@@ -113,3 +118,4 @@ s = rec.channel(0).data[:, 0]
 fig, axs = plt.subplots(nrows=1, ncols=1, figsize=(7, 7))
 axs.set_title("Log. Magnitude Spectrum")
 axs.magnitude_spectrum(s, Fs=fs, scale='dB', color='C1')
+

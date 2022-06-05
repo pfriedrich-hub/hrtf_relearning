@@ -16,11 +16,12 @@ def show_fast(cam):
     print(pose)
     cv2.waitKey(1) & 0xFF
 
-def get_pose(cam, show=False):
+def get_pose(cam, show=False, scale=False):
     image = get_image(cam)
-    image = change_res(image, 0.5)
     pose, info = pose_from_image(image)
     if show:
+        if scale:
+            image = change_res(image, 0.5)
         image = draw_markers(image, pose, info)
         cv2.imshow('camera %s' % cam.DeviceID(), image)
         cv2.waitKey(1) & 0xFF
@@ -101,6 +102,8 @@ def calibrate_aruco(cams, limit=0.5, report=False):
         pose = [get_pose(cams[1]), get_pose(cams[0])]
         # print(pose)
         log = numpy.vstack((log, pose))
+        if log[-1, 0] == None or log[-1, 1] == None:
+            print('no marker detected')
         # check if orientation is stable for at least 30 data points
         if len(log) > 30 and all(log[-20:, 0] != None) and all(log[-20:, 1] != None):
             diff = numpy.mean(numpy.abs(numpy.diff(log[-20:], axis=0)), axis=0).astype('float16')
@@ -108,30 +111,7 @@ def calibrate_aruco(cams, limit=0.5, report=False):
                 print('az diff: %f,  ele diff: %f' % (diff[0], diff[1]))
             if diff[0] < limit and diff[1] < limit:  # limit in degree
                 break
-        else:
-            print('no marker detected')
     freefield.write(tag='bitmask', value=0, processors=led_speaker.digital_proc)  # turn off LED
     pose_offset = numpy.around(numpy.mean(log[-20:].astype('float16'), axis=0), decimals=2)
     print('calibration complete, thank you!')
     return pose_offset
-
-def test():
-    freefield.initialize('dome', 'loctest_freefield')
-    system = PySpin.System.GetInstance()
-    cams = system.GetCameras()
-    for cam in cams:  # initialize cameras
-        cam.Init()
-        cam.ExposureAuto.SetValue(PySpin.ExposureAuto_Off)  # disable auto exposure time
-        cam.ExposureTime.SetValue(10000.0)
-        cam.BeginAcquisition()
-        pose_offset = calibrate_aruco(cams, limit=0.5, report=False)
-    while True:
-        print(pose_offset[0] - get_pose(cams[0], show=True))
-
-    for cam in cams:
-        if cam.IsInitialized():
-            cam.EndAcquisition()
-            cam.DeInit()
-        del cam
-    cams.Clear()
-    system.ReleaseInstance()

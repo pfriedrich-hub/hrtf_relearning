@@ -14,5 +14,4 @@ data = pd.DataFrame(data)
 data['pose']
 
 
-
 scipy.stats.linregress(x,y)

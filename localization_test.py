@@ -68,7 +68,7 @@ def play_trial(speaker_id):
             print(pose)
             response = freefield.read('response', processor='RP2')
         else:
-            print('no marker detected')
+            print('no marker detected', end="\r", flush=True)
     freefield.set_signal_and_speaker(signal=tone, speaker=23)
     freefield.play()
     return numpy.array((pose, target))

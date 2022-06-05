@@ -4,6 +4,7 @@ import freefield
 import PIL
 from PIL import Image
 import PySpin
+
 az_dict = cv2.aruco.Dictionary_get(cv2.aruco.DICT_4X4_50)  # use different marker types to avoid
 ele_dict = cv2.aruco.Dictionary_get(cv2.aruco.DICT_4X4_100)  # picking up the wrong markers
 params = cv2.aruco.DetectorParameters_create()
@@ -121,7 +122,7 @@ def calibrate_aruco(cams, limit=0.5, report=False):
         if len(log) > 30 and all(log[-20:, 0] != None) and all(log[-20:, 1] != None):
             diff = numpy.mean(numpy.abs(numpy.diff(log[-20:], axis=0)), axis=0).astype('float16')
             if report:
-                print('az diff: %f,  ele diff: %f' % (diff[0], diff[1]))
+                print('az diff: %f,  ele diff: %f' % (diff[0], diff[1]), end="\r", flush=True)
             if diff[0] < limit and diff[1] < limit:  # limit in degree
                 break
     freefield.write(tag='bitmask', value=0, processors=led_speaker.digital_proc)  # turn off LED
@@ -140,8 +141,8 @@ def test_markers(show=True):
         elevation = get_pose(cams[0], aruco_dict=az_dict, show=show)
         if azimuth != None and elevation != None:
             pose = numpy.array((azimuth, elevation)) - offset
-            print(pose)
+            print(pose, end="\r", flush=True)
             response = freefield.read('response', processor='RP2')
         else:
-            print('no marker detected')
+            print('no marker detected', end="\r", flush=True)
 

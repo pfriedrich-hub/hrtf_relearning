@@ -4,6 +4,7 @@ import numpy
 from numpy import linalg as la
 from pathlib import Path
 import time
+import sys
 from aruco_pose import cams, az_dict, ele_dict
 from aruco_pose import get_pose, calibrate_aruco, init_cams, deinit_cams
 DIR = Path.cwd()  # path for sound and rcx files
@@ -15,7 +16,7 @@ slab.set_default_samplerate(fs)
 # target_window: target window as euclidean distance of head pose from target speaker
 # time_on_target: time matching head direction required to finish a trial
 
-def hrtf_training(n_trials=5, t_min=0, t_max=600, target_window=4, target_time=1):
+def hrtf_training(n_trials=5, t_min=0, t_max=600, target_window=6, target_time=1):
     global speakers, pulse_train
     # initialize processors and cameras
     proc_list = [['RX81', 'RX8', DIR / 'data' / 'rcx' / 'play_buf_pulse.rcx'],
@@ -68,7 +69,7 @@ def play_trial(speaker_id):
             if not count_down:  # start counting down time as longs as pose matches target
                 start_time = time.time()
                 count_down = True
-            print('ON TARGET for %i sec' % (time.time() - start_time))
+            print('\nON TARGET for %i sec' % (time.time() - start_time), end="\r", flush=True)
         else:
             start_time, count_down = time.time(), False  # reset timer if pose no longer matches target
         if time.time() > start_time + pulse_train['target_time']:  # end trial if goal conditions are met
@@ -88,7 +89,7 @@ def compare_pose(target, offset):
         # scale ISI with deviation of pose from sound source
         interval = pulse_train['t_min'] + pulse_train['t_range'] *\
                    (diff - pulse_train['target_window']) / pulse_train['max_dst']
-        print('head pose: azimuth: %.1f, elevation: %.1f' % (pose[0], pose[1]))
+        print('head pose: azimuth: %.1f, elevation: %.1f' % (pose[0], pose[1]), end="\r", flush=True)
     else:
         diff = pulse_train['max_dst']
         interval = pulse_train['t_max']

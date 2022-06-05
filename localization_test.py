@@ -5,34 +5,21 @@ import time
 import datetime
 date = datetime.datetime.now()
 from pathlib import Path
-import PySpin
-from aruco_pose import get_pose, calibrate_aruco
+from aruco_pose import cams, az_dict, ele_dict
+from aruco_pose import get_pose, calibrate_aruco, init_cams, deinit_cams
 fs = 48828
 slab.set_default_samplerate(fs)
 data_dir = Path.cwd() / 'data'
-
 tone = slab.Sound.tone(frequency=1000, duration=0.25, level=70)
 subj_id = '001'
 
 
 def localization_test():
-    global speakers, stim, cams
-    # # initialize processors
+    global speakers, stim
+    # # initialize processors and cameras
     freefield.initialize('dome', default="loctest_freefield")
     freefield.set_logger('warning')
-
-    # # initiate cameras
-    system = PySpin.System.GetInstance()
-    cams = system.GetCameras()
-    for cam in cams:  # initialize cameras
-        cam.Init()
-        cam.ExposureAuto.SetValue(PySpin.ExposureAuto_Off)  # disable auto exposure time
-        cam.ExposureTime.SetValue(10000.0)
-        try:
-            cam.BeginAcquisition()
-        except:
-            print('cameras already streaming')
-
+    init_cams(cams)
     # generate stimulus
     noise = slab.Sound.pinknoise(duration=0.025, level=90)
     noise = noise.ramp(when='both', duration=0.01)
@@ -58,13 +45,7 @@ def localization_test():
         trial_sequence.add_response(play_trial(speaker_id))  # play n trials
     trial_sequence.save_pickle(data_dir / 'localization_data' / str(subj_id + date.strftime('_%d_%b')))
     freefield.halt()
-    for cam in cams:
-        if cam.IsInitialized():
-            cam.EndAcquisition()
-            cam.DeInit()
-        del cam
-    cams.Clear()
-    system.ReleaseInstance()
+    deinit_cams(cams)
     print('localization test completed!')
     return
 
@@ -80,8 +61,8 @@ def play_trial(speaker_id):
     azimuth, elevation = None, None
     response = 0
     while not response:
-        azimuth = get_pose(cams[1])
-        elevation = get_pose(cams[0])
+        azimuth = get_pose(cams[1], dict=az_dict)
+        elevation = get_pose(cams[0], dict=az_dict)
         if azimuth != None and elevation != None:
             pose = numpy.array((azimuth, elevation)) - offset
             print(pose)
@@ -92,5 +73,5 @@ def play_trial(speaker_id):
     freefield.play()
     return numpy.array((pose, target))
 
-# if __name__ == "__main__":
-#     trialsequence = localization_test()
+if __name__ == "__main__":
+    trialsequence = localization_test()

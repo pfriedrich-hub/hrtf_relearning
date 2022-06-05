@@ -4,70 +4,52 @@ import numpy
 from numpy import linalg as la
 from pathlib import Path
 import time
-import PySpin
-from aruco_pose import get_pose, calibrate_aruco
+from aruco_pose import cams, az_dict, ele_dict
+from aruco_pose import get_pose, calibrate_aruco, init_cams, deinit_cams
 DIR = Path.cwd()  # path for sound and rcx files
+fs = 48828
+slab.set_default_samplerate(fs)
 
 # t_min: minimal pulse interval in ms
 # t_max: max pulse interval in ms
 # target_window: target window as euclidean distance of head pose from target speaker
 # time_on_target: time matching head direction required to finish a trial
 
-
-def hrtf_relearning(n_trials=5, t_min=0, t_max=600, target_window=4, target_time=1):
-    global speakers, cams, pulse_train
-    # initialize processors
+def hrtf_training(n_trials=5, t_min=0, t_max=600, target_window=4, target_time=1):
+    global speakers, pulse_train
+    # initialize processors and cameras
     proc_list = [['RX81', 'RX8', DIR / 'data' / 'rcx' / 'play_buf_pulse.rcx'],
                  ['RX82', 'RX8', DIR / 'data' / 'rcx' / 'play_buf_pulse.rcx'],
                  ['RP2', 'RP2', DIR / 'data' / 'rcx' / 'arduino_analog.rcx']]
     freefield.initialize('dome', device=proc_list)
     freefield.set_logger('warning')
-
+    init_cams(cams)
     # load goal sound to buffer
     coin = slab.Sound(data=DIR / 'data' / 'sounds' / 'Mario_Coin.wav')
     coin.level = 70
     freefield.write(tag='goal_sound', value=coin.data, processors=['RX81', 'RX82'])
     freefield.write(tag='goal_len', value=coin.n_samples, processors=['RX81', 'RX82'])
-
-    # initiate cameras
-    system = PySpin.System.GetInstance()
-    cams = system.GetCameras()
-    for cam in cams:  # initialize cameras
-        cam.Init()
-        cam.ExposureAuto.SetValue(PySpin.ExposureAuto_Off)  # disable auto exposure time
-        cam.ExposureTime.SetValue(10000.0)
-        try:
-            cam.BeginAcquisition()
-        except:
-            print('cameras already streaming')
-
     # read list of speaker locations
     table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')
     speakers = numpy.loadtxt(table_file, skiprows=1, usecols=(0, 3, 4),
                                      delimiter=",", dtype=float)
-    # write parameters for pulse interval
+    # write parameters for pulse train
     pulse_train = {'t_min': t_min, 't_max': t_max, 't_range': t_max - t_min,
                     'max_dst': la.norm(numpy.min(speakers[:, 1:], axis=0) - [0, 0]),
                     'target_window': target_window, 'target_time': target_time}
     # generate trial sequence with target speaker locations
     trial_sequence = slab.Trialsequence(conditions=speakers[:, 0].astype(int), n_reps=1)
-    proceed = True
     # loop over trials
     for index, speaker_id in enumerate(trial_sequence):
-        if index < n_trials and proceed:
-            proceed = play_trial(speaker_id)  # play n trials
+        if index < n_trials:
+            play_trial(speaker_id)  # play n trials
     freefield.halt()
-    for cam in cams:
-        if cam.IsInitialized():
-            cam.EndAcquisition()
-            cam.DeInit()
-    del cam
-    cams.Clear()
+    deinit_cams(cams)
     print('end')
     return
 
 def play_trial(speaker_id):
-    #generate stimuli and load to buffer
+    # generate stimuli and load to buffer
     stim = slab.Sound.pinknoise(duration=10.0)
     freefield.set_signal_and_speaker(signal=stim, speaker=speaker_id, equalize=True)
     freefield.write(tag='source', value=1, processors=['RX81', 'RX82'])
@@ -95,15 +77,10 @@ def play_trial(speaker_id):
             continue
     freefield.write(tag='source', value=0, processors=['RX81', 'RX82'])
     freefield.play(kind='zBusB', proc='all')
-    # if input('Goal! Conintue? (y/n)') == 'y':
-    #     proceed = True
-    # else:
-    #     proceed = False
-    return True
 
 def compare_pose(target, offset):
-    azimuth = get_pose(cams[1])
-    elevation = get_pose(cams[0])
+    azimuth = get_pose(cams[1], dict=az_dict)
+    elevation = get_pose(cams[0], dict=az_dict)
     if azimuth != None and elevation != None:
         pose = numpy.array((azimuth, elevation)) - offset
         diff = la.norm(pose - target)
@@ -121,4 +98,4 @@ def compare_pose(target, offset):
 
 
 if __name__ == "__main__":
-    hrtf_relearning(n_trials=5)
+    hrtf_training(n_trials=5)

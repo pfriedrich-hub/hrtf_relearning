@@ -79,8 +79,8 @@ def play_trial(speaker_id):
     freefield.play(kind='zBusB', proc='all')
 
 def compare_pose(target, offset):
-    azimuth = get_pose(cams[1], dict=az_dict)
-    elevation = get_pose(cams[0], dict=az_dict)
+    azimuth = get_pose(cams[1], aruco_dict=az_dict)
+    elevation = get_pose(cams[0], aruco_dict=az_dict)
     if azimuth != None and elevation != None:
         pose = numpy.array((azimuth, elevation)) - offset
         diff = la.norm(pose - target)

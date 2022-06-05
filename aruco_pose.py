@@ -3,10 +3,10 @@ import cv2
 import freefield
 import PIL
 from PIL import Image
-arucoDict = cv2.aruco.Dictionary_get(cv2.aruco.DICT_4X4_50)
+az_dict = cv2.aruco.Dictionary_get(cv2.aruco.DICT_4X4_50)
+ele_dict = cv2.aruco.Dictionary_get(cv2.aruco.DICT_4X4_100)
 params = cv2.aruco.DetectorParameters_create()
 import PySpin
-freefield.set_logger('warning')
 
 def show_fast(cam):
     image = get_image(cam)
@@ -16,13 +16,14 @@ def show_fast(cam):
     print(pose)
     cv2.waitKey(1) & 0xFF
 
-def get_pose(cam, show=False, scale=False):
+def get_pose(cam, dict, show=False, scale=False):
     image = get_image(cam)
     pose, info = pose_from_image(image)
     if show:
-        if scale:
-            image = change_res(image, 0.5)
-        image = draw_markers(image, pose, info)
+        # if scale:
+        #     image = change_res(image, 0.5)
+        if pose != None:
+            image = draw_markers(image, pose, info)
         cv2.imshow('camera %s' % cam.DeviceID(), image)
         cv2.waitKey(1) & 0xFF
     else:
@@ -40,8 +41,8 @@ def get_image(cam):
     image_result.Release()
     return image
 
-def pose_from_image(image): # get pose
-    (corners, ids, rejected) = cv2.aruco.detectMarkers(image, arucoDict, parameters=params)
+def pose_from_image(image, dict): # get pose
+    (corners, ids, rejected) = cv2.aruco.detectMarkers(image, arucoDict=dict, parameters=params)
     if len(corners) == 0:
         return None, [0, 0, 0, 0]
     else:
@@ -115,3 +116,31 @@ def calibrate_aruco(cams, limit=0.5, report=False):
     pose_offset = numpy.around(numpy.mean(log[-20:].astype('float16'), axis=0), decimals=2)
     print('calibration complete, thank you!')
     return pose_offset
+
+def test_markers(show=True, scale=True):
+    # # initiate cameras
+    system = PySpin.System.GetInstance()
+    cams = system.GetCameras()
+    for cam in cams:  # initialize cameras
+        cam.Init()
+        cam.ExposureAuto.SetValue(PySpin.ExposureAuto_Off)  # disable auto exposure time
+        cam.ExposureTime.SetValue(10000.0)
+        try:
+            cam.BeginAcquisition()
+        except:
+            print('camera already streaming')
+    # initialize processors
+    freefield.initialize('dome', default="loctest_freefield")
+    freefield.set_logger('warning')
+    offset = calibrate_aruco(cams, limit=0.5, report=False)
+    response = 0
+    while not response:
+        azimuth = get_pose(cams[1], show=show, scale=scale)
+        elevation = get_pose(cams[0], show=show, scale=scale)
+        if azimuth != None and elevation != None:
+            pose = numpy.array((azimuth, elevation)) - offset
+            print(pose)
+            response = freefield.read('response', processor='RP2')
+        else:
+            print('no marker detected')
+

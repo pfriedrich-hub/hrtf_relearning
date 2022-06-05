@@ -24,8 +24,7 @@ def hrtf_relearning(n_trials=5, t_min=0, t_max=600, target_window=4, target_time
     freefield.set_logger('warning')
 
     # load goal sound to buffer
-    coin = slab.Sound(data=DIR / 'data' / 'sounds' / 'Mario_Coin.wav').resample(48828)
-    coin.ramp(when='both', )
+    coin = slab.Sound(data=DIR / 'data' / 'sounds' / 'Mario_Coin.wav')
     coin.level = 70
     freefield.write(tag='goal_sound', value=coin.data, processors=['RX81', 'RX82'])
     freefield.write(tag='goal_len', value=coin.n_samples, processors=['RX81', 'RX82'])
@@ -37,7 +36,10 @@ def hrtf_relearning(n_trials=5, t_min=0, t_max=600, target_window=4, target_time
         cam.Init()
         cam.ExposureAuto.SetValue(PySpin.ExposureAuto_Off)  # disable auto exposure time
         cam.ExposureTime.SetValue(10000.0)
-        cam.BeginAcquisition()
+        try:
+            cam.BeginAcquisition()
+        except:
+            print('cameras already streaming')
 
     # read list of speaker locations
     table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')

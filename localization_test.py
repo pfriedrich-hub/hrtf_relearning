@@ -28,7 +28,10 @@ def localization_test():
         cam.Init()
         cam.ExposureAuto.SetValue(PySpin.ExposureAuto_Off)  # disable auto exposure time
         cam.ExposureTime.SetValue(10000.0)
-        cam.BeginAcquisition()
+        try:
+            cam.BeginAcquisition()
+        except:
+            print('cameras already streaming')
 
     # generate stimulus
     noise = slab.Sound.pinknoise(duration=0.025, level=90)
@@ -88,30 +91,6 @@ def play_trial(speaker_id):
     freefield.set_signal_and_speaker(signal=tone, speaker=23)
     freefield.play()
     return numpy.array((pose, target))
-
-def test_markers(show=True, scale=True):
-    # # initiate cameras
-    system = PySpin.System.GetInstance()
-    cams = system.GetCameras()
-    for cam in cams:  # initialize cameras
-        cam.Init()
-        cam.ExposureAuto.SetValue(PySpin.ExposureAuto_Off)  # disable auto exposure time
-        cam.ExposureTime.SetValue(10000.0)
-        cam.BeginAcquisition()
-    # initialize processors
-    freefield.initialize('dome', default="loctest_freefield")
-    freefield.set_logger('warning')
-    offset = calibrate_aruco(cams, limit=0.5, report=False)
-    response = 0
-    while not response:
-        azimuth = get_pose(cams[1], show=show, scale=scale)
-        elevation = get_pose(cams[0], show=show, scale=scale)
-        if azimuth != None and elevation != None:
-            pose = numpy.array((azimuth, elevation)) - offset
-            print(pose)
-            response = freefield.read('response', processor='RP2')
-        else:
-            print('no marker detected')
 
 # if __name__ == "__main__":
 #     trialsequence = localization_test()

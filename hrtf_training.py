@@ -22,13 +22,14 @@ def hrtf_training(n_trials=5, t_min=0, t_max=600, target_window=6, target_time=1
     proc_list = [['RX81', 'RX8', DIR / 'data' / 'rcx' / 'play_buf_pulse.rcx'],
                  ['RX82', 'RX8', DIR / 'data' / 'rcx' / 'play_buf_pulse.rcx'],
                  ['RP2', 'RP2', DIR / 'data' / 'rcx' / 'arduino_analog.rcx']]
-    freefield.initialize('dome', device=proc_list)
+    if not freefield.PROCESSORS.mode:
+        freefield.initialize('dome', device=proc_list)
     freefield.set_logger('warning')
     init_cams(cams)
     # load goal sound to buffer
     coin = slab.Sound(data=DIR / 'data' / 'sounds' / 'Mario_Coin.wav')
     coin.level = 70
-    freefield.write(tag='goal_sound', value=coin.data, processors=['RX81', 'RX82'])
+    freefield.write(tag='goal_data', value=coin.data, processors=['RX81', 'RX82'])
     freefield.write(tag='goal_len', value=coin.n_samples, processors=['RX81', 'RX82'])
     # read list of speaker locations
     table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')
@@ -51,12 +52,12 @@ def hrtf_training(n_trials=5, t_min=0, t_max=600, target_window=6, target_time=1
 
 def play_trial(speaker_id):
     # generate stimuli and load to buffer
+    freefield.write(tag='source', value=1, processors=['RX81', 'RX82'])
     stim = slab.Sound.pinknoise(duration=10.0)
     freefield.set_signal_and_speaker(signal=stim, speaker=speaker_id, equalize=True)
-    freefield.write(tag='source', value=1, processors=['RX81', 'RX82'])
     target = speakers[speaker_id, 1:]
     # get offset head pose at 0 az, 0 ele
-    offset = calibrate_aruco(cams, limit=0.5, report=False)
+    offset = calibrate_aruco(cams, limit=0.5, report=True)
     # start trial
     print('STARTING..\n TARGET| azimuth: %.1f, elevation %.1f' % (target[0], target[1]))
     time.sleep(2)
@@ -69,7 +70,7 @@ def play_trial(speaker_id):
             if not count_down:  # start counting down time as longs as pose matches target
                 start_time = time.time()
                 count_down = True
-            print('\nON TARGET for %i sec' % (time.time() - start_time), end="\r", flush=True)
+            print('ON TARGET for %i sec' % (time.time() - start_time), end="\r", flush=True)
         else:
             start_time, count_down = time.time(), False  # reset timer if pose no longer matches target
         if time.time() > start_time + pulse_train['target_time']:  # end trial if goal conditions are met
@@ -78,6 +79,8 @@ def play_trial(speaker_id):
             continue
     freefield.write(tag='source', value=0, processors=['RX81', 'RX82'])
     freefield.play(kind='zBusB', proc='all')
+    while freefield.read('goal_playback', processor='RX81', n_samples=1):
+        time.sleep(0.1)
 
 def compare_pose(target, offset):
     azimuth = get_pose(cams[1], aruco_dict=az_dict)
@@ -93,7 +96,7 @@ def compare_pose(target, offset):
     else:
         diff = pulse_train['max_dst']
         interval = pulse_train['t_max']
-        print('no marker detected')
+        print('no marker detected', end="\r", flush=True)
     freefield.write('interval', interval, processors=['RX81', 'RX82'])  # write isi to processors
     return diff
 

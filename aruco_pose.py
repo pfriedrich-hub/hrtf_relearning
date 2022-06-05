@@ -37,7 +37,7 @@ def get_pose(cam, aruco_dict, show=False):
     pose, info = pose_from_image(image, aruco_dict)
     if show:
         if pose != None:
-            image = draw_markers(image, pose, info)
+            image = draw_markers(image, pose, aruco_dict, info)
         cv2.imshow('camera %s' % cam.DeviceID(), image)
         cv2.waitKey(1) & 0xFF
     else:
@@ -105,7 +105,7 @@ def change_res(image, resolution):
     image = data.resize((width, height), PIL.Image.ANTIALIAS)
     return numpy.asarray(image)
 
-def calibrate_aruco(cams, limit=0.5, report=False):
+def calibrate_aruco(cams, limit=0.5, report=True):
     [led_speaker] = freefield.pick_speakers(23)  # get object for center speaker LED
     freefield.write(tag='bitmask', value=led_speaker.digital_channel,
                     processors=led_speaker.digital_proc)  # illuminate LED
@@ -130,11 +130,12 @@ def calibrate_aruco(cams, limit=0.5, report=False):
     print('calibration complete, thank you!')
     return pose_offset
 
-def test_markers(show=True):
+def test_markers(show=False):
     init_cams(cams)
-    freefield.initialize('dome', default="loctest_freefield")
+    if not freefield.PROCESSORS.mode:  # avoid reinitializing every time
+        freefield.initialize('dome', default="loctest_freefield")
     freefield.set_logger('warning')
-    offset = calibrate_aruco(cams, limit=0.5, report=False)
+    offset = calibrate_aruco(cams, limit=0.5, report=True)
     response = 0
     while not response:
         azimuth = get_pose(cams[1], aruco_dict=az_dict, show=show)

@@ -43,8 +43,18 @@ def get_pose(cam, aruco_dict, show=False):
     else:
         cv2.waitKey(0)
     if pose:
-        pose = numpy.mean(numpy.asarray(pose)[:, 2]).astype('float16')
-    return pose
+        pose = numpy.asarray(pose)[:, 2].astype('float16')
+
+        # remove outliers
+        d = numpy.abs(pose - numpy.median(pose))  # deviation from median
+        mdev = numpy.median(d)  # mean deviation
+        s = d / mdev if mdev else 0.  # factorized mean deviation of each element in pose
+        pose = pose[s < 2]  # remove outliers
+
+    return numpy.mean(pose)
+
+# def avg_over_time(images):
+#
 
 def get_image(cam):
     image_result = cam.GetNextImage()

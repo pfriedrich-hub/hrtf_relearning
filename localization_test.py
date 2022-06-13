@@ -5,21 +5,26 @@ import time
 import datetime
 date = datetime.datetime.now()
 from pathlib import Path
-from aruco_pose import cams, az_dict, ele_dict
-from aruco_pose import get_pose, calibrate_aruco, init_cams, deinit_cams
+import head_tracking.cam_tracking.aruco_pose as headpose
+import head_tracking.sensor_tracking.sensor_pose as headpose
+
 fs = 48828
 slab.set_default_samplerate(fs)
 data_dir = Path.cwd() / 'data'
 tone = slab.Sound.tone(frequency=1000, duration=0.25, level=70)
 subj_id = '001'
 
-
 def localization_test():
     global speakers, stim
     # # initialize processors and cameras
-    freefield.initialize('dome', default="loctest_freefield")
+    proc_list = [['RX81', 'RX8', data_dir / 'play_buf_pulse.rcx'],
+                 ['RX82', 'RX8', data_dir / 'play_buf_pulse.rcx'],
+                 ['RP2', 'RP2', data_dir / 'arduino_analog.rcx']]
+
+    freefield.initialize('dome', device=proc_list)
+
     freefield.set_logger('warning')
-    init_cams(cams)
+    headpose.init_cams()
     # generate stimulus
     noise = slab.Sound.pinknoise(duration=0.025, level=90)
     noise = noise.ramp(when='both', duration=0.01)
@@ -45,13 +50,13 @@ def localization_test():
         trial_sequence.add_response(play_trial(speaker_id))  # play n trials
     trial_sequence.save_pickle(data_dir / 'localization_data' / str(subj_id + date.strftime('_%d_%b')))
     freefield.halt()
-    deinit_cams(cams)
+    headpose.deinit_cams()
     print('localization test completed!')
     return
 
 def play_trial(speaker_id):
     time.sleep(.5)
-    offset = calibrate_aruco(cams, limit=0.5, report=False)  # get orientation offset
+    offset = headpose.calibrate_aruco(limit=0.5, report=False)  # get orientation offset
     target = speakers[speaker_id, 1:]
     print('STARTING..\n TARGET| azimuth: %.1f, elevation %.1f' % (target[0], target[1]))
     time.sleep(.5)
@@ -61,10 +66,9 @@ def play_trial(speaker_id):
     azimuth, elevation = None, None
     response = 0
     while not response:
-        azimuth = get_pose(cams[1], aruco_dict=az_dict)
-        elevation = get_pose(cams[0], aruco_dict=az_dict)
-        if azimuth != None and elevation != None:
-            pose = numpy.array((azimuth, elevation)) - offset
+        pose = headpose.get_pose()
+        if pose[0] != None and pose[1] != None:
+            pose = pose - offset
             print(pose)
             response = freefield.read('response', processor='RP2')
         else:

@@ -4,9 +4,10 @@ import numpy
 from numpy import linalg as la
 from pathlib import Path
 import time
-from hrtf_training.aruco_pose import cams, az_dict
-from hrtf_training.aruco_pose import get_pose, calibrate_aruco, init_cams, deinit_cams
-DIR = Path.cwd()  # path for sound and rcx files
+import head_tracking.cam_tracking.aruco_pose as headpose
+import head_tracking.sensor_tracking.sensor_pose as headpose
+data_dir = Path.cwd() / 'data'
+
 fs = 48828
 slab.set_default_samplerate(fs)
 
@@ -18,15 +19,15 @@ slab.set_default_samplerate(fs)
 def hrtf_training(n_trials=5, t_min=0, t_max=600, target_window=6, target_time=1):
     global speakers, pulse_train
     # initialize processors and cameras
-    proc_list = [['RX81', 'RX8', DIR / 'data' / 'rcx' / 'play_buf_pulse.rcx'],
-                 ['RX82', 'RX8', DIR / 'data' / 'rcx' / 'play_buf_pulse.rcx'],
-                 ['RP2', 'RP2', DIR / 'data' / 'rcx' / 'arduino_analog.rcx']]
+    proc_list = [['RX81', 'RX8', data_dir / 'play_buf_pulse.rcx'],
+                 ['RX82', 'RX8', data_dir / 'play_buf_pulse.rcx'],
+                 ['RP2', 'RP2', data_dir / 'arduino_analog.rcx']]
     if not freefield.PROCESSORS.mode:
         freefield.initialize('dome', device=proc_list)
     freefield.set_logger('warning')
-    init_cams(cams)
+    headpose.init_cams()
     # load goal sound to buffer
-    coin = slab.Sound(data=DIR / 'data' / 'sounds' / 'Mario_Coin.wav')
+    coin = slab.Sound(data=data_dir / 'sounds' / 'Mario_Coin.wav')
     coin.level = 70
     freefield.write(tag='goal_data', value=coin.data, processors=['RX81', 'RX82'])
     freefield.write(tag='goal_len', value=coin.n_samples, processors=['RX81', 'RX82'])
@@ -45,7 +46,7 @@ def hrtf_training(n_trials=5, t_min=0, t_max=600, target_window=6, target_time=1
         if index < n_trials:
             play_trial(speaker_id)  # play n trials
     freefield.halt()
-    deinit_cams(cams)
+    headpose.deinit_cams()
     print('end')
     return
 
@@ -56,7 +57,7 @@ def play_trial(speaker_id):
     freefield.set_signal_and_speaker(signal=stim, speaker=speaker_id, equalize=True)
     target = speakers[speaker_id, 1:]
     # get offset head pose at 0 az, 0 ele
-    offset = calibrate_aruco(cams, limit=0.5, report=True)
+    offset = headpose.calibrate_aruco(limit=0.5, report=True)
     # start trial
     print('STARTING..\n TARGET| azimuth: %.1f, elevation %.1f' % (target[0], target[1]))
     time.sleep(2)
@@ -82,10 +83,9 @@ def play_trial(speaker_id):
         time.sleep(0.1)
 
 def compare_pose(target, offset):
-    azimuth = get_pose(cams[1], aruco_dict=az_dict)
-    elevation = get_pose(cams[0], aruco_dict=az_dict)
-    if azimuth != None and elevation != None:
-        pose = numpy.array((azimuth, elevation)) - offset
+    pose = headpose.get_pose()
+    if pose[0] != None and pose[1] != None:
+        pose = pose - offset
         diff = la.norm(pose - target)
         # isi = isi_params['tmin'] + isi_params['trange'] * (numpy.log(diff/isi_params['max_dst']+0.05)+3)/3
         # scale ISI with deviation of pose from sound source
@@ -98,7 +98,6 @@ def compare_pose(target, offset):
         print('no marker detected', end="\r", flush=True)
     freefield.write('interval', interval, processors=['RX81', 'RX82'])  # write isi to processors
     return diff
-
 
 if __name__ == "__main__":
     hrtf_training(n_trials=5)

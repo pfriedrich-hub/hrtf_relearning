@@ -4,14 +4,13 @@ import freefield
 import PIL
 from PIL import Image
 import PySpin
-
-az_dict = cv2.aruco.Dictionary_get(cv2.aruco.DICT_4X4_50)  # use different marker types to avoid
-ele_dict = cv2.aruco.Dictionary_get(cv2.aruco.DICT_4X4_100)  # picking up the wrong markers
+aruco_dicts = [cv2.aruco.Dictionary_get(cv2.aruco.DICT_4X4_100),
+               cv2.aruco.Dictionary_get(cv2.aruco.DICT_5X5_100)]
 params = cv2.aruco.DetectorParameters_create()
 system = PySpin.System.GetInstance()
 cams = system.GetCameras()
 
-def init_cams(cams):
+def init_cams(cams=cams):
     # # initiate cameras
     for cam in cams:  # initialize cameras
         cam.Init()
@@ -22,7 +21,7 @@ def init_cams(cams):
         except:
             print('camera already streaming')
 
-def deinit_cams(cams):
+def deinit_cams(cams=cams):
     for cam in cams:
         if cam.IsInitialized():
             cam.EndAcquisition()
@@ -32,26 +31,27 @@ def deinit_cams(cams):
     system.ReleaseInstance()
 
 
-def get_pose(cam, aruco_dict, show=False):
-    image = get_image(cam)
-    pose, info = pose_from_image(image, aruco_dict)
-    if show:
-        if pose != None:
-            image = draw_markers(image, pose, aruco_dict, info)
-        cv2.imshow('camera %s' % cam.DeviceID(), image)
-        cv2.waitKey(1) & 0xFF
-    else:
-        cv2.waitKey(0)
-    if pose:
-        pose = numpy.asarray(pose)[:, 2].astype('float16')
-
-        # remove outliers
-        d = numpy.abs(pose - numpy.median(pose))  # deviation from median
-        mdev = numpy.median(d)  # mean deviation
-        s = d / mdev if mdev else 0.  # factorized mean deviation of each element in pose
-        pose = pose[s < 2]  # remove outliers
-
-    return numpy.mean(pose)
+def get_pose(cams=cams, aruco_dicts=aruco_dicts, show=False):
+    pose = numpy.zeros(2)
+    for i, cam in enumerate(cams):
+        image = get_image(cam)
+        _pose, info = pose_from_image(image, aruco_dicts[i])
+        if show:
+            if _pose != None:
+                image = draw_markers(image, _pose, aruco_dicts[i], info)
+            cv2.imshow('camera %s' % cam.DeviceID(), image)
+            cv2.waitKey(1) & 0xFF
+        else:
+            cv2.waitKey(0)
+        if _pose:
+            _pose = numpy.asarray(pose)[:, 2].astype('float16')
+            # remove outliers
+            d = numpy.abs(pose - numpy.median(pose))  # deviation from median
+            mdev = numpy.median(d)  # mean deviation
+            s = d / mdev if mdev else 0.  # factorized mean deviation of each element in pose
+            _pose = _pose[s < 2]  # remove outliers
+            pose[i] = numpy.mean(_pose)
+    return pose
 
 # def avg_over_time(images):
 #
@@ -115,7 +115,7 @@ def change_res(image, resolution):
     image = data.resize((width, height), PIL.Image.ANTIALIAS)
     return numpy.asarray(image)
 
-def calibrate_aruco(cams, limit=0.5, report=True):
+def calibrate_aruco(limit=0.5, report=True):
     [led_speaker] = freefield.pick_speakers(23)  # get object for center speaker LED
     freefield.write(tag='bitmask', value=led_speaker.digital_channel,
                     processors=led_speaker.digital_proc)  # illuminate LED
@@ -123,7 +123,7 @@ def calibrate_aruco(cams, limit=0.5, report=True):
     freefield.wait_for_button()  # start calibration after button press
     log = numpy.zeros(2)
     while True:  # wait in loop for sensor to stabilize
-        pose = [get_pose(cams[1], aruco_dict=az_dict), get_pose(cams[0], aruco_dict=az_dict)]
+        pose = get_pose()
         # print(pose)
         log = numpy.vstack((log, pose))
         if log[-1, 0] == None or log[-1, 1] == None:
@@ -140,18 +140,17 @@ def calibrate_aruco(cams, limit=0.5, report=True):
     print('calibration complete, thank you!')
     return pose_offset
 
-def test_markers(show=False):
+def test_markers():
     init_cams(cams)
     if not freefield.PROCESSORS.mode:  # avoid reinitializing every time
         freefield.initialize('dome', default="loctest_freefield")
     freefield.set_logger('warning')
-    offset = calibrate_aruco(cams, limit=0.5, report=True)
+    offset = calibrate_aruco(limit=0.5, report=True)
     response = 0
     while not response:
-        azimuth = get_pose(cams[1], aruco_dict=az_dict, show=show)
-        elevation = get_pose(cams[0], aruco_dict=az_dict, show=show)
-        if azimuth != None and elevation != None:
-            pose = numpy.array((azimuth, elevation)) - offset
+        pose = get_pose()
+        if pose[0] != None and pose[1] != None:
+            pose = pose - offset
             print(pose, end="\r", flush=True)
             response = freefield.read('response', processor='RP2')
         else:

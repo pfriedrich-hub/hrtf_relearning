@@ -5,8 +5,8 @@ import PIL
 from PIL import Image
 import PySpin
 
-az_dict = cv2.aruco.Dictionary_get(cv2.aruco.DICT_4X4_50)  # use different marker types to avoid
-ele_dict = cv2.aruco.Dictionary_get(cv2.aruco.DICT_4X4_100)  # picking up the wrong markers
+az_dict = cv2.aruco.Dictionary_get(cv2.aruco.DICT_4X4_100)  # use different marker types to avoid
+ele_dict = cv2.aruco.Dictionary_get(cv2.aruco.DICT_5X5_100)  # picking up the wrong markers
 params = cv2.aruco.DetectorParameters_create()
 system = PySpin.System.GetInstance()
 cams = system.GetCameras()
@@ -38,6 +38,7 @@ def get_pose(cam, aruco_dict, show=False):
     if show:
         if pose != None:
             image = draw_markers(image, pose, aruco_dict, info)
+        image = change_res(image, 0.5)
         cv2.imshow('camera %s' % cam.DeviceID(), image)
         cv2.waitKey(1) & 0xFF
     else:
@@ -50,8 +51,9 @@ def get_pose(cam, aruco_dict, show=False):
         mdev = numpy.median(d)  # mean deviation
         s = d / mdev if mdev else 0.  # factorized mean deviation of each element in pose
         pose = pose[s < 2]  # remove outliers
+        pose = numpy.mean(pose)
+    return pose
 
-    return numpy.mean(pose)
 
 # def avg_over_time(images):
 #
@@ -123,7 +125,7 @@ def calibrate_aruco(cams, limit=0.5, report=True):
     freefield.wait_for_button()  # start calibration after button press
     log = numpy.zeros(2)
     while True:  # wait in loop for sensor to stabilize
-        pose = [get_pose(cams[1], aruco_dict=az_dict), get_pose(cams[0], aruco_dict=az_dict)]
+        pose = [get_pose(cams[1], aruco_dict=az_dict), get_pose(cams[0], aruco_dict=ele_dict)]
         # print(pose)
         log = numpy.vstack((log, pose))
         if log[-1, 0] == None or log[-1, 1] == None:
@@ -149,11 +151,10 @@ def test_markers(show=False):
     response = 0
     while not response:
         azimuth = get_pose(cams[1], aruco_dict=az_dict, show=show)
-        elevation = get_pose(cams[0], aruco_dict=az_dict, show=show)
+        elevation = get_pose(cams[0], aruco_dict=ele_dict, show=show)
         if azimuth != None and elevation != None:
             pose = numpy.array((azimuth, elevation)) - offset
             print(pose, end="\r", flush=True)
             response = freefield.read('response', processor='RP2')
         else:
             print('no marker detected', end="\r", flush=True)
-

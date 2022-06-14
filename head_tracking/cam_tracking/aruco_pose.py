@@ -4,9 +4,9 @@ import freefield
 import PIL
 from PIL import Image
 import PySpin
-aruco_dicts = [cv2.aruco.Dictionary_get(cv2.aruco.DICT_4X4_100)]
-# aruco_dicts = [cv2.aruco.Dictionary_get(cv2.aruco.DICT_4X4_100),
-#                cv2.aruco.Dictionary_get(cv2.aruco.DICT_5X5_100)]
+# aruco_dicts = [cv2.aruco.Dictionary_get(cv2.aruco.DICT_4X4_100)]
+aruco_dicts = [cv2.aruco.Dictionary_get(cv2.aruco.DICT_5X5_100),
+    cv2.aruco.Dictionary_get(cv2.aruco.DICT_4X4_100)]
 params = cv2.aruco.DetectorParameters_create()
 system = PySpin.System.GetInstance()
 cams = system.GetCameras()
@@ -47,7 +47,7 @@ def get_pose(cams=cams, aruco_dicts=aruco_dicts, show=False):
         if _pose:
             _pose = numpy.asarray(_pose)[:, 2].astype('float16')
             # remove outliers
-            d = numpy.abs(pose - numpy.median(pose))  # deviation from median
+            d = numpy.abs(_pose - numpy.median(_pose))  # deviation from median
             mdev = numpy.median(d)  # mean deviation
             s = d / mdev if mdev else 0.  # factorized mean deviation of each element in pose
             _pose = _pose[s < 2]  # remove outliers
@@ -150,7 +150,7 @@ def test_markers():
     offset = calibrate_aruco(limit=0.5, report=True)
     response = 0
     while not response:
-        pose = get_pose(show=False)
+        pose = get_pose(show=True)
         if pose[0] != None and pose[1] != None:
             pose = pose - offset
             print(pose, end="\r", flush=True)

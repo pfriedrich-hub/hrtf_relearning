@@ -34,9 +34,6 @@ Adafruit_Mahony filter;  // fastest/smalleset
 
 uint32_t timestamp;
 
-int analogPinAz = DAC0;     //initializing pin 
-int analogPinEle = DAC1;     //initializing pin 
-
 const int az_min_input = 90;
 const int az_max_input = 270;
 const int ele_min_input = -90;
@@ -59,20 +56,20 @@ void setup() {
   //  Serial.println("No calibration loaded/found");
   //}
   
- // in uTesla
-  cal.mag_hardiron[0] = -59.93; 
-  cal.mag_hardiron[1] = 13.51;  
-  cal.mag_hardiron[2] = 1.26;
-  cal.mag_softiron[0] = 1.007;
-  cal.mag_softiron[1] = 0.048;
-  cal.mag_softiron[2] = -0.007;  
-  cal.mag_softiron[3] = 0.048;
-  cal.mag_softiron[4] = 1.011;
-  cal.mag_softiron[5] = -0.003;  
-  cal.mag_softiron[6] = -0.007;
-  cal.mag_softiron[7] = -0.003;
-  cal.mag_softiron[8] = 0.985;  
-  cal.mag_field = 35.71; 
+  cal.mag_hardiron[0] = -48.83; 
+  cal.mag_hardiron[1] = 13.77;  
+  cal.mag_hardiron[2] = -4.84;
+  cal.mag_softiron[0] = 1.150;
+  cal.mag_softiron[1] = 0.194;
+  cal.mag_softiron[2] = 0.137;  
+  cal.mag_softiron[3] = 0.194;
+  cal.mag_softiron[4] = 0.991;
+  cal.mag_softiron[5] = 0.000;  
+  cal.mag_softiron[6] = 0.137;
+  cal.mag_softiron[7] = 0.000;
+  cal.mag_softiron[8] = 0.924;  
+  cal.mag_field = 40.47; 
+
 
   if (!init_sensors()) {
     Serial.println("Failed to find sensors");
@@ -153,17 +150,6 @@ void loop() {
   Serial.println(roll);
   //Serial.print(pitch);
   //Serial.println(", ");
-
-  // write to analog pin
-  analogWriteResolution(12);
-  az = map(heading, az_min_input, az_max_input, min_output, max_output);
-  analogWrite(analogPinAz,az) ;     //setting  
-  ele = map(roll, ele_min_input, ele_max_input, min_output, max_output);
-  analogWrite(analogPinEle,ele) ;
-  Serial.print("az out: "); 
-  Serial.print(az);
-  Serial.print(", ele out: ");
-  Serial.println(ele);
   
 #if defined(AHRS_DEBUG_OUTPUT)
  // Serial.print("Took "); Serial.print(millis()-timestamp); Serial.println(" ms");

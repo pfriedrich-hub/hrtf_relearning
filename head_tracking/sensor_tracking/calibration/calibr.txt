@@ -1,6 +1,37 @@
+# new sensor calibration inside
+  cal.mag_hardiron[0] = -196.47; 
+  cal.mag_hardiron[1] = 49.68;	
+  cal.mag_hardiron[2] = 30.88;
+  cal.mag_softiron[0] = 0.454;
+  cal.mag_softiron[1] = 0.479;
+  cal.mag_softiron[2] = 0.629;  
+  cal.mag_softiron[3] = 0.479;
+  cal.mag_softiron[4] = 1.491;
+  cal.mag_softiron[5] = 0.772;  
+  cal.mag_softiron[6] = 0.629;
+  cal.mag_softiron[7] = 0.772;
+  cal.mag_softiron[8] = 3.117;	
+  cal.mag_field = 30.25; 
+
 
 # control room calibration
-# works well
+  cal.mag_hardiron[0] = -59.00; 
+  cal.mag_hardiron[1] = 13.60;	
+  cal.mag_hardiron[2] = 1.83;
+  cal.mag_softiron[0] = 1.008;
+  cal.mag_softiron[1] = 0.057;
+  cal.mag_softiron[2] = 0.003;  
+  cal.mag_softiron[3] = 0.057;
+  cal.mag_softiron[4] = 1.021;
+  cal.mag_softiron[5] = 0.011;  
+  cal.mag_softiron[6] = 0.003;
+  cal.mag_softiron[7] = 0.011;
+  cal.mag_softiron[8] = 0.975;	
+  cal.mag_field = 35.53; 
+
+
+# control room calibration
+# works well, drift in az after changing ele
   cal.mag_hardiron[0] = -59.93; 
   cal.mag_hardiron[1] = 13.51;	
   cal.mag_hardiron[2] = 1.26;

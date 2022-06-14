@@ -17,9 +17,9 @@ subj_id = '001'
 def localization_test():
     global speakers, stim
     # # initialize processors and cameras
-    proc_list = [['RX81', 'RX8', data_dir / 'play_buf_pulse.rcx'],
-                 ['RX82', 'RX8', data_dir / 'play_buf_pulse.rcx'],
-                 ['RP2', 'RP2', data_dir / 'arduino_analog.rcx']]
+    proc_list = [['RX81', 'RX8', data_dir / 'rcx' / 'play_buf_pulse.rcx'],
+                 ['RX82', 'RX8', data_dir / 'rcx' / 'play_buf_pulse.rcx'],
+                 ['RP2', 'RP2', data_dir / 'rcx' / 'arduino_analog.rcx']]
 
     freefield.initialize('dome', device=proc_list)
 

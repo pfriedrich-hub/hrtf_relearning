@@ -1,22 +1,21 @@
-import cv2
 import numpy as np
 import cv2
-import logging
-from PIL import Image
 import time
 import os
+from pathlib import Path
+
 
 #generate small board for pose estimation
-aruco_dict = cv2.aruco.Dictionary_get(cv2.aruco.DICT_4X4_100)
+aruco_dict = cv2.aruco.Dictionary_get(cv2.aruco.DICT_5X5_100)
 board = cv2.aruco.GridBoard_create(
-    markersX=9,
-    markersY=1,
+    markersX=7,
+    markersY=4,
     markerLength=0.015,
-    markerSeparation=0.0025,
+    markerSeparation=0.01,
     dictionary=aruco_dict)
 
 im=board.draw([1080,720])
-cv2.imwrite('board_9_4x4_100_ts.png', im)
+cv2.imwrite(str(Path.cwd() / 'head_tracking' / 'cam_tracking' / 'aruco_markers' / 'board_7_5x5_100_ts.png'), im)
 cv2.imshow('im',im)
 
 # calibration

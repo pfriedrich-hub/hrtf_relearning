@@ -18,7 +18,7 @@ def get_pose(report=False):
         print('az: %f,  ele: %f' % (az, ele), end="\r", flush=True)
     return numpy.array((az, ele))
 
-def calibrate_sensor(limit=0.11, report=True):
+def calibrate_pose(limit=0.11, report=True):
         [led_speaker] = freefield.pick_speakers(23)  # get object for center speaker LED
         freefield.write(tag='bitmask', value=led_speaker.digital_channel,
                         processors=led_speaker.digital_proc)  # illuminate LED

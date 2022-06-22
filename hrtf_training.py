@@ -4,8 +4,8 @@ import numpy
 from numpy import linalg as la
 from pathlib import Path
 import time
-# import head_tracking.cam_tracking.aruco_pose as aruco
-import head_tracking.sensor_tracking.sensor_pose as sensor
+import head_tracking.cam_tracking.aruco_pose as aruco
+# import head_tracking.sensor_tracking.sensor_pose as sensor
 data_dir = Path.cwd() / 'data'
 
 fs = 48828
@@ -16,7 +16,7 @@ slab.set_default_samplerate(fs)
 # target_window: target window as euclidean distance of head pose from target speaker
 # time_on_target: time matching head direction required to finish a trial
 
-def hrtf_training(n_trials=10, t_min=0, t_max=600, target_window=6, target_time=0.5):
+def hrtf_training(n_trials=10, t_min=0, t_max=600, target_window=5, target_time=0.5):
     global speakers, pulse_train, offset
     # initialize processors and cameras
     proc_list = [['RX81', 'RX8', data_dir / 'rcx' / 'play_buf_pulse.rcx'],
@@ -25,7 +25,7 @@ def hrtf_training(n_trials=10, t_min=0, t_max=600, target_window=6, target_time=
     if not freefield.PROCESSORS.mode:
         freefield.initialize('dome', device=proc_list)
     freefield.set_logger('warning')
-    # aruco.init_cams()
+    aruco.init_cams()
     # load goal sound to buffer
     coin = slab.Sound(data=data_dir / 'sounds' / 'Mario_Coin_Retro.wav')
     coin.level = 70
@@ -41,13 +41,13 @@ def hrtf_training(n_trials=10, t_min=0, t_max=600, target_window=6, target_time=
                     'target_window': target_window, 'target_time': target_time}
     # generate trial sequence with target speaker locations
     trial_sequence = slab.Trialsequence(conditions=speakers[:, 0].astype(int), n_reps=1)
-    offset = sensor.calibrate_sensor(report=True)
+    offset = aruco.calibrate_pose(report=True)
     # loop over trials
     for index, speaker_id in enumerate(trial_sequence):
         if index < n_trials:
             play_trial(speaker_id)  # play n trials
     freefield.halt()
-    # aruco.deinit_cams()
+    aruco.deinit_cams()
     print('end')
     return
 
@@ -62,7 +62,7 @@ def play_trial(speaker_id):
     # offset = sensor.calibrate_sensor(report=True)
     # offset[2] = aruco.calibrate_aruco(limit=0.5, report=True)
     # start trial
-    print('STARTING..\n TARGET| azimuth: %.1f, elevation %.1f' % (target[0], target[1]))
+    # print('TARGET| azimuth: %.1f, elevation %.1f \n' % (target[0], target[1]))
     # time.sleep(2)
     compare_pose(target, offset)  # set initial isi based on pose-target difference
     freefield.play(kind='zBusA', proc='all')   # start playing pulse train
@@ -87,7 +87,7 @@ def play_trial(speaker_id):
 
 def compare_pose(target, offset):
     # pose = numpy.zeros(2)
-    pose = sensor.get_pose()
+    pose = aruco.get_pose()
     # pose[0] = aruco.get_pose()[0]
 
     if pose[0] != None and pose[1] != None:
@@ -97,7 +97,7 @@ def compare_pose(target, offset):
         # scale ISI with deviation of pose from sound source
         interval = pulse_train['t_min'] + pulse_train['t_range'] *\
                    (diff - pulse_train['target_window']) / pulse_train['max_dst']
-        print('head pose: azimuth: %.1f, elevation: %.1f' % (pose[0], pose[1]), end="\r", flush=True)
+        print('head pose: azimuth: %.1f, elevation: %.1f' % (pose[0], pose[1]))#, end="\r", flush=True)
     else:
         diff = pulse_train['max_dst']
         interval = pulse_train['t_max']

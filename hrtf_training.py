@@ -11,13 +11,12 @@ data_dir = Path.cwd() / 'data'
 fs = 48828
 slab.set_default_samplerate(fs)
 
-# t_min: minimal pulse interval in ms
-# t_max: max pulse interval in ms
+# t_max: maximal pulse interval in ms
 # target_window: target window as euclidean distance of head pose from target speaker
 # time_on_target: time matching head direction required to finish a trial
 
-def hrtf_training(n_trials=10, t_min=0, t_max=600, target_window=6, target_time=0.5):
-    global speakers, pulse_train, offset
+def hrtf_training(n_trials=10, t_max=500, target_size=5, target_time=0.5):
+    global speakers, offset, _target_size, _target_time, _max_distance, _max_pulse_interval
     # initialize processors and cameras
     proc_list = [['RX81', 'RX8', data_dir / 'rcx' / 'play_buf_pulse.rcx'],
                  ['RX82', 'RX8', data_dir / 'rcx' / 'play_buf_pulse.rcx'],
@@ -33,12 +32,10 @@ def hrtf_training(n_trials=10, t_min=0, t_max=600, target_window=6, target_time=
     freefield.write(tag='goal_len', value=coin.n_samples, processors=['RX81', 'RX82'])
     # read list of speaker locations
     table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')
-    speakers = numpy.loadtxt(table_file, skiprows=1, usecols=(0, 3, 4),
-                                     delimiter=",", dtype=float)
-    # write parameters for pulse train
-    pulse_train = {'t_min': t_min, 't_max': t_max, 't_range': t_max - t_min,
-                    'max_dst': la.norm(numpy.min(speakers[:, 1:], axis=0) - [0, 0]),
-                    'target_window': target_window, 'target_time': target_time}
+    speakers = numpy.loadtxt(table_file, skiprows=1, usecols=(0, 3, 4), delimiter=",", dtype=float)
+    # pulse train parameters
+    _max_distance = la.norm(numpy.min(speakers[:, 1:], axis=0) - [0, 0])  # maximal distance from center speaker
+    _target_time, _target_size, _max_pulse_interval = target_time, target_size, t_max
     # generate trial sequence with target speaker locations
     trial_sequence = slab.Trialsequence(conditions=speakers[:, 0].astype(int), n_reps=1)
     offset = sensor.calibrate_sensor(report=True)
@@ -51,32 +48,27 @@ def hrtf_training(n_trials=10, t_min=0, t_max=600, target_window=6, target_time=
     print('end')
     return
 
+
 def play_trial(speaker_id):
     # generate stimuli and load to buffer
     freefield.write(tag='source', value=1, processors=['RX81', 'RX82'])
     stim = slab.Sound.pinknoise(duration=10.0)
     freefield.set_signal_and_speaker(signal=stim, speaker=speaker_id, equalize=True)
     target = speakers[speaker_id, 1:]
-    # get offset head pose at 0 az, 0 ele
-    # offset = numpy.zeros(2)
-    # offset = sensor.calibrate_sensor(report=True)
-    # offset[2] = aruco.calibrate_aruco(limit=0.5, report=True)
-    # start trial
     print('STARTING..\n TARGET| azimuth: %.1f, elevation %.1f' % (target[0], target[1]))
-    # time.sleep(2)
     compare_pose(target, offset)  # set initial isi based on pose-target difference
     freefield.play(kind='zBusA', proc='all')   # start playing pulse train
     count_down = False
     while True:
         diff = compare_pose(target, offset)  # set isi and return pose-target difference
-        if diff - pulse_train['target_window'] < 0:  # check if head pose is within target window
+        if diff - _target_size < 0:  # check if head pose is within target window
             if not count_down:  # start counting down time as longs as pose matches target
                 start_time = time.time()
                 count_down = True
             print('ON TARGET for %i sec' % (time.time() - start_time), end="\r", flush=True)
         else:
             start_time, count_down = time.time(), False  # reset timer if pose no longer matches target
-        if time.time() > start_time + pulse_train['target_time']:  # end trial if goal conditions are met
+        if time.time() > start_time + _target_time:  # end trial if goal conditions are met
             break
         else:
             continue
@@ -86,24 +78,24 @@ def play_trial(speaker_id):
         time.sleep(0.1)
 
 def compare_pose(target, offset):
-    # pose = numpy.zeros(2)
     pose = sensor.get_pose()
-    # pose[0] = aruco.get_pose()[0]
-
     if pose[0] != None and pose[1] != None:
         pose = pose - offset
-        diff = la.norm(pose - target)
-        # isi = isi_params['tmin'] + isi_params['trange'] * (numpy.log(diff/isi_params['max_dst']+0.05)+3)/3
+        dist = la.norm(pose - target) - _target_size  # distance of current head pose from target window
         # scale ISI with deviation of pose from sound source
-        interval = pulse_train['t_min'] + pulse_train['t_range'] *\
-                   (diff - pulse_train['target_window']) / pulse_train['max_dst']
+        interval_scale = (dist+1e-9)/_max_distance  # scale factor for pulse interval duration
+        # scale ISI with deviation of pose from sound source
+        interval = _max_pulse_interval * (numpy.log(interval_scale+0.05)+3)/3  # log scaling
+        # interval = _max_pulse_interval * numpy.sqrt((dist+1e-9)/_max_distance)  # square scaling
+        # interval = _max_pulse_interval * interval_scale  # linear scaling
         print('head pose: azimuth: %.1f, elevation: %.1f' % (pose[0], pose[1]), end="\r", flush=True)
     else:
-        diff = pulse_train['max_dst']
-        interval = pulse_train['t_max']
+        diff = _max_distance
+        interval = _max_pulse_interval
         print('no marker detected', end="\r", flush=True)
     freefield.write('interval', interval, processors=['RX81', 'RX82'])  # write isi to processors
     return diff
+
 
 if __name__ == "__main__":
     hrtf_training(n_trials=5)

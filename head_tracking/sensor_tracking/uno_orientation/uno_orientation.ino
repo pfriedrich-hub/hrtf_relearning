@@ -56,19 +56,19 @@ void setup() {
   //  Serial.println("No calibration loaded/found");
   //}
   
-  cal.mag_hardiron[0] = 0; // works - used to work
-  cal.mag_hardiron[1] = 0;  
-  cal.mag_hardiron[2] = 0;
-  cal.mag_softiron[0] = 1;
-  cal.mag_softiron[1] = 0;
-  cal.mag_softiron[2] = 0;  
-  cal.mag_softiron[3] = 0;
-  cal.mag_softiron[4] = 1;
-  cal.mag_softiron[5] = 0;  
-  cal.mag_softiron[6] = 0;
-  cal.mag_softiron[7] = 0;
-  cal.mag_softiron[8] = 1;  
-  cal.mag_field = 50; 
+  cal.mag_hardiron[0] = -51.46;
+  cal.mag_hardiron[1] = 4.80;
+  cal.mag_hardiron[2] = 0.53;
+  cal.mag_softiron[0] = 1.004;
+  cal.mag_softiron[1] = 0.048;
+  cal.mag_softiron[2] = 0.001;
+  cal.mag_softiron[3] = 0.048;
+  cal.mag_softiron[4] = 0.999;
+  cal.mag_softiron[5] = -0.005;
+  cal.mag_softiron[6] = 0.001;
+  cal.mag_softiron[7] = -0.005;
+  cal.mag_softiron[8] = 0.999;
+  cal.mag_field = 48.30;
 
 
   if (!init_sensors()) {

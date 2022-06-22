@@ -4,12 +4,18 @@ import freefield
 import PIL
 from PIL import Image
 import PySpin
-# aruco_dicts = [cv2.aruco.Dictionary_get(cv2.aruco.DICT_4X4_100)]
-aruco_dicts = [cv2.aruco.Dictionary_get(cv2.aruco.DICT_5X5_100),
-    cv2.aruco.Dictionary_get(cv2.aruco.DICT_4X4_100)]
+aruco_dicts = [cv2.aruco.Dictionary_get(cv2.aruco.DICT_4X4_100) ,
+               cv2.aruco.Dictionary_get(cv2.aruco.DICT_5X5_100)]
 params = cv2.aruco.DetectorParameters_create()
 system = PySpin.System.GetInstance()
-cams = system.GetCameras()
+cam_list = system.GetCameras()
+cams = [None, None]
+for cam in cam_list:
+    if cam.DeviceID() == '20386742':
+        cams[0] = cam
+    if cam.DeviceID() == '20386743':
+        cams[1] = cam
+
 
 def init_cams(cams=cams):
     # # initiate cameras
@@ -35,10 +41,6 @@ def deinit_cams(cams=cams):
 def get_pose(cams=cams, aruco_dicts=aruco_dicts, show=False, scale=False):
     pose = numpy.zeros(2)
     for i, cam in enumerate(cams):
-        if cam.DeviceID() == '20386742':
-            az_cam = cam
-        elif cam.DeviceID() == '20386743':
-            ele_cam = cam
         image = get_image(cam)
         if scale:
             image = change_res(image, 0.5)
@@ -60,9 +62,6 @@ def get_pose(cams=cams, aruco_dicts=aruco_dicts, show=False, scale=False):
             _pose = numpy.mean(_pose)
         pose[i] = _pose
     return pose
-
-# def avg_over_time(images):
-#
 
 def get_image(cam):
     image_result = cam.GetNextImage()
@@ -111,8 +110,7 @@ def draw_markers(image, pose, aruco_dict, info):
             image = cv2.aruco.drawAxis(Imaxis, info[i][0], info[i][1], info[i][2], info[i][3], marker_len)
             # info: list of arrays [camera_matrix, dist_coeffs, rotation_vec, translation_vec]
             bottomLeftCornerOfText = (20, 20+(20*i))
-            # cv2.putText(image, 'yaw: %.2f, pitch: %.2f, roll: %.2f' % (pose[i][0], pose[i][1], pose[i][2]),  # display heade pose
-            cv2.putText(image, 'roll: %.2f' % (pose[i][2]),  # display heade pose
+            cv2.putText(image, 'roll: %f' % (pose[i][2]),  # display heade pose
                 bottomLeftCornerOfText, cv2.FONT_HERSHEY_PLAIN, fontScale=1, color=(225, 225, 225),
                         lineType=1, thickness=1)
     return(image)

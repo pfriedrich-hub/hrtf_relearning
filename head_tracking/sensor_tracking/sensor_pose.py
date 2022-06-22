@@ -45,7 +45,7 @@ def test_sensor():
     if not freefield.PROCESSORS.mode:  # avoid reinitializing every time
         freefield.initialize('dome', zbus=True, device=proc_list)
     freefield.set_logger('warning')
-    offset = calibrate_sensor(report=True)
+    offset = calibrate_pose(report=True)
     response = 0
     while not response:
         pose = get_pose()

@@ -8,14 +8,7 @@ aruco_dicts = [cv2.aruco.Dictionary_get(cv2.aruco.DICT_4X4_100) ,
                cv2.aruco.Dictionary_get(cv2.aruco.DICT_5X5_100)]
 params = cv2.aruco.DetectorParameters_create()
 system = PySpin.System.GetInstance()
-cam_list = system.GetCameras()
-cams = [None, None]
-for cam in cam_list:
-    if cam.DeviceID() == '20386742':
-        cams[0] = cam
-    if cam.DeviceID() == '20386743':
-        cams[1] = cam
-
+cams = system.GetCameras()
 
 def init_cams(cams=cams):
     # # initiate cameras
@@ -39,7 +32,7 @@ def deinit_cams(cams=cams):
 
 
 def get_pose(cams=cams, aruco_dicts=aruco_dicts, show=False, scale=False):
-    pose = numpy.zeros(2)
+    pose = [None, None]
     for i, cam in enumerate(cams):
         image = get_image(cam)
         if scale:
@@ -60,7 +53,7 @@ def get_pose(cams=cams, aruco_dicts=aruco_dicts, show=False, scale=False):
             s = d / mdev if mdev else 0.  # factorized mean deviation of each element in pose
             _pose = _pose[s < 2]  # remove outliers
             _pose = numpy.mean(_pose)
-        pose[i] = _pose
+            pose[i] = _pose
     return pose
 
 def get_image(cam):

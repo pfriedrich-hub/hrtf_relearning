@@ -5,8 +5,8 @@ import time
 import datetime
 date = datetime.datetime.now()
 from pathlib import Path
-import head_tracking.cam_tracking.aruco_pose as headpose
-import head_tracking.sensor_tracking.sensor_pose as headpose
+import head_tracking.cam_tracking.aruco_pose as aruco
+# import head_tracking.sensor_tracking.sensor_pose as sensor
 
 fs = 48828
 slab.set_default_samplerate(fs)
@@ -24,7 +24,7 @@ def localization_test():
     freefield.initialize('dome', device=proc_list)
 
     freefield.set_logger('warning')
-    headpose.init_cams()
+    aruco.init_cams()
     # generate stimulus
     noise = slab.Sound.pinknoise(duration=0.025, level=90)
     noise = noise.ramp(when='both', duration=0.01)
@@ -50,13 +50,13 @@ def localization_test():
         trial_sequence.add_response(play_trial(speaker_id))  # play n trials
     trial_sequence.save_pickle(data_dir / 'localization_data' / str(subj_id + date.strftime('_%d_%b')))
     freefield.halt()
-    headpose.deinit_cams()
+    aruco.deinit_cams()
     print('localization test completed!')
     return
 
 def play_trial(speaker_id):
     time.sleep(.5)
-    offset = headpose.calibrate_aruco(limit=0.5, report=False)  # get orientation offset
+    offset = aruco.calibrate_aruco(limit=0.5, report=False)  # get orientation offset
     target = speakers[speaker_id, 1:]
     print('STARTING..\n TARGET| azimuth: %.1f, elevation %.1f' % (target[0], target[1]))
     time.sleep(.5)
@@ -66,7 +66,7 @@ def play_trial(speaker_id):
     azimuth, elevation = None, None
     response = 0
     while not response:
-        pose = headpose.get_pose()
+        pose = aruco.get_pose()
         if pose[0] != None and pose[1] != None:
             pose = pose - offset
             print(pose)

@@ -97,4 +97,4 @@ def compare_pose(target, offset):
     return dist, pose
 
 if __name__ == "__main__":
-    hrtf_training(n_trials=47)
+    hrtf_training(n_trials=15)

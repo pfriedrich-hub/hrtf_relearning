@@ -12,7 +12,7 @@ fs = 48828
 slab.set_default_samplerate(fs)
 data_dir = Path.cwd() / 'data'
 tone = slab.Sound.tone(frequency=1000, duration=0.25, level=70)
-subj_id = '001'
+subj_id = 'joschua'
 
 def localization_test():
     global speakers, stim

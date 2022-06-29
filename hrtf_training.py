@@ -14,14 +14,16 @@ slab.set_default_samplerate(fs)
 # t_max: maximal pulse interval in ms
 # target_window: target window as euclidean distance of head pose from target speaker
 # time_on_target: time matching head direction required to finish a trial
+n_trials = 15
 
 def hrtf_training(n_trials, t_max=500, target_size=5, target_time=0.5):
     global speakers, offset, _target_size, _target_time, _max_distance, _max_pulse_interval
     # initialize processors and cameras
-    proc_list = [['RX81', 'RX8', data_dir / 'rcx' / 'play_buf_pulse.rcx'],
-                 ['RX82', 'RX8', data_dir / 'rcx' / 'play_buf_pulse.rcx'],
-                 ['RP2', 'RP2', data_dir / 'rcx' / 'arduino_analog.rcx']]
-    if not freefield.PROCESSORS.mode:
+    if not freefield.PROCESSORS.mode:  # avoid reinitializing every time
+        proc_list = [['RX81', 'RX8', data_dir / 'rcx' / 'play_buf_pulse.rcx'],
+                     ['RX82', 'RX8', data_dir / 'rcx' / 'play_buf_pulse.rcx'],
+                     ['RP2', 'RP2', data_dir / 'rcx' / 'arduino_analog.rcx']]
+        # if not freefield.PROCESSORS.mode:
         freefield.initialize('dome', device=proc_list)
     freefield.set_logger('warning')
     aruco.init_cams()
@@ -37,12 +39,25 @@ def hrtf_training(n_trials, t_max=500, target_size=5, target_time=0.5):
     _max_distance = la.norm(numpy.min(speakers[:, 1:], axis=0) - [0, 0])  # maximal distance from center speaker
     _target_time, _target_size, _max_pulse_interval = target_time, target_size, t_max
     # generate trial sequence with target speaker locations
+
+    # # create sequence of speakers to play from, without direct repetition of azimuth or elevation
+    # sequence = numpy.random.permutation(numpy.tile(list(range(len(speakers))), 1))[:n_trials]
+    # az_dist, ele_dist = numpy.diff(speakers[sequence, 1]), numpy.diff(speakers[sequence, 2])
+    # while numpy.min(numpy.abs(az_dist)) == 0.0 or numpy.min(numpy.abs(ele_dist)) == 0.0:
+    #     sequence = numpy.random.permutation(numpy.tile(list(range(len(speakers))), 1))[:n_trials]
+    #     az_dist, ele_dist = numpy.diff(speakers[sequence, 1]), numpy.diff(speakers[sequence, 2])
+    # # generate trial sequence with target speaker locations
+    # trial_sequence = slab.Trialsequence(trials=speakers[sequence, 0].astype('int'))
+
     trial_sequence = slab.Trialsequence(conditions=speakers[:, 0].astype(int), n_reps=1)
     offset = aruco.calibrate_pose(report=True)
     # loop over trials
+    start_time = time.time()
     for index, speaker_id in enumerate(trial_sequence):
-        if index < n_trials:
+        # if index < n_trials:
+        while time.time - start_time <
             play_trial(speaker_id)  # play n trials
+    print('score: %i seconds per trial' % (int(time.time()-start_time) / n_trials))
     freefield.halt()
     aruco.deinit_cams()
     print('end')
@@ -97,4 +112,4 @@ def compare_pose(target, offset):
     return dist, pose
 
 if __name__ == "__main__":
-    hrtf_training(n_trials=15)
+    hrtf_training(n_trials=n_trials)

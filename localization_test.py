@@ -12,17 +12,11 @@ fs = 48828
 slab.set_default_samplerate(fs)
 data_dir = Path.cwd() / 'data'
 tone = slab.Sound.tone(frequency=1000, duration=0.25, level=70)
-subj_id = 'joschua'
+subj_id = 'jp_mold_1'
 
 def localization_test():
     global speakers, stim
-    # # initialize processors and cameras
-    proc_list = [['RX81', 'RX8', data_dir / 'rcx' / 'play_buf_pulse.rcx'],
-                 ['RX82', 'RX8', data_dir / 'rcx' / 'play_buf_pulse.rcx'],
-                 ['RP2', 'RP2', data_dir / 'rcx' / 'arduino_analog.rcx']]
-
-    freefield.initialize('dome', device=proc_list)
-
+    freefield.initialize('dome', default='play_rec')
     freefield.set_logger('warning')
     aruco.init_cams()
     # generate stimulus
@@ -56,23 +50,22 @@ def localization_test():
 
 def play_trial(speaker_id):
     time.sleep(.5)
-    offset = aruco.calibrate_aruco(limit=0.5, report=False)  # get orientation offset
+    offset = aruco.calibrate_pose(limit=1)  # get orientation offset
     target = speakers[speaker_id, 1:]
-    print('STARTING..\n TARGET| azimuth: %.1f, elevation %.1f' % (target[0], target[1]))
+    print('\n TARGET| azimuth: %.1f, elevation %.1f\n' % (target[0], target[1]))
     time.sleep(.5)
     freefield.set_signal_and_speaker(signal=stim, speaker=speaker_id, equalize=False)
     freefield.play()
     freefield.wait_to_finish_playing()
-    azimuth, elevation = None, None
     response = 0
     while not response:
         pose = aruco.get_pose()
-        if pose[0] != None and pose[1] != None:
+        if all(pose):
             pose = pose - offset
-            print(pose)
-            response = freefield.read('response', processor='RP2')
+            print('head pose: azimuth: %.1f, elevation: %.1f' % (pose[0], pose[1]), end="\r", flush=True)
         else:
-            print('no marker detected', end="\r", flush=True)
+            print('no head pose detected', end="\r", flush=True)
+        response = freefield.read('response', processor='RP2')
     freefield.set_signal_and_speaker(signal=tone, speaker=23)
     freefield.play()
     return numpy.array((pose, target))

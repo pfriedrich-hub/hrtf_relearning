@@ -54,8 +54,8 @@ def hrtf_training(n_trials, t_max=500, target_size=5, target_time=0.5):
     # loop over trials
     start_time = time.time()
     for index, speaker_id in enumerate(trial_sequence):
-        # if index < n_trials:
-        while time.time - start_time <
+        if index < n_trials:
+        # while time.time - start_time <
             play_trial(speaker_id)  # play n trials
     print('score: %i seconds per trial' % (int(time.time()-start_time) / n_trials))
     freefield.halt()

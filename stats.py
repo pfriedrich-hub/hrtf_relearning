@@ -8,20 +8,19 @@ from matplotlib import pyplot as plt
 import numpy
 
 # elevation gain
-subj_id = 'hz_001_28_jun'
+subj_id = 'hannah_no_mold_29_jun'
 sequence = slab.Trialsequence(conditions=47, n_reps=1)
 sequence.load_pickle(file_name=data_dir / 'localization_data' / subj_id)
 loc_data = numpy.asarray(sequence.data)
 loc_data = loc_data.reshape(loc_data.shape[0], 2, 2)
-
 ele_x = loc_data[:, 1, 1]  # target elevations
 ele_y = loc_data[:, 0, 1]  # percieved elevations
 bads_idx = numpy.where(ele_y == None)
 ele_y = numpy.array(numpy.delete(ele_y, bads_idx), dtype=numpy.float)
 ele_x = numpy.array(numpy.delete(ele_x, bads_idx), dtype=numpy.float)
-
 plt.scatter(ele_x, ele_y)
 elevation_gain = scipy.stats.linregress(ele_x, ele_y)[0]
+
 
 az_x = loc_data[:, 1, 0]
 az_y = loc_data[:, 0, 0]

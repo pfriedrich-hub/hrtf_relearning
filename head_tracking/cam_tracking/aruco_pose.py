@@ -137,7 +137,7 @@ def calibrate_pose(limit=0.5, report=True):
                 break
     freefield.write(tag='bitmask', value=0, processors=led_speaker.digital_proc)  # turn off LED
     pose_offset = numpy.around(numpy.mean(log[-20:].astype('float16'), axis=0), decimals=2)
-    print('calibration complete, thank you!')
+    # print('calibration complete, thank you!')
     return pose_offset
 
 def test_markers(show=True, calibrate=True):

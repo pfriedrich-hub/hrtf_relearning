@@ -14,24 +14,28 @@ slab.set_default_samplerate(fs)
 # t_max: maximal pulse interval in ms
 # target_window: target window as euclidean distance of head pose from target speaker
 # time_on_target: time matching head direction required to finish a trial
-n_trials = 15
+# n_trials = 15
+time_limit = 90
 
-def hrtf_training(n_trials, t_max=500, target_size=5, target_time=0.5):
-    global speakers, offset, _target_size, _target_time, _max_distance, _max_pulse_interval
+def hrtf_training(time_limit, t_max=500, target_size=5, target_time=0.5):
+    global speakers, offset, _target_size, _target_time, _max_distance, _max_pulse_interval,\
+        game_time, end, buzzer, stim
     # initialize processors and cameras
-    if not freefield.PROCESSORS.mode:  # avoid reinitializing every time
-        proc_list = [['RX81', 'RX8', data_dir / 'rcx' / 'play_buf_pulse.rcx'],
-                     ['RX82', 'RX8', data_dir / 'rcx' / 'play_buf_pulse.rcx'],
-                     ['RP2', 'RP2', data_dir / 'rcx' / 'arduino_analog.rcx']]
-        # if not freefield.PROCESSORS.mode:
-        freefield.initialize('dome', device=proc_list)
+    proc_list = [['RX81', 'RX8', data_dir / 'rcx' / 'play_buf_pulse.rcx'],
+                 ['RX82', 'RX8', data_dir / 'rcx' / 'play_buf_pulse.rcx'],
+                 ['RP2', 'RP2', data_dir / 'rcx' / 'arduino_analog.rcx']]
+    # if not freefield.PROCESSORS.mode:
+    freefield.initialize('dome', device=proc_list)
     freefield.set_logger('warning')
     aruco.init_cams()
+    stim = slab.Sound.pinknoise(duration=10.0)
     # load goal sound to buffer
     coin = slab.Sound(data=data_dir / 'sounds' / 'Mario_Coin_Retro.wav')
     coin.level = 70
     freefield.write(tag='goal_data', value=coin.data, processors=['RX81', 'RX82'])
     freefield.write(tag='goal_len', value=coin.n_samples, processors=['RX81', 'RX82'])
+    buzzer = slab.Sound(data_dir / 'sounds' / 'Buzzer1.wav')
+    buzzer.level = 70
     # read list of speaker locations
     table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')
     speakers = numpy.loadtxt(table_file, skiprows=1, usecols=(0, 3, 4), delimiter=",", dtype=float)
@@ -40,24 +44,25 @@ def hrtf_training(n_trials, t_max=500, target_size=5, target_time=0.5):
     _target_time, _target_size, _max_pulse_interval = target_time, target_size, t_max
     # generate trial sequence with target speaker locations
 
-    # # create sequence of speakers to play from, without direct repetition of azimuth or elevation
-    # sequence = numpy.random.permutation(numpy.tile(list(range(len(speakers))), 1))[:n_trials]
-    # az_dist, ele_dist = numpy.diff(speakers[sequence, 1]), numpy.diff(speakers[sequence, 2])
-    # while numpy.min(numpy.abs(az_dist)) == 0.0 or numpy.min(numpy.abs(ele_dist)) == 0.0:
-    #     sequence = numpy.random.permutation(numpy.tile(list(range(len(speakers))), 1))[:n_trials]
-    #     az_dist, ele_dist = numpy.diff(speakers[sequence, 1]), numpy.diff(speakers[sequence, 2])
-    # # generate trial sequence with target speaker locations
-    # trial_sequence = slab.Trialsequence(trials=speakers[sequence, 0].astype('int'))
-
-    trial_sequence = slab.Trialsequence(conditions=speakers[:, 0].astype(int), n_reps=1)
+    # create sequence of speakers to play from, without direct repetition of azimuth or elevation
+    sequence = numpy.random.permutation(numpy.tile(list(range(len(speakers))), 1))
+    az_dist, ele_dist = numpy.diff(speakers[sequence, 1]), numpy.diff(speakers[sequence, 2])
+    while numpy.min(numpy.abs(az_dist)) == 0.0 or numpy.min(numpy.abs(ele_dist)) == 0.0:
+        sequence = numpy.random.permutation(numpy.tile(list(range(len(speakers))), 1))
+        az_dist, ele_dist = numpy.diff(speakers[sequence, 1]), numpy.diff(speakers[sequence, 2])
+    sequence = numpy.delete(sequence, numpy.where(sequence == 23))  # remove 0, 0 target
+    # generate trial sequence with target speaker locations
+    trial_sequence = slab.Trialsequence(trials=sequence)
+    # trial_sequence = slab.Trialsequence(conditions=speakers[:, 0].astype(int), n_reps=1)
     offset = aruco.calibrate_pose(report=True)
     # loop over trials
-    start_time = time.time()
+    end = False
+    game_time = time.time()
     for index, speaker_id in enumerate(trial_sequence):
-        if index < n_trials:
-        # while time.time - start_time <
+        if not end:
             play_trial(speaker_id)  # play n trials
-    print('score: %i seconds per trial' % (int(time.time()-start_time) / n_trials))
+        else:
+            print('score: %i trials completed in under 3 minutes!' % (index+1))
     freefield.halt()
     aruco.deinit_cams()
     print('end')
@@ -65,9 +70,9 @@ def hrtf_training(n_trials, t_max=500, target_size=5, target_time=0.5):
 
 
 def play_trial(speaker_id):
+    global end
     # generate stimuli and load to buffer
     freefield.write(tag='source', value=1, processors=['RX81', 'RX82'])
-    stim = slab.Sound.pinknoise(duration=10.0)
     freefield.set_signal_and_speaker(signal=stim, speaker=speaker_id, equalize=True)
     target = speakers[speaker_id, 1:]
     print('\n TARGET| azimuth: %.1f, elevation %.1f\n' % (target[0], target[1]))
@@ -86,9 +91,15 @@ def play_trial(speaker_id):
                 count_down = True
         else:
             start_time, count_down = time.time(), False  # reset timer if pose no longer matches target
-        if time.time() > start_time + _target_time:  # end trial if goal conditions are met
+        if time.time() > start_time + _target_time:
+            break  # end trial if goal conditions are met or time runs out
+        if time.time() > game_time + time_limit:
+            end = True
+            freefield.write(tag='goal_data', value=buzzer.data, processors=['RX81', 'RX82'])
+            freefield.write(tag='goal_len', value=buzzer.n_samples, processors=['RX81', 'RX82'])
             break
         else:
+            print('no head pose detected', end="\r", flush=True)
             continue
     freefield.write(tag='source', value=0, processors=['RX81', 'RX82'])
     freefield.play(kind='zBusB', proc='all')
@@ -115,4 +126,4 @@ def compare_pose(target, offset):
     return dist, pose
 
 if __name__ == "__main__":
-    hrtf_training(n_trials=n_trials)
+    hrtf_training(time_limit=time_limit)

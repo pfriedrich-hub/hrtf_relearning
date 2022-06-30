@@ -12,7 +12,7 @@ fs = 48828
 slab.set_default_samplerate(fs)
 data_dir = Path.cwd() / 'data'
 tone = slab.Sound.tone(frequency=1000, duration=0.25, level=70)
-subj_id = 'hannah_no_mold'
+subj_id = 'hannah_mold_1'
 
 def localization_test():
     global speakers, stim
@@ -52,7 +52,7 @@ def play_trial(speaker_id):
     time.sleep(.5)
     offset = aruco.calibrate_pose(limit=1)  # get orientation offset
     target = speakers[speaker_id, 1:]
-    print('\n TARGET| azimuth: %.1f, elevation %.1f\n' % (target[0], target[1]))
+    print('TARGET| azimuth: %.1f, elevation %.1f' % (target[0], target[1]))
     time.sleep(.5)
     freefield.set_signal_and_speaker(signal=stim, speaker=speaker_id, equalize=False)
     freefield.play()
@@ -66,6 +66,8 @@ def play_trial(speaker_id):
         else:
             print('no head pose detected', end="\r", flush=True)
         response = freefield.read('response', processor='RP2')
+    if all(pose):
+        print('Response| azimuth: %.1f, elevation: %.1f' % (pose[0], pose[1]))
     freefield.set_signal_and_speaker(signal=tone, speaker=23)
     freefield.play()
     return numpy.array((pose, target))

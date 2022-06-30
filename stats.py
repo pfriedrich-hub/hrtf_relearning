@@ -1,3 +1,5 @@
+
+
 import scipy
 import slab
 from pathlib import Path
@@ -8,7 +10,7 @@ from matplotlib import pyplot as plt
 import numpy
 
 # elevation gain
-subj_id = 'hannah_no_mold_29_jun'
+subj_id = 'hannah_mold_1_30_Jun'
 sequence = slab.Trialsequence(conditions=47, n_reps=1)
 sequence.load_pickle(file_name=data_dir / 'localization_data' / subj_id)
 loc_data = numpy.asarray(sequence.data)

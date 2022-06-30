@@ -5,25 +5,21 @@ data_dir = Path.cwd() / 'data'
 fs = 48828  # sampling rate
 slab.Signal.set_default_samplerate(fs)  # default samplerate for generating sounds, filters etc.
 import freefield
-import helper_functions
+import HRTF_measurement.helper_functions
 import matplotlib
 matplotlib.use('TkAgg')
 from matplotlib import pyplot as plt
 
 # compare hrtfs
 # get hrtfs with similar source coordinates
-filename = 'kemar_fflab_in-ear_mic.sofa'
-filename = 'kemar_fflab.sofa'
+# filename = 'kemar_fflab.sofa'
+filename = 'hannah_no_mold.sofa'
 
-filename = 'jp.sofa'
-filename = 'mit_kemar_large_pinna.sofa'
 
 hrtf = slab.HRTF(data_dir / 'hrtfs' / filename)
-kemar = slab.HRTF.kemar()
-# kemar = slab.HRTF(str(data_dir) + '/hrtfs/examples/mit_kemar_large_pinna.sofa')
 # compare waterfall
 cs1 = hrtf.cone_sources(cone=0, coords='interaural', full_cone=False)
-hrtf.plot_tf(cs1, n_bins=200, kind='image', ear='right')
+hrtf.plot_tf(cs1, n_bins=200, kind='waterfall', ear='right')
 
 
 hrtf.plot_sources(cs1, coords='interaural')

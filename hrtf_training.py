@@ -63,6 +63,7 @@ def hrtf_training(n_trials, t_max=500, target_size=5, target_time=0.5):
     print('end')
     return
 
+
 def play_trial(speaker_id):
     # generate stimuli and load to buffer
     freefield.write(tag='source', value=1, processors=['RX81', 'RX82'])
@@ -105,9 +106,11 @@ def compare_pose(target, offset):
         interval = _max_pulse_interval * (numpy.log(interval_scale + 0.05) + 3) / 3  # log scaling
         # interval = _max_pulse_interval * numpy.sqrt((dist+1e-9)/_max_distance)  # square scaling
         # interval = _max_pulse_interval * interval_scale  # linear scaling
+        print('head pose: azimuth: %.1f, elevation: %.1f' % (pose[0], pose[1]), end="\r", flush=True)
     else:
         dist = _max_distance
         interval = _max_pulse_interval
+        print('no marker detected', end="\r", flush=True)
     freefield.write('interval', interval, processors=['RX81', 'RX82'])  # write isi to processors
     return dist, pose
 

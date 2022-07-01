@@ -19,7 +19,7 @@ time_limit = 90
 
 def hrtf_training(time_limit, t_max=500, target_size=5, target_time=0.5):
     global speakers, offset, _target_size, _target_time, _max_distance, _max_pulse_interval,\
-        game_time, end, buzzer, stim
+        game_time, end, buzzer, stim, proc_list
     # initialize processors and cameras
     proc_list = [['RX81', 'RX8', data_dir / 'rcx' / 'play_buf_pulse.rcx'],
                  ['RX82', 'RX8', data_dir / 'rcx' / 'play_buf_pulse.rcx'],
@@ -28,21 +28,29 @@ def hrtf_training(time_limit, t_max=500, target_size=5, target_time=0.5):
     freefield.initialize('dome', device=proc_list)
     freefield.set_logger('warning')
     aruco.init_cams()
+    table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')
+    speakers = numpy.loadtxt(table_file, skiprows=1, usecols=(0, 3, 4), delimiter=",", dtype=float)
+
+    # generate sounds
     stim = slab.Sound.pinknoise(duration=10.0)
-    # load goal sound to buffer
-    coin = slab.Sound(data=data_dir / 'sounds' / 'Mario_Coin_Retro.wav')
+    freefield.write(tag='playbuflen', value=stim.n_samples, processors=['RX81', 'RX82'])
+    freefield.write(tag='data', value=stim.data, processors=['RX81', 'RX82'])
+    # noise = slab.Sound.pinknoise(duration=0.025, level=90)
+    # noise = noise.ramp(when='both', duration=0.01)
+    # silence = slab.Sound.silence(duration=0.025)
+    # stim = slab.Sound.sequence(noise, silence, noise, silence, noise,
+    #                            silence, noise, silence, noise)
+    # stim=slab.Sound.sequence(stim, stim, stim, stim)
+    coin = slab.Sound(data=data_dir / 'sounds' / 'Mario_Coin_Retro.wav')  # load goal sound to buffer
     coin.level = 70
     freefield.write(tag='goal_data', value=coin.data, processors=['RX81', 'RX82'])
     freefield.write(tag='goal_len', value=coin.n_samples, processors=['RX81', 'RX82'])
     buzzer = slab.Sound(data_dir / 'sounds' / 'Buzzer1.wav')
     buzzer.level = 70
-    # read list of speaker locations
-    table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')
-    speakers = numpy.loadtxt(table_file, skiprows=1, usecols=(0, 3, 4), delimiter=",", dtype=float)
+
     # pulse train parameters
     _max_distance = la.norm(numpy.min(speakers[:, 1:], axis=0) - [0, 0])  # maximal distance from center speaker
     _target_time, _target_size, _max_pulse_interval = target_time, target_size, t_max
-    # generate trial sequence with target speaker locations
 
     # create sequence of speakers to play from, without direct repetition of azimuth or elevation
     sequence = numpy.random.permutation(numpy.tile(list(range(len(speakers))), 1))
@@ -51,9 +59,8 @@ def hrtf_training(time_limit, t_max=500, target_size=5, target_time=0.5):
         sequence = numpy.random.permutation(numpy.tile(list(range(len(speakers))), 1))
         az_dist, ele_dist = numpy.diff(speakers[sequence, 1]), numpy.diff(speakers[sequence, 2])
     sequence = numpy.delete(sequence, numpy.where(sequence == 23))  # remove 0, 0 target
-    # generate trial sequence with target speaker locations
     trial_sequence = slab.Trialsequence(trials=sequence)
-    # trial_sequence = slab.Trialsequence(conditions=speakers[:, 0].astype(int), n_reps=1)
+
     offset = aruco.calibrate_pose(report=True)
     # loop over trials
     end = False
@@ -63,6 +70,7 @@ def hrtf_training(time_limit, t_max=500, target_size=5, target_time=0.5):
             play_trial(speaker_id)  # play n trials
         else:
             print('score: %i trials completed in under 3 minutes!' % (index+1))
+            break
     freefield.halt()
     aruco.deinit_cams()
     print('end')
@@ -71,9 +79,14 @@ def hrtf_training(time_limit, t_max=500, target_size=5, target_time=0.5):
 
 def play_trial(speaker_id):
     global end
-    # generate stimuli and load to buffer
+    # set channel for target speaker
     freefield.write(tag='source', value=1, processors=['RX81', 'RX82'])
-    freefield.set_signal_and_speaker(signal=stim, speaker=speaker_id, equalize=True)
+    freefield.write(tag='chan', value=freefield.pick_speakers(speaker_id)[0].analog_channel,
+                    processors=freefield.pick_speakers(speaker_id)[0].analog_proc)
+    other_proc = [proc_list[1][0], proc_list[0][0]]
+    other_proc.remove(freefield.pick_speakers(speaker_id)[0].analog_proc)
+    freefield.write(tag='chan', value=99, processors=other_proc)
+
     target = speakers[speaker_id, 1:]
     print('\n TARGET| azimuth: %.1f, elevation %.1f\n' % (target[0], target[1]))
     compare_pose(target, offset)  # set initial isi based on pose-target difference

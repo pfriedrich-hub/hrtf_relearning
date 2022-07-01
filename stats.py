@@ -10,7 +10,7 @@ from matplotlib import pyplot as plt
 import numpy
 
 # elevation gain
-subj_id = 'hannah_mold_1_30_Jun'
+subj_id = 'joschua_mold_1_01_Jul'
 sequence = slab.Trialsequence(conditions=47, n_reps=1)
 sequence.load_pickle(file_name=data_dir / 'localization_data' / subj_id)
 loc_data = numpy.asarray(sequence.data)

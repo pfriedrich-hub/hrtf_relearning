@@ -140,3 +140,16 @@ def compare_pose(target, offset):
 
 if __name__ == "__main__":
     hrtf_training(time_limit=time_limit)
+
+
+import head_tracking.meta_motion.mm_pose as motion_sensor
+
+device = motion_sensor.start_sensor()
+
+while True:
+    print('roll %2.f, pitch %2.f, yaw %2.f'
+          % (device.pose.roll, device.pose.pitch, device.pose.yaw),
+          end="\r", flush=True)
+    time.sleep(0.01)
+
+motion_sensor.disconnect(device)

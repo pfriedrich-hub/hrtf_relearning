@@ -1,21 +1,85 @@
-from mbientlab.warble import *
 from mbientlab.metawear import *
-from threading import Event
+from time import sleep
+# import freefield
+import numpy
 
-e = Event()
-address = None
-def device_discover_task(result):
-    global address
-    if (result.has_service_uuid(MetaWear.GATT_SERVICE)):
-        # grab the first discovered metawear device
-        address = result.mac
-        e.set()
+class State:
+    # init
+    def __init__(self, device):
+        self.device = device
+        self.samples = 0
+        self.callback = FnVoid_VoidP_DataP(self.data_handler)
+        self.pose = None
+    # callback
+    def data_handler(self, ctx, data):
+        # print("QUAT: %s -> %s" % (self.device.address, parse_value(data)))
+        self.pose = parse_value(data)
+        self.samples+= 1
 
-BleScanner.set_handler(device_discover_task)
-BleScanner.start()
-e.wait()
+def start_sensor(device=MetaWear('E1:CD:49:19:08:19')):
+    while not device.is_connected:
+        try:
+            device.connect()
+        except:
+            print('Connecting to sensor...', end="\r", flush=True)
+    # states = []
+    s = (State(device))
+    # configure
+    print("Configuring..")
+    # setup ble
+    libmetawear.mbl_mw_settings_set_connection_parameters(s.device.board, 7.5, 7.5, 0, 6000)
+    sleep(1.5)
+    # setup quaternion
+    libmetawear.mbl_mw_sensor_fusion_set_mode(s.device.board, SensorFusionMode.NDOF)
+    libmetawear.mbl_mw_sensor_fusion_set_acc_range(s.device.board, SensorFusionAccRange._8G)
+    libmetawear.mbl_mw_sensor_fusion_set_gyro_range(s.device.board, SensorFusionGyroRange._2000DPS)
+    libmetawear.mbl_mw_sensor_fusion_write_config(s.device.board)
+    # get quat signal and subscribe
+    signal = libmetawear.mbl_mw_sensor_fusion_get_data_signal(s.device.board, SensorFusionData.EULER_ANGLE)
+    libmetawear.mbl_mw_datasignal_subscribe(signal, None, s.callback)
+    # start acc, gyro, mag
+    libmetawear.mbl_mw_sensor_fusion_enable_data(s.device.board, SensorFusionData.EULER_ANGLE)
+    libmetawear.mbl_mw_sensor_fusion_start(s.device.board)
+    print('Sensor started!')
+    return s
 
-BleScanner.stop()
+# tear down
+def disconnect(s):
+        # stop
+        libmetawear.mbl_mw_sensor_fusion_stop(s.device.board);
+        # unsubscribe to signal
+        signal = libmetawear.mbl_mw_sensor_fusion_get_data_signal(s.device.board, SensorFusionData.QUATERNION);
+        libmetawear.mbl_mw_datasignal_unsubscribe(signal)
+        # disconnect
+        libmetawear.mbl_mw_debug_disconnect(s.device.board)
+        while not s.device.is_connected:
+            sleep(0.1)
+        print('sensor disconnected')
 
-device = MetaWear(address)
-device.connect()
+def get_pose(s):
+    pose = numpy.array((s.pose.yaw, s.pose.roll))
+    # print(pose)
+    return pose
+
+def calibrate_pose(s, limit=0.11, report=True):
+    # [led_speaker] = freefield.pick_speakers(23)  #s get object for center speaker LED
+    # freefield.write(tag='bitmask', value=led_speaker.digital_channel,
+    #                 processors=led_speaker.digital_proc)  # illuminate LED
+    print('rest at center speaker and press button to start calibration...')
+    # freefield.wait_for_button()  # start calibration after button press
+    log = numpy.zeros(2)
+    while True:  # wait in loop for sensor to stabilize
+        pose = get_pose(s)
+        # print(pose)
+        log = numpy.vstack((log, pose))
+        # check if orientation is stable for at least 30 data points
+        if len(log) > 500:
+            diff = numpy.mean(numpy.abs(numpy.diff(log[-500:], axis=0)), axis=0).astype('float16')
+            if report:
+                print('az diff: %f,  ele diff: %f' % (diff[0], diff[1]), end="\r", flush=True)
+            if diff[0] < limit and diff[1] < limit:  # limit in degree
+                break
+    # freefield.write(tag='bitmask', value=0, processors=led_speaker.digital_proc)  # turn off LED
+    pose_offset = numpy.around(numpy.mean(log[-20:].astype('float16'), axis=0), decimals=2)
+    print('calibration complete, thank you!')
+    return pose_offset

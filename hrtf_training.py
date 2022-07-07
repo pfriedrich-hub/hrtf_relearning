@@ -4,8 +4,9 @@ import numpy
 from numpy import linalg as la
 from pathlib import Path
 import time
-import head_tracking.cam_tracking.aruco_pose as aruco
+# import head_tracking.cam_tracking.aruco_pose as aruco
 # import head_tracking.sensor_tracking.sensor_pose as sensor
+import head_tracking.meta_motion.mm_pose as motion_sensor
 data_dir = Path.cwd() / 'data'
 
 fs = 48828
@@ -19,7 +20,7 @@ time_limit = 90
 
 def hrtf_training(time_limit, t_max=500, target_size=5, target_time=0.5):
     global speakers, offset, _target_size, _target_time, _max_distance, _max_pulse_interval,\
-        game_time, end, buzzer, stim, proc_list
+        game_time, end, buzzer, stim, proc_list, sensor
     # initialize processors and cameras
     proc_list = [['RX81', 'RX8', data_dir / 'rcx' / 'play_buf_pulse.rcx'],
                  ['RX82', 'RX8', data_dir / 'rcx' / 'play_buf_pulse.rcx'],
@@ -27,7 +28,8 @@ def hrtf_training(time_limit, t_max=500, target_size=5, target_time=0.5):
     # if not freefield.PROCESSORS.mode:
     freefield.initialize('dome', device=proc_list)
     freefield.set_logger('warning')
-    aruco.init_cams()
+    # aruco.init_cams()
+    sensor = motion_sensor.start_sensor()
     table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')
     speakers = numpy.loadtxt(table_file, skiprows=1, usecols=(0, 3, 4), delimiter=",", dtype=float)
 
@@ -72,7 +74,8 @@ def hrtf_training(time_limit, t_max=500, target_size=5, target_time=0.5):
             print('score: %i trials completed in under 3 minutes!' % (index+1))
             break
     freefield.halt()
-    aruco.deinit_cams()
+    # aruco.deinit_cams()
+    motion_sensor.disconnect(sensor)
     print('end')
     return
 
@@ -120,7 +123,8 @@ def play_trial(speaker_id):
         time.sleep(0.1)
 
 def compare_pose(target, offset):
-    pose = aruco.get_pose()
+    # pose = aruco.get_pose()
+    pose = sensor.get_pose()
     if all(pose):
         pose = pose - offset
         dist = la.norm(pose - target) - _target_size  # distance of current head pose from target window
@@ -140,16 +144,3 @@ def compare_pose(target, offset):
 
 if __name__ == "__main__":
     hrtf_training(time_limit=time_limit)
-
-
-import head_tracking.meta_motion.mm_pose as motion_sensor
-
-device = motion_sensor.start_sensor()
-
-while True:
-    print('roll %2.f, pitch %2.f, yaw %2.f'
-          % (device.pose.roll, device.pose.pitch, device.pose.yaw),
-          end="\r", flush=True)
-    time.sleep(0.01)
-
-motion_sensor.disconnect(device)

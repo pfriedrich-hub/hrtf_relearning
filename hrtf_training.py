@@ -92,11 +92,16 @@ def play_trial(speaker_id):
 
     target = speakers[speaker_id, 1:]
     print('\n TARGET| azimuth: %.1f, elevation %.1f\n' % (target[0], target[1]))
-    compare_pose(target, offset)  # set initial isi based on pose-target difference
+    pose = get_pose(offset)  # set initial isi based on pose-target difference
+    dist = get_dist(pose, target)
     freefield.play(kind='zBusA', proc='all')   # start playing pulse train
     count_down = False
+    pose_list = []
     while True:
-        dist, pose = compare_pose(target, offset)  # set isi and return pose-target distance
+        pose = get_pose(offset)  # set isi and return pose-target distance
+        pose_list.append(pose)
+        pose = numpy.mean(pose_list[slice(-10, None)], axis=0)
+        dist = get_dist(pose, target)
         if all(pose):
             print('head pose: azimuth: %.1f, elevation: %.1f' % (pose[0], pose[1]), end="\r", flush=True)
         else:
@@ -122,9 +127,14 @@ def play_trial(speaker_id):
     while freefield.read('goal_playback', processor='RX81', n_samples=1):
         time.sleep(0.1)
 
-def compare_pose(target, offset):
+def get_pose(offset):
     # pose = aruco.get_pose()
     pose = sensor.get_pose()
+    if all(pose):
+        pose = pose - offset
+    return pose
+
+def get_dist(pose, target):
     if all(pose):
         pose = pose - offset
         dist = la.norm(pose - target) - _target_size  # distance of current head pose from target window

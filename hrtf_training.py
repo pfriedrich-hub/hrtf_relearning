@@ -63,7 +63,7 @@ def hrtf_training(time_limit, t_max=500, target_size=5, target_time=0.5):
     sequence = numpy.delete(sequence, numpy.where(sequence == 23))  # remove 0, 0 target
     trial_sequence = slab.Trialsequence(trials=sequence)
 
-    offset = aruco.calibrate_pose(report=True)
+    # offset = aruco.calibrate_pose(report=True)
     # loop over trials
     end = False
     game_time = time.time()

@@ -5,18 +5,18 @@ import slab
 from pathlib import Path
 data_dir = Path.cwd() / 'data'
 import matplotlib
-matplotlib.use('TkAgg')
+# matplotlib.use('TkAgg')
 from matplotlib import pyplot as plt
 import numpy
 
 # elevation gain
-subject = 'jakab'
-subj_id = subject + '_mold_1_01_Jul'
-subj_id = subject + '_no_mold_01_Jul'
+subject = 'barbara_mold_1_18_Jul'
+# subj_id = subject + '_mold_1_01_Jul'
+# subj_id = subject + '_no_mold_01_Jul'
 
 plt.figure()
 sequence = slab.Trialsequence(conditions=47, n_reps=1)
-sequence.load_pickle(file_name=data_dir / 'localization_data' / subj_id)
+sequence.load_pickle(file_name=data_dir / 'localization_data' / subject)
 loc_data = numpy.asarray(sequence.data)
 loc_data = loc_data.reshape(loc_data.shape[0], 2, 2)
 ele_x = loc_data[:, 1, 1]  # target elevations
@@ -26,7 +26,7 @@ ele_y = numpy.array(numpy.delete(ele_y, bads_idx), dtype='float')
 ele_x = numpy.array(numpy.delete(ele_x, bads_idx), dtype='float')
 plt.scatter(ele_x, ele_y)
 elevation_gain = scipy.stats.linregress(ele_x, ele_y)[0]
-plt.title(subj_id + '; elevation_gain %.1f' % elevation_gain)
+plt.title(subject + '; elevation_gain %.1f' % elevation_gain)
 plt.show()
 
 

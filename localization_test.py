@@ -5,20 +5,22 @@ import time
 import datetime
 date = datetime.datetime.now()
 from pathlib import Path
-import head_tracking.cam_tracking.aruco_pose as aruco
+# import head_tracking.cam_tracking.aruco_pose as aruco
+import head_tracking.meta_motion.mm_pose as motion_sensor
 # import head_tracking.sensor_tracking.sensor_pose as sensor
 
 fs = 48828
 slab.set_default_samplerate(fs)
 data_dir = Path.cwd() / 'data'
 tone = slab.Sound.tone(frequency=1000, duration=0.25, level=70)
-subj_id = 'joschua_mold_1'
+subj_id = 'barbara_mold_1'
 
 def localization_test():
-    global speakers, stim
+    global speakers, stim, sensor
+    # aruco.init_cams()
+    sensor = motion_sensor.start_sensor()
     freefield.initialize('dome', default='play_rec')
     freefield.set_logger('warning')
-    aruco.init_cams()
     # generate stimulus
     noise = slab.Sound.pinknoise(duration=0.025, level=90)
     noise = noise.ramp(when='both', duration=0.01)
@@ -44,13 +46,15 @@ def localization_test():
         trial_sequence.add_response(play_trial(speaker_id))  # play n trials
     trial_sequence.save_pickle(data_dir / 'localization_data' / str(subj_id + date.strftime('_%d_%b')))
     freefield.halt()
-    aruco.deinit_cams()
+    # aruco.deinit_cams()
+    motion_sensor.disconnect(sensor)
     print('localization test completed!')
     return
 
 def play_trial(speaker_id):
     time.sleep(.5)
-    offset = aruco.calibrate_pose(limit=1)  # get orientation offset
+    # offset = aruco.calibrate_pose(limit=1)  # get orientation offset
+    offset = motion_sensor.calibrate_pose(sensor)
     target = speakers[speaker_id, 1:]
     print('TARGET| azimuth: %.1f, elevation %.1f' % (target[0], target[1]))
     time.sleep(.5)
@@ -59,7 +63,8 @@ def play_trial(speaker_id):
     freefield.wait_to_finish_playing()
     response = 0
     while not response:
-        pose = aruco.get_pose()
+        # pose = aruco.get_pose()
+        pose = motion_sensor.get_pose(sensor, 30)  # set initial isi based on pose-target difference
         if all(pose):
             pose = pose - offset
             print('head pose: azimuth: %.1f, elevation: %.1f' % (pose[0], pose[1]), end="\r", flush=True)
@@ -71,6 +76,7 @@ def play_trial(speaker_id):
     freefield.set_signal_and_speaker(signal=tone, speaker=23)
     freefield.play()
     return numpy.array((pose, target))
+
 
 if __name__ == "__main__":
     trialsequence = localization_test()

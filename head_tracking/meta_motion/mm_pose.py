@@ -1,6 +1,6 @@
 from mbientlab.metawear import *
 from time import sleep
-# import freefield
+import freefield
 import numpy
 
 class State:
@@ -47,9 +47,9 @@ def start_sensor(device=MetaWear('E1:CD:49:19:08:19')):
 # tear down
 def disconnect(sensor):
         # stop
-        libmetawear.mbl_mw_sensor_fusion_stop(s.device.board);
+        libmetawear.mbl_mw_sensor_fusion_stop(sensor.device.board);
         # unsubscribe to signal
-        signal = libmetawear.mbl_mw_sensor_fusion_get_data_signal(s.device.board, SensorFusionData.QUATERNION);
+        signal = libmetawear.mbl_mw_sensor_fusion_get_data_signal(sensor.device.board, SensorFusionData.QUATERNION);
         libmetawear.mbl_mw_datasignal_unsubscribe(signal)
         # disconnect
         libmetawear.mbl_mw_debug_disconnect(sensor.device.board)
@@ -57,7 +57,7 @@ def disconnect(sensor):
             sleep(0.1)
         print('sensor disconnected')
 
-def get_pose(sensor, n_datapoints):
+def get_pose(sensor, n_datapoints=30):
     _pose = numpy.zeros((n_datapoints, 2))
     for n in range(n_datapoints):
         _pose[n] = numpy.array((sensor.pose.yaw, sensor.pose.roll))
@@ -78,18 +78,18 @@ def print_pose(pose):
     else:
         print('no head pose detected', end="\r", flush=True)
 
-def test_pose(n_datapoints=30):
+def test_pose(s, n_datapoints=30):
     sensor = start_sensor()
     while True:
         pose = get_pose(sensor, n_datapoints)
         print_pose(pose)
 
 def calibrate_pose(s, limit=0.11, report=True):
-    # [led_speaker] = freefield.pick_speakers(23)  #s get object for center speaker LED
-    # freefield.write(tag='bitmask', value=led_speaker.digital_channel,
-    #                 processors=led_speaker.digital_proc)  # illuminate LED
+    [led_speaker] = freefield.pick_speakers(23)  #s get object for center speaker LED
+    freefield.write(tag='bitmask', value=led_speaker.digital_channel,
+                    processors=led_speaker.digital_proc)  # illuminate LED
     print('rest at center speaker and press button to start calibration...')
-    # freefield.wait_for_button()  # start calibration after button press
+    freefield.wait_for_button()  # start calibration after button press
     log = numpy.zeros(2)
     while True:  # wait in loop for sensor to stabilize
         pose = get_pose(s)
@@ -102,7 +102,7 @@ def calibrate_pose(s, limit=0.11, report=True):
                 print('az diff: %f,  ele diff: %f' % (diff[0], diff[1]), end="\r", flush=True)
             if diff[0] < limit and diff[1] < limit:  # limit in degree
                 break
-    # freefield.write(tag='bitmask', value=0, processors=led_speaker.digital_proc)  # turn off LED
+    freefield.write(tag='bitmask', value=0, processors=led_speaker.digital_proc)  # turn off LED
     pose_offset = numpy.around(numpy.mean(log[-20:].astype('float16'), axis=0), decimals=2)
     print('calibration complete, thank you!')
     return pose_offset

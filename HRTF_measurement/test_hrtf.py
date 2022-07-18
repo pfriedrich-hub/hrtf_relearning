@@ -7,14 +7,14 @@ slab.Signal.set_default_samplerate(fs)  # default samplerate for generating soun
 import freefield
 import HRTF_measurement.helper_functions
 import matplotlib
-matplotlib.use('TkAgg')
+# matplotlib.use('TkAgg')
 from matplotlib import pyplot as plt
 
 # compare hrtfs
 # get hrtfs with similar source coordinates
 # filename = 'kemar_fflab.sofa'
 filename = 'joschua_no_mold.sofa'
-filename = 'joschua_mold_1.sofa'
+filename = 'barbara_mold_1.sofa'
 
 # compare waterfall
 hrtf = slab.HRTF(data_dir / 'hrtfs' / filename)

@@ -41,6 +41,7 @@ def start_sensor(device=MetaWear('E1:CD:49:19:08:19')):
     libmetawear.mbl_mw_sensor_fusion_enable_data(s.device.board, SensorFusionData.EULER_ANGLE)
     libmetawear.mbl_mw_sensor_fusion_start(s.device.board)
     print('Sensor started!')
+    sleep(1.5)
     return s
 
 # tear down
@@ -61,11 +62,13 @@ def get_pose(sensor, n_datapoints):
     for n in range(n_datapoints):
         _pose[n] = numpy.array((sensor.pose.yaw, sensor.pose.roll))
     # remove outliers
-    d = numpy.abs(_pose - numpy.median(_pose))  # deviation from median
+    d = numpy.abs(_pose - numpy.median(_pose, axis=0))  # deviation from median
     mdev = numpy.median(d, axis=0)  # mean deviation
-    s = d / mdev if all(mdev) else numpy.array(0. ,0.)  # factorized mean deviation of each element in pose
-    _pose = _pose[s < 2]  # remove outliers
-    pose = numpy.mean(_pose)
+    s = d / mdev if all(mdev) else numpy.zeros_like(d)  # factorized mean deviation of each element in pose
+    # _pose[:, 0] = _pose[s[:, 0] < 2][:, 0]
+    # _pose[:, 1] = _pose[s[:, 1] < 2][:, 1]
+    # remove outliers
+    pose = numpy.mean(_pose, axis=0)
     # print(pose)
     return pose
 
@@ -75,10 +78,11 @@ def print_pose(pose):
     else:
         print('no head pose detected', end="\r", flush=True)
 
-def test_pose():
+def test_pose(n_datapoints=30):
     sensor = start_sensor()
-    pose = get_pose(sensor, 10)
-    print_pose(pose)
+    while True:
+        pose = get_pose(sensor, n_datapoints)
+        print_pose(pose)
 
 def calibrate_pose(s, limit=0.11, report=True):
     # [led_speaker] = freefield.pick_speakers(23)  #s get object for center speaker LED

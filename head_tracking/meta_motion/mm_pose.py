@@ -44,22 +44,41 @@ def start_sensor(device=MetaWear('E1:CD:49:19:08:19')):
     return s
 
 # tear down
-def disconnect(s):
+def disconnect(sensor):
         # stop
         libmetawear.mbl_mw_sensor_fusion_stop(s.device.board);
         # unsubscribe to signal
         signal = libmetawear.mbl_mw_sensor_fusion_get_data_signal(s.device.board, SensorFusionData.QUATERNION);
         libmetawear.mbl_mw_datasignal_unsubscribe(signal)
         # disconnect
-        libmetawear.mbl_mw_debug_disconnect(s.device.board)
-        while not s.device.is_connected:
+        libmetawear.mbl_mw_debug_disconnect(sensor.device.board)
+        while not sensor.device.is_connected:
             sleep(0.1)
         print('sensor disconnected')
 
-def get_pose(s):
-    pose = numpy.array((s.pose.yaw, s.pose.roll))
+def get_pose(sensor, n_datapoints):
+    _pose = numpy.zeros((n_datapoints, 2))
+    for n in range(n_datapoints):
+        _pose[n] = numpy.array((sensor.pose.yaw, sensor.pose.roll))
+    # remove outliers
+    d = numpy.abs(_pose - numpy.median(_pose))  # deviation from median
+    mdev = numpy.median(d, axis=0)  # mean deviation
+    s = d / mdev if all(mdev) else numpy.array(0. ,0.)  # factorized mean deviation of each element in pose
+    _pose = _pose[s < 2]  # remove outliers
+    pose = numpy.mean(_pose)
     # print(pose)
     return pose
+
+def print_pose(pose):
+    if all(pose):
+        print('head pose: azimuth: %.1f, elevation: %.1f' % (pose[0], pose[1]), end="\r", flush=True)
+    else:
+        print('no head pose detected', end="\r", flush=True)
+
+def test_pose():
+    sensor = start_sensor()
+    pose = get_pose(sensor, 10)
+    print_pose(pose)
 
 def calibrate_pose(s, limit=0.11, report=True):
     # [led_speaker] = freefield.pick_speakers(23)  #s get object for center speaker LED

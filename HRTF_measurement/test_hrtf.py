@@ -13,14 +13,14 @@ from matplotlib import pyplot as plt
 # compare hrtfs
 # get hrtfs with similar source coordinates
 # filename = 'kemar_fflab.sofa'
-filename = 'hannah_no_mold.sofa'
+filename = 'joschua_no_mold.sofa'
+filename = 'joschua_mold_1.sofa'
 
-
-hrtf = slab.HRTF(data_dir / 'hrtfs' / filename)
 # compare waterfall
+hrtf = slab.HRTF(data_dir / 'hrtfs' / filename)
 cs1 = hrtf.cone_sources(cone=0, coords='interaural', full_cone=False)
 hrtf.plot_tf(cs1, n_bins=200, kind='waterfall', ear='right')
-
+plt.title(filename)
 
 hrtf.plot_sources(cs1, coords='interaural')
 cs2 = kemar.cone_sources(cone=0, coords='polar', full_cone=False)

@@ -35,10 +35,10 @@ def localization_test():
     # create sequence of speakers to play from, without direct repetition of azimuth or elevation
     n_conditions = len(speakers)
     sequence = numpy.random.permutation(numpy.tile(list(range(n_conditions)), 1))
-    az_dist, ele_dist = numpy.diff(speakers[sequence, 1]), numpy.diff(speakers[sequence, 2])
-    while numpy.min(numpy.abs(az_dist)) == 0.0 or numpy.min(numpy.abs(ele_dist)) == 0.0:
-        sequence = numpy.random.permutation(numpy.tile(list(range(n_conditions)), 1))
-        az_dist, ele_dist = numpy.diff(speakers[sequence, 1]), numpy.diff(speakers[sequence, 2])
+    # az_dist, ele_dist = numpy.diff(speakers[sequence, 1]), numpy.diff(speakers[sequence, 2])
+    # while numpy.min(numpy.abs(az_dist)) == 0.0 or numpy.min(numpy.abs(ele_dist)) == 0.0:
+    #     sequence = numpy.random.permutation(numpy.tile(list(range(n_conditions)), 1))
+    #     az_dist, ele_dist = numpy.diff(speakers[sequence, 1]), numpy.diff(speakers[sequence, 2])
     # generate trial sequence with target speaker locations
     trial_sequence = slab.Trialsequence(trials=speakers[sequence, 0].astype('int'))
     # loop over trials

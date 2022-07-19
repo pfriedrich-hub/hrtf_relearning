@@ -4,32 +4,25 @@ import numpy
 from numpy import linalg as la
 from pathlib import Path
 import time
-# import head_tracking.cam_tracking.aruco_pose as aruco
-# import head_tracking.sensor_tracking.sensor_pose as sensor
 import head_tracking.meta_motion.mm_pose as motion_sensor
 data_dir = Path.cwd() / 'data'
-
 fs = 48828
 slab.set_default_samplerate(fs)
 
 # t_max: maximal pulse interval in ms
 # target_window: target window as euclidean distance of head pose from target speaker
-# time_on_target: time matching head direction required to finish a trial
-# n_trials = 15
-time_limit = 90
+# target_time: time matching head direction required to finish a trial
 
-def hrtf_training(time_limit, t_max=500, target_size=5, target_time=0.5):
-    global speakers, offset, _target_size, _target_time, _max_distance, _max_pulse_interval,\
-        game_time, end, buzzer, stim, proc_list, sensor
-    # initialize processors and cameras
+def hrtf_training(time_limit=90, t_max=500, target_size=5, target_time=0.5):
+    global proc_list, speakers, sensor, game_time, buzzer, end, pulse_attr, goal_attr, offset
+
+    # initialize processors and sensor
+    sensor = motion_sensor.start_sensor()
     proc_list = [['RX81', 'RX8', data_dir / 'rcx' / 'play_buf_pulse.rcx'],
                  ['RX82', 'RX8', data_dir / 'rcx' / 'play_buf_pulse.rcx'],
                  ['RP2', 'RP2', data_dir / 'rcx' / 'arduino_analog.rcx']]
-    # if not freefield.PROCESSORS.mode:
     freefield.initialize('dome', device=proc_list)
     freefield.set_logger('warning')
-    # aruco.init_cams()
-    sensor = motion_sensor.start_sensor()
     table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')
     speakers = numpy.loadtxt(table_file, skiprows=1, usecols=(0, 3, 4), delimiter=",", dtype=float)
 
@@ -37,12 +30,6 @@ def hrtf_training(time_limit, t_max=500, target_size=5, target_time=0.5):
     stim = slab.Sound.pinknoise(duration=10.0)
     freefield.write(tag='playbuflen', value=stim.n_samples, processors=['RX81', 'RX82'])
     freefield.write(tag='data', value=stim.data, processors=['RX81', 'RX82'])
-    # noise = slab.Sound.pinknoise(duration=0.025, level=90)
-    # noise = noise.ramp(when='both', duration=0.01)
-    # silence = slab.Sound.silence(duration=0.025)
-    # stim = slab.Sound.sequence(noise, silence, noise, silence, noise,
-    #                            silence, noise, silence, noise)
-    # stim=slab.Sound.sequence(stim, stim, stim, stim)
     coin = slab.Sound(data=data_dir / 'sounds' / 'Mario_Coin_Retro.wav')  # load goal sound to buffer
     coin.level = 70
     freefield.write(tag='goal_data', value=coin.data, processors=['RX81', 'RX82'])
@@ -50,9 +37,9 @@ def hrtf_training(time_limit, t_max=500, target_size=5, target_time=0.5):
     buzzer = slab.Sound(data_dir / 'sounds' / 'Buzzer1.wav')
     buzzer.level = 70
 
-    # pulse train parameters
-    _max_distance = la.norm(numpy.min(speakers[:, 1:], axis=0) - [0, 0])  # maximal distance from center speaker
-    _target_time, _target_size, _max_pulse_interval = target_time, target_size, t_max
+    # set variables to control pulse train and goal condition
+    pulse_attr = {'max_distance': la.norm(numpy.min(speakers[:, 1:], axis=0) - [0, 0]), 'max_pulse_interval': t_max}
+    goal_attr = {'target_size': target_size, 'target_time': target_time, 'time_limit':time_limit}
 
     # create sequence of speakers to play from, without direct repetition of azimuth or elevation
     sequence = numpy.random.permutation(numpy.tile(list(range(len(speakers))), 1))
@@ -63,94 +50,73 @@ def hrtf_training(time_limit, t_max=500, target_size=5, target_time=0.5):
     sequence = numpy.delete(sequence, numpy.where(sequence == 23))  # remove 0, 0 target
     trial_sequence = slab.Trialsequence(trials=sequence)
 
-    # offset = aruco.calibrate_pose(report=True)
-    # loop over trials
-    end = False
-    game_time = time.time()
-    for index, speaker_id in enumerate(trial_sequence):
+    offset = motion_sensor.calibrate_pose(sensor, 20)  # get head pose offset
+    game_time = time.time()  # start counting time
+    end = False  # set end condition for training sequence
+    for index, speaker_id in enumerate(trial_sequence):  # loop over trials
         if not end:
-            play_trial(speaker_id)  # play n trials
-        else:
-            print('score: %i trials completed in under 3 minutes!' % (index+1))
+            play_trial(speaker_id)  # play trial
+        else:  # end training sequence
+            print('score: %i trials completed in 3 minutes!' % (index+1))
             break
     freefield.halt()
-    # aruco.deinit_cams()
     motion_sensor.disconnect(sensor)
-    print('end')
     return
 
-
 def play_trial(speaker_id):
-    global end
-    # set channel for target speaker
-    freefield.write(tag='source', value=1, processors=['RX81', 'RX82'])
+    global target, end
+    freefield.write(tag='source', value=1, processors=['RX81', 'RX82'])  # set speaker input to pulse train buffer
     freefield.write(tag='chan', value=freefield.pick_speakers(speaker_id)[0].analog_channel,
-                    processors=freefield.pick_speakers(speaker_id)[0].analog_proc)
+                    processors=freefield.pick_speakers(speaker_id)[0].analog_proc)  # set channel for target speaker
     other_proc = [proc_list[1][0], proc_list[0][0]]
     other_proc.remove(freefield.pick_speakers(speaker_id)[0].analog_proc)
     freefield.write(tag='chan', value=99, processors=other_proc)
-
-    target = speakers[speaker_id, 1:]
+    target = speakers[speaker_id, 1:]  # get target coordinates
     print('\n TARGET| azimuth: %.1f, elevation %.1f\n' % (target[0], target[1]))
-    pose = get_pose(offset)  # set initial isi based on pose-target difference
-    dist = get_dist(pose, target)
-    freefield.play(kind='zBusA', proc='all')   # start playing pulse train
-    count_down = False
-    pose_list = []
+    set_pulse_train()  # set initial pulse train interval
+    freefield.play(kind='zBusA', proc='all')  # start playing pulse train
+    count_down = False  # condition for counting time on target
     while True:
-        pose = get_pose(offset)  # set isi and return pose-target distance
-        pose_list.append(pose)
-        pose = numpy.mean(pose_list[slice(-10, None)], axis=0)
-        dist = get_dist(pose, target)
-        if all(pose):
-            print('head pose: azimuth: %.1f, elevation: %.1f' % (pose[0], pose[1]), end="\r", flush=True)
-        else:
-            print('no head pose detected', end="\r", flush=True)
-        if dist <= 0:  # check if head pose is within target window
+        distance = set_pulse_train()
+        if distance <= 0:  # check if head pose is within target window
             if not count_down:  # start counting down time as longs as pose matches target
-                start_time = time.time()
-                count_down = True
+                start_time, count_down = time.time(), True
         else:
             start_time, count_down = time.time(), False  # reset timer if pose no longer matches target
-        if time.time() > start_time + _target_time:
-            break  # end trial if goal conditions are met or time runs out
-        if time.time() > game_time + time_limit:
+        if time.time() > start_time + goal_attr['target_time']:  # end trial if goal conditions are met
+            break
+        if time.time() > game_time + goal_attr['time_limit']:  # end training sequence if time is up
             end = True
-            freefield.write(tag='goal_data', value=buzzer.data, processors=['RX81', 'RX82'])
-            freefield.write(tag='goal_len', value=buzzer.n_samples, processors=['RX81', 'RX82'])
+            freefield.write(tag='goal_data', value=buzzer.data, processors=['RX81', 'RX82'])   # write buzzer to
+            freefield.write(tag='goal_len', value=buzzer.n_samples, processors=['RX81', 'RX82'])  # goal sound buffer
             break
         else:
-            print('no head pose detected', end="\r", flush=True)
             continue
-    freefield.write(tag='source', value=0, processors=['RX81', 'RX82'])
-    freefield.play(kind='zBusB', proc='all')
+    freefield.write(tag='source', value=0, processors=['RX81', 'RX82'])  # set speaker input to goal sound
+    freefield.play(kind='zBusB', proc='all')  # play from goal sound buffer
     while freefield.read('goal_playback', processor='RX81', n_samples=1):
         time.sleep(0.1)
 
-def get_pose(offset):
-    # pose = aruco.get_pose()
-    pose = sensor.get_pose()
+def set_pulse_train():
+    pose = get_pose()
+    if all(pose):
+        distance = la.norm(pose - target) - pulse_attr['target_size']  # distance of current head pose from target window
+        # scale ISI with deviation of pose from sound source
+        interval_scale = (distance + 1e-9) / pulse_attr['max_distance']  # scale factor for pulse interval duration
+        interval = pulse_attr['max_pulse_interval'] * (numpy.log(interval_scale + 0.05) + 3) / 3  # log scaling
+        print('head pose: azimuth: %.1f, elevation: %.1f' % (pose[0], pose[1]), end="\r", flush=True)
+    else:  # if no pose is detected, set maximal pulse interval
+        distance = pulse_attr['max_distance']
+        interval = pulse_attr['max_pulse_interval']
+        print('no marker detected', end="\r", flush=True)
+    freefield.write('interval', interval, processors=['RX81', 'RX82'])  # write isi to processors
+    return distance
+
+def get_pose():
+    pose = motion_sensor.get_pose(sensor)
     if all(pose):
         pose = pose - offset
     return pose
 
-def get_dist(pose, target):
-    if all(pose):
-        pose = pose - offset
-        dist = la.norm(pose - target) - _target_size  # distance of current head pose from target window
-        # scale ISI with deviation of pose from sound source
-        interval_scale = (dist+1e-9) / _max_distance  # scale factor for pulse interval duration
-        # scale ISI with deviation of pose from sound source
-        interval = _max_pulse_interval * (numpy.log(interval_scale + 0.05) + 3) / 3  # log scaling
-        # interval = _max_pulse_interval * numpy.sqrt((dist+1e-9)/_max_distance)  # square scaling
-        # interval = _max_pulse_interval * interval_scale  # linear scaling
-        print('head pose: azimuth: %.1f, elevation: %.1f' % (pose[0], pose[1]), end="\r", flush=True)
-    else:
-        dist = _max_distance
-        interval = _max_pulse_interval
-        print('no marker detected', end="\r", flush=True)
-    freefield.write('interval', interval, processors=['RX81', 'RX82'])  # write isi to processors
-    return dist, pose
-
 if __name__ == "__main__":
-    hrtf_training(time_limit=time_limit)
+    hrtf_training()

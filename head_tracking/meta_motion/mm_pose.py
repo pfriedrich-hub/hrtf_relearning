@@ -57,7 +57,7 @@ def disconnect(sensor):
             sleep(0.1)
         print('sensor disconnected')
 
-def get_pose(sensor, n_datapoints=30):
+def get_pose(sensor, n_datapoints):
     _pose = numpy.zeros((n_datapoints, 2))
     for n in range(n_datapoints):
         _pose[n] = numpy.array((sensor.pose.yaw, sensor.pose.roll))

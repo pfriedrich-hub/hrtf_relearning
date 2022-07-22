@@ -49,7 +49,7 @@ def disconnect(sensor):
         # stop
         libmetawear.mbl_mw_sensor_fusion_stop(sensor.device.board);
         # unsubscribe to signal
-        signal = libmetawear.mbl_mw_sensor_fusion_get_data_signal(sensor.device.board, SensorFusionData.QUATERNION);
+        signal = libmetawear.mbl_mw_sensor_fusion_get_data_signal(sensor.device.board, SensorFusionData.EULER_ANGLE);
         libmetawear.mbl_mw_datasignal_unsubscribe(signal)
         # disconnect
         libmetawear.mbl_mw_debug_disconnect(sensor.device.board)
@@ -57,19 +57,24 @@ def disconnect(sensor):
             sleep(0.1)
         print('sensor disconnected')
 
-def get_pose(sensor, n_datapoints):
+def get_pose(sensor, n_datapoints=200):
     _pose = numpy.zeros((n_datapoints, 2))
-    for n in range(n_datapoints):
-        _pose[n] = numpy.array((sensor.pose.yaw, sensor.pose.roll))
+    pose = numpy.zeros((2))
+    n = 0
+    while n < n_datapoints:
+        pose = numpy.array((sensor.pose.yaw, sensor.pose.roll))
+        if all(pose < 360) and all(pose > -180):
+            if pose[0] > 180:
+                pose[0] -= 360
+            _pose[n] = pose
+            n += 1
     # remove outliers
-    d = numpy.abs(_pose - numpy.median(_pose, axis=0))  # deviation from median
-    mdev = numpy.median(d, axis=0)  # mean deviation
-    s = d / mdev if all(mdev) else numpy.zeros_like(d)  # factorized mean deviation of each element in pose
-    # _pose[:, 0] = _pose[s[:, 0] < 2][:, 0]
-    # _pose[:, 1] = _pose[s[:, 1] < 2][:, 1]
-    # remove outliers
-    pose = numpy.mean(_pose, axis=0)
-    # print(pose)
+    for i in range(2):
+        d = numpy.abs(_pose[:, i] - numpy.median(_pose[:, i]))  # deviation from median
+        mdev = numpy.median(d)  # mean deviation
+        s = d / mdev if mdev else numpy.zeros_like(d)  # factorized mean deviation of each element in pose
+        pose[i] = numpy.mean(_pose[s < 2, i])
+    # pose = numpy.mean(_pose, axis=0)
     return pose
 
 def print_pose(pose):
@@ -78,7 +83,7 @@ def print_pose(pose):
     else:
         print('no head pose detected', end="\r", flush=True)
 
-def test_pose(s, n_datapoints=30):
+def test_pose(n_datapoints=50):
     sensor = start_sensor()
     while True:
         pose = get_pose(sensor, n_datapoints)

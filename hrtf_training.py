@@ -1,3 +1,4 @@
+
 import freefield
 import slab
 import numpy
@@ -15,14 +16,13 @@ slab.set_default_samplerate(fs)
 
 def hrtf_training(time_limit=90, t_max=500, target_size=5, target_time=0.5):
     global proc_list, speakers, sensor, game_time, buzzer, end, pulse_attr, goal_attr, offset
-
-    # initialize processors and sensor
-    sensor = motion_sensor.start_sensor()
-    proc_list = [['RX81', 'RX8', data_dir / 'rcx' / 'play_buf_pulse.rcx'],
-                 ['RX82', 'RX8', data_dir / 'rcx' / 'play_buf_pulse.rcx'],
-                 ['RP2', 'RP2', data_dir / 'rcx' / 'arduino_analog.rcx']]
-    freefield.initialize('dome', device=proc_list)
-    freefield.set_logger('warning')
+    # initialize processors
+    if not freefield.PROCESSORS.mode:
+        proc_list = [['RX81', 'RX8', data_dir / 'rcx' / 'play_buf_pulse.rcx'],
+                     ['RX82', 'RX8', data_dir / 'rcx' / 'play_buf_pulse.rcx'],
+                     ['RP2', 'RP2', data_dir / 'rcx' / 'arduino_analog.rcx']]
+        freefield.initialize('dome', device=proc_list)
+        freefield.set_logger('warning')
     table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')
     speakers = numpy.loadtxt(table_file, skiprows=1, usecols=(0, 3, 4), delimiter=",", dtype=float)
 
@@ -37,14 +37,18 @@ def hrtf_training(time_limit=90, t_max=500, target_size=5, target_time=0.5):
     buzzer = slab.Sound(data_dir / 'sounds' / 'Buzzer1.wav')
     buzzer.level = 70
 
+    # initialize sensor
+    sensor = motion_sensor.start_sensor()
+
     # set variables to control pulse train and goal condition
     pulse_attr = {'max_distance': la.norm(numpy.min(speakers[:, 1:], axis=0) - [0, 0]), 'max_pulse_interval': t_max}
     goal_attr = {'target_size': target_size, 'target_time': target_time, 'time_limit':time_limit}
 
     # create sequence of speakers to play from, without direct repetition of azimuth or elevation
+    print('Setting target sequence...')
     sequence = numpy.random.permutation(numpy.tile(list(range(len(speakers))), 1))
     az_dist, ele_dist = numpy.diff(speakers[sequence, 1]), numpy.diff(speakers[sequence, 2])
-    while numpy.min(numpy.abs(az_dist)) == 0.0 or numpy.min(numpy.abs(ele_dist)) == 0.0:
+    while numpy.min(numpy.abs(az_dist)) <= 1.0 and numpy.min(numpy.abs(ele_dist)) <= 1.0:
         sequence = numpy.random.permutation(numpy.tile(list(range(len(speakers))), 1))
         az_dist, ele_dist = numpy.diff(speakers[sequence, 1]), numpy.diff(speakers[sequence, 2])
     sequence = numpy.delete(sequence, numpy.where(sequence == 23))  # remove 0, 0 target
@@ -59,7 +63,6 @@ def hrtf_training(time_limit=90, t_max=500, target_size=5, target_time=0.5):
         else:  # end training sequence
             print('score: %i trials completed in 3 minutes!' % (index+1))
             break
-    freefield.halt()
     motion_sensor.disconnect(sensor)
     return
 
@@ -100,7 +103,7 @@ def play_trial(speaker_id):
 def set_pulse_train():
     pose = get_pose()
     if all(pose):
-        distance = la.norm(pose - target) - pulse_attr['target_size']  # distance of current head pose from target window
+        distance = la.norm(pose - target) - goal_attr['target_size']  # distance of current head pose from target window
         # scale ISI with deviation of pose from sound source
         interval_scale = (distance + 1e-9) / pulse_attr['max_distance']  # scale factor for pulse interval duration
         interval = pulse_attr['max_pulse_interval'] * (numpy.log(interval_scale + 0.05) + 3) / 3  # log scaling

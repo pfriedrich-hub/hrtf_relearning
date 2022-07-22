@@ -17,7 +17,6 @@ subj_id = 'barbara_mold_1'
 
 def localization_test():
     global speakers, stim, sensor
-    # aruco.init_cams()
     sensor = motion_sensor.start_sensor()
     freefield.initialize('dome', default='play_rec')
     freefield.set_logger('warning')
@@ -35,10 +34,7 @@ def localization_test():
     # create sequence of speakers to play from, without direct repetition of azimuth or elevation
     n_conditions = len(speakers)
     sequence = numpy.random.permutation(numpy.tile(list(range(n_conditions)), 1))
-    # az_dist, ele_dist = numpy.diff(speakers[sequence, 1]), numpy.diff(speakers[sequence, 2])
-    # while numpy.min(numpy.abs(az_dist)) == 0.0 or numpy.min(numpy.abs(ele_dist)) == 0.0:
-    #     sequence = numpy.random.permutation(numpy.tile(list(range(n_conditions)), 1))
-    #     az_dist, ele_dist = numpy.diff(speakers[sequence, 1]), numpy.diff(speakers[sequence, 2])
+
     # generate trial sequence with target speaker locations
     trial_sequence = slab.Trialsequence(trials=speakers[sequence, 0].astype('int'))
     # loop over trials
@@ -46,14 +42,12 @@ def localization_test():
         trial_sequence.add_response(play_trial(speaker_id))  # play n trials
     trial_sequence.save_pickle(data_dir / 'localization_data' / str(subj_id + date.strftime('_%d_%b')))
     freefield.halt()
-    # aruco.deinit_cams()
     motion_sensor.disconnect(sensor)
     print('localization test completed!')
     return
 
 def play_trial(speaker_id):
     time.sleep(.5)
-    # offset = aruco.calibrate_pose(limit=1)  # get orientation offset
     offset = motion_sensor.calibrate_pose(sensor)
     target = speakers[speaker_id, 1:]
     print('TARGET| azimuth: %.1f, elevation %.1f' % (target[0], target[1]))
@@ -63,7 +57,6 @@ def play_trial(speaker_id):
     freefield.wait_to_finish_playing()
     response = 0
     while not response:
-        # pose = aruco.get_pose()
         pose = motion_sensor.get_pose(sensor, 30)  # set initial isi based on pose-target difference
         if all(pose):
             pose = pose - offset
@@ -76,7 +69,6 @@ def play_trial(speaker_id):
     freefield.set_signal_and_speaker(signal=tone, speaker=23)
     freefield.play()
     return numpy.array((pose, target))
-
 
 if __name__ == "__main__":
     trialsequence = localization_test()

@@ -57,17 +57,18 @@ def disconnect(sensor):
             sleep(0.1)
         print('sensor disconnected')
 
-def get_pose(sensor, n_datapoints=200):
+def get_pose(sensor, n_datapoints=30):
     _pose = numpy.zeros((n_datapoints, 2))
     pose = numpy.zeros((2))
     n = 0
     while n < n_datapoints:
         pose = numpy.array((sensor.pose.yaw, sensor.pose.roll))
-        if all(pose < 360) and all(pose > -180):
-            if pose[0] > 180:
-                pose[0] -= 360
-            _pose[n] = pose
-            n += 1
+        if not any(numpy.isnan(pose)):
+            if all(pose < 360) and all(pose > -180):
+                if pose[0] > 180:
+                    pose[0] -= 360
+                _pose[n] = pose
+                n += 1
     # remove outliers
     for i in range(2):
         d = numpy.abs(_pose[:, i] - numpy.median(_pose[:, i]))  # deviation from median

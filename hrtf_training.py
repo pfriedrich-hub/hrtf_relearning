@@ -14,7 +14,7 @@ slab.set_default_samplerate(fs)
 # target_window: target window as euclidean distance of head pose from target speaker
 # target_time: time matching head direction required to finish a trial
 
-def hrtf_training(time_limit=90, t_max=500, target_size=5, target_time=0.5):
+def hrtf_training(time_limit=90, t_max=500, target_size=4, target_time=0.5):
     global proc_list, speakers, sensor, game_time, buzzer, end, pulse_attr, goal_attr, offset
     # initialize processors
     if not freefield.PROCESSORS.mode:
@@ -54,7 +54,7 @@ def hrtf_training(time_limit=90, t_max=500, target_size=5, target_time=0.5):
     sequence = numpy.delete(sequence, numpy.where(sequence == 23))  # remove 0, 0 target
     trial_sequence = slab.Trialsequence(trials=sequence)
 
-    offset = motion_sensor.calibrate_pose(sensor, 20)  # get head pose offset
+    offset = motion_sensor.calibrate_pose(sensor, 200)  # get head pose offset
     game_time = time.time()  # start counting time
     end = False  # set end condition for training sequence
     for index, speaker_id in enumerate(trial_sequence):  # loop over trials
@@ -113,7 +113,7 @@ def set_pulse_train():
         interval = pulse_attr['max_pulse_interval']
         print('no marker detected', end="\r", flush=True)
     freefield.write('interval', interval, processors=['RX81', 'RX82'])  # write isi to processors
-    return distance
+    return distance - 1  # pulse interval responds to smaller target window than goal parameters (sensor jitter)
 
 def get_pose():
     pose = motion_sensor.get_pose(sensor)

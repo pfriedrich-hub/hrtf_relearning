@@ -10,7 +10,7 @@ from matplotlib import pyplot as plt
 import numpy
 
 # elevation gain
-subject = 'barbara_mold_1_18_Jul'
+subject = 'varvara_mold_1_23_Jul'
 # subj_id = subject + '_mold_1_01_Jul'
 # subj_id = subject + '_no_mold_01_Jul'
 

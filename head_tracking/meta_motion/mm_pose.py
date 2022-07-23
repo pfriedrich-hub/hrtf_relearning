@@ -90,7 +90,7 @@ def test_pose(n_datapoints=50):
         pose = get_pose(sensor, n_datapoints)
         print_pose(pose)
 
-def calibrate_pose(s, limit=0.11, report=True):
+def calibrate_pose(s, limit=0.5, report=True):
     [led_speaker] = freefield.pick_speakers(23)  #s get object for center speaker LED
     freefield.write(tag='bitmask', value=led_speaker.digital_channel,
                     processors=led_speaker.digital_proc)  # illuminate LED
@@ -102,13 +102,14 @@ def calibrate_pose(s, limit=0.11, report=True):
         # print(pose)
         log = numpy.vstack((log, pose))
         # check if orientation is stable for at least 30 data points
-        if len(log) > 500:
-            diff = numpy.mean(numpy.abs(numpy.diff(log[-500:], axis=0)), axis=0).astype('float16')
+        max_logsize = 2000
+        if len(log) > max_logsize:
+            diff = numpy.mean(numpy.abs(numpy.diff(log[-max_logsize:], axis=0)), axis=0).astype('float16')
             if report:
                 print('az diff: %f,  ele diff: %f' % (diff[0], diff[1]), end="\r", flush=True)
             if diff[0] < limit and diff[1] < limit:  # limit in degree
                 break
     freefield.write(tag='bitmask', value=0, processors=led_speaker.digital_proc)  # turn off LED
-    pose_offset = numpy.around(numpy.mean(log[-20:].astype('float16'), axis=0), decimals=2)
+    pose_offset = numpy.around(numpy.mean(log[-int(max_logsize/2):].astype('float16'), axis=0), decimals=2)
     print('calibration complete, thank you!')
     return pose_offset

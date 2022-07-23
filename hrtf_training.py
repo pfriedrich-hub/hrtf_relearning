@@ -15,7 +15,7 @@ slab.set_default_samplerate(fs)
 # target_time: time matching head direction required to finish a trial
 # test
 
-def hrtf_training(time_limit=90, t_max=500, target_size=4, target_time=0.5):
+def hrtf_training(time_limit=90, t_max=500, target_size=5, target_time=0.5):
     global proc_list, speakers, sensor, game_time, buzzer, end, pulse_attr, goal_attr, offset
     # initialize processors
     if not freefield.PROCESSORS.mode:
@@ -86,6 +86,7 @@ def play_trial(speaker_id):
             if not count_down:  # start counting down time as longs as pose matches target
                 start_time, count_down = time.time(), True
         else:
+            print('out')
             start_time, count_down = time.time(), False  # reset timer if pose no longer matches target
         if time.time() > start_time + goal_attr['target_time']:  # end trial if goal conditions are met
             break
@@ -114,7 +115,7 @@ def set_pulse_train():
         interval = pulse_attr['max_pulse_interval']
         print('no marker detected', end="\r", flush=True)
     freefield.write('interval', interval, processors=['RX81', 'RX82'])  # write isi to processors
-    return distance - 1  # pulse interval responds to smaller target window than goal parameters (sensor jitter)
+    return distance  # pulse interval responds to smaller target window than goal parameters (sensor jitter)
 
 def get_pose():
     pose = motion_sensor.get_pose(sensor)

@@ -13,6 +13,7 @@ slab.set_default_samplerate(fs)
 # t_max: maximal pulse interval in ms
 # target_window: target window as euclidean distance of head pose from target speaker
 # target_time: time matching head direction required to finish a trial
+# test
 
 def hrtf_training(time_limit=90, t_max=500, target_size=4, target_time=0.5):
     global proc_list, speakers, sensor, game_time, buzzer, end, pulse_attr, goal_attr, offset

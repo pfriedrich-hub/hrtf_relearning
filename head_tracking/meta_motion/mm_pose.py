@@ -58,24 +58,50 @@ def disconnect(sensor):
         print('sensor disconnected')
 
 def get_pose(sensor, n_datapoints=30):
-    _pose = numpy.zeros((n_datapoints, 2))
-    pose = numpy.zeros((2))
-    n = 0
+    az = numpy.array([sensor.pose.yaw])
+    ele = numpy.array([sensor.pose.roll])
+    n = 1
     while n < n_datapoints:
-        pose = numpy.array((sensor.pose.yaw, sensor.pose.roll))
-        if not any(numpy.isnan(pose)):
-            if all(pose < 360) and all(pose > -180):
-                if pose[0] > 180:
-                    pose[0] -= 360
-                _pose[n] = pose
-                n += 1
+        _az = sensor.pose.yaw
+        if numpy.diff((az[n-1], _az)) < 3:
+            az = numpy.hstack((az, _az))
+        _ele = sensor.pose.roll
+        if numpy.diff((ele[n-1], _ele)) < 2:
+            ele = numpy.hstack((ele, _ele))
+        ele = numpy.hstack((ele, _ele))
+        n += 1
+
+    def reject_outliers(data=az, m=2.):
+        d = numpy.abs(data - numpy.median(data))
+        mdev = numpy.median(d)
+        s = d / mdev if mdev else 0.
+        return data[s < m]
+
+    az = az[numpy.where(numpy.diff(az)>3)]
+    az = numpy.delete(az, numpy.where(numpy.diff(az) > 3))
+
+    az_diff = numpy.hstack((0, numpy.diff(az)))
+    ele_diff = numpy.hstack((0, numpy.diff(ele)))
+    az = az[az_diff < 3]
+
+    ntimes[(_pose[1:] - _pose[:-1]) < 9]
+
+    diff = numpy.vstack((numpy.zeros((2)), numpy.diff(_pose, axis=0)))
+    pose = _pose[diff[:,0]<3, 0]
+
+        if not any(numpy.isnan(pose)) and all(pose < 360) and all(pose > -180)\
+        and not (numpy.abs(numpy.diff((_pose[n-1], pose), axis=0)) > 2).any():
+            if pose[0] > 180:
+                pose[0] -= 360
+            _pose[n] = pose
+        n += 1
     # remove outliers
-    for i in range(2):
-        d = numpy.abs(_pose[:, i] - numpy.median(_pose[:, i]))  # deviation from median
-        mdev = numpy.median(d)  # mean deviation
-        s = d / mdev if mdev else numpy.zeros_like(d)  # factorized mean deviation of each element in pose
-        pose[i] = numpy.mean(_pose[s < 2, i])
-    # pose = numpy.mean(_pose, axis=0)
+    # for i in range(2):
+    #     d = numpy.abs(_pose[:, i] - numpy.median(_pose[:, i]))  # deviation from median
+    #     mdev = numpy.median(d)  # mean deviation
+    #     s = d / mdev if mdev else numpy.zeros_like(d)  # factorized mean deviation of each element in pose
+    #     pose[i] = numpy.mean(_pose[s < 2, i])
+    pose = numpy.mean(_pose, axis=0)
     return pose
 
 def print_pose(pose):

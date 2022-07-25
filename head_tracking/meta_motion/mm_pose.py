@@ -61,14 +61,17 @@ def get_pose(sensor, n_datapoints=20):
     pose_log = numpy.zeros((n_datapoints, 2))
     pose = numpy.array((sensor.pose.yaw, sensor.pose.roll))
     n = 0
-    while n < n_datapoints:
+    while n < n_datapoints:  # filter invalid values
         if not any(numpy.isnan(pose)) and all(-180 <= _pose <= 360 for _pose in pose)\
                 and not all(-1e-3 <= _pose <= 1e-3 for _pose in pose):
             if pose[0] > 180:
                 pose[0] -= 360
             pose_log[n] = pose
         n += 1
-    pose = numpy.median(pose_log, axis=0)
+    d = numpy.abs(pose_log - numpy.median(pose_log))  # deviation from median
+    mdev = numpy.median(d)  # median deviation
+    s = d / mdev if mdev else numpy.zeros_like(d)  # factorized mean deviation to detect outliers
+    pose = numpy.array((numpy.mean(pose_log[:,0][(s < 2)[:,0]]), numpy.mean(pose_log[:,1][(s < 2)[:,1]])))
     return pose
 
 def print_pose(pose):

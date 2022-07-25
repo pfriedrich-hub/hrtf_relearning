@@ -115,7 +115,7 @@ def set_pulse_train():
         interval = pulse_attr['max_pulse_interval']
         print('no marker detected', end="\r", flush=True)
     freefield.write('interval', interval, processors=['RX81', 'RX82'])  # write isi to processors
-    return distance  # pulse interval responds to smaller target window than goal parameters (sensor jitter)
+    return distance
 
 def get_pose():
     pose = motion_sensor.get_pose(sensor)

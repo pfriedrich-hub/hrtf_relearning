@@ -2,6 +2,8 @@ from mbientlab.metawear import *
 from time import sleep
 import freefield
 import numpy
+import numpy as np
+from matplotlib import pyplot as plt
 
 class State:
     # init
@@ -63,11 +65,11 @@ def get_pose(sensor, n_datapoints=20):
     n = 0
     while n < n_datapoints:  # filter invalid values
         if not any(numpy.isnan(pose)) and all(-180 <= _pose <= 360 for _pose in pose)\
-                and not all(-1e-3 <= _pose <= 1e-3 for _pose in pose):
+                and not any(-1e-3 <= _pose <= 1e-3 for _pose in pose):
             if pose[0] > 180:
                 pose[0] -= 360
             pose_log[n] = pose
-        n += 1
+            n += 1
     d = numpy.abs(pose_log - numpy.median(pose_log))  # deviation from median
     mdev = numpy.median(d)  # median deviation
     s = d / mdev if mdev else numpy.zeros_like(d)  # factorized mean deviation to detect outliers
@@ -80,11 +82,14 @@ def print_pose(pose):
     else:
         print('no head pose detected', end="\r", flush=True)
 
-def test_pose(n_datapoints=50):
+def test_pose(n_datapoints=20):
     sensor = start_sensor()
+    log = get_pose(sensor, n_datapoints)
     while True:
         pose = get_pose(sensor, n_datapoints)
         print_pose(pose)
+        log = numpy.vstack((log, pose))
+    return log
 
 def calibrate_pose(sensor, limit=0.5, report=True):
     [led_speaker] = freefield.pick_speakers(23)  #s get object for center speaker LED

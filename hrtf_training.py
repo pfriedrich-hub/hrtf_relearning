@@ -80,13 +80,18 @@ def play_trial(speaker_id):
     set_pulse_train()  # set initial pulse train interval
     freefield.play(kind='zBusA', proc='all')  # start playing pulse train
     count_down = False  # condition for counting time on target
+
+    debug_list = []
+    pose_list = []
     while True:
         distance = set_pulse_train()
+
+        debug_list.append(distance)
+        pose_list.append(pose)
         if distance <= 0:  # check if head pose is within target window
             if not count_down:  # start counting down time as longs as pose matches target
                 start_time, count_down = time.time(), True
         else:
-            print('out')
             start_time, count_down = time.time(), False  # reset timer if pose no longer matches target
         if time.time() > start_time + goal_attr['target_time']:  # end trial if goal conditions are met
             break
@@ -118,6 +123,7 @@ def set_pulse_train():
     return distance
 
 def get_pose():
+    global pose
     pose = motion_sensor.get_pose(sensor)
     if all(pose):
         pose = pose - offset

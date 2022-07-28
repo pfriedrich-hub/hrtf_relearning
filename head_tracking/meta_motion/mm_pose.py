@@ -1,5 +1,5 @@
 from mbientlab.metawear import *
-from time import sleep
+import time
 import freefield
 import numpy
 import numpy as np
@@ -30,9 +30,10 @@ def start_sensor(device=MetaWear('E1:CD:49:19:08:19')):
     print("Configuring..")
     # setup ble
     libmetawear.mbl_mw_settings_set_connection_parameters(s.device.board, 7.5, 7.5, 0, 6000)
-    sleep(1.5)
+    time.sleep(1.5)
     # setup quaternion
     libmetawear.mbl_mw_sensor_fusion_set_mode(s.device.board, SensorFusionMode.NDOF)
+    libmetawear.mbl_mw_sensor_fusion_set_mode(s.device.board, SensorFusionMode.IMU_PLUS)
     libmetawear.mbl_mw_sensor_fusion_set_acc_range(s.device.board, SensorFusionAccRange._8G)
     libmetawear.mbl_mw_sensor_fusion_set_gyro_range(s.device.board, SensorFusionGyroRange._2000DPS)
     libmetawear.mbl_mw_sensor_fusion_write_config(s.device.board)
@@ -43,7 +44,7 @@ def start_sensor(device=MetaWear('E1:CD:49:19:08:19')):
     libmetawear.mbl_mw_sensor_fusion_enable_data(s.device.board, SensorFusionData.EULER_ANGLE)
     libmetawear.mbl_mw_sensor_fusion_start(s.device.board)
     print('Sensor started!')
-    sleep(1.5)
+    time.sleep(1.5)
     return s
 
 # tear down
@@ -56,14 +57,15 @@ def disconnect(sensor):
         # disconnect
         libmetawear.mbl_mw_debug_disconnect(sensor.device.board)
         while not sensor.device.is_connected:
-            sleep(0.1)
+            time.sleep(0.1)
+        del sensor
         print('sensor disconnected')
 
-def get_pose(sensor, n_datapoints=20):
+def get_pose(sensor, n_datapoints=100):
     pose_log = numpy.zeros((n_datapoints, 2))
-    pose = numpy.array((sensor.pose.yaw, sensor.pose.roll))
     n = 0
     while n < n_datapoints:  # filter invalid values
+        pose = numpy.array((sensor.pose.yaw, sensor.pose.roll))
         if not any(numpy.isnan(pose)) and all(-180 <= _pose <= 360 for _pose in pose)\
                 and not any(-1e-3 <= _pose <= 1e-3 for _pose in pose):
             if pose[0] > 180:
@@ -73,7 +75,7 @@ def get_pose(sensor, n_datapoints=20):
     d = numpy.abs(pose_log - numpy.median(pose_log))  # deviation from median
     mdev = numpy.median(d)  # median deviation
     s = d / mdev if mdev else numpy.zeros_like(d)  # factorized mean deviation to detect outliers
-    pose = numpy.array((numpy.mean(pose_log[:,0][(s < 2)[:,0]]), numpy.mean(pose_log[:,1][(s < 2)[:,1]])))
+    pose = numpy.array((numpy.mean(pose_log[:, 0][(s < 2)[:, 0]]), numpy.mean(pose_log[:, 1][(s < 2)[:, 1]])))
     return pose
 
 def print_pose(pose):
@@ -82,13 +84,16 @@ def print_pose(pose):
     else:
         print('no head pose detected', end="\r", flush=True)
 
-def test_pose(n_datapoints=20):
+def test_pose(n_datapoints=100):
     sensor = start_sensor()
     log = get_pose(sensor, n_datapoints)
-    while True:
+    t_start = time.time()
+    while time.time() < t_start + 30:
         pose = get_pose(sensor, n_datapoints)
         print_pose(pose)
         log = numpy.vstack((log, pose))
+    disconnect(sensor)
+    print('test completed')
     return log
 
 def calibrate_pose(sensor, limit=0.5, report=True):

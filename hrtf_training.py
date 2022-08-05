@@ -15,7 +15,7 @@ slab.set_default_samplerate(fs)
 # target_time: time matching head direction required to finish a trial
 # test
 
-def hrtf_training(time_limit=90, t_max=500, target_size=5, target_time=0.5):
+def hrtf_training(time_limit=90, t_max=500, target_size=3, target_time=0.5):
     global proc_list, speakers, sensor, game_time, buzzer, end, pulse_attr, goal_attr, offset
     # initialize processors
     if not freefield.PROCESSORS.mode:
@@ -55,7 +55,7 @@ def hrtf_training(time_limit=90, t_max=500, target_size=5, target_time=0.5):
     sequence = numpy.delete(sequence, numpy.where(sequence == 23))  # remove 0, 0 target
     trial_sequence = slab.Trialsequence(trials=sequence)
 
-    offset = motion_sensor.calibrate_pose(sensor, 200)  # get head pose offset
+    # offset = motion_sensor.calibrate_pose(sensor)  # get head pose offset
     game_time = time.time()  # start counting time
     end = False  # set end condition for training sequence
     for index, speaker_id in enumerate(trial_sequence):  # loop over trials
@@ -68,7 +68,8 @@ def hrtf_training(time_limit=90, t_max=500, target_size=5, target_time=0.5):
     return
 
 def play_trial(speaker_id):
-    global target, end
+    global offset, target, end
+    offset = motion_sensor.calibrate_pose(sensor)  # get head pose offset
     freefield.write(tag='source', value=1, processors=['RX81', 'RX82'])  # set speaker input to pulse train buffer
     freefield.write(tag='chan', value=freefield.pick_speakers(speaker_id)[0].analog_channel,
                     processors=freefield.pick_speakers(speaker_id)[0].analog_proc)  # set channel for target speaker
@@ -81,13 +82,8 @@ def play_trial(speaker_id):
     freefield.play(kind='zBusA', proc='all')  # start playing pulse train
     count_down = False  # condition for counting time on target
 
-    debug_list = []
-    pose_list = []
     while True:
         distance = set_pulse_train()
-
-        debug_list.append(distance)
-        pose_list.append(pose)
         if distance <= 0:  # check if head pose is within target window
             if not count_down:  # start counting down time as longs as pose matches target
                 start_time, count_down = time.time(), True

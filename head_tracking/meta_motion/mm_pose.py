@@ -84,31 +84,38 @@ def print_pose(pose):
     else:
         print('no head pose detected', end="\r", flush=True)
 
-def test_pose(n_datapoints=100):
-    sensor = start_sensor()
+def test_sensor(sensor, n_datapoints=100, timer=False):
+    # sensor = start_sensor()
     log = get_pose(sensor, n_datapoints)
     t_start = time.time()
-    while time.time() < t_start + 30:
-        pose = get_pose(sensor, n_datapoints)
-        print_pose(pose)
-        log = numpy.vstack((log, pose))
-    disconnect(sensor)
-    print('test completed')
+    t = True
+    try:
+        while t:
+            pose = get_pose(sensor, n_datapoints)
+            print_pose(pose)
+            log = numpy.vstack((log, pose))
+            if timer and (time.time() < t_start + 30):
+                t = False
+    except KeyboardInterrupt:
+        pass
+    # disconnect(sensor)
+    # print('test completed')
     return log
 
-def calibrate_pose(sensor, limit=0.5, report=True):
+def calibrate_pose(sensor, limit=0.2, report=True):
     [led_speaker] = freefield.pick_speakers(23)  #s get object for center speaker LED
     freefield.write(tag='bitmask', value=led_speaker.digital_channel,
                     processors=led_speaker.digital_proc)  # illuminate LED
-    print('rest at center speaker and press button to start calibration...')
+    print('rest at center speaker and press button to start calibration...', end="\r", flush=True)
     freefield.wait_for_button()  # start calibration after button press
+    print('calibrating', end="\r", flush=True)
     log = numpy.zeros(2)
     while True:  # wait in loop for sensor to stabilize
         pose = get_pose(sensor)
         # print(pose)
         log = numpy.vstack((log, pose))
         # check if orientation is stable for at least 30 data points
-        max_logsize = 2000
+        max_logsize = 100
         if len(log) > max_logsize:
             diff = numpy.mean(numpy.abs(numpy.diff(log[-max_logsize:], axis=0)), axis=0).astype('float16')
             if report:
@@ -119,6 +126,20 @@ def calibrate_pose(sensor, limit=0.5, report=True):
     pose_offset = numpy.around(numpy.mean(log[-int(max_logsize/2):].astype('float16'), axis=0), decimals=2)
     print('calibration complete, thank you!')
     return pose_offset
+
+# def config_handler():
+#     print('test')
+# wrapper = FnVoid_VoidP_VoidP_FnVoidVoidPtrInt(config_handler)
+# config = libmetawear.mbl_mw_sensor_fusion_read_config(sensor.device.board, None, FnVoid_VoidP_Int())
+
+
+# def calibrate_pose(sensor):
+#     [led_speaker] = freefield.pick_speakers(23)  #s get object for center speaker LED
+#     freefield.write(tag='bitmask', value=led_speaker.digital_channel,
+#                     processors=led_speaker.digital_proc)  # illuminate LED
+#     print('rest at center speaker and press button to start calibration...')
+#     freefield.wait_for_button()  # start calibration after button press
+#     libmetawear.mbl_mw_sensor_fusion_reset_orientation(sensor.device.board)
 
 
 """

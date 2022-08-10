@@ -87,9 +87,18 @@ def dome_rec(signal, speaker_ids, sources, repetitions):
     return recordings
 
 def create_src_txt(recordings):
-    sources = numpy.asarray(recordings)[:, :2]
+    sources = numpy.asarray(recordings)[:, :2].astype('float')
     sources = numpy.c_[sources, numpy.round(numpy.ones(len(sources))*1.4, decimals=1)]
-    return sources
+    vertical_polar = numpy.zeros_like(sources)
+    azimuths = numpy.deg2rad(sources[:, 0])
+    elevations = numpy.deg2rad(sources[:, 1])
+    vertical_polar[:, 0] = numpy.rad2deg(numpy.arcsin(numpy.cos(azimuth) * numpy.sin(elevations)))
+    with numpy.errstate(divide='ignore'):
+        vertical_polar[:, 1] = (numpy.pi / 2) - numpy.arctan(((1 / numpy.tan(azimuth)) * numpy.cos(elevations)))
+    vertical_polar[vertical_polar[:, 1] > numpy.pi / 2, 1] -= numpy.pi
+    vertical_polar[:, 1] = numpy.rad2deg(vertical_polar[:, 1])
+    vertical_polar[:, 2] = sources[:, 2]
+    return vertical_polar
 
 if __name__ == "__main__":
     recordings, sources = record_hrtfs(subject_id, repetitions, signal, n_directions, safe=safe, speakers=speakers)

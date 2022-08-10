@@ -11,15 +11,15 @@ import matplotlib
 from matplotlib import pyplot as plt
 
 # write sofa
-filename = 'in-ear_paul_no_mold'
-filepath = Path(data_dir / 'in-ear_recordings' / 'paul')
+filename = 'kemar_fflab_in-ear_mic'
+filepath = Path(data_dir / 'in-ear_recordings' / filename)
 slab.Signal.set_default_samplerate(fs)  # default samplerate for generating sounds, filters etc.
 signal = slab.Sound.chirp(duration=0.1, level=70, from_frequency=200, to_frequency=20000, kind='linear')
 signal = slab.Sound.ramp(signal, when='both', duration=0.001)
 recs = helper.read_wav(path=data_dir / 'in-ear_recordings' / filepath)
 sources = numpy.loadtxt(filepath / str('sources_' + filename + '.txt'))
 hrtf = slab.HRTF.estimate_hrtf(recs, signal, sources)
-hrtf.write_sofa(filename=data_dir / 'hrtfs' / str(filename + '.sofa'))
+hrtf.write_sofa(filename=data_dir / str(filename + '.sofa'))
 
 # move sound (use slab transition) around using hrtfs
 

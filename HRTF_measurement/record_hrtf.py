@@ -15,10 +15,10 @@ slab.Signal.set_default_samplerate(fs)  # default samplerate for generating soun
 signal = slab.Sound.chirp(duration=0.1, level=80, from_frequency=200, to_frequency=18000, kind='linear')
 signal = slab.Sound.ramp(signal, when='both', duration=0.001)
 repetitions = 20
-subject_id = 'test112'
+subject_id = 'paul_no_mold'
 n_directions = 1  # only from the front (1) or front-back recordings (2)
-speakers = numpy.arange(19, 28).tolist()  # central cone
-# speakers = 'all'
+# speakers = numpy.arange(19, 28).tolist()  # central cone
+speakers = 'all'
 safe = 'sofa'
 
 def record_hrtfs(subject_id, repetitions, signal, n_directions, safe=safe, speakers=speakers):
@@ -49,6 +49,9 @@ def record_hrtfs(subject_id, repetitions, signal, n_directions, safe=safe, speak
             sources[:, 1] += 360/n_directions
             print('Rotate chair 180 degrees clockwise \nLook at fixpoint. Press button to start recording.')
             freefield.wait_for_button()
+    freefield.set_logger('INFO')
+    freefield.write(tag='bitmask', value=0, processors=led_speaker.digital_proc)  # turn off LED
+    # save .sofa / recordings.wav and sources.txt
     sources = create_src_txt(recordings)
     if safe == 'sofa' or safe == 'both':
         print('Creating sofa file...')
@@ -57,13 +60,10 @@ def record_hrtfs(subject_id, repetitions, signal, n_directions, safe=safe, speak
     if safe == 'wav' or safe == 'both':
         print('Creating wav files...')
         for idx, bi_rec in enumerate(recordings):    # save recordings as .wav
-            filename = 'in-ear_%s_src_id%02d_az%i_el%i.wav' % (subject_id,
-                idx, bi_rec[0], bi_rec[1])
+            filename = '%s_src_id%02d_az%i_el%i.wav' % (subject_id, idx, bi_rec[0], bi_rec[1])
             bi_rec[2].write(data_dir / 'hrtfs' / 'in-ear_recordings' / filename)
         numpy.savetxt(str(data_dir / 'hrtfs' / 'in-ear_recordings') + '/sources_%s.txt' % subject_id,
                    sources, fmt='%1.1f')   # save source coordinates to a text file
-    freefield.set_logger('INFO')
-    freefield.write(tag='bitmask', value=0, processors=led_speaker.digital_proc)  # turn off LED
     return recordings, sources
 
 def dome_rec(signal, speaker_ids, sources, repetitions):
@@ -92,13 +92,13 @@ def create_src_txt(recordings):
     vertical_polar = numpy.zeros_like(sources)
     azimuths = numpy.deg2rad(sources[:, 0])
     elevations = numpy.deg2rad(sources[:, 1])
-    vertical_polar[:, 0] = numpy.rad2deg(numpy.arcsin(numpy.cos(azimuth) * numpy.sin(elevations)))
+    vertical_polar[:, 1] = numpy.rad2deg(numpy.arcsin(numpy.cos(azimuths) * numpy.sin(elevations)))
     with numpy.errstate(divide='ignore'):
-        vertical_polar[:, 1] = (numpy.pi / 2) - numpy.arctan(((1 / numpy.tan(azimuth)) * numpy.cos(elevations)))
-    vertical_polar[vertical_polar[:, 1] > numpy.pi / 2, 1] -= numpy.pi
-    vertical_polar[:, 1] = numpy.rad2deg(vertical_polar[:, 1])
+        vertical_polar[:, 0] = (numpy.pi / 2) - numpy.arctan(((1 / numpy.tan(azimuths)) * numpy.cos(elevations)))
+    vertical_polar[vertical_polar[:, 0] > numpy.pi / 2, 0] -= numpy.pi
+    vertical_polar[:, 0] = numpy.rad2deg(vertical_polar[:, 0])
     vertical_polar[:, 2] = sources[:, 2]
-    return vertical_polar
+    return vertical_polar.astype('float16')
 
 if __name__ == "__main__":
     recordings, sources = record_hrtfs(subject_id, repetitions, signal, n_directions, safe=safe, speakers=speakers)

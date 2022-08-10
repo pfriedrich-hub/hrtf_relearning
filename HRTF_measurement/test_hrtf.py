@@ -1,14 +1,27 @@
 import slab
 import numpy
 from pathlib import Path
-data_dir = Path.cwd() / 'data'
+data_dir = Path.cwd() / 'data' / 'hrtfs'
 fs = 48828  # sampling rate
 slab.Signal.set_default_samplerate(fs)  # default samplerate for generating sounds, filters etc.
 import freefield
-import HRTF_measurement.helper_functions
+import HRTF_measurement.helper_functions as helper
 import matplotlib
 # matplotlib.use('TkAgg')
 from matplotlib import pyplot as plt
+
+# write sofa
+filename = 'in-ear_paul_no_mold'
+filepath = Path(data_dir / 'in-ear_recordings' / 'paul')
+slab.Signal.set_default_samplerate(fs)  # default samplerate for generating sounds, filters etc.
+signal = slab.Sound.chirp(duration=0.1, level=70, from_frequency=200, to_frequency=20000, kind='linear')
+signal = slab.Sound.ramp(signal, when='both', duration=0.001)
+recs = helper.read_wav(path=data_dir / 'in-ear_recordings' / filepath)
+sources = numpy.loadtxt(filepath / str('sources_' + filename + '.txt'))
+hrtf = slab.HRTF.estimate_hrtf(recs, signal, sources)
+hrtf.write_sofa(filename=data_dir / 'hrtfs' / str(filename + '.sofa'))
+
+# move sound (use slab transition) around using hrtfs
 
 # compare hrtfs
 # get hrtfs with similar source coordinates
@@ -31,18 +44,6 @@ kemar.sources[339] # 35, 10, 1.4
 chrp = slab.Sound.chirp()
 hrtf.apply(37, chrp).spectrum()
 kemar.apply(339, chrp).spectrum()
-
-# write sofa
-filename = 'kemar_fflab_in-ear_mic'
-slab.Signal.set_default_samplerate(fs)  # default samplerate for generating sounds, filters etc.
-signal = slab.Sound.chirp(duration=0.1, level=70, from_frequency=200, to_frequency=20000, kind='linear')
-signal = slab.Sound.ramp(signal, when='both', duration=0.001)
-recs = helper_functions.read_wav(path=data_dir / 'in-ear_recordings' / filename)
-sources = numpy.loadtxt(data_dir / 'in-ear_recordings' / 'kemar_fflab' / str('sources_' + filename + '.txt'))
-hrtf = slab.HRTF.estimate_hrtf(recs, signal, sources)
-hrtf.write_sofa(filename=data_dir / 'hrtfs' / str(filename + '.sofa'))
-
-# move sound (use slab transition) around using hrtfs
 
 #------ plot waveforms / spectra for each column -----#
 # get speaker id's for each column in the dome

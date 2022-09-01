@@ -1,4 +1,3 @@
-
 import freefield
 import slab
 import numpy
@@ -15,8 +14,15 @@ slab.set_default_samplerate(fs)
 # target_time: time matching head direction required to finish a trial
 # test
 
-def hrtf_training(time_limit=90, t_max=500, target_size=3, target_time=0.5):
+def hrtf_training(time_limit=90, t_max=500, target_size=4, target_time=0.5):
     global proc_list, speakers, sensor, game_time, buzzer, end, pulse_attr, goal_attr, offset
+
+    # initialize sensor
+    try:
+        sensor
+    except NameError:
+        sensor = motion_sensor.start_sensor()
+
     # initialize processors
     if not freefield.PROCESSORS.mode:
         proc_list = [['RX81', 'RX8', data_dir / 'rcx' / 'play_buf_pulse.rcx'],
@@ -37,9 +43,6 @@ def hrtf_training(time_limit=90, t_max=500, target_size=3, target_time=0.5):
     freefield.write(tag='goal_len', value=coin.n_samples, processors=['RX81', 'RX82'])
     buzzer = slab.Sound(data_dir / 'sounds' / 'Buzzer1.wav')
     buzzer.level = 70
-
-    # initialize sensor
-    sensor = motion_sensor.start_sensor()
 
     # set variables to control pulse train and goal condition
     pulse_attr = {'max_distance': la.norm(numpy.min(speakers[:, 1:], axis=0) - [0, 0]), 'max_pulse_interval': t_max}
@@ -62,9 +65,9 @@ def hrtf_training(time_limit=90, t_max=500, target_size=3, target_time=0.5):
         if not end:
             play_trial(speaker_id)  # play trial
         else:  # end training sequence
-            print('score: %i trials completed in 3 minutes!' % (index+1))
+            print('score: %i trials completed in 1:30 minutes!' % (index+1))
             break
-    motion_sensor.disconnect(sensor)
+    # motion_sensor.disconnect(sensor)
     return
 
 def play_trial(speaker_id):

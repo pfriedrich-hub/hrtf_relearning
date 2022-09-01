@@ -1,5 +1,3 @@
-
-
 import scipy
 import slab
 from pathlib import Path
@@ -10,7 +8,7 @@ from matplotlib import pyplot as plt
 import numpy
 
 # elevation gain
-subject = 'varvara_mold_1_23_Jul'
+subject = 'paul_no_mold_18_Aug'
 # subj_id = subject + '_mold_1_01_Jul'
 # subj_id = subject + '_no_mold_01_Jul'
 

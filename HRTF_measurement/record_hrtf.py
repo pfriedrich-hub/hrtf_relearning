@@ -12,13 +12,13 @@ fs = 48828  # sampling rate
 slab.Signal.set_default_samplerate(fs)  # default samplerate for generating sounds, filters etc.
 
 
-signal = slab.Sound.chirp(duration=0.1, level=80, from_frequency=200, to_frequency=18000, kind='linear')
+signal = slab.Sound.chirp(duration=0.1, level=85, from_frequency=200, to_frequency=18000, kind='linear')
 signal = slab.Sound.ramp(signal, when='both', duration=0.001)
 repetitions = 20
 subject_id = 'paul_no_mold'
 n_directions = 1  # only from the front (1) or front-back recordings (2)
-# speakers = numpy.arange(19, 28).tolist()  # central cone
-speakers = 'all'
+speakers = numpy.arange(19, 28).tolist()  # central cone
+# speakers = 'all'
 safe = 'sofa'
 
 def record_hrtfs(subject_id, repetitions, signal, n_directions, safe=safe, speakers=speakers):

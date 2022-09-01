@@ -23,11 +23,11 @@ def start_sensor(device=MetaWear('E1:CD:49:19:08:19')):
         try:
             device.connect()
         except:
-            print('Connecting to sensor...', end="\r", flush=True)
+            print('connecting to sensor', end="\r")
     # states = []
     s = (State(device))
     # configure
-    print("Configuring..")
+    print("configuring sensor")
     # setup ble
     libmetawear.mbl_mw_settings_set_connection_parameters(s.device.board, 7.5, 7.5, 0, 6000)
     time.sleep(1.5)
@@ -43,7 +43,7 @@ def start_sensor(device=MetaWear('E1:CD:49:19:08:19')):
     # start acc, gyro, mag
     libmetawear.mbl_mw_sensor_fusion_enable_data(s.device.board, SensorFusionData.EULER_ANGLE)
     libmetawear.mbl_mw_sensor_fusion_start(s.device.board)
-    print('Sensor started!')
+    print('sensor started!')
     time.sleep(1.5)
     return s
 

@@ -10,40 +10,19 @@ import matplotlib
 # matplotlib.use('TkAgg')
 from matplotlib import pyplot as plt
 
-# write sofa
-filename = 'kemar_fflab_in-ear_mic'
-filepath = Path(data_dir / 'in-ear_recordings' / filename)
-slab.Signal.set_default_samplerate(fs)  # default samplerate for generating sounds, filters etc.
-signal = slab.Sound.chirp(duration=0.1, level=70, from_frequency=200, to_frequency=20000, kind='linear')
-signal = slab.Sound.ramp(signal, when='both', duration=0.001)
-recs = helper.read_wav(path=data_dir / 'in-ear_recordings' / filepath)
-sources = numpy.loadtxt(filepath / str('sources_' + filename + '.txt'))
-hrtf = slab.HRTF.estimate_hrtf(recs, signal, sources)
-hrtf.write_sofa(filename=data_dir / str(filename + '.sofa'))
-
 # move sound (use slab transition) around using hrtfs
-
 # compare hrtfs
-# get hrtfs with similar source coordinates
-# filename = 'kemar_fflab.sofa'
-filename = 'joschua_no_mold.sofa'
+filename = 'paul_no_mold.sofa'
 filename = 'barbara_mold_1.sofa'
 
 # compare waterfall
-hrtf = slab.HRTF(data_dir / 'hrtfs' / filename)
-cs1 = hrtf.cone_sources(cone=0, coords='interaural', full_cone=False)
+hrtf = slab.HRTF(data_dir / filename)
+cs1 = hrtf.cone_sources(cone=0, full_cone=False)
 hrtf.plot_tf(cs1, n_bins=200, kind='waterfall', ear='right')
 plt.title(filename)
-
-hrtf.plot_sources(cs1, coords='interaural')
-cs2 = kemar.cone_sources(cone=0, coords='polar', full_cone=False)
 hrtf.plot_tf(cs1, n_bins=800, kind='heatmap')
-kemar.plot_tf(cs2, n_bins=800, kind='surface')
-hrtf.sources[37] # 35, 12.5, 1.4
-kemar.sources[339] # 35, 10, 1.4
-chrp = slab.Sound.chirp()
-hrtf.apply(37, chrp).spectrum()
-kemar.apply(339, chrp).spectrum()
+
+
 
 #------ plot waveforms / spectra for each column -----#
 # get speaker id's for each column in the dome
@@ -116,3 +95,14 @@ fig, axs = plt.subplots(nrows=1, ncols=1, figsize=(7, 7))
 axs.set_title("Log. Magnitude Spectrum")
 axs.magnitude_spectrum(s, Fs=fs, scale='dB', color='C1')
 
+
+# write sofa
+# filename = 'kemar_fflab_in-ear_mic'
+# filepath = Path(data_dir / 'in-ear_recordings' / filename)
+# slab.Signal.set_default_samplerate(fs)  # default samplerate for generating sounds, filters etc.
+# signal = slab.Sound.chirp(duration=0.1, level=70, from_frequency=200, to_frequency=20000, kind='linear')
+# signal = slab.Sound.ramp(signal, when='both', duration=0.001)
+# recs = helper.read_wav(path=data_dir / 'in-ear_recordings' / filepath)
+# sources = numpy.loadtxt(filepath / str('sources_' + filename + '.txt'))
+# hrtf = slab.HRTF.estimate_hrtf(recs, signal, sources)
+# hrtf.write_sofa(filename=data_dir / str(filename + '.sofa'))

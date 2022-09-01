@@ -3,9 +3,8 @@
 from __future__ import print_function
 from mbientlab.metawear import MetaWear
 from mbientlab.metawear.cbindings import *
-from mbientlab.warble import * 
+from mbientlab.warble import *
 from time import sleep
-
 import platform
 import six
 

@@ -27,7 +27,6 @@ elevation_gain = scipy.stats.linregress(ele_x, ele_y)[0]
 plt.title(subject + '; elevation_gain %.1f' % elevation_gain)
 plt.show()
 
-
 az_x = loc_data[:, 1, 0]
 az_y = loc_data[:, 0, 0]
 bads_idx = numpy.where(az_y == None)
@@ -61,3 +60,20 @@ cbar = matplotlib.colorbar.ColorbarBase(ax, cmap='hot', ticks=numpy.arange(0,1.1
 axis.set_ylabel('Elevation (degrees)')
 axis.set_xlabel('Elevation (degrees)')
 
+
+# power analysis
+from statsmodels.stats.power import tt_solve_power
+import numpy
+
+# power: (= 1 - beta, fehler 2. art) - wahrscheinlichkeit die nullhypothese richtigerweise zu verwerfen
+# alpha: (fehler 1. art) - wahrscheinlichkeit, die nullhypothese fälschlicherweise zu verwerfen
+
+# effect_size: cohen's d
+mean_x1 =
+mean_x2 =
+std1 =
+std2 =
+d = (numpy.mean(x1) - numpy.mean(x2)) / numpy.sqrt(((std1**2)+(std2**2))/2)
+
+# calculate N
+N = tt_solve_power(power= ,effect_size= ,alpha=)

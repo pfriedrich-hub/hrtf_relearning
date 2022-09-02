@@ -115,16 +115,5 @@ if __name__ == "__main__":
 # id = args["id"]
 # print('record from %s speakers, subj_id: %i'%(id, 9))
 
-"""
-### extra: arrange dome ####
-import numpy as numpy
-radius = 1.4 # meter
-az_angles = numpy.radians((17.5, 35, 52.5))
-ele_angles = numpy.radians((12.5, 25, 37.5, 50))
-horizontal_dist = numpy.sin(az_angles) * radius
-vertical_dist = numpy.sin(ele_angles) * radius
-vert_abs = []
-for i in range(len(vertical_dist)):
-    vert_abs.append(0.22 + vertical_dist[i])
-"""
+
 

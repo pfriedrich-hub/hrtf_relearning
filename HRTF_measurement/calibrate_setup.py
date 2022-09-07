@@ -229,3 +229,29 @@ diff_raw = freefield.spectral_range(raw)
 diff_level = freefield.spectral_range(level)
 diff_spectrum = freefield.spectral_range(spectrum)
 
+"""
+### extra: arrange dome ####
+import numpy as numpy
+radius = 1.4 # meter
+az_angles = numpy.radians((0, 17.5, 35, 52.5))
+ele_angles = numpy.radians((12.5, 25, 37.5, 50))
+# horizontal_dist = numpy.cos((numpy.pi / 2) - az_angles) * radius
+horizontal_dist = numpy.sin(az_angles) * radius
+
+# this would be the correct vertical distances for interaural speaker locations;
+radii = numpy.sin(numpy.pi / 2 - az_angles) * radius
+vertical_dist = []
+for elevation in ele_angles:
+    vertical_dist.append(numpy.sin(elevation) * radii)
+vertical_dist = numpy.asarray(vertical_dist)
+
+# but we are using these for simplicity (just think of head tracking based training):
+vertical_dist = numpy.sin(ele_angles) * radius
+
+vert_abs = []
+for i in range(len(vertical_dist)):
+    vert_abs.append(0.22 + vertical_dist[i])
+    
+    
+
+"""

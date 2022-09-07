@@ -37,6 +37,7 @@ def record_hrtfs(subject_id, repetitions, signal, n_directions, safe=safe, speak
     else:
         raise ValueError('Speakers must be >>all<< or list of indices.')
     speaker_ids = source_locations[:, 0].astype('int')
+    recordings = []
     sources = deepcopy(source_locations)
 
     # print('Face fixpoint and press button to start recording.')

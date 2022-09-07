@@ -8,7 +8,7 @@ from matplotlib import pyplot as plt
 import numpy
 
 # elevation gain
-subject = 'paul_no_mold_18_Aug'
+subject = 'jakab_mold_01_02_Sep'
 # subj_id = subject + '_mold_1_01_Jul'
 # subj_id = subject + '_no_mold_01_Jul'
 
@@ -37,9 +37,10 @@ azimuth_gain = scipy.stats.linregress(az_x, az_y)[0]
 
 #  DTF correlation matrix
 data_dir = Path.cwd() / 'data'
-filename = 'kemar_fflab.sofa'
-hrtf_1 = slab.HRTF(data_dir / 'hrtfs' / filename)
-hrtf_2 = slab.HRTF(data_dir / 'hrtfs' / filename)
+filename1 = 'kemar_no_mold.sofa'
+filename2 = 'kemar_mold_1.sofa'
+hrtf_1 = slab.HRTF(data_dir / 'hrtfs' / filename1)
+hrtf_2 = slab.HRTF(data_dir / 'hrtfs' / filename1)
 
 sources = hrtf_1.cone_sources(0)
 tfs_1 = hrtf_1.tfs_from_sources(sources, n_bins=200)
@@ -53,11 +54,11 @@ for i in range(n_sources):
 
 # plot correlation matrix
 fig, axis = plt.subplots()
-contour = axis.contourf(hrtf_1.sources[sources, 1], hrtf_2.sources[sources, 1], corr_mtx,
-                        cmap='hot', levels=10)
+contour = axis.contourf(hrtf_1.sources.vertical_polar[sources, 1], hrtf_2.sources.vertical_polar[sources, 1], corr_mtx,
+                        cmap=None, levels=10)
 ax, _ = matplotlib.colorbar.make_axes(plt.gca())
-cbar = matplotlib.colorbar.ColorbarBase(ax, cmap='hot', ticks=numpy.arange(0,1.1,.1),
+cbar = matplotlib.colorbar.ColorbarBase(ax, cmap=None, ticks=numpy.arange(0, 1.1, .1),
                        norm=matplotlib.colors.Normalize(vmin=0, vmax=1), label='Correlation Coefficient')
-axis.set_ylabel('Elevation (degrees)')
-axis.set_xlabel('Elevation (degrees)')
+axis.set_ylabel('HRTF 1 Elevation (degrees)')
+axis.set_xlabel('HRTF 2 Elevation (degrees)')
 

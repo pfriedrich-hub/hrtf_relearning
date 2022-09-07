@@ -13,13 +13,15 @@ fs = 48828
 slab.set_default_samplerate(fs)
 data_dir = Path.cwd() / 'data'
 tone = slab.Sound.tone(frequency=1000, duration=0.25, level=70)
-subj_id = 'hannah_no_mold'
+subj_id = 'jakab_mold_01'
 
 def localization_test():
     global speakers, stim, sensor
     sensor = motion_sensor.start_sensor()
-    freefield.initialize('dome', default='play_rec')
-    freefield.set_logger('warning')
+    if not freefield.PROCESSORS.mode:
+
+        freefield.initialize('dome', default='play_rec')
+        freefield.set_logger('warning')
     # generate stimulus
     noise = slab.Sound.pinknoise(duration=0.025, level=90)
     noise = noise.ramp(when='both', duration=0.01)

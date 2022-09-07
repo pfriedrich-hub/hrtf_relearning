@@ -15,16 +15,17 @@ slab.Signal.set_default_samplerate(fs)  # default samplerate for generating soun
 signal = slab.Sound.chirp(duration=0.1, level=85, from_frequency=200, to_frequency=18000, kind='linear')
 signal = slab.Sound.ramp(signal, when='both', duration=0.001)
 repetitions = 20
-subject_id = 'paul_no_mold'
+subject_id = 'kemar_mold_4.1'
 n_directions = 1  # only from the front (1) or front-back recordings (2)
-speakers = numpy.arange(19, 28).tolist()  # central cone
+speakers = numpy.arange(19, 27).tolist()  # central cone - 1
 # speakers = 'all'
 safe = 'sofa'
 
 def record_hrtfs(subject_id, repetitions, signal, n_directions, safe=safe, speakers=speakers):
     global filt
-    filt = slab.Filter.band('hp', 100)
-    freefield.initialize('dome', default='play_birec')  # initialize setup
+    filt = slab.Filter.band('bp', (200, 18000))
+    if not freefield.PROCESSORS.mode:
+        freefield.initialize('dome', default='play_birec')  # initialize setup
     freefield.set_logger('warning')
     table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')  # get speaker coordinates
     if isinstance(speakers, str) and speakers == 'all':
@@ -36,13 +37,15 @@ def record_hrtfs(subject_id, repetitions, signal, n_directions, safe=safe, speak
     else:
         raise ValueError('Speakers must be >>all<< or list of indices.')
     speaker_ids = source_locations[:, 0].astype('int')
-    recordings = []
     sources = deepcopy(source_locations)
-    print('Face fixpoint and press button to start recording.')
-    [led_speaker] = freefield.pick_speakers(23)  # get object for center speaker LED
-    freefield.write(tag='bitmask', value=led_speaker.digital_channel,
-                    processors=led_speaker.digital_proc)  # illuminate LED
-    freefield.wait_for_button()
+
+    # print('Face fixpoint and press button to start recording.')
+    # [led_speaker] = freefield.pick_speakers(23)  # get object for center speaker LED
+    # freefield.write(tag='bitmask', value=led_speaker.digital_channel,
+    #                 processors=led_speaker.digital_proc)  # illuminate LED
+    # freefield.wait_for_button()
+
+    recordings = []
     for i in range(n_directions):  # record for n listener orientations, 2 = front + back
         recordings = recordings + (dome_rec(signal, speaker_ids, sources, repetitions))
         if i < n_directions-1:
@@ -50,7 +53,9 @@ def record_hrtfs(subject_id, repetitions, signal, n_directions, safe=safe, speak
             print('Rotate chair 180 degrees clockwise \nLook at fixpoint. Press button to start recording.')
             freefield.wait_for_button()
     freefield.set_logger('INFO')
-    freefield.write(tag='bitmask', value=0, processors=led_speaker.digital_proc)  # turn off LED
+
+    # freefield.write(tag='bitmask', value=0, processors=led_speaker.digital_proc)  # turn off LED
+
     # save .sofa / recordings.wav and sources.txt
     sources = create_src_txt(recordings)
     if safe == 'sofa' or safe == 'both':
@@ -76,9 +81,9 @@ def dome_rec(signal, speaker_ids, sources, repetitions):
         for r in range(repetitions):
             rec = freefield.play_and_record(speaker, signal, compensate_delay=True,
                   compensate_attenuation=False, equalize=True)
-            rec = filt.apply(rec)
             recs.append(rec.data)
         rec = slab.Binaural(numpy.mean(numpy.asarray(recs), axis=0))
+        rec = filt.apply(rec)
         azimuth = sources[numpy.where(sources[:, 0] == speaker_id)[0][0]][1]
         elevation = sources[numpy.where(sources[:, 0] == speaker_id)[0][0]][2]
         rec = [azimuth, elevation, rec]
@@ -126,5 +131,15 @@ vertical_dist = numpy.sin(ele_angles) * radius
 vert_abs = []
 for i in range(len(vertical_dist)):
     vert_abs.append(0.22 + vertical_dist[i])
+    
+    
+# test molds on kemar
+from matplotlib import pyplot as plt
+
+fname='kemar_no_mold.sofa'
+hrtf=slab.HRTF(Path.cwd() / 'data' / 'hrtfs' / fname)
+src=hrtf.cone_sources(0)
+hrtf.plot_tf(src, n_bins=300)
+plt.title(fname)
 """
 

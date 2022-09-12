@@ -8,7 +8,7 @@ from matplotlib import pyplot as plt
 import numpy
 
 # elevation gain
-subject = 'jakab_mold_01_02_Sep'
+subject = 'jakab_mold_1.0_12_Sep'
 # subj_id = subject + '_mold_1_01_Jul'
 # subj_id = subject + '_no_mold_01_Jul'
 
@@ -24,7 +24,7 @@ ele_y = numpy.array(numpy.delete(ele_y, bads_idx), dtype='float')
 ele_x = numpy.array(numpy.delete(ele_x, bads_idx), dtype='float')
 plt.scatter(ele_x, ele_y)
 elevation_gain = scipy.stats.linregress(ele_x, ele_y)[0]
-plt.title(subject + '; elevation_gain %.1f' % elevation_gain)
+plt.title(subject + '; elevation_gain %.2f' % elevation_gain)
 plt.show()
 
 az_x = loc_data[:, 1, 0]

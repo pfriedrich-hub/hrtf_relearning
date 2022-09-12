@@ -5,6 +5,8 @@ import matplotlib
 from pathlib import Path
 import slab
 import freefield
+import datetime
+date = datetime.datetime.now()
 import argparse
 from copy import deepcopy
 data_dir = Path.cwd() / 'data'
@@ -15,7 +17,7 @@ slab.Signal.set_default_samplerate(fs)  # default samplerate for generating soun
 signal = slab.Sound.chirp(duration=0.1, level=85, from_frequency=200, to_frequency=18000, kind='linear')
 signal = slab.Sound.ramp(signal, when='both', duration=0.001)
 repetitions = 20
-subject_id = 'kemar_mold_4.1'
+subject_id = 'jakab_mold_1.0'
 n_directions = 1  # only from the front (1) or front-back recordings (2)
 speakers = numpy.arange(19, 27).tolist()  # central cone - 1
 # speakers = 'all'
@@ -25,7 +27,7 @@ def record_hrtfs(subject_id, repetitions, signal, n_directions, safe=safe, speak
     global filt
     filt = slab.Filter.band('bp', (200, 18000))
     if not freefield.PROCESSORS.mode:
-        freefield.initialize('dome', default='play_birec')  # initialize setup
+        freefield.initialize('dome', default='play_bi_rec')
     freefield.set_logger('warning')
     table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')  # get speaker coordinates
     if isinstance(speakers, str) and speakers == 'all':
@@ -40,11 +42,11 @@ def record_hrtfs(subject_id, repetitions, signal, n_directions, safe=safe, speak
     recordings = []
     sources = deepcopy(source_locations)
 
-    # print('Face fixpoint and press button to start recording.')
-    # [led_speaker] = freefield.pick_speakers(23)  # get object for center speaker LED
-    # freefield.write(tag='bitmask', value=led_speaker.digital_channel,
-    #                 processors=led_speaker.digital_proc)  # illuminate LED
-    # freefield.wait_for_button()
+    print('Face fixpoint and press button to start recording.')
+    [led_speaker] = freefield.pick_speakers(23)  # get object for center speaker LED
+    freefield.write(tag='bitmask', value=led_speaker.digital_channel,
+                    processors=led_speaker.digital_proc)  # illuminate LED
+    freefield.wait_for_button()
 
     recordings = []
     for i in range(n_directions):  # record for n listener orientations, 2 = front + back
@@ -55,14 +57,14 @@ def record_hrtfs(subject_id, repetitions, signal, n_directions, safe=safe, speak
             freefield.wait_for_button()
     freefield.set_logger('INFO')
 
-    # freefield.write(tag='bitmask', value=0, processors=led_speaker.digital_proc)  # turn off LED
+    freefield.write(tag='bitmask', value=0, processors=led_speaker.digital_proc)  # turn off LED
 
     # save .sofa / recordings.wav and sources.txt
     sources = create_src_txt(recordings)
     if safe == 'sofa' or safe == 'both':
         print('Creating sofa file...')
         recorded_hrtf = slab.HRTF.estimate_hrtf([rec[2] for rec in recordings], signal, sources)
-        recorded_hrtf.write_sofa(data_dir / 'hrtfs' / str('%s.sofa' % subject_id))
+        recorded_hrtf.write_sofa(data_dir / 'hrtfs' / str(subject_id + date.strftime('_%d_%b') + '.sofa'))
     if safe == 'wav' or safe == 'both':
         print('Creating wav files...')
         for idx, bi_rec in enumerate(recordings):    # save recordings as .wav

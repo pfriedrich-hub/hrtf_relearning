@@ -13,15 +13,15 @@ fs = 48828
 slab.set_default_samplerate(fs)
 data_dir = Path.cwd() / 'data'
 tone = slab.Sound.tone(frequency=1000, duration=0.25, level=70)
-subj_id = 'jakab_mold_01'
+subj_id = 'jakab_mold_1.0'
 
 def localization_test():
     global speakers, stim, sensor
     sensor = motion_sensor.start_sensor()
     if not freefield.PROCESSORS.mode:
+        freefield.initialize('dome', default='play_bi_rec')
+    freefield.set_logger('warning')
 
-        freefield.initialize('dome', default='play_rec')
-        freefield.set_logger('warning')
     # generate stimulus
     noise = slab.Sound.pinknoise(duration=0.025, level=90)
     noise = noise.ramp(when='both', duration=0.01)
@@ -33,6 +33,7 @@ def localization_test():
     table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')
     speakers = numpy.loadtxt(table_file, skiprows=1, usecols=(0, 3, 4),
                                      delimiter=",", dtype=float)
+    # speakers = numpy.delete(speakers, 23, 0)
     # create sequence of speakers to play from, without direct repetition of azimuth or elevation
     n_conditions = len(speakers)
     sequence = numpy.random.permutation(numpy.tile(list(range(n_conditions)), 1))

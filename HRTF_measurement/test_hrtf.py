@@ -12,8 +12,8 @@ from matplotlib import pyplot as plt
 
 # move sound (use slab transition) around using hrtfs
 # compare hrtfs
-filename = 'paul_no_mold.sofa'
-filename = 'barbara_mold_1.sofa'
+filename = 'jakab_ears_free_1.0_12_Sep.sofa'
+filename = 'jakab_mold_1.0_12_Sep.sofa'
 
 # compare waterfall
 hrtf = slab.HRTF(data_dir / filename)

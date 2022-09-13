@@ -36,7 +36,7 @@ azimuth_gain = scipy.stats.linregress(az_x, az_y)[0]
 
 #  DTF correlation matrix
 data_dir = Path.cwd() / 'data'
-filename1 = 'kemar_no_mold.sofa'
+filename1 = 'kemar_free.sofa'
 filename2 = 'kemar_mold_1.sofa'
 hrtf_1 = slab.HRTF(data_dir / 'hrtfs' / filename1)
 hrtf_2 = slab.HRTF(data_dir / 'hrtfs' / filename1)
@@ -50,6 +50,7 @@ corr_mtx = numpy.zeros((n_sources, n_sources))
 for i in range(n_sources):
     for j in range(n_sources):
         corr_mtx[i, j] = numpy.corrcoef(tfs_1[:, i], tfs_2[:, j])[1, 0]
+
 
 # plot correlation matrix
 fig, axis = plt.subplots()
@@ -65,16 +66,23 @@ axis.set_xlabel('HRTF 2 Elevation (degrees)')
 # power analysis
 from statsmodels.stats.power import tt_solve_power
 import numpy
-
 # power: (= 1 - beta, fehler 2. art) - wahrscheinlichkeit die nullhypothese richtigerweise zu verwerfen
 # alpha: (fehler 1. art) - wahrscheinlichkeit, die nullhypothese fälschlicherweise zu verwerfen
-
 # effect_size: cohen's d
-mean_x1 =
-mean_x2 =
-std1 =
-std2 =
+x1 = 0
+x2 = 0
+std1 = 0
+std2 = 0
 d = (numpy.mean(x1) - numpy.mean(x2)) / numpy.sqrt(((std1**2)+(std2**2))/2)
-
 # calculate N
-N = tt_solve_power(power= ,effect_size= ,alpha=)
+N = tt_solve_power(power=0,effect_size=0,alpha=0)
+
+"""
+# remove invalid values, this is redundant for meta motion head tracking
+# bads_idx = numpy.where(ele_y == None)
+# ele_y = numpy.array(numpy.delete(ele_y, bads_idx), dtype='float')
+# ele_x = numpy.array(numpy.delete(ele_x, bads_idx), dtype='float')
+"""
+
+
+

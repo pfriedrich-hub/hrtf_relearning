@@ -9,7 +9,8 @@ import datetime
 date = datetime.datetime.now()
 import argparse
 from copy import deepcopy
-data_dir = Path.cwd() / 'data'
+import os
+os.chdir(os.getcwd() + '/data/hrtfs/')
 fs = 48828  # sampling rate
 slab.Signal.set_default_samplerate(fs)  # default samplerate for generating sounds, filters etc.
 
@@ -64,13 +65,13 @@ def record_hrtfs(subject_id, repetitions, signal, n_directions, safe=safe, speak
     if safe == 'sofa' or safe == 'both':
         print('Creating sofa file...')
         recorded_hrtf = slab.HRTF.estimate_hrtf([rec[2] for rec in recordings], signal, sources)
-        recorded_hrtf.write_sofa(data_dir / 'hrtfs' / str(subject_id + date.strftime('_%d_%b') + '.sofa'))
+        recorded_hrtf.write_sofa(str(subject_id + date.strftime('_%d_%b') + '.sofa'))
     if safe == 'wav' or safe == 'both':
         print('Creating wav files...')
         for idx, bi_rec in enumerate(recordings):    # save recordings as .wav
             filename = '%s_src_id%02d_az%i_el%i.wav' % (subject_id, idx, bi_rec[0], bi_rec[1])
-            bi_rec[2].write(data_dir / 'hrtfs' / 'in-ear_recordings' / filename)
-        numpy.savetxt(str(data_dir / 'hrtfs' / 'in-ear_recordings') + '/sources_%s.txt' % subject_id,
+            bi_rec[2].write('in-ear_recordings' / filename)
+        numpy.savetxt(str('in-ear_recordings') + '/sources_%s.txt' % subject_id,
                    sources, fmt='%1.1f')   # save source coordinates to a text file
     return recordings, sources
 

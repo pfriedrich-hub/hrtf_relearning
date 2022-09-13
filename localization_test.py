@@ -7,7 +7,8 @@ date = datetime.datetime.now()
 from pathlib import Path
 from stats.localization_accuracy import localization_accuracy
 import os
-os.chdir(os.getcwd() + '/data/localization_data/')
+default_dir = os.getcwd()
+os.chdir(default_dir + '/data/localization_data/')
 # import head_tracking.cam_tracking.aruco_pose as aruco
 import head_tracking.meta_motion.mm_pose as motion_sensor
 # import head_tracking.sensor_tracking.sensor_pose as sensor
@@ -17,13 +18,13 @@ slab.set_default_samplerate(fs)
 # data_dir = Path.cwd() / 'data' / 'localization_data'
 tone = slab.Sound.tone(frequency=1000, duration=0.25, level=70)
 
-subject_id = 'jakab_mold_1.0_12_Sep'
+subject_id = 'jakab_mold_1.0'
 
 def localization_test():
     global speakers, stim, sensor
     sensor = motion_sensor.start_sensor()
     if not freefield.PROCESSORS.mode:
-        freefield.initialize('dome', default='play_bi_rec')
+        freefield.initialize('dome', default='play_birec')
     freefield.set_logger('warning')
 
     # generate stimulus
@@ -41,6 +42,7 @@ def localization_test():
     # create sequence of speakers to play from, without direct repetition of azimuth or elevation
     n_conditions = len(speakers)
     sequence = numpy.random.permutation(numpy.tile(list(range(n_conditions)), 1))
+    sequence = numpy.delete(sequence, numpy.where(sequence == 27))  # remove 0, -50 target
 
     # generate trial sequence with target speaker locations
     trial_sequence = slab.Trialsequence(trials=speakers[sequence, 0].astype('int'))
@@ -79,4 +81,4 @@ def play_trial(speaker_id):
 
 if __name__ == "__main__":
     trialsequence = localization_test()
-    localization_accuracy(subject_id, show=True)
+    localization_accuracy(str(subject_id + date.strftime('_%d_%b')), show=True)

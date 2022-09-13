@@ -14,8 +14,9 @@ slab.set_default_samplerate(fs)
 # target_time: time matching head direction required to finish a trial
 # test
 
-def hrtf_training(time_limit=90, t_max=500, target_size=4, target_time=0.5):
-    global proc_list, speakers, sensor, game_time, buzzer, end, pulse_attr, goal_attr, offset
+def hrtf_training(time_limit=90, t_max=500, target_size=4, target_time=0.5, trial_time=10):
+    global proc_list, speakers, sensor, game_time, buzzer, end, pulse_attr, goal_attr, \
+           offset
 
     # initialize sensor
     try:
@@ -46,7 +47,8 @@ def hrtf_training(time_limit=90, t_max=500, target_size=4, target_time=0.5):
 
     # set variables to control pulse train and goal condition
     pulse_attr = {'max_distance': la.norm(numpy.min(speakers[:, 1:], axis=0) - [0, 0]), 'max_pulse_interval': t_max}
-    goal_attr = {'target_size': target_size, 'target_time': target_time, 'time_limit':time_limit}
+    goal_attr = {'target_size': target_size, 'target_time': target_time,
+                 'time_limit': time_limit, 'trial_time': trial_time}
 
     # create sequence of speakers to play from, without direct repetition of azimuth or elevation
     print('Setting target sequence...')
@@ -55,15 +57,20 @@ def hrtf_training(time_limit=90, t_max=500, target_size=4, target_time=0.5):
     while numpy.min(numpy.abs(az_dist)) <= 1.0 and numpy.min(numpy.abs(ele_dist)) <= 1.0:
         sequence = numpy.random.permutation(numpy.tile(list(range(len(speakers))), 1))
         az_dist, ele_dist = numpy.diff(speakers[sequence, 1]), numpy.diff(speakers[sequence, 2])
-    sequence = numpy.delete(sequence, numpy.where(sequence == 23))  # remove 0, 0 target
-    trial_sequence = slab.Trialsequence(trials=sequence)
-
+    # sequence = numpy.delete(sequence, numpy.where(sequence == 23))  # remove 0, 0 target
+    # sequence = numpy.delete(sequence, numpy.where(sequence == 27))  # remove 0, -50 target
+    # sequence = numpy.delete(sequence, numpy.where(sequence == 19))  # remove 0, 50 target
     # offset = motion_sensor.calibrate_pose(sensor)  # get head pose offset
+
+    trial_sequence = slab.Trialsequence(trials=sequence)
     game_time = time.time()  # start counting time
     end = False  # set end condition for training sequence
     for index, speaker_id in enumerate(trial_sequence):  # loop over trials
         if not end:
-            play_trial(speaker_id)  # play trial
+            if not speaker_id == 19 or 23 or 27:
+                play_trial(speaker_id)  # play trial
+            else:
+                continue
         else:  # end training sequence
             print('score: %i trials completed in 1:30 minutes!' % (index+1))
             break
@@ -84,9 +91,11 @@ def play_trial(speaker_id):
     set_pulse_train()  # set initial pulse train interval
     freefield.play(kind='zBusA', proc='all')  # start playing pulse train
     count_down = False  # condition for counting time on target
-
+    trial_start = time.time()
     while True:
         distance = set_pulse_train()
+        if time.time() > trial_start + 10:  # end trial after 10 seconds
+            break
         if distance <= 0:  # check if head pose is within target window
             if not count_down:  # start counting down time as longs as pose matches target
                 start_time, count_down = time.time(), True
@@ -98,6 +107,7 @@ def play_trial(speaker_id):
             end = True
             freefield.write(tag='goal_data', value=buzzer.data, processors=['RX81', 'RX82'])   # write buzzer to
             freefield.write(tag='goal_len', value=buzzer.n_samples, processors=['RX81', 'RX82'])  # goal sound buffer
+            # print('score: %i trials completed in 1:30 minutes!' % (hits))
             break
         else:
             continue
@@ -109,7 +119,12 @@ def play_trial(speaker_id):
 def set_pulse_train():
     pose = get_pose()
     if all(pose):
-        distance = la.norm(pose - target) - goal_attr['target_size']  # distance of current head pose from target window
+        # todo use rectangular target window
+        # distance = numpy.array([(la.norm(pose[0] - target[0]) - goal_attr['target_size'] * 2)
+        #                         - la.norm(pose[0] - target[0]) - goal_attr['target_size']])
+
+        distance = la.norm(pose - target) - goal_attr['target_size']
+        # distance of current head pose from target window
         # scale ISI with deviation of pose from sound source
         interval_scale = (distance + 1e-9) / pulse_attr['max_distance']  # scale factor for pulse interval duration
         interval = pulse_attr['max_pulse_interval'] * (numpy.log(interval_scale + 0.05) + 3) / 3  # log scaling

@@ -52,14 +52,21 @@ def vsi_dissimilarity(hrtf_1, hrtf_2, bandwidth):
     return vsi_dissimilarity
 
 if __name__ == "__main__":
-    # get individual vsi
-    hrtf_1.vsi()
-    hrtf_2.vsi()
-
     # plot correlation_matrix
-    dtf_correlation(hrtf_1, hrtf_2, show=True)
-
+    # dtf_correlation(hrtf_1, hrtf_2, show=True)
     # vsi dissimilarity
     vsi_dissimilarity = vsi_dissimilarity(hrtf_1, hrtf_2, bandwidth=(5700, 11300))
     print('VSI Dissimilarity; %s and %s: %2f \n' % (sofa_1, sofa_2, vsi_dissimilarity))
 
+
+
+"""
+
+filename = 'jakab_ears_free_1.0_12_Sep.sofa'
+filename = 'jakab_mold_1.0_12_Sep.sofa'
+# compare waterfall
+hrtf = slab.HRTF(data_dir / filename)
+cs1 = hrtf.cone_sources(cone=0, full_cone=False)
+hrtf.plot_tf(cs1, n_bins=200, kind='waterfall', ear='right')
+
+"""

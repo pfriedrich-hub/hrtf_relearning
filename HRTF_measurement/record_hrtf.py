@@ -13,16 +13,16 @@ import os
 os.chdir(os.getcwd() + '/data/hrtfs/')
 fs = 48828  # sampling rate
 slab.Signal.set_default_samplerate(fs)  # default samplerate for generating sounds, filters etc.
-
-
 signal = slab.Sound.chirp(duration=0.1, level=85, from_frequency=200, to_frequency=18000, kind='linear')
 signal = slab.Sound.ramp(signal, when='both', duration=0.001)
 repetitions = 20
-subject_id = 'jakab_mold_1.0'
 n_directions = 1  # only from the front (1) or front-back recordings (2)
 speakers = numpy.arange(19, 27).tolist()  # central cone - 1
 # speakers = 'all'
 safe = 'sofa'
+
+subject_id = 'jakab_mold_1.0'
+
 
 def record_hrtfs(subject_id, repetitions, signal, n_directions, safe=safe, speakers=speakers):
     global filt

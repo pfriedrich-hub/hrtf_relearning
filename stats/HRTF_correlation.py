@@ -5,14 +5,13 @@ import matplotlib
 # matplotlib.use('TkAgg')
 from matplotlib import pyplot as plt
 import numpy
-import os
-os.chdir(os.getcwd() + '/data/hrtfs/')
+data_dir = Path.cwd() / 'data' / 'hrtfs'
 
-sofa_1 = 'kemar_free.sofa'
-sofa_2 = 'kemar_mold_1.sofa'
+sofa_1 = 'jakab_ears_free_1.0_12_Sep.sofa'
+sofa_2 = 'jakab_mold_1.0_12_Sep.sofa'
 
-hrtf_1 = slab.HRTF(sofa_1)
-hrtf_2 = slab.HRTF(sofa_2)
+hrtf_1 = slab.HRTF(data_dir / sofa_1)
+hrtf_2 = slab.HRTF(data_dir / sofa_2)
 
 def dtf_correlation(hrtf_1, hrtf_2, show=False, bandwidth=None, n_bins=96):
     # get sources and dtfs
@@ -51,22 +50,20 @@ def vsi_dissimilarity(hrtf_1, hrtf_2, bandwidth):
     vsi_dissimilarity = numpy.linalg.norm(correlation_free_v_mold - autocorrelation_free)
     return vsi_dissimilarity
 
-if __name__ == "__main__":
-    # plot correlation_matrix
-    # dtf_correlation(hrtf_1, hrtf_2, show=True)
-    # vsi dissimilarity
-    vsi_dissimilarity = vsi_dissimilarity(hrtf_1, hrtf_2, bandwidth=(5700, 11300))
-    print('VSI Dissimilarity; %s and %s: %2f \n' % (sofa_1, sofa_2, vsi_dissimilarity))
-
-
+"""
+# if __name__ == "__main__":
+# plot correlation_matrix
+dtf_correlation(hrtf_1, hrtf_2, show=True)
+# vsi dissimilarity
+vsi_dissimilarity = vsi_dissimilarity(hrtf_1, hrtf_2, bandwidth=(5700, 11300))
+print('VSI Dissimilarity; %s and %s: %2f \n' % (sofa_1, sofa_2, vsi_dissimilarity))
 
 """
-
+"""
 filename = 'jakab_ears_free_1.0_12_Sep.sofa'
 filename = 'jakab_mold_1.0_12_Sep.sofa'
 # compare waterfall
 hrtf = slab.HRTF(data_dir / filename)
 cs1 = hrtf.cone_sources(cone=0, full_cone=False)
 hrtf.plot_tf(cs1, n_bins=200, kind='waterfall', ear='right')
-
 """

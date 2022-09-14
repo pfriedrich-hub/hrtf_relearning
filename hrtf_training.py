@@ -105,19 +105,20 @@ def play_trial(speaker_id):
         else:
             start_time, count_down = time.time(), False  # reset timer if pose no longer matches target
         if time.time() > start_time + goal_attr['target_time']:  # end trial if goal conditions are met
-            # todo test if score is counted correctly
+            # todo test if score is counted correctly and sound is played
             score += 1
+            freefield.write(tag='source', value=0, processors=['RX81', 'RX82'])  # set speaker input to goal sound
+            freefield.play(kind='zBusB', proc='all')  # play from goal sound buffer
             break
         if time.time() > game_time + goal_attr['time_limit']:  # end training sequence if time is up
             end = True
             freefield.write(tag='goal_data', value=buzzer.data, processors=['RX81', 'RX82'])   # write buzzer to
             freefield.write(tag='goal_len', value=buzzer.n_samples, processors=['RX81', 'RX82'])  # goal sound buffer
+            freefield.play(kind='zBusB', proc='all')  # play from goal sound buffer
             print('score: %i trials completed in 1:30 minutes!' % score)
             break
         else:
             continue
-    freefield.write(tag='source', value=0, processors=['RX81', 'RX82'])  # set speaker input to goal sound
-    freefield.play(kind='zBusB', proc='all')  # play from goal sound buffer
     while freefield.read('goal_playback', processor='RX81', n_samples=1):
         time.sleep(0.1)
 

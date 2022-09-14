@@ -38,6 +38,7 @@ def localization_test():
     table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')
     speakers = numpy.loadtxt(table_file, skiprows=1, usecols=(0, 3, 4),
                                      delimiter=",", dtype=float)
+
     # speakers = numpy.delete(speakers, 23, 0)
     # create sequence of speakers to play from, without direct repetition of azimuth or elevation
     n_conditions = len(speakers)

@@ -133,12 +133,7 @@ def set_pulse_train():
         # distance of current head pose from target window
         window_distance = total_distance - goal_attr['target_size']
 
-        # todo test new scaling of pulse train (continues within target window)
-        # scale ISI with total distance
-        # interval scale: scale factor for pulse interval duration
-        # old scaling 0 pulse interval at window border
-        # interval_scale = ((window_distance - 2) + 1e-9) / pulse_attr['max_distance']
-        # nwe scaling 0 pulse interval at target
+        # scale ISI with total distance; use scale factor for pulse interval duration
         interval_scale = (total_distance - 2 + 1e-9) / pulse_attr['max_distance']
         interval = pulse_attr['max_pulse_interval'] * (numpy.log(interval_scale + 0.05) + 3) / 3  # log scaling
         print('head pose: azimuth: %.1f, elevation: %.1f, total distance: %.2f'

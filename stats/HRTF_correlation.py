@@ -33,9 +33,9 @@ def dtf_correlation(hrtf_1, hrtf_2, show=False, bandwidth=None, n_bins=96):
         fig, axis = plt.subplots()
         contour = axis.contourf(hrtf_1.sources.vertical_polar[sources, 1],
                                 hrtf_2.sources.vertical_polar[sources, 1], corr_mtx,
-                                cmap='hot', levels=10)
+                                cmap='viridis', levels=10)
         ax, _ = matplotlib.colorbar.make_axes(plt.gca())
-        cbar = matplotlib.colorbar.ColorbarBase(ax, cmap='hot', ticks=numpy.arange(0,1.1,.1),
+        cbar = matplotlib.colorbar.ColorbarBase(ax, cmap=None, ticks=numpy.arange(0, 1.1, .1),
                                norm=matplotlib.colors.Normalize(vmin=0, vmax=1), label='Correlation Coefficient')
         axis.set_ylabel('Elevation (degrees)')
         axis.set_xlabel('Elevation (degrees)')
@@ -52,18 +52,16 @@ def vsi_dissimilarity(hrtf_1, hrtf_2, bandwidth):
 
 """
 # if __name__ == "__main__":
-# plot correlation_matrix
-dtf_correlation(hrtf_1, hrtf_2, show=True)
-# vsi dissimilarity
-vsi_dissimilarity = vsi_dissimilarity(hrtf_1, hrtf_2, bandwidth=(5700, 11300))
-print('VSI Dissimilarity; %s and %s: %2f \n' % (sofa_1, sofa_2, vsi_dissimilarity))
+    # plot correlation_matrix
+    dtf_correlation(hrtf_1, hrtf_2, show=True)
+    # vsi dissimilarity
+    vsi_dissimilarity = vsi_dissimilarity(hrtf_1, hrtf_2, bandwidth=(5700, 11300))
+    print('VSI Dissimilarity; %s and %s: %2f \n' % (sofa_1, sofa_2, vsi_dissimilarity))
 
-"""
-"""
 filename = 'jakab_ears_free_1.0_12_Sep.sofa'
 filename = 'jakab_mold_1.0_12_Sep.sofa'
 # compare waterfall
 hrtf = slab.HRTF(data_dir / filename)
 cs1 = hrtf.cone_sources(cone=0, full_cone=False)
-hrtf.plot_tf(cs1, n_bins=200, kind='waterfall', ear='right')
+hrtf.plot_tf(cs1, n_bins=200, kind='waterfall', ear='left', xlim=(4000, 12000))
 """

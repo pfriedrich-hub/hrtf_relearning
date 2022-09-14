@@ -17,7 +17,6 @@ slab.set_default_samplerate(fs)
 def hrtf_training(max_pulse_interval=500, target_size=3, target_time=0.5, trial_time=10, game_time=90):
     global proc_list, speakers, sensor, game_start, buzzer, end, pulse_attr, goal_attr, \
            offset, score
-
     # initialize sensor
     try:
         sensor
@@ -25,7 +24,6 @@ def hrtf_training(max_pulse_interval=500, target_size=3, target_time=0.5, trial_
             sensor = motion_sensor.start_sensor()
     except NameError:
         sensor = motion_sensor.start_sensor()
-
     # initialize processors
     if not freefield.PROCESSORS.mode:
         proc_list = [['RX81', 'RX8', data_dir / 'rcx' / 'play_buf_pulse.rcx'],
@@ -48,7 +46,6 @@ def hrtf_training(max_pulse_interval=500, target_size=3, target_time=0.5, trial_
     # set variables to control pulse train and goal condition
     table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')
     speakers = numpy.loadtxt(table_file, skiprows=1, usecols=(0, 3, 4), delimiter=",", dtype=float)
-
     pulse_attr = {'max_distance': la.norm(numpy.min(speakers[:, 1:], axis=0) - [0, 0]),
                   'max_pulse_interval': max_pulse_interval}
     goal_attr = {'target_size': target_size, 'target_time': target_time,
@@ -56,16 +53,13 @@ def hrtf_training(max_pulse_interval=500, target_size=3, target_time=0.5, trial_
 
     # create sequence of speakers to play from, without direct repetition of azimuth or elevation
     print('Setting target sequence...')
-    # sequence = numpy.random.permutation(numpy.tile(list(range(len(speakers))), 1))
-    sequence = numpy.random.permutation(numpy.tile(speakers[:, 0], 1)).astype('int')
+    sequence = numpy.random.permutation(numpy.tile(list(range(len(speakers))), 1))
     az_dist, ele_dist = numpy.diff(speakers[sequence, 1]), numpy.diff(speakers[sequence, 2])
     while numpy.min(numpy.abs(az_dist)) <= 1.0 and numpy.min(numpy.abs(ele_dist)) <= 1.0:
         sequence = numpy.random.permutation(numpy.tile(list(range(len(speakers))), 1))
         az_dist, ele_dist = numpy.diff(speakers[sequence, 1]), numpy.diff(speakers[sequence, 2])
-
     sequence = numpy.delete(sequence, [numpy.where(sequence == 19),
                numpy.where(sequence == 23), numpy.where(sequence == 27)], 0)  # remove redundant speakers
-
     end = False  # set end condition for training sequence
     score = 0
     game_start = time.time()  # start counting time
@@ -86,7 +80,7 @@ def play_trial(speaker_id):
     freefield.write(tag='chan', value=99, processors=other_proc)
     offset = motion_sensor.calibrate_pose(sensor)  # get head pose offset
     target = speakers[speaker_id, 1:]  # get target coordinates
-    print('\n TARGET| azimuth: %.1f, elevation %.1f\n' % (target[0], target[1]))
+    # print('\n TARGET| azimuth: %.1f, elevation %.1f\n' % (target[0], target[1]))
     set_pulse_train()  # set initial pulse train interval
     freefield.play(kind='zBusA', proc='all')  # start playing pulse train
     count_down = False  # condition for counting time on target
@@ -112,7 +106,7 @@ def play_trial(speaker_id):
             freefield.write(tag='goal_data', value=buzzer.data, processors=['RX81', 'RX82'])   # write buzzer to
             freefield.write(tag='goal_len', value=buzzer.n_samples, processors=['RX81', 'RX82'])  # goal sound buffer
             freefield.play(kind='zBusB', proc='all')  # play from goal sound buffer
-            print('score: %i trials completed in 1:30 minutes!' % score)
+            print('score: %i trials completed in %i seconds!' % (score, goal_attr['game_time']))
             break
         else:
             continue
@@ -132,7 +126,6 @@ def set_pulse_train():
         total_distance = numpy.sqrt(az_dist ** 2 + ele_dist ** 2)
         # distance of current head pose from target window
         window_distance = total_distance - goal_attr['target_size']
-
         # scale ISI with total distance; use scale factor for pulse interval duration
         interval_scale = (total_distance - 2 + 1e-9) / pulse_attr['max_distance']
         interval = pulse_attr['max_pulse_interval'] * (numpy.log(interval_scale + 0.05) + 3) / 3  # log scaling
@@ -153,4 +146,8 @@ def get_pose():
     return pose
 
 if __name__ == "__main__":
-    hrtf_training()
+    repeat = True
+    while repeat:
+        hrtf_training()
+        print('Press button to play again.')
+        freefield.wait_for_button()  # start calibration after button press

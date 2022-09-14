@@ -106,9 +106,9 @@ def calibrate_pose(sensor, limit=0.2, report=True):
     [led_speaker] = freefield.pick_speakers(23)  #s get object for center speaker LED
     freefield.write(tag='bitmask', value=led_speaker.digital_channel,
                     processors=led_speaker.digital_proc)  # illuminate LED
-    print('rest at center speaker and press button to start calibration...', end="\r", flush=True)
+    # print('rest at center speaker and press button to start calibration...', end="\r", flush=True)
     freefield.wait_for_button()  # start calibration after button press
-    print('calibrating', end="\r", flush=True)
+    # print('calibrating', end="\r", flush=True)
     log = numpy.zeros(2)
     while True:  # wait in loop for sensor to stabilize
         pose = get_pose(sensor)
@@ -124,7 +124,7 @@ def calibrate_pose(sensor, limit=0.2, report=True):
                 break
     freefield.write(tag='bitmask', value=0, processors=led_speaker.digital_proc)  # turn off LED
     pose_offset = numpy.around(numpy.mean(log[-int(max_logsize/2):].astype('float16'), axis=0), decimals=2)
-    print('calibration complete.')
+    # print('calibration complete.', end="\r", flush=True)
     return pose_offset
 
 

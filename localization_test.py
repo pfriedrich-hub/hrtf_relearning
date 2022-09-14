@@ -42,7 +42,7 @@ def localization_test():
     # speakers = numpy.delete(speakers, 23, 0)
     # create sequence of speakers to play from, without direct repetition of azimuth or elevation
     n_conditions = len(speakers)
-    sequence = numpy.random.permutation(numpy.tile(list(range(n_conditions)), 1))
+    sequence = numpy.random.permutation(numpy.tile(list(range(n_conditions)), 2))
     sequence = numpy.delete(sequence, numpy.where(sequence == 27))  # remove 0, -50 target
 
     # generate trial sequence with target speaker locations

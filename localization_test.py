@@ -36,17 +36,15 @@ def localization_test():
     stim = stim.ramp(when='both', duration=0.01)
     # read list of speaker locations
     table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')
-    speakers = numpy.loadtxt(table_file, skiprows=1, usecols=(0, 3, 4),
-                                     delimiter=",", dtype=float)
+    speakers = numpy.loadtxt(table_file, skiprows=1, usecols=(0, 3, 4), delimiter=",", dtype=float)
 
-    # speakers = numpy.delete(speakers, 23, 0)
     # create sequence of speakers to play from, without direct repetition of azimuth or elevation
-    n_conditions = len(speakers)
-    sequence = numpy.random.permutation(numpy.tile(list(range(n_conditions)), 2))
-    sequence = numpy.delete(sequence, numpy.where(sequence == 27))  # remove 0, -50 target
+    sequence = numpy.random.permutation(numpy.tile(list(range(len(speakers))), 2))
+    sequence = numpy.delete(sequence, [numpy.where(sequence == 27), numpy.where(sequence == 19)], 0)  # remove 0, -50 target
 
     # generate trial sequence with target speaker locations
-    trial_sequence = slab.Trialsequence(trials=speakers[sequence, 0].astype('int'))
+    trial_sequence = slab.Trialsequence(trials=sequence)
+
     # loop over trials
     for index, speaker_id in enumerate(trial_sequence):
         trial_sequence.add_response(play_trial(speaker_id))  # play n trials

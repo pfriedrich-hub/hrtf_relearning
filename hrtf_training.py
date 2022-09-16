@@ -8,6 +8,7 @@ import head_tracking.meta_motion.mm_pose as motion_sensor
 data_dir = Path.cwd() / 'data'
 fs = 48828
 slab.set_default_samplerate(fs)
+from threading import Timer
 
 # max_pulse_interval: maximal pulse interval in ms
 # target_window: target window as euclidean distance of head pose from target speaker
@@ -16,7 +17,7 @@ slab.set_default_samplerate(fs)
 
 def hrtf_training(max_pulse_interval=500, target_size=3, target_time=0.5, trial_time=10, game_time=90):
     global proc_list, speakers, sensor, game_start, buzzer, end, pulse_attr, goal_attr, \
-           offset, score
+           offset, prep_time, score
     # initialize sensor
     try:
         sensor
@@ -26,11 +27,11 @@ def hrtf_training(max_pulse_interval=500, target_size=3, target_time=0.5, trial_
         sensor = motion_sensor.start_sensor()
     # initialize processors
     if not freefield.PROCESSORS.mode:
+        freefield.set_logger('warning')
         proc_list = [['RX81', 'RX8', data_dir / 'rcx' / 'play_buf_pulse.rcx'],
                      ['RX82', 'RX8', data_dir / 'rcx' / 'play_buf_pulse.rcx'],
                      ['RP2', 'RP2', data_dir / 'rcx' / 'arduino_analog.rcx']]
         freefield.initialize('dome', device=proc_list)
-        freefield.set_logger('warning')
 
     # generate sounds
     stim = slab.Sound.pinknoise(duration=10.0)
@@ -60,8 +61,7 @@ def hrtf_training(max_pulse_interval=500, target_size=3, target_time=0.5, trial_
         az_dist, ele_dist = numpy.diff(speakers[sequence, 1]), numpy.diff(speakers[sequence, 2])
     sequence = numpy.delete(sequence, [numpy.where(sequence == 19),
                numpy.where(sequence == 23), numpy.where(sequence == 27)], 0)  # remove redundant speakers
-    end = False  # set end condition for training sequence
-    score = 0
+    end, score, prep_time = False, 0, 0  # set end condition for training sequence
     game_start = time.time()  # start counting time
     for speaker_id in sequence:  # loop over trials
         if not end:
@@ -71,7 +71,8 @@ def hrtf_training(max_pulse_interval=500, target_size=3, target_time=0.5, trial_
     return
 
 def play_trial(speaker_id):
-    global offset, target, end, score
+    global offset, target, end, score, prep_time
+    trial_prep = time.time()
     freefield.write(tag='source', value=1, processors=['RX81', 'RX82'])  # set speaker input to pulse train buffer
     freefield.write(tag='chan', value=freefield.pick_speakers(speaker_id)[0].analog_channel,
                     processors=freefield.pick_speakers(speaker_id)[0].analog_proc)  # set channel for target speaker
@@ -80,11 +81,12 @@ def play_trial(speaker_id):
     freefield.write(tag='chan', value=99, processors=other_proc)
     offset = motion_sensor.calibrate_pose(sensor)  # get head pose offset
     target = speakers[speaker_id, 1:]  # get target coordinates
-    # print('\n TARGET| azimuth: %.1f, elevation %.1f\n' % (target[0], target[1]))
+    print('\n TARGET| azimuth: %.1f, elevation %.1f\n' % (target[0], target[1]))
     set_pulse_train()  # set initial pulse train interval
     freefield.play(kind='zBusA', proc='all')  # start playing pulse train
     count_down = False  # condition for counting time on target
     trial_start = time.time()
+    prep_time += trial_start - trial_prep  # count time only while playing
     while True:
         distance = set_pulse_train()
         if distance <= 0:  # check if head pose is within target window
@@ -100,7 +102,7 @@ def play_trial(speaker_id):
         if time.time() > trial_start + goal_attr['trial_time']:  # end trial after 10 seconds
             freefield.play(kind='zBusB', proc='all')  # interrupt pulse train
             break
-        if time.time() > game_start + goal_attr['game_time']:  # end training sequence if time is up
+        if time.time() > game_start + prep_time + goal_attr['game_time']:  # end training sequence if time is up
             end = True
             freefield.write(tag='source', value=0, processors=['RX81', 'RX82'])  # set speaker input to goal sound
             freefield.write(tag='goal_data', value=buzzer.data, processors=['RX81', 'RX82'])   # write buzzer to

@@ -18,7 +18,7 @@ slab.set_default_samplerate(fs)
 # data_dir = Path.cwd() / 'data' / 'localization_data'
 tone = slab.Sound.tone(frequency=1000, duration=0.25, level=70)
 
-subject_id = 'jakab_mold_1.0'
+subject_id = 'jakab_mold_1_2'
 
 def localization_test():
     global speakers, stim, sensor
@@ -38,9 +38,11 @@ def localization_test():
     table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')
     speakers = numpy.loadtxt(table_file, skiprows=1, usecols=(0, 3, 4), delimiter=",", dtype=float)
 
+    # speakers = numpy.delete(speakers, 23, 0)
     # create sequence of speakers to play from, without direct repetition of azimuth or elevation
-    sequence = numpy.random.permutation(numpy.tile(list(range(len(speakers))), 2))
-    sequence = numpy.delete(sequence, [numpy.where(sequence == 27), numpy.where(sequence == 19)], 0)  # remove 0, -50 target
+    n_conditions = len(speakers)
+    sequence = numpy.random.permutation(numpy.tile(list(range(n_conditions)), 2))
+    sequence = numpy.delete(sequence, numpy.where(sequence == 27))  # remove 0, -50 target
 
     # generate trial sequence with target speaker locations
     trial_sequence = slab.Trialsequence(trials=sequence)

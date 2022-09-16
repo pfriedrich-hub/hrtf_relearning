@@ -6,9 +6,10 @@ import matplotlib
 from matplotlib import pyplot as plt
 import numpy
 
-subject_id = 'varvara_mold_1_23_Jul'
+data_dir = Path.cwd() / 'data' / 'localization_data'
+subject_id = data_dir / 'hannah_mold_1_11_Sep'
 
-def localization_accuracy(subject_id, show=False):
+def localization_accuracy(subject_id, show=True):
     # calculate elevation gain
     sequence = slab.Trialsequence(conditions=47, n_reps=1)
     sequence.load_pickle(file_name=subject_id)
@@ -22,6 +23,7 @@ def localization_accuracy(subject_id, show=False):
     mid_ids = numpy.where(loc_data[:, 1, 0] == 0)
     # above_ids = numpy.where(loc_data[:, 1, 1] > 0)
     # below_ids = numpy.where(loc_data[:, 1, 1] < 0)
+    elevation_gain, n = scipy.stats.linregress(target_elevations, perceived_elevations)[:2]
 
     if show:
         fig, axis = plt.subplots(1,1)
@@ -34,8 +36,7 @@ def localization_accuracy(subject_id, show=False):
         axis.scatter(target_elevations[right_ids], perceived_elevations[right_ids], s=20, c='blue')
         axis.scatter(target_elevations[mid_ids], perceived_elevations[mid_ids], s=20, c='black')
         axis.legend(('left', 'right', 'midline'), loc='upper left')
-        elevation_gain, n = scipy.stats.linregress(target_elevations, perceived_elevations)[:2]
-        x = numpy.arange(-55,56)
+        x = numpy.arange(-55, 56)
         y = elevation_gain * x + n
         axis.plot(x, y, c='grey', linewidth=0.6)
         axis.set_title(str(subject_id) + '; elevation gain %.2f' % elevation_gain)
@@ -43,7 +44,7 @@ def localization_accuracy(subject_id, show=False):
     return elevation_gain
 
 if __name__ == "__main__":
-    localization_accuracy(subject_id)
+    localization_accuracy(subject_id, show=True)
 
 """
 # for azimuth:

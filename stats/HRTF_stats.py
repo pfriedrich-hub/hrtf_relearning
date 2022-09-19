@@ -5,13 +5,6 @@ import matplotlib
 # matplotlib.use('TkAgg')
 from matplotlib import pyplot as plt
 import numpy
-data_dir = Path.cwd() / 'data' / 'hrtfs' / 'pilot'
-
-sofa_1 = 'jakab_ears_free_1_12_Sep.sofa'
-sofa_2 = 'jakab_mold_1_12_Sep.sofa'
-
-hrtf_1 = slab.HRTF(data_dir / sofa_1)
-hrtf_2 = slab.HRTF(data_dir / sofa_2)
 
 def dtf_correlation(hrtf_1, hrtf_2, show=False, bandwidth=None, n_bins=96):
     # get sources and dtfs
@@ -35,8 +28,8 @@ def dtf_correlation(hrtf_1, hrtf_2, show=False, bandwidth=None, n_bins=96):
                                 hrtf_2.sources.vertical_polar[sources, 1], corr_mtx,
                                 cmap='viridis', levels=10)
         ax, _ = matplotlib.colorbar.make_axes(plt.gca())
-        cbar = matplotlib.colorbar.ColorbarBase(ax, cmap=None, ticks=numpy.arange(0, 1.1, .1),
-                               norm=matplotlib.colors.Normalize(vmin=0, vmax=1), label='Correlation Coefficient')
+        cbar = matplotlib.colorbar.ColorbarBase(ax, cmap=None, ticks=numpy.arange(-1, 1.1, .2),
+                               norm=matplotlib.colors.Normalize(vmin=-1, vmax=1), label='Correlation Coefficient')
         axis.set_ylabel('Elevation (degrees)')
         axis.set_xlabel('Elevation (degrees)')
         plt.show()
@@ -50,6 +43,9 @@ def vsi_dissimilarity(hrtf_1, hrtf_2, bandwidth):
     vsi_dissimilarity = numpy.linalg.norm(correlation_free_v_mold - autocorrelation_free)
     return vsi_dissimilarity
 
+
+
+
 """
 # if __name__ == "__main__":
     # plot correlation_matrix
@@ -57,11 +53,12 @@ def vsi_dissimilarity(hrtf_1, hrtf_2, bandwidth):
     # vsi dissimilarity
     vsi_dissimilarity = vsi_dissimilarity(hrtf_1, hrtf_2, bandwidth=(5700, 11300))
     print('VSI Dissimilarity; %s and %s: %2f \n' % (sofa_1, sofa_2, vsi_dissimilarity))
-
-filename = 'jakab_ears_free_1.0_12_Sep.sofa'
-filename = 'jakab_mold_1.0_12_Sep.sofa'
-# compare waterfall
-hrtf = slab.HRTF(data_dir / filename)
-cs1 = hrtf.cone_sources(cone=0, full_cone=False)
-hrtf.plot_tf(cs1, n_bins=200, kind='waterfall', ear='left', xlim=(4000, 12000))
+    
+    
+data_dir = Path.cwd() / 'data' / 'hrtfs' / 'pilot'
+sofa_1 = 'jakab_ears_free_1_12_Sep.sofa'
+sofa_2 = 'jakab_mold_1_12_Sep.sofa'
+hrtf_1 = slab.HRTF(data_dir / sofa_1)
+hrtf_2 = slab.HRTF(data_dir / sofa_2)
+hrtf_1 = slab.HRTF.kemar()
 """

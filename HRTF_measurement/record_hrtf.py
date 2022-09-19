@@ -65,7 +65,7 @@ def record_hrtfs(subject_id, repetitions, signal, n_directions, safe=safe, speak
     if safe == 'sofa' or safe == 'both':
         print('Creating sofa file...')
         recorded_hrtf = slab.HRTF.estimate_hrtf([rec[2] for rec in recordings], signal, sources)
-        recorded_hrtf.write_sofa(str(subject_id + date.strftime('_%d_%b') + '.sofa'))
+        recorded_hrtf.write_sofa(str(subject_id + date.strftime('_%d.%m') + '.sofa'))
     if safe == 'wav' or safe == 'both':
         print('Creating wav files...')
         for idx, bi_rec in enumerate(recordings):    # save recordings as .wav

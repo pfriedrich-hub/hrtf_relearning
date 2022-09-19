@@ -5,7 +5,7 @@ import time
 import datetime
 date = datetime.datetime.now()
 from pathlib import Path
-from stats.localization_accuracy import localization_accuracy
+from stats.localization_stats import localization_accuracy
 import os
 default_dir = os.getcwd()
 os.chdir(default_dir + '/data/localization_data/')
@@ -46,7 +46,7 @@ def localization_test():
     # loop over trials
     for index in trial_sequence:
         trial_sequence.add_response(play_trial(speaker_sequence[index]))
-    trial_sequence.save_pickle(str(subject_id + date.strftime('_%d_%b')))
+    trial_sequence.save_pickle(str(subject_id + date.strftime('_%d.%m')))
     freefield.halt()
     motion_sensor.disconnect(sensor)
     print('localization test completed!')

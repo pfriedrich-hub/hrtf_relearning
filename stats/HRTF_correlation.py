@@ -5,10 +5,10 @@ import matplotlib
 # matplotlib.use('TkAgg')
 from matplotlib import pyplot as plt
 import numpy
-data_dir = Path.cwd() / 'data' / 'hrtfs'
+data_dir = Path.cwd() / 'data' / 'hrtfs' / 'pilot'
 
-sofa_1 = 'jakab_ears_free_1.0_12_Sep.sofa'
-sofa_2 = 'jakab_mold_1.0_12_Sep.sofa'
+sofa_1 = 'jakab_ears_free_1_12_Sep.sofa'
+sofa_2 = 'jakab_mold_1_12_Sep.sofa'
 
 hrtf_1 = slab.HRTF(data_dir / sofa_1)
 hrtf_2 = slab.HRTF(data_dir / sofa_2)

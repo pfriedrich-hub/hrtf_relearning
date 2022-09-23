@@ -10,25 +10,25 @@ date = datetime.datetime.now()
 import argparse
 from copy import deepcopy
 import os
-os.chdir(os.getcwd() + '/data/hrtfs/')
+# os.chdir(os.getcwd() + '/data/hrtfs/')
 fs = 48828  # sampling rate
 slab.Signal.set_default_samplerate(fs)  # default samplerate for generating sounds, filters etc.
 signal = slab.Sound.chirp(duration=0.1, level=85, from_frequency=200, to_frequency=18000, kind='linear')
 signal = slab.Sound.ramp(signal, when='both', duration=0.001)
 repetitions = 20
 n_directions = 1  # only from the front (1) or front-back recordings (2)
-speakers = numpy.arange(19, 27).tolist()  # central cone - 1
+speakers = numpy.arange(20, 27).tolist()  # central cone - 1
 # speakers = 'all'
 safe = 'sofa'
 
-subject_id = 'jakab_mold_1.0'
+subject_id = 'hannah_ears_free'
 
 
 def record_hrtfs(subject_id, repetitions, signal, n_directions, safe=safe, speakers=speakers):
     global filt
     filt = slab.Filter.band('bp', (200, 18000))
     if not freefield.PROCESSORS.mode:
-        freefield.initialize('dome', default='play_bi_rec')
+        freefield.initialize('dome', default='play_birec')
     freefield.set_logger('warning')
     table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')  # get speaker coordinates
     if isinstance(speakers, str) and speakers == 'all':

@@ -3,12 +3,14 @@ import slab
 from pathlib import Path
 import matplotlib
 # matplotlib.use('TkAgg')
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 from matplotlib import pyplot as plt
 import numpy
 
-def dtf_correlation(hrtf_1, hrtf_2, show=False, bandwidth=None, n_bins=96):
+def dtf_correlation(hrtf_1, hrtf_2, show=False, bandwidth=None, n_bins=96, axis=None):
     # get sources and dtfs
     sources = hrtf_1.cone_sources(0)
+    hrtf_1, hrtf_2 = hrtf_1.diffuse_field_equalization(), hrtf_2.diffuse_field_equalization()
     dtf = hrtf_1.tfs_from_sources(sources, n_bins)
     dtf_2 = hrtf_2.tfs_from_sources(sources, n_bins)
     if bandwidth:  # cap dtf to bandwidth
@@ -23,13 +25,20 @@ def dtf_correlation(hrtf_1, hrtf_2, show=False, bandwidth=None, n_bins=96):
             corr_mtx[i, j] = numpy.corrcoef(dtf[:, i], dtf_2[:, j])[1, 0]
     # plot correlation matrix
     if show:
-        fig, axis = plt.subplots()
+        if axis is None:
+            fig, axis = plt.subplots()
+        else:
+            fig = axis.figure
+        levels = numpy.linspace(-1, 1, 11)
         contour = axis.contourf(hrtf_1.sources.vertical_polar[sources, 1],
                                 hrtf_2.sources.vertical_polar[sources, 1], corr_mtx,
-                                cmap='viridis', levels=10)
-        ax, _ = matplotlib.colorbar.make_axes(plt.gca())
-        cbar = matplotlib.colorbar.ColorbarBase(ax, cmap=None, ticks=numpy.arange(-1, 1.1, .2),
-                               norm=matplotlib.colors.Normalize(vmin=-1, vmax=1), label='Correlation Coefficient')
+                                cmap='viridis', levels=levels)
+        axis.set_xticks(numpy.arange(-37.5, 51, 12.5))
+        axis.set_yticks(numpy.arange(-37.5, 51, 12.5))
+        divider = make_axes_locatable(axis)
+        cax = divider.append_axes('right', size='5%', pad=0.05)
+        fig.colorbar(contour, cax, orientation="vertical", ticks=numpy.linspace(-1, 1, 11),
+                     label='Correlation Coefficient')
         axis.set_ylabel('Elevation (degrees)')
         axis.set_xlabel('Elevation (degrees)')
         plt.show()
@@ -56,7 +65,7 @@ def vsi_dissimilarity(hrtf_1, hrtf_2, bandwidth):
     
     
 data_dir = Path.cwd() / 'data' / 'hrtfs' / 'pilot'
-sofa_1 = 'jakab_ears_free_1_12_Sep.sofa'
+sofa_1 = 'jakab_ears_free_12_Sep.sofa'
 sofa_2 = 'jakab_mold_1_12_Sep.sofa'
 hrtf_1 = slab.HRTF(data_dir / sofa_1)
 hrtf_2 = slab.HRTF(data_dir / sofa_2)

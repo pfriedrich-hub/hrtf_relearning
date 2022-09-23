@@ -6,8 +6,8 @@ import matplotlib
 from matplotlib import pyplot as plt
 import numpy
 
-data_dir = Path.cwd() / 'data' / 'localization_data'
-subject_id = data_dir / 'hannah_mold_1_11_Sep'
+data_dir = Path.cwd() / 'data' / 'localization_data' /'pilot'
+subject_id = data_dir / 'hannah' / 'hannah_mold_1_16_Sep'
 
 def localization_accuracy(subject_id, show=True):
     # calculate elevation gain
@@ -24,7 +24,9 @@ def localization_accuracy(subject_id, show=True):
     # above_ids = numpy.where(loc_data[:, 1, 1] > 0)
     # below_ids = numpy.where(loc_data[:, 1, 1] < 0)
     elevation_gain, n = scipy.stats.linregress(target_elevations, perceived_elevations)[:2]
-
+    rmse = numpy.sqrt(numpy.square(numpy.subtract(target_elevations, perceived_elevations)).mean())
+    sd = numpy.mean([numpy.std(perceived_elevations[numpy.where(target_elevations == target)])
+                for target in numpy.unique(target_elevations)])
     if show:
         fig, axis = plt.subplots(1,1)
         axis.set_ylim(-60,60)
@@ -41,7 +43,7 @@ def localization_accuracy(subject_id, show=True):
         axis.plot(x, y, c='grey', linewidth=0.6)
         axis.set_title(str(subject_id) + '; elevation gain %.2f' % elevation_gain)
         plt.show()
-    return elevation_gain
+    return elevation_gain, rmse, sd
 
 if __name__ == "__main__":
     localization_accuracy(subject_id, show=True)

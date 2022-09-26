@@ -102,7 +102,7 @@ def test_sensor(sensor, n_datapoints=100, timer=False):
     # print('test completed')
     return log
 
-def calibrate_pose(sensor, limit=0.2, report=True):
+def calibrate_pose(sensor, limit=0.2, report=False):
     [led_speaker] = freefield.pick_speakers(23)  #s get object for center speaker LED
     freefield.write(tag='bitmask', value=led_speaker.digital_channel,
                     processors=led_speaker.digital_proc)  # illuminate LED
@@ -126,6 +126,7 @@ def calibrate_pose(sensor, limit=0.2, report=True):
     pose_offset = numpy.around(numpy.mean(log[-int(max_logsize/2):].astype('float16'), axis=0), decimals=2)
     # print('calibration complete.', end="\r", flush=True)
     return pose_offset
+
 
 
 # def config_handler():

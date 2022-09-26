@@ -7,10 +7,9 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from matplotlib import pyplot as plt
 import numpy
 
-def dtf_correlation(hrtf_1, hrtf_2, show=False, bandwidth=None, n_bins=96, axis=None):
+def dtf_correlation(hrtf_1, hrtf_2, show=False, bandwidth=None, n_bins=96, axis=None, cbar=None):
     # get sources and dtfs
     sources = hrtf_1.cone_sources(0)
-    hrtf_1, hrtf_2 = hrtf_1.diffuse_field_equalization(), hrtf_2.diffuse_field_equalization()
     dtf = hrtf_1.tfs_from_sources(sources, n_bins)
     dtf_2 = hrtf_2.tfs_from_sources(sources, n_bins)
     if bandwidth:  # cap dtf to bandwidth
@@ -33,16 +32,16 @@ def dtf_correlation(hrtf_1, hrtf_2, show=False, bandwidth=None, n_bins=96, axis=
         contour = axis.contourf(hrtf_1.sources.vertical_polar[sources, 1],
                                 hrtf_2.sources.vertical_polar[sources, 1], corr_mtx,
                                 cmap='viridis', levels=levels)
-        axis.set_xticks(numpy.arange(-37.5, 51, 12.5))
-        axis.set_yticks(numpy.arange(-37.5, 51, 12.5))
+        axis.set_xticks(numpy.arange(-37.5, 38, 12.5))
+        axis.set_yticks(numpy.arange(-37.5, 38, 12.5))
         divider = make_axes_locatable(axis)
         cax = divider.append_axes('right', size='5%', pad=0.05)
-        fig.colorbar(contour, cax, orientation="vertical", ticks=numpy.linspace(-1, 1, 11),
+        cbar = fig.colorbar(contour, cax, orientation="vertical", ticks=numpy.linspace(-1, 1, 11),
                      label='Correlation Coefficient')
         axis.set_ylabel('Elevation (degrees)')
         axis.set_xlabel('Elevation (degrees)')
         plt.show()
-    return corr_mtx
+    return corr_mtx, cbar
 
 def vsi_dissimilarity(hrtf_1, hrtf_2, bandwidth):
     # get correlation matrices

@@ -108,7 +108,7 @@ def play_trial(speaker_id):
             freefield.write(tag='goal_data', value=buzzer.data, processors=['RX81', 'RX82'])   # write buzzer to
             freefield.write(tag='goal_len', value=buzzer.n_samples, processors=['RX81', 'RX82'])  # goal sound buffer
             freefield.play(kind='zBusB', proc='all')  # play from goal sound buffer
-            print('score: %i trials completed in %i seconds!' % (score, goal_attr['game_time']))
+            print('Score: %i sources found in %i seconds!' % (score, goal_attr['game_time']))
             break
         else:
             continue

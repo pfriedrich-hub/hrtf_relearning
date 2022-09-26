@@ -11,13 +11,14 @@ import numpy
 ### ---- HRTF plots ----- ###
 hrtf_dir = Path.cwd() / 'data' / 'hrtfs' / 'pilot'
 
-sofa1 = 'jakab_ears_free_12_Sep.sofa'
-sofa2 = 'jakab_mold_1_12_Sep.sofa'
+sofa1 = 'varvara_ears_free_23.09.sofa'
+sofa2 = 'varvara_mold_1_23.09.sofa'
 kemar_sofa = 'kemar_free.sofa'
 hrtf_free = slab.HRTF(hrtf_dir / sofa1)
 hrtf_mold = slab.HRTF(hrtf_dir / sofa2)
 kemar_hrtf = slab.HRTF(hrtf_dir / kemar_sofa)
 sources = hrtf_free.cone_sources(cone=0, full_cone=False)
+hrtf_free, hrtf_mold = hrtf_free.diffuse_field_equalization(), hrtf_mold.diffuse_field_equalization()
 
 # plot waterfall
 hrtf_free.plot_tf(sources, n_bins=200, kind='waterfall', ear='left', xlim=(4000, 16000))
@@ -29,14 +30,16 @@ hrtf_mold.plot_tf(sources, n_bins=96, kind='image', ear='left', xlim=(4000, 1200
 fig.text(0.3, 0.9, 'Ear Free', ha='center')
 fig.text(0.7, 0.9, 'With Mold', ha='center')
 # plot hrtf autocorrelation free
-corr_mtx = hrtf_corr.dtf_correlation(hrtf_free, hrtf_free, show=True, bandwidth=None,
+corr_mtx, cbar_1 = hrtf_corr.dtf_correlation(hrtf_free, hrtf_free, show=True, bandwidth=None,
                                      n_bins=96, axis=axis[1, 0])
 # plot hrtf correlation free vs mold
-cross_corr_mtx = hrtf_corr.dtf_correlation(hrtf_free, hrtf_mold, show=True, bandwidth=None,
+cross_corr_mtx, cbar_2 = hrtf_corr.dtf_correlation(hrtf_free, hrtf_mold, show=True, bandwidth=None,
                                            n_bins=96, axis=axis[1, 1])
-fig.text(0.3, 0.9, 'Autocorrelation Ear Free', ha='center')
-fig.text(0.7, 0.9, 'Correlation Free vs. Mold', ha='center')
-axis[1, 1].cbar
+fig.text(0.3, 0.5, 'Autocorrelation Ear Free', ha='center')
+fig.text(0.7, 0.5, 'Correlation Free vs. Mold', ha='center')
+cbar_1.remove()
+
+# axis[1, 1]
 
 
 # plot vsi across 1/2 octave frequency bands

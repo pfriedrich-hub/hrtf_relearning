@@ -38,7 +38,7 @@ def hrtf_training(max_pulse_interval=500, target_size=3, target_time=0.5, trial_
     freefield.write(tag='playbuflen', value=stim.n_samples, processors=['RX81', 'RX82'])
     freefield.write(tag='data', value=stim.data, processors=['RX81', 'RX82'])
     coin = slab.Sound(data=data_dir / 'sounds' / 'Mario_Coin_Retro.wav')  # load goal sound to buffer
-    coin.level = 67
+    coin.level = 65
     freefield.write(tag='goal_data', value=coin.data, processors=['RX81', 'RX82'])
     freefield.write(tag='goal_len', value=coin.n_samples, processors=['RX81', 'RX82'])
     buzzer = slab.Sound(data_dir / 'sounds' / 'Buzzer1.wav')

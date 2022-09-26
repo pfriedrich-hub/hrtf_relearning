@@ -6,9 +6,9 @@ import datetime
 date = datetime.datetime.now()
 from pathlib import Path
 from stats.localization_stats import localization_accuracy
-import os
-default_dir = os.getcwd()
-os.chdir(default_dir + '/data/localization_data/')
+# import os
+# default_dir = os.getcwd()
+# os.chdir(default_dir + '/data/localization_data/')
 # import head_tracking.cam_tracking.aruco_pose as aruco
 import head_tracking.meta_motion.mm_pose as motion_sensor
 # import head_tracking.sensor_tracking.sensor_pose as sensor
@@ -18,7 +18,7 @@ slab.set_default_samplerate(fs)
 # data_dir = Path.cwd() / 'data' / 'localization_data'
 tone = slab.Sound.tone(frequency=1000, duration=0.25, level=70)
 
-subject_id = 'test'
+subject_id = 'varvara_mold_1'
 
 def localization_test():
     global speakers, stim, sensor
@@ -37,7 +37,7 @@ def localization_test():
     # read list of speaker locations
     table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')
     speakers = numpy.loadtxt(table_file, skiprows=1, usecols=(0, 3, 4), delimiter=",", dtype=float)
-    speaker_sequence = numpy.random.permutation(numpy.tile(list(range(len(speakers))), 4))
+    speaker_sequence = numpy.random.permutation(numpy.tile(list(range(len(speakers))), 3))
     speaker_sequence = numpy.delete(speaker_sequence, [numpy.where(speaker_sequence == 19),
                        numpy.where(speaker_sequence == 27)])  # remove 0, -50 and 0, 50 speaker
     # generate trial sequence with target speaker locations
@@ -58,7 +58,7 @@ def play_trial(speaker_id):
     target = speakers[speaker_id, 1:]
     print('TARGET| azimuth: %.1f, elevation %.1f' % (target[0], target[1]))
     time.sleep(.5)
-    freefield.set_signal_and_speaker(signal=stim, speaker=speaker_id, equalize=False)
+    freefield.set_signal_and_speaker(signal=stim, speaker=speaker_id, equalize=True)
     freefield.play()
     freefield.wait_to_finish_playing()
     response = 0
@@ -78,4 +78,4 @@ def play_trial(speaker_id):
 
 if __name__ == "__main__":
     trialsequence = localization_test()
-    localization_accuracy(str(subject_id + date.strftime('_%d_%b')), show=True)
+    localization_accuracy(str(subject_id + date.strftime('_%d.%m')), show=True)

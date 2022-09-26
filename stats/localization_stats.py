@@ -6,8 +6,8 @@ import matplotlib
 from matplotlib import pyplot as plt
 import numpy
 
-data_dir = Path.cwd() / 'data' / 'localization_data' /'pilot'
-subject_id = data_dir / 'hannah' / 'hannah_mold_1_16_Sep'
+data_dir = Path.cwd() / 'data' / 'localization_data' / 'pilot'
+subject_id = data_dir / 'varvara_ears_free_23.09'
 
 def localization_accuracy(subject_id, show=True):
     # calculate elevation gain
@@ -46,7 +46,7 @@ def localization_accuracy(subject_id, show=True):
     return elevation_gain, rmse, sd
 
 if __name__ == "__main__":
-    localization_accuracy(subject_id, show=True)
+    elevation_gain, rmse, sd = localization_accuracy(subject_id, show=True)
 
 """
 # for azimuth:

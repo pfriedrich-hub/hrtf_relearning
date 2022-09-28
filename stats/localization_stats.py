@@ -7,7 +7,7 @@ from matplotlib import pyplot as plt
 import numpy
 
 data_dir = Path.cwd() / 'data' / 'localization_data' / 'pilot'
-subject_id = data_dir / 'varvara_ears_free_23.09'
+subject_id = data_dir / 'varvara_mold_1_23.09'
 
 def localization_accuracy(subject_id, show=True):
     # calculate elevation gain
@@ -34,9 +34,9 @@ def localization_accuracy(subject_id, show=True):
         axis.set_xlabel('target elevations')
         axis.set_ylabel('perceived elevations')
         # scatter plot with regression line (elevation gain)
-        axis.scatter(target_elevations[left_ids], perceived_elevations[left_ids], s=20, c='red')
-        axis.scatter(target_elevations[right_ids], perceived_elevations[right_ids], s=20, c='blue')
-        axis.scatter(target_elevations[mid_ids], perceived_elevations[mid_ids], s=20, c='black')
+        axis.scatter(target_elevations[left_ids], perceived_elevations[left_ids], s=10, c='red')
+        axis.scatter(target_elevations[right_ids], perceived_elevations[right_ids], s=10, c='blue')
+        axis.scatter(target_elevations[mid_ids], perceived_elevations[mid_ids], s=10, c='black')
         axis.legend(('left', 'right', 'midline'), loc='upper left')
         x = numpy.arange(-55, 56)
         y = elevation_gain * x + n

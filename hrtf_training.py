@@ -81,7 +81,7 @@ def play_trial(speaker_id):
     freefield.write(tag='chan', value=99, processors=other_proc)
     offset = motion_sensor.calibrate_pose(sensor)  # get head pose offset
     target = speakers[speaker_id, 1:]  # get target coordinates
-    print('\n TARGET| azimuth: %.1f, elevation %.1f\n' % (target[0], target[1]))
+    print('\n TARGET| azimuth: %.1f, elevation %.1f' % (target[0], target[1]))
     set_pulse_train()  # set initial pulse train interval
     freefield.play(kind='zBusA', proc='all')  # start playing pulse train
     count_down = False  # condition for counting time on target
@@ -131,7 +131,7 @@ def set_pulse_train():
         # scale ISI with total distance; use scale factor for pulse interval duration
         interval_scale = (total_distance - 2 + 1e-9) / pulse_attr['max_distance']
         interval = pulse_attr['max_pulse_interval'] * (numpy.log(interval_scale + 0.05) + 3) / 3  # log scaling
-        print('head pose: azimuth: %.1f, elevation: %.1f, total distance: %.2f'
+        print('head pose: azimuth: %.1f, elevation: %.1f, total distance: %.2f \n'
               % (pose[0], pose[1], total_distance), end="\r", flush=True)
     else:  # if no pose is detected, set maximal pulse interval
         window_distance = pulse_attr['max_distance']

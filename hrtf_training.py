@@ -131,7 +131,7 @@ def set_pulse_train():
         # scale ISI with total distance; use scale factor for pulse interval duration
         interval_scale = (total_distance - 2 + 1e-9) / pulse_attr['max_distance']
         interval = pulse_attr['max_pulse_interval'] * (numpy.log(interval_scale + 0.05) + 3) / 3  # log scaling
-        print('head pose: azimuth: %.1f, elevation: %.1f, total distance: %.2f \n'
+        print('head pose: azimuth: %.1f, elevation: %.1f, total distance: %.2f'
               % (pose[0], pose[1], total_distance), end="\r", flush=True)
     else:  # if no pose is detected, set maximal pulse interval
         window_distance = pulse_attr['max_distance']

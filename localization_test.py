@@ -38,6 +38,10 @@ def localization_test():
     table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')
     speakers = numpy.loadtxt(table_file, skiprows=1, usecols=(0, 3, 4), delimiter=",", dtype=float)
     speaker_sequence = numpy.random.permutation(numpy.tile(list(range(len(speakers))), 3))
+    az_dist, ele_dist = numpy.diff(speakers[sequence, 1]), numpy.diff(speakers[sequence, 2])
+    while numpy.min(numpy.abs(az_dist)) <= 1.0 and numpy.min(numpy.abs(ele_dist)) <= 1.0:
+        sequence = numpy.random.permutation(numpy.tile(list(range(len(speakers))), 1))
+        az_dist, ele_dist = numpy.diff(speakers[sequence, 1]), numpy.diff(speakers[sequence, 2])
     speaker_sequence = numpy.delete(speaker_sequence, [numpy.where(speaker_sequence == 19),
                        numpy.where(speaker_sequence == 27)])  # remove 0, -50 and 0, 50 speaker
     # generate trial sequence with target speaker locations

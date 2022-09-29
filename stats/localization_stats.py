@@ -7,12 +7,12 @@ from matplotlib import pyplot as plt
 import numpy
 
 data_dir = Path.cwd() / 'data' / 'localization_data' / 'pilot'
-subject_id = data_dir / 'varvara_mold_1_23.09'
+subject_id = 'varvara_mold_1_23.09'
 
 def localization_accuracy(subject_id, show=True):
     # calculate elevation gain
     sequence = slab.Trialsequence(conditions=47, n_reps=1)
-    sequence.load_pickle(file_name=subject_id)
+    sequence.load_pickle(file_name=data_dir / subject_id)
     loc_data = numpy.asarray(sequence.data)
     loc_data = loc_data.reshape(loc_data.shape[0], 2, 2)
     target_elevations = loc_data[:, 1, 1]  # target elevations
@@ -34,14 +34,14 @@ def localization_accuracy(subject_id, show=True):
         axis.set_xlabel('target elevations')
         axis.set_ylabel('perceived elevations')
         # scatter plot with regression line (elevation gain)
-        axis.scatter(target_elevations[left_ids], perceived_elevations[left_ids], s=10, c='red')
-        axis.scatter(target_elevations[right_ids], perceived_elevations[right_ids], s=10, c='blue')
-        axis.scatter(target_elevations[mid_ids], perceived_elevations[mid_ids], s=10, c='black')
-        axis.legend(('left', 'right', 'midline'), loc='upper left')
+        axis.scatter(target_elevations[left_ids], perceived_elevations[left_ids], s=10, c='red', label='left')
+        axis.scatter(target_elevations[right_ids], perceived_elevations[right_ids], s=10, c='blue', label='right')
+        axis.scatter(target_elevations[mid_ids], perceived_elevations[mid_ids], s=10, c='black', label='middle')
         x = numpy.arange(-55, 56)
         y = elevation_gain * x + n
-        axis.plot(x, y, c='grey', linewidth=0.6)
-        axis.set_title(str(subject_id) + '; elevation gain %.2f' % elevation_gain)
+        axis.plot(x, y, c='grey', linewidth=0.6, label='elevation gain %.2f' % elevation_gain)
+        plt.legend()
+        axis.set_title(str(subject_id))
         plt.show()
     return elevation_gain, rmse, sd
 

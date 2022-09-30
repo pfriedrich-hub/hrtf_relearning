@@ -20,7 +20,7 @@ n_directions = 1  # only from the front (1) or front-back recordings (2)
 speakers = numpy.arange(20, 27).tolist()  # central cone - 1
 # speakers = 'all'
 safe = 'sofa'
-subject_id = 'varvara_mold_1'
+subject_id = 'meike_mold_1'
 
 
 def record_hrtfs(subject_id, repetitions, signal, n_directions, safe=safe, speakers=speakers):

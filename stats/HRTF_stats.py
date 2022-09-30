@@ -64,9 +64,10 @@ def vsi_dissimilarity(hrtf_1, hrtf_2, bandwidth):
     
     
 data_dir = Path.cwd() / 'data' / 'hrtfs' / 'pilot'
-sofa_1 = 'hannah_ears_free_23.09.sofa'
-sofa_2 = 'hannah_mold_1.1_12_Sep.sofa'
+sofa_1 = 'meike_no_mold_30.09.sofa'
+sofa_2 = 'meike_mold_1_30.09.sofa'
 hrtf_1 = slab.HRTF(data_dir / sofa_1)
 hrtf_2 = slab.HRTF(data_dir / sofa_2)
 hrtf_1 = slab.HRTF.kemar()
+
 """

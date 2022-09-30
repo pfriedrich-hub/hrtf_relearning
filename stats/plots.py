@@ -11,7 +11,7 @@ import numpy
 ### ---- HRTF plots ----- ###
 hrtf_dir = Path.cwd() / 'data' / 'hrtfs' / 'pilot'
 
-sofa1 = 'varvara_ears_free_23.09.sofa'
+sofa1 = 'meike_mold_1_30.09.sofa'
 sofa2 = 'varvara_mold_1_23.09.sofa'
 kemar_sofa = 'kemar_free.sofa'
 hrtf_free = slab.HRTF(hrtf_dir / sofa1)
@@ -21,7 +21,7 @@ sources = hrtf_free.cone_sources(cone=0, full_cone=False)
 hrtf_free, hrtf_mold = hrtf_free.diffuse_field_equalization(), hrtf_mold.diffuse_field_equalization()
 
 # plot waterfall
-hrtf_free.plot_tf(sources, n_bins=200, kind='waterfall', ear='left', xlim=(4000, 16000))
+hrtf_free.plot_tf(sources, n_bins=200, kind='image', ear='left', xlim=(4000, 16000))
 
 # compare heatmap of hrtf free and with mold
 fig, axis = plt.subplots(2, 2, sharey=True)

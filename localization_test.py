@@ -18,7 +18,7 @@ slab.set_default_samplerate(fs)
 # data_dir = Path.cwd() / 'data' / 'localization_data'
 tone = slab.Sound.tone(frequency=1000, duration=0.25, level=70)
 
-subject_id = 'varvara_mold_1'
+subject_id = 'meike_mold_1'
 
 def localization_test():
     global speakers, stim, sensor
@@ -37,19 +37,18 @@ def localization_test():
     # read list of speaker locations
     table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')
     speakers = numpy.loadtxt(table_file, skiprows=1, usecols=(0, 3, 4), delimiter=",", dtype=float)
-    speaker_sequence = numpy.random.permutation(numpy.tile(list(range(len(speakers))), 3))
-    az_dist, ele_dist = numpy.diff(speakers[sequence, 1]), numpy.diff(speakers[sequence, 2])
-    while numpy.min(numpy.abs(az_dist)) <= 1.0 and numpy.min(numpy.abs(ele_dist)) <= 1.0:
-        sequence = numpy.random.permutation(numpy.tile(list(range(len(speakers))), 1))
-        az_dist, ele_dist = numpy.diff(speakers[sequence, 1]), numpy.diff(speakers[sequence, 2])
-    speaker_sequence = numpy.delete(speaker_sequence, [numpy.where(speaker_sequence == 19),
-                       numpy.where(speaker_sequence == 27)])  # remove 0, -50 and 0, 50 speaker
+    sequence = numpy.random.permutation(numpy.tile(list(range(len(speakers))), 3))
+    # az_dist, ele_dist = numpy.diff(speakers[sequence, 1]), numpy.diff(speakers[sequence, 2])
+    # while numpy.min(numpy.abs(az_dist)) <= 1.0 and numpy.min(numpy.abs(ele_dist)) <= 1.0:
+    #     sequence = numpy.random.permutation(numpy.tile(list(range(len(speakers))), 3))
+    #     az_dist, ele_dist = numpy.diff(speakers[sequence, 1]), numpy.diff(speakers[sequence, 2])
+    sequence = numpy.delete(sequence, [numpy.where(sequence == 19), numpy.where(sequence == 27)])
     # generate trial sequence with target speaker locations
-    trial_sequence = slab.Trialsequence(trials=range(len(speaker_sequence)))
+    trial_sequence = slab.Trialsequence(trials=range(len(sequence)))
 
     # loop over trials
     for index in trial_sequence:
-        trial_sequence.add_response(play_trial(speaker_sequence[index]))
+        trial_sequence.add_response(play_trial(sequence[index]))
     trial_sequence.save_pickle(str(subject_id + date.strftime('_%d.%m')))
     freefield.halt()
     motion_sensor.disconnect(sensor)

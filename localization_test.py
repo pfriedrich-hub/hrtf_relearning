@@ -18,7 +18,7 @@ slab.set_default_samplerate(fs)
 # data_dir = Path.cwd() / 'data' / 'localization_data'
 tone = slab.Sound.tone(frequency=1000, duration=0.25, level=70)
 
-subject_id = 'varvara_mold_1'
+subject_id = 'max_no_mold'
 
 def localization_test():
     global speakers, stim, sensor

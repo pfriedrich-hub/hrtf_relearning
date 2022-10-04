@@ -56,7 +56,7 @@ def hrtf_training(max_pulse_interval=500, target_size=3, target_time=0.5, trial_
     print('Setting target sequence...')
     sequence = numpy.random.permutation(numpy.tile(list(range(len(speakers))), 1))
     az_dist, ele_dist = numpy.diff(speakers[sequence, 1]), numpy.diff(speakers[sequence, 2])
-    while numpy.min(numpy.abs(az_dist)) <= 1.0 and numpy.min(numpy.abs(ele_dist)) <= 1.0:
+    while any([az_dist[i] == 0 or ele_dist[i] == 0 for i in range(len(az_dist))]):
         sequence = numpy.random.permutation(numpy.tile(list(range(len(speakers))), 1))
         az_dist, ele_dist = numpy.diff(speakers[sequence, 1]), numpy.diff(speakers[sequence, 2])
     sequence = numpy.delete(sequence, [numpy.where(sequence == 19),

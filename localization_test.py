@@ -18,7 +18,7 @@ slab.set_default_samplerate(fs)
 # data_dir = Path.cwd() / 'data' / 'localization_data'
 tone = slab.Sound.tone(frequency=1000, duration=0.25, level=70)
 
-subject_id = 'meike_mold_1'
+subject_id = 'varvara_mold_1'
 
 def localization_test():
     global speakers, stim, sensor
@@ -38,10 +38,10 @@ def localization_test():
     table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')
     speakers = numpy.loadtxt(table_file, skiprows=1, usecols=(0, 3, 4), delimiter=",", dtype=float)
     sequence = numpy.random.permutation(numpy.tile(list(range(len(speakers))), 3))
-    # az_dist, ele_dist = numpy.diff(speakers[sequence, 1]), numpy.diff(speakers[sequence, 2])
-    # while numpy.min(numpy.abs(az_dist)) <= 1.0 and numpy.min(numpy.abs(ele_dist)) <= 1.0:
-    #     sequence = numpy.random.permutation(numpy.tile(list(range(len(speakers))), 3))
-    #     az_dist, ele_dist = numpy.diff(speakers[sequence, 1]), numpy.diff(speakers[sequence, 2])
+    az_dist, ele_dist = numpy.diff(speakers[sequence, 1]), numpy.diff(speakers[sequence, 2])
+    while any([az_dist[i] == 0 and ele_dist[i] == 0 for i in range(len(az_dist))]):
+        sequence = numpy.random.permutation(numpy.tile(list(range(len(speakers))), 3))
+        az_dist, ele_dist = numpy.diff(speakers[sequence, 1]), numpy.diff(speakers[sequence, 2])
     sequence = numpy.delete(sequence, [numpy.where(sequence == 19), numpy.where(sequence == 27)])
     # generate trial sequence with target speaker locations
     trial_sequence = slab.Trialsequence(trials=range(len(sequence)))
@@ -81,4 +81,4 @@ def play_trial(speaker_id):
 
 if __name__ == "__main__":
     trialsequence = localization_test()
-    localization_accuracy(str(subject_id + date.strftime('_%d.%m')), show=True)
+    # localization_accuracy(str(subject_id + date.strftime('_%d.%m')), show=True)

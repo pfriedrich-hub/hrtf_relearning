@@ -7,7 +7,7 @@ from matplotlib import pyplot as plt
 import numpy
 
 data_dir = Path.cwd() / 'data' / 'localization_data' / 'pilot'
-subject_id = 'varvara_mold_1_04.10'
+subject_id = 'max_mold_1_04.10'
 
 def localization_accuracy(subject_id, show=True):
     # calculate elevation gain

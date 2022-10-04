@@ -1,16 +1,17 @@
 # record form in-ear microphones
 import numpy
-import matplotlib
-# matplotlib.use('TkAgg')
 from pathlib import Path
 import slab
 import freefield
 import datetime
 date = datetime.datetime.now()
-import argparse
 from copy import deepcopy
-import os
-# os.chdir(os.getcwd() + '/data/hrtfs/')
+
+subject_id = 'max_mold_1'
+
+data_dir = Path.cwd() / 'data' / 'hrtfs' / 'pilot'
+filename = str(subject_id + date.strftime('_%d.%m'))
+filepath = str(data_dir / filename)
 fs = 48828  # sampling rate
 slab.Signal.set_default_samplerate(fs)  # default samplerate for generating sounds, filters etc.
 signal = slab.Sound.chirp(duration=0.1, level=85, from_frequency=200, to_frequency=18000, kind='linear')
@@ -20,8 +21,6 @@ n_directions = 1  # only from the front (1) or front-back recordings (2)
 speakers = numpy.arange(20, 27).tolist()  # central cone - 1
 # speakers = 'all'
 safe = 'sofa'
-subject_id = 'varvara_mold_1'
-
 
 def record_hrtfs(subject_id, repetitions, signal, n_directions, safe=safe, speakers=speakers):
     global filt
@@ -64,7 +63,7 @@ def record_hrtfs(subject_id, repetitions, signal, n_directions, safe=safe, speak
     if safe == 'sofa' or safe == 'both':
         print('Creating sofa file...')
         recorded_hrtf = slab.HRTF.estimate_hrtf([rec[2] for rec in recordings], signal, sources)
-        recorded_hrtf.write_sofa(str(subject_id + date.strftime('_%d.%m') + '.sofa'))
+        recorded_hrtf.write_sofa(filepath + '.sofa')
     if safe == 'wav' or safe == 'both':
         print('Creating wav files...')
         for idx, bi_rec in enumerate(recordings):    # save recordings as .wav
@@ -139,7 +138,7 @@ for i in range(len(vertical_dist)):
 # test molds on kemar
 from matplotlib import pyplot as plt
 
-fname='kemar_no_mold.sofa'
+fname='varvara_ears_free_23.09.sofa'
 hrtf=slab.HRTF(Path.cwd() / 'data' / 'hrtfs' / fname)
 src=hrtf.cone_sources(0)
 hrtf.plot_tf(src, n_bins=300)

@@ -6,19 +6,16 @@ import datetime
 date = datetime.datetime.now()
 from pathlib import Path
 from stats.localization_stats import localization_accuracy
-# import os
-# default_dir = os.getcwd()
-# os.chdir(default_dir + '/data/localization_data/')
-# import head_tracking.cam_tracking.aruco_pose as aruco
 import head_tracking.meta_motion.mm_pose as motion_sensor
-# import head_tracking.sensor_tracking.sensor_pose as sensor
+
+subject_id = 'max_mold_1'
 
 fs = 48828
 slab.set_default_samplerate(fs)
-# data_dir = Path.cwd() / 'data' / 'localization_data'
 tone = slab.Sound.tone(frequency=1000, duration=0.25, level=70)
-
-subject_id = 'max_no_mold'
+data_dir = Path.cwd() / 'data' / 'localization_data' / 'pilot'
+filename = str(subject_id + date.strftime('_%d.%m'))
+filepath = str(data_dir / filename)
 
 def localization_test():
     global speakers, stim, sensor
@@ -49,7 +46,7 @@ def localization_test():
     # loop over trials
     for index in trial_sequence:
         trial_sequence.add_response(play_trial(sequence[index]))
-    trial_sequence.save_pickle(str(subject_id + date.strftime('_%d.%m')))
+    trial_sequence.save_pickle(filepath)
     freefield.halt()
     motion_sensor.disconnect(sensor)
     print('localization test completed!')
@@ -81,4 +78,4 @@ def play_trial(speaker_id):
 
 if __name__ == "__main__":
     trialsequence = localization_test()
-    # localization_accuracy(str(subject_id + date.strftime('_%d.%m')), show=True)
+    localization_accuracy(filename, show=True)

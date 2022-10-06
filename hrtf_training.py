@@ -8,7 +8,6 @@ import head_tracking.meta_motion.mm_pose as motion_sensor
 data_dir = Path.cwd() / 'data'
 fs = 48828
 slab.set_default_samplerate(fs)
-from threading import Timer
 
 # max_pulse_interval: maximal pulse interval in ms
 # target_window: target window as euclidean distance of head pose from target speaker
@@ -17,7 +16,7 @@ from threading import Timer
 
 def hrtf_training(max_pulse_interval=500, target_size=3, target_time=0.5, trial_time=10, game_time=90):
     global proc_list, speakers, sensor, game_start, buzzer, end, pulse_attr, goal_attr, \
-           offset, prep_time, score
+           offset, prep_time, score, coin, coins
     # initialize sensor
     try:
         sensor
@@ -37,9 +36,15 @@ def hrtf_training(max_pulse_interval=500, target_size=3, target_time=0.5, trial_
     stim = slab.Sound.pinknoise(duration=10.0)
     freefield.write(tag='playbuflen', value=stim.n_samples, processors=['RX81', 'RX82'])
     freefield.write(tag='data', value=stim.data, processors=['RX81', 'RX82'])
-    coin = slab.Sound(data=data_dir / 'sounds' / 'Mario_Coin_Retro.wav')  # load goal sound to buffer
-    coin.level = 65
-    freefield.write(tag='goal_data', value=coin.data, processors=['RX81', 'RX82'])
+    coin = slab.Sound(data=data_dir / 'sounds' / 'coin.wav')  # load goal sound to buffer
+    coins = slab.Sound(data=data_dir / 'sounds' / 'coins.wav')  # load goal sound to buffer
+
+    coin.level = 75
+    coin2 = coin.data[0:45000]
+    import copy
+    coins = copy.deepcopy(coin)
+    coins.data[27000:27000+len(coin2)] = coin2
+
     freefield.write(tag='goal_len', value=coin.n_samples, processors=['RX81', 'RX82'])
     buzzer = slab.Sound(data_dir / 'sounds' / 'Buzzer1.wav')
     buzzer.level = 70
@@ -97,8 +102,10 @@ def play_trial(speaker_id):
         if time.time() > start_time + goal_attr['target_time']:  # end trial if goal conditions are met
             if time.time() - trial_start <= 3:
                 points = 2
+                freefield.write(tag='goal_data', value=coins.data, processors=['RX81', 'RX82'])
             else:
                 points = 1
+                freefield.write(tag='goal_data', value=coin.data, processors=['RX81', 'RX82'])
             score += points
             print('Score! %i' % points)
             freefield.write(tag='source', value=0, processors=['RX81', 'RX82'])  # set speaker input to goal sound

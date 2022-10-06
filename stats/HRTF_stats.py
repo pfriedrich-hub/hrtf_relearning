@@ -1,6 +1,4 @@
 import scipy
-import slab
-from pathlib import Path
 import matplotlib
 # matplotlib.use('TkAgg')
 from mpl_toolkits.axes_grid1 import make_axes_locatable
@@ -72,10 +70,13 @@ hrtf_1 = slab.HRTF.kemar()
 src=hrtf_1.cone_sources(0)
 
 
-fname='max_no_mold_04.10.sofa'
+fname='varvara_mold_1_06.10.sofa'
+import slab
+from pathlib import Path
 data_dir = Path.cwd() / 'data' / 'hrtfs' / 'pilot'
 hrtf=slab.HRTF(data_dir / fname)
 src=hrtf.cone_sources(0)
-hrtf.plot_tf(src, n_bins=300)
+hrtf.plot_tf(src, n_bins=96, kind='image')
 plt.title(fname)
+
 """

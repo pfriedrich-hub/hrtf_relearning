@@ -56,7 +56,7 @@ def hrtf_training(max_pulse_interval=500, target_size=3, target_time=0.5, trial_
     print('Setting target sequence...')
     sequence = numpy.random.permutation(numpy.tile(list(range(len(speakers))), 1))
     az_dist, ele_dist = numpy.diff(speakers[sequence, 1]), numpy.diff(speakers[sequence, 2])
-    while any([az_dist[i] == 0 or ele_dist[i] == 0 for i in range(len(az_dist))]):
+    while any([az_dist[i] == 0 and ele_dist[i] == 0 for i in range(len(az_dist))]):
         sequence = numpy.random.permutation(numpy.tile(list(range(len(speakers))), 1))
         az_dist, ele_dist = numpy.diff(speakers[sequence, 1]), numpy.diff(speakers[sequence, 2])
     sequence = numpy.delete(sequence, [numpy.where(sequence == 19),
@@ -95,7 +95,12 @@ def play_trial(speaker_id):
         else:
             start_time, count_down = time.time(), False  # reset timer if pose no longer matches target
         if time.time() > start_time + goal_attr['target_time']:  # end trial if goal conditions are met
-            score += 1
+            if time.time() - trial_start <= 3:
+                points = 2
+            else:
+                points = 1
+            score += points
+            print('Score! %i' % points)
             freefield.write(tag='source', value=0, processors=['RX81', 'RX82'])  # set speaker input to goal sound
             freefield.play(kind='zBusB', proc='all')  # play from goal sound buffer
             break
@@ -108,7 +113,7 @@ def play_trial(speaker_id):
             freefield.write(tag='goal_data', value=buzzer.data, processors=['RX81', 'RX82'])   # write buzzer to
             freefield.write(tag='goal_len', value=buzzer.n_samples, processors=['RX81', 'RX82'])  # goal sound buffer
             freefield.play(kind='zBusB', proc='all')  # play from goal sound buffer
-            print('Score: %i sources found in %i seconds!' % (score, goal_attr['game_time']))
+            print('Final score: %i points' % score)
             break
         else:
             continue

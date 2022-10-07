@@ -14,7 +14,7 @@ slab.set_default_samplerate(fs)
 # target_time: time matching head direction required to finish a trial
 # test
 
-def hrtf_training(max_pulse_interval=500, target_size=3, target_time=0.5, trial_time=10, game_time=90):
+def hrtf_training(max_pulse_interval=500, target_size=3, target_time=0.3, trial_time=10, game_time=90):
     global proc_list, speakers, sensor, game_start, buzzer, end, pulse_attr, goal_attr, \
            offset, prep_time, score, coin, coins
     # initialize sensor
@@ -38,13 +38,6 @@ def hrtf_training(max_pulse_interval=500, target_size=3, target_time=0.5, trial_
     freefield.write(tag='data', value=stim.data, processors=['RX81', 'RX82'])
     coin = slab.Sound(data=data_dir / 'sounds' / 'coin.wav')  # load goal sound to buffer
     coins = slab.Sound(data=data_dir / 'sounds' / 'coins.wav')  # load goal sound to buffer
-
-    coin.level = 75
-    coin2 = coin.data[0:45000]
-    import copy
-    coins = copy.deepcopy(coin)
-    coins.data[27000:27000+len(coin2)] = coin2
-
     freefield.write(tag='goal_len', value=coin.n_samples, processors=['RX81', 'RX82'])
     buzzer = slab.Sound(data_dir / 'sounds' / 'Buzzer1.wav')
     buzzer.level = 70

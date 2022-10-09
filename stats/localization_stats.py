@@ -7,7 +7,7 @@ from matplotlib import pyplot as plt
 import numpy
 
 data_dir = Path.cwd() / 'data' / 'localization_data' / 'pilot'
-subject_id = 'max_mold_1_04.10'
+subject_id = 'varvara_mold_1_07.10'
 
 def localization_accuracy(subject_id, show=True):
     # calculate elevation gain
@@ -28,9 +28,9 @@ def localization_accuracy(subject_id, show=True):
     sd = numpy.mean([numpy.std(perceived_elevations[numpy.where(target_elevations == target)])
                 for target in numpy.unique(target_elevations)])
     if show:
-        fig, axis = plt.subplots(1,1)
-        axis.set_ylim(-60,60)
-        axis.set_xlim(-60,60)
+        fig, axis = plt.subplots(1, 1)
+        axis.set_ylim(-60, 60)
+        axis.set_xlim(-60, 60)
         axis.set_xlabel('target elevations')
         axis.set_ylabel('perceived elevations')
         # scatter plot with regression line (elevation gain)

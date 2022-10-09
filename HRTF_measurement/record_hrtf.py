@@ -7,7 +7,7 @@ import datetime
 date = datetime.datetime.now()
 from copy import deepcopy
 
-subject_id = 'max_mold_1'
+subject_id = 'varvara_ears_free'
 
 data_dir = Path.cwd() / 'data' / 'hrtfs' / 'pilot'
 filename = str(subject_id + date.strftime('_%d.%m'))
@@ -38,15 +38,13 @@ def record_hrtfs(subject_id, repetitions, signal, n_directions, safe=safe, speak
     else:
         raise ValueError('Speakers must be >>all<< or list of indices.')
     speaker_ids = source_locations[:, 0].astype('int')
-    recordings = []
     sources = deepcopy(source_locations)
 
-    print('Face fixpoint and press button to start recording.')
     [led_speaker] = freefield.pick_speakers(23)  # get object for center speaker LED
     freefield.write(tag='bitmask', value=led_speaker.digital_channel,
                     processors=led_speaker.digital_proc)  # illuminate LED
+    print('Face fixpoint and press button to start recording.')
     freefield.wait_for_button()
-
     recordings = []
     for i in range(n_directions):  # record for n listener orientations, 2 = front + back
         recordings = recordings + (dome_rec(signal, speaker_ids, sources, repetitions))
@@ -59,16 +57,18 @@ def record_hrtfs(subject_id, repetitions, signal, n_directions, safe=safe, speak
     freefield.write(tag='bitmask', value=0, processors=led_speaker.digital_proc)  # turn off LED
 
     # save .sofa / recordings.wav and sources.txt
-    sources = create_src_txt(recordings)
-    if safe == 'sofa' or safe == 'both':
+    sources = create_src_txt(recordings)  # create source coordinate array
+    if safe == 'sofa' or safe == 'both':  # compute HRTFs and write to sofa file
         print('Creating sofa file...')
         recorded_hrtf = slab.HRTF.estimate_hrtf([rec[2] for rec in recordings], signal, sources)
         recorded_hrtf.write_sofa(filepath + '.sofa')
-    if safe == 'wav' or safe == 'both':
+
+    if safe == 'wav' or safe == 'both':  # write recordings to wav files
         print('Creating wav files...')
         for idx, bi_rec in enumerate(recordings):    # save recordings as .wav
             filename = '%s_src_id%02d_az%i_el%i.wav' % (subject_id, idx, bi_rec[0], bi_rec[1])
             bi_rec[2].write('in-ear_recordings' / filename)
+
         numpy.savetxt(str('in-ear_recordings') + '/sources_%s.txt' % subject_id,
                    sources, fmt='%1.1f')   # save source coordinates to a text file
     return recordings, sources

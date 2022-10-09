@@ -8,7 +8,7 @@ from pathlib import Path
 from stats.localization_stats import localization_accuracy
 import head_tracking.meta_motion.mm_pose as motion_sensor
 
-subject_id = 'max_mold_1'
+subject_id = 'varvara_mold_1'
 
 fs = 48828
 slab.set_default_samplerate(fs)
@@ -20,9 +20,9 @@ filepath = str(data_dir / filename)
 def localization_test():
     global speakers, stim, sensor
     sensor = motion_sensor.start_sensor()
+    freefield.set_logger('warning')
     if not freefield.PROCESSORS.mode:
         freefield.initialize('dome', default='play_birec')
-    freefield.set_logger('warning')
 
     # generate stimulus
     noise = slab.Sound.pinknoise(duration=0.025, level=90)
@@ -78,4 +78,5 @@ def play_trial(speaker_id):
 
 if __name__ == "__main__":
     trialsequence = localization_test()
-    localization_accuracy(filename, show=True)
+    elevation_gain, rmse, sd = localization_accuracy(filename, show=True)
+    print('gain: %.2f\nrmse: %.2f\nsd: %.2f' % (elevation_gain, rmse, sd))

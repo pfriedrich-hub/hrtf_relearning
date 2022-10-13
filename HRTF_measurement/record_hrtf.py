@@ -7,7 +7,7 @@ import datetime
 date = datetime.datetime.now()
 from copy import deepcopy
 
-subject_id = 'varvara_ears_free'
+subject_id = 'marius_ears_free'
 
 data_dir = Path.cwd() / 'data' / 'hrtfs' / 'pilot'
 filename = str(subject_id + date.strftime('_%d.%m'))
@@ -21,6 +21,7 @@ n_directions = 1  # only from the front (1) or front-back recordings (2)
 speakers = numpy.arange(20, 27).tolist()  # central cone - 1
 # speakers = 'all'
 safe = 'sofa'
+kemar = False
 
 def record_hrtfs(subject_id, repetitions, signal, n_directions, safe=safe, speakers=speakers):
     global filt
@@ -39,12 +40,12 @@ def record_hrtfs(subject_id, repetitions, signal, n_directions, safe=safe, speak
         raise ValueError('Speakers must be >>all<< or list of indices.')
     speaker_ids = source_locations[:, 0].astype('int')
     sources = deepcopy(source_locations)
-
-    [led_speaker] = freefield.pick_speakers(23)  # get object for center speaker LED
-    freefield.write(tag='bitmask', value=led_speaker.digital_channel,
+    if not kemar:
+        [led_speaker] = freefield.pick_speakers(23)  # get object for center speaker LED
+        freefield.write(tag='bitmask', value=led_speaker.digital_channel,
                     processors=led_speaker.digital_proc)  # illuminate LED
-    print('Face fixpoint and press button to start recording.')
-    freefield.wait_for_button()
+        print('Face fixpoint and press button to start recording.')
+        freefield.wait_for_button()
     recordings = []
     for i in range(n_directions):  # record for n listener orientations, 2 = front + back
         recordings = recordings + (dome_rec(signal, speaker_ids, sources, repetitions))
@@ -53,8 +54,8 @@ def record_hrtfs(subject_id, repetitions, signal, n_directions, safe=safe, speak
             print('Rotate chair 180 degrees clockwise \nLook at fixpoint. Press button to start recording.')
             freefield.wait_for_button()
     freefield.set_logger('INFO')
-
-    freefield.write(tag='bitmask', value=0, processors=led_speaker.digital_proc)  # turn off LED
+    if not kemar:
+        freefield.write(tag='bitmask', value=0, processors=led_speaker.digital_proc)  # turn off LED
 
     # save .sofa / recordings.wav and sources.txt
     sources = create_src_txt(recordings)  # create source coordinate array

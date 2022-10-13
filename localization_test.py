@@ -8,7 +8,7 @@ from pathlib import Path
 from stats.localization_stats import localization_accuracy
 import head_tracking.meta_motion.mm_pose as motion_sensor
 
-subject_id = 'varvara_mold_1'
+subject_id = 'marius_ears_free_2'
 
 fs = 48828
 slab.set_default_samplerate(fs)
@@ -45,18 +45,19 @@ def localization_test():
 
     # loop over trials
     for index in trial_sequence:
-        trial_sequence.add_response(play_trial(sequence[index]))
+        progress = int(trial_sequence.this_n / trial_sequence.n_trials * 100)
+        trial_sequence.add_response(play_trial(sequence[index], progress))
     trial_sequence.save_pickle(filepath)
     freefield.halt()
     motion_sensor.disconnect(sensor)
     print('localization test completed!')
     return
 
-def play_trial(speaker_id):
+def play_trial(speaker_id, progress):
     time.sleep(.5)
     offset = motion_sensor.calibrate_pose(sensor)
     target = speakers[speaker_id, 1:]
-    print('TARGET| azimuth: %.1f, elevation %.1f' % (target[0], target[1]))
+    print('%i%%: TARGET| azimuth: %.1f, elevation %.1f' % (progress, target[0], target[1]))
     time.sleep(.5)
     freefield.set_signal_and_speaker(signal=stim, speaker=speaker_id, equalize=True)
     freefield.play()

@@ -6,8 +6,8 @@ import matplotlib
 from matplotlib import pyplot as plt
 import numpy
 
-data_dir = Path.cwd() / 'data' / 'localization_data' / 'pilot'
-subject_id = 'varvara_mold_1_07.10'
+data_dir = Path.cwd() / 'data' / 'localization_data' / 'pilot' / 'varvara_2'
+subject_id = 'varvara_mold_1_09.10'
 
 def localization_accuracy(subject_id, show=True):
     # calculate elevation gain
@@ -45,8 +45,32 @@ def localization_accuracy(subject_id, show=True):
         plt.show()
     return elevation_gain, rmse, sd
 
+def trial_to_trial_performance(subject_id, show=True):
+    sequence = slab.Trialsequence(conditions=47, n_reps=1)
+    sequence.load_pickle(file_name=data_dir / subject_id)
+    loc_data = numpy.asarray(sequence.data)
+    loc_data = loc_data.reshape(loc_data.shape[0], 2, 2)
+    target_elevations = loc_data[:, 1, 1]  # target elevations
+    perceived_elevations = loc_data[:, 0, 1]  # percieved elevations
+    # target ids
+    right_ids = numpy.where(loc_data[:, 1, 0] > 0)
+    left_ids = numpy.where(loc_data[:, 1, 0] < 0)
+    mid_ids = numpy.where(loc_data[:, 1, 0] == 0)
+    trial_error = numpy.abs(numpy.subtract(target_elevations, perceived_elevations))
+    if show:
+        x = numpy.arange(len(trial_error))
+        m, n = scipy.stats.linregress(x, trial_error)[:2]
+        y = m * x + n
+        fig, axis = plt.subplots(1, 1)
+        axis.set_title(str(subject_id))
+        axis.plot(trial_error)
+        axis.plot(x, y)
+    return trial_error, m, n
+
 if __name__ == "__main__":
+    trial_to_trial_performance(subject_id, show=True)
     elevation_gain, rmse, sd = localization_accuracy(subject_id, show=True)
+    print('gain: %.2f\nrmse: %.2f\nsd: %.2f' % (elevation_gain, rmse, sd))
 
 """
 # for azimuth:

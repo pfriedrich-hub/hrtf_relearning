@@ -29,10 +29,10 @@ azimuthal_angles = numpy.array([-52.5, -35, -17.5, 0, 17.5, 35, 52.5])
 # signal parameters
 low_cutoff = 200
 high_cutoff = 18000
-signal_length = 1.0  # how long should the chirp be?
+signal_length = 0.1  # how long should the chirp be?
 rec_repeat = 20  # how often to repeat measurement for averaging
 # signal for loudspeaker calibration
-signal = slab.Sound.chirp(duration=signal_length, from_frequency=low_cutoff, to_frequency=high_cutoff, level=80, kind='linear')
+signal = slab.Sound.chirp(duration=0.1, level=85, from_frequency=low_cutoff, to_frequency=high_cutoff, kind='linear')
 signal = slab.Sound.ramp(signal, when='both', duration=0.001)
 
 # equalization parameters
@@ -43,7 +43,7 @@ bandwidth = 1 / 8
 alpha = 1.0
 
 # obtain target signal by recording from reference speaker
-# reference_speaker = freefield.pick_speakers(reference_speaker)[0]
+reference_speaker = freefield.pick_speakers(reference_speaker)[0]
 temp_recs = []
 for i in range(rec_repeat):
     rec = freefield.play_and_record(reference_speaker, signal, equalize=False)
@@ -68,7 +68,7 @@ equalization = dict()  # dictionary to hold equalization parameters
 
 #------------------- hold on --------------------#
 # pick single column to calibrate speaker_list[0] to speaker_list[6]
-speakers = freefield.pick_speakers(speaker_list[6])
+speakers = freefield.pick_speakers(speaker_list[0])
 # place microphone 90° to source column at equal distance (recordings should be done in far field: > 1m)
 
 
@@ -95,6 +95,7 @@ equalization_levels = target.level - recordings.level
 
 # set up plot
 fig, ax = plt.subplots(4, 1, sharex=True, sharey=True, figsize=(25, 10))
+ax[3].set_xticks(numpy.arange(1000, 18000))
 ax[3].set_xlabel('Frequency (Hz)')
 for i in range(4):
     ax[i].set_ylabel('Power (dB/Hz)')

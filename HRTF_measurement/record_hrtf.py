@@ -7,9 +7,9 @@ import datetime
 date = datetime.datetime.now()
 from copy import deepcopy
 
-subject_id = 'marius_ears_free'
+subject_id = 'kemar_full'
 
-data_dir = Path.cwd() / 'data' / 'hrtfs' / 'pilot'
+data_dir = Path.cwd() / 'data' / 'hrtfs'
 filename = str(subject_id + date.strftime('_%d.%m'))
 filepath = str(data_dir / filename)
 fs = 48828  # sampling rate
@@ -17,11 +17,11 @@ slab.Signal.set_default_samplerate(fs)  # default samplerate for generating soun
 signal = slab.Sound.chirp(duration=0.1, level=85, from_frequency=200, to_frequency=18000, kind='linear')
 signal = slab.Sound.ramp(signal, when='both', duration=0.001)
 repetitions = 20
-n_directions = 1  # only from the front (1) or front-back recordings (2)
-speakers = numpy.arange(20, 27).tolist()  # central cone - 1
-# speakers = 'all'
+n_directions = 2  # only from the front (1) or front-back recordings (2)
+# speakers = numpy.arange(20, 27).tolist()  # central cone - 1
+speakers = 'all'
 safe = 'sofa'
-kemar = False
+kemar = True
 
 def record_hrtfs(subject_id, repetitions, signal, n_directions, safe=safe, speakers=speakers):
     global filt
@@ -72,7 +72,7 @@ def record_hrtfs(subject_id, repetitions, signal, n_directions, safe=safe, speak
 
         numpy.savetxt(str('in-ear_recordings') + '/sources_%s.txt' % subject_id,
                    sources, fmt='%1.1f')   # save source coordinates to a text file
-    return recordings, sources
+    return recordings, sources, recorded_hrtf
 
 def dome_rec(signal, speaker_ids, sources, repetitions):
     print('Recording...')
@@ -109,7 +109,8 @@ def create_src_txt(recordings):
     return vertical_polar.astype('float16')
 
 if __name__ == "__main__":
-    recordings, sources = record_hrtfs(subject_id, repetitions, signal, n_directions, safe=safe, speakers=speakers)
+    recordings, sources, hrtf = record_hrtfs(subject_id, repetitions, signal, n_directions, safe=safe, speakers=speakers)
+    hrtf.plot_tf(hrtf.cone_sources(0), xlim=(0, 20000))
 
 # example - from terminal/shell:
 # python record_hrtf.py --id paul_hrtf

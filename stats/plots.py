@@ -9,9 +9,9 @@ import stats.localization_stats as loc_acc
 import numpy
 
 ### ---- HRTF plots ----- ###
-data_dir = Path.cwd() / 'data' / 'subject_data' / 'varvara_2'
-hrtf_free = slab.HRTF(data_dir / 'varvara_mold_1_06.10.sofa')
-hrtf_mold = slab.HRTF(data_dir / 'varvara_ears_free_09.10.sofa')
+data_dir = Path.cwd() / 'data' / 'hrtfs'
+hrtf_free = slab.HRTF(data_dir / 'kemar_free.sofa')
+hrtf_mold = slab.HRTF(data_dir / 'kemar_2_14.10.sofa')
 hrtf_free, hrtf_mold = hrtf_free.diffuse_field_equalization(), hrtf_mold.diffuse_field_equalization()
 
 # data_dir = Path.cwd() / 'data' / 'subject_data' / 'max'
@@ -138,16 +138,19 @@ if __name__ == '__main__':
     # plot learning
     # plot_learning(data_dir, group_stats=False)
 
+
     if not group_stats:
         # compare free vs mold
         fig, axis = plt.subplots(2, 2)
-        hrtf_free, hrtf_mold = get_hrtfs(data_dir)
-        src = hrtf_free.cone_sources(0)
+        # hrtf_free, hrtf_mold = get_hrtfs(data_dir)
+        # sources = hrtf_free.cone_sources(0)
+        sources = hrtf_mold.cone_sources(0)
+
         # waterfall and vsi
-        plot_vsi(hrtf_free, src, n_bins, axis=axis[0, 0])
-        plot_vsi(hrtf_mold, src ,n_bins, axis=axis[0, 1])
-        hrtf_free.plot_tf(src, n_bins=n_bins, kind='waterfall', axis=axis[1, 0])
-        hrtf_mold.plot_tf(src, n_bins=n_bins, kind='waterfall', axis=axis[1, 1])
+        plot_vsi(hrtf_free, sources, n_bins, axis=axis[0, 0])
+        plot_vsi(hrtf_mold, sources ,n_bins, axis=axis[0, 1])
+        hrtf_free.plot_tf(sources, n_bins=n_bins, kind='waterfall', axis=axis[1, 0])
+        hrtf_mold.plot_tf(sources, n_bins=n_bins, kind='waterfall', axis=axis[1, 1])
         axis[0, 0].set_title('ears free')
         axis[0, 1].set_title('mold')
 

@@ -9,18 +9,108 @@ import stats.localization_stats as loc_acc
 import numpy
 
 ### ---- HRTF plots ----- ###
-data_dir = Path.cwd() / 'data' / 'subject_data' / 'varvara_1'
-sofa1 = 'varvara_ears_free_23.09.sofa'
-sofa2 = 'varvara_mold_1_23.09.sofa'
+data_dir = Path.cwd() / 'data' / 'subject_data' / 'varvara_2'
+data_dir = Path.cwd() / 'data' / 'hrtfs' / 'pilot'
 
-hrtf_free = slab.HRTF(data_dir / sofa1)
-hrtf_mold = slab.HRTF(data_dir / sofa2)
-sources = hrtf_free.cone_sources(cone=0, full_cone=False)
-hrtf_free, hrtf_mold = hrtf_free.diffuse_field_equalization(), hrtf_mold.diffuse_field_equalization()
+group_stats = False
+duration = 5  # duration of learning in days / samples
+n_bins = 96
+
+def get_hrtfs(data_dir):
+    subj_files = os.listdir(str(data_dir))
+    subj_files = [fname for fname in subj_files if fname.endswith('.sofa')]  # remove sofa files from list
+    subj_files.sort()
+    hrtf_free = slab.HRTF(data_dir / subj_files[0])
+    hrtf_mold = slab.HRTF(data_dir / subj_files[1])
+    # todo test this again:
+    # hrtf_free, hrtf_mold = hrtf_free.diffuse_field_equalization(), hrtf_mold.diffuse_field_equalization()
+    return hrtf_free, hrtf_mold
+
+def plot_vsi(hrtf, sources, n_bins, axis=None):
+    # plot vsi across 1/2 octave frequency bands
+    dtfs = hrtf.tfs_from_sources(sources, n_bins)
+    frequencies = numpy.linspace(0, hrtf[0].frequencies[-1], n_bins)
+    bandwidths = numpy.array(((4, 8), (4.8, 9.5), (5.7, 11.3), (6.7, 13.5), (8, 16))) * 1000
+    vsi = numpy.zeros(len(bandwidths))
+    # extract vsi for each band
+    for idx, bw in enumerate(bandwidths):
+        dtf_band = dtfs[numpy.logical_and(frequencies >= bw[0], frequencies <= bw[1])]
+        sum_corr = 0
+        n = 0
+        for i in range(len(sources)):
+            for j in range(i + 1, len(sources)):
+                sum_corr += numpy.corrcoef(dtf_band[:, i], dtf_band[:, j])[1, 0]
+                n += 1
+        vsi[idx] = 1 - sum_corr / n
+
+    # plot
+    if not axis:
+        fig, axis = plt.subplots()
+    axis.plot(vsi, c='k')
+    # axis.errorbar(numpy.mean(vsi, axis=1), capsize=3, yerr=numpy.abs(numpy.diff(vsi, axis=0)),
+    #                fmt="o", c='0.6', elinewidth=0.5, markersize=3)
+    axis.set_xticks([0, 1, 2, 3, 4])
+    labels = [item.get_text() for item in axis.get_xticklabels()]
+    for idx, band in enumerate(bandwidths / 1000):
+        labels[idx] = '%.1f - %.1f' % (band[0], band[1])
+    axis.set_xticklabels(labels)
+    axis.set_xlabel('Frequency bands (kHz)')
+    axis.set_ylabel('VSI')
+
+# plot Elevation Gain, RMSE and response variability across experiment
+# get files
+def plot_learning(data_dir=data_dir, group_stats=group_stats):
+    # get localization accuracy data (if group stats, get data from subject subdirectories,
+    if group_stats:
+        subject_list = next(os.walk(data_dir))[1]
+    else:
+        subject_list = [data_dir.name]
+        data_dir = data_dir.parent
+    ele_gain = numpy.zeros((len(subject_list), 6))  # for now, 6 measurements per participant
+    rmse = numpy.zeros((len(subject_list), 6))
+    sd = numpy.zeros((len(subject_list), 6))
+    for subj_idx, subject_folder in enumerate(subject_list):
+        subj_files = os.listdir(str(data_dir / subject_folder))
+        subj_files = [fname for fname in subj_files if not fname.endswith('.sofa')]  # remove sofa files from list
+        if '.DS_Store' in subj_files: subj_files.remove('.DS_Store')
+        subj_files.sort()
+        for file_idx, subj_file in enumerate(subj_files):
+            ele_gain[subj_idx, file_idx], rmse[subj_idx, file_idx], sd[subj_idx, file_idx] \
+                = loc_acc.localization_accuracy(data_dir / subject_folder / subj_file, show=False)
+    # plot participants EG
+    fig, ax = plt.subplots(1, 3, sharex=True)
+    days = numpy.arange(0, duration+1)
+    days[0] = 1
+    for i in range(ele_gain.shape[0]):
+        ax[0].scatter(days, ele_gain[i, :], label='participant %i'% i)
+        ax[0].plot(days, ele_gain[i, :])
+    ax[0].set_xticks(numpy.arange(1,duration+1))
+    ax[0].set_ylabel('Elevation Gain')
+    ax[0].set_xlabel('Days')
+    ax[0].set_yticks(numpy.arange(0,1.2,0.1))
+    ax[0].legend()
+    # EG
+    ax[1].plot(days, numpy.mean(ele_gain, axis=0), c='k', linewidth=0.5)
+    ax[1].set_yticks(numpy.arange(0,1.2,0.1))
+    ax[1].set_xlabel('Days')
+    ax[1].set_ylabel('Elevation Gain')
+    ax[1].set_title('Elevation Gain')
+    ax[2].plot(days, numpy.mean(rmse, axis=0), c='k', linewidth=0.5, label='RMSE')    # RMSE
+    ax[2].plot(days, numpy.mean(sd, axis=0), c='0.6', linewidth=0.5, label='SD')     # SD
+    # ax[2].set_yticks(numpy.arange(0,23,2))
+    ax[2].set_xlabel('Days')
+    ax[2].set_title('RMSE')
+    ax[2].legend()
+    ax[2].set_ylabel('Elevation in degrees')
+    if group_stats:
+        ax[1].errorbar(days, numpy.mean(ele_gain, axis=0), capsize=3, yerr=numpy.abs(numpy.diff(ele_gain, axis=0)),
+                       fmt="o", c='k', elinewidth=0.5, markersize=3)
+        ax[2].errorbar(days, numpy.mean(rmse, axis=0), capsize=3, yerr=numpy.abs(numpy.diff(rmse, axis=0)),
+                       fmt="o", c='k', elinewidth=0.5, markersize=3)
 
 # plot waterfall
 # hrtf_free.plot_tf(sources, n_bins=200, kind='image', ear='left', xlim=(4000, 16000))
-def plot_compare(hrtf1=hrtf_free, hrtf2=hrtf_mold):
+def plot_correlation(hrtf_free, hrtf_mold, sources):
     # compare heatmap of hrtf free and with mold
     fig, axis = plt.subplots(2, 2, sharey=True)
     hrtf_free.plot_tf(sources, n_bins=96, kind='image', ear='left', xlim=(4000, 12000), axis=axis[0, 0])
@@ -37,109 +127,25 @@ def plot_compare(hrtf1=hrtf_free, hrtf2=hrtf_mold):
     fig.text(0.7, 0.5, 'Correlation Free vs. Mold', ha='center')
     cbar_1.remove()
 
-def plot_vsi(hrtf=hrtf_free):
-    # plot vsi across 1/2 octave frequency bands
-    n_bins = 96
-    dtfs = hrtf.tfs_from_sources(sources, n_bins)
-    frequencies = numpy.linspace(0, hrtf[0].frequencies[-1], n_bins)
-    bandwidths = numpy.array(((4, 8), (4.8, 9.5), (5.7, 11.3), (6.7, 13.5), (8, 16))) * 1000
-    vsi = numpy.zeros(len(bandwidths))
-    # extract vsi for each band
-    for idx, bw in enumerate(bandwidths):
-        dtf_band = dtfs[numpy.logical_and(frequencies >= bw[0], frequencies <= bw[1])]
-        sum_corr = 0
-        n = 0
-        for i in range(len(sources)):
-            for j in range(i + 1, len(sources)):
-                sum_corr += numpy.corrcoef(dtf_band[:, i], dtf_band[:, j])[1, 0]
-                n += 1
-        vsi[idx] = 1 - sum_corr / n
-    # plot
-    fig, axis = plt.subplots()
-    axis.plot(vsi, c='k')
-    # axis.errorbar(numpy.mean(vsi, axis=1), capsize=3, yerr=numpy.abs(numpy.diff(vsi, axis=0)),
-    #                fmt="o", c='0.6', elinewidth=0.5, markersize=3)
-    axis.set_xticks([0, 1, 2, 3, 4])
-    labels = [item.get_text() for item in axis.get_xticklabels()]
-    for idx, band in enumerate(bandwidths / 1000):
-        labels[idx] = '%.1f - %.1f' % (band[0], band[1])
-    axis.set_xticklabels(labels)
-    axis.set_xlabel('Frequency bands (kHz)')
-    axis.set_ylabel('VSI')
-
-# plot Elevation Gain, RMSE and response variability across experiment
-# get files
-def plot_learning(data_dir=data_dir, group_stats = False):
-    files = []  # get files (if group stats, get files from subject subdirectories,
-    if group_stats:
-        subject_folders = []
-        subject_list = next(os.walk(data_dir))[1]
-        for subj_idx, subject_folder in enumerate(subject_list):
-            subj_files = os.listdir(str(data_dir / subject_folder))
-            if '.DS_Store' in subj_files: subj_files.remove('.DS_Store')
-            subj_files.sort()
-            files.append(subj_files)
-    else:
-        files.append(os.listdir(str(data_dir)))
-    ele_gain = numpy.zeros((len(files), 6))  # for now, 6 measurements per participant
-    rmse = numpy.zeros((len(files), 6))
-    sd = numpy.zeros((len(files), 6))
-    for i in range(len(files)):
-        files[i] = [fname for fname in files[i] if not fname.endswith('.sofa')]  # remove sofa files from list
-        for file_idx, subj_file in enumerate(files[i]):
-
-            if group_stats:
-                ele_gain[subj_idx, file_idx], rmse[subj_idx, file_idx], sd[subj_idx, file_idx] \
-                    = loc_acc.localization_accuracy(data_dir / subject_folder / subj_file, show=False)
-            else:
-                ele_gain[subj_idx, file_idx], rmse[subj_idx, file_idx], sd[subj_idx, file_idx] \
-                    = loc_acc.localization_accuracy(data_dir / subject_folder / subj_file, show=False)
-
-    for subj_idx, subject_folder in enumerate(subject_list):
-        subj_files = os.listdir(str(data_dir / subject_folder))
-        if '.DS_Store' in subj_files: subj_files.remove('.DS_Store')
-        subj_files.sort()
-        files.append(subj_files)
-        for file_idx, subj_file in enumerate(subj_files):
-            ele_gain[subj_idx, file_idx], rmse[subj_idx, file_idx], sd[subj_idx, file_idx]\
-            = loc_acc.localization_accuracy(data_dir / subject_folder / subj_file, show=False)
-    # plot participants EG
-    fig, ax = plt.subplots(1, 3)
-    days = numpy.arange(0, 6)
-    days[0] = 1
-    for i in range(ele_gain.shape[0]):
-        ax[0].scatter(days, ele_gain[i, :], label='participant %i'% i)
-        ax[0].plot(days, ele_gain[i, :])
-    ax[0].set_xticks(numpy.arange(1,7,1))
-    ax[0].set_ylabel('Elevation Gain')
-    ax[0].set_xlabel('Days')
-    ax[0].set_yticks(numpy.arange(0,1.2,0.1))
-    ax[0].legend()
-    # EG
-    ax[1].plot(days, numpy.mean(ele_gain, axis=0), c='k', linewidth=0.5)
-    ax[1].errorbar(days, numpy.mean(ele_gain, axis=0), capsize=3, yerr=numpy.abs(numpy.diff(ele_gain, axis=0)),
-                   fmt="o", c='k', elinewidth=0.5, markersize=3)
-    ax[1].set_yticks(numpy.arange(0,1.2,0.1))
-    ax[1].set_xlabel('Days')
-    ax[1].set_ylabel('Elevation Gain')
-    ax[1].set_title('Elevation Gain')
-    # RMSE
-    ax[2].plot(days, numpy.mean(rmse, axis=0), c='k', linewidth=0.5, label='RMSE')
-    ax[2].errorbar(days, numpy.mean(rmse, axis=0), capsize=3, yerr=numpy.abs(numpy.diff(rmse, axis=0)),
-                   fmt="o", c='k', elinewidth=0.5, markersize=3)
-    # SD
-    ax[2].plot(days, numpy.mean(sd, axis=0), c='0.6', linewidth=0.5, label='SD')
-    ax[2].errorbar(days, numpy.mean(sd, axis=0), capsize=3, yerr=numpy.abs(numpy.diff(sd, axis=0)),
-                   fmt="o", c='0.6', elinewidth=0.5, markersize=3)
-    ax[2].set_yticks(numpy.arange(0,23,2))
-    ax[2].set_xlabel('Days')
-    ax[2].set_title('RMSE')
-    ax[2].legend()
-    ax[2].set_ylabel('Elevation in degrees')
-
 # # plot trial to trial performance in the accuracy test over days
 # def plot_trial_accuracy():
 
 if __name__ == '__main__':
-    plot_learning(data_dir)
-    plot_vsi(data_dir)
+    # plot learning
+    # plot_learning(data_dir, group_stats=False)
+
+    if not group_stats:
+        # compare free vs mold
+        fig, axis = plt.subplots(2, 2)
+        hrtf_free, hrtf_mold = get_hrtfs(data_dir)
+        src = hrtf_free.cone_sources(0)
+        # waterfall and vsi
+        plot_vsi(hrtf_free, src, n_bins, axis=axis[0, 0])
+        plot_vsi(hrtf_mold, src ,n_bins, axis=axis[0, 1])
+        hrtf_free.plot_tf(src, n_bins=n_bins, kind='waterfall', axis=axis[1, 0])
+        hrtf_mold.plot_tf(src, n_bins=n_bins, kind='waterfall', axis=axis[1, 1])
+        axis[0, 0].set_title('ears free')
+        axis[0, 1].set_title('mold')
+
+        # cross correlation
+        # plot_hrtf_correlation(hrtf_free, hrtf_mold, src)

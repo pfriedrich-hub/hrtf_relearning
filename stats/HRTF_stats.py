@@ -75,8 +75,7 @@ import slab
 from pathlib import Path
 data_dir = Path.cwd() / 'data' / 'hrtfs' / 'pilot'
 hrtf=slab.HRTF(data_dir / fname)
-src=hrtf.cone_sources(0)
-hrtf.plot_tf(src, n_bins=96, kind='image')
+
 plt.title(fname)
 
 """

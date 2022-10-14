@@ -10,7 +10,11 @@ import numpy
 
 ### ---- HRTF plots ----- ###
 data_dir = Path.cwd() / 'data' / 'subject_data' / 'varvara_2'
-data_dir = Path.cwd() / 'data' / 'hrtfs' / 'pilot'
+hrtf_free = slab.HRTF(data_dir / 'varvara_mold_1_06.10.sofa')
+hrtf_mold = slab.HRTF(data_dir / 'varvara_ears_free_09.10.sofa')
+hrtf_free, hrtf_mold = hrtf_free.diffuse_field_equalization(), hrtf_mold.diffuse_field_equalization()
+
+# data_dir = Path.cwd() / 'data' / 'subject_data' / 'max'
 
 group_stats = False
 duration = 5  # duration of learning in days / samples

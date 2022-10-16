@@ -33,6 +33,8 @@ def record_hrtfs(subject_id, repetitions, signal, n_directions, safe=safe, speak
     if isinstance(speakers, str) and speakers == 'all':
         source_locations = numpy.loadtxt(table_file, skiprows=1, usecols=(0, 3, 4),
                                          delimiter=",", dtype=float)
+        source_locations = numpy.delete(source_locations, [numpy.where(source_locations[:, 0] == 19),
+                           numpy.where(source_locations[:, 0] == 27)], axis=0)  # remove 0, 50 and -50 speakers
     elif isinstance(speakers, list):
         source_locations = numpy.loadtxt(table_file, skiprows=1, usecols=(0, 3, 4),
                                          delimiter=",", dtype=float)[speakers]
@@ -51,7 +53,7 @@ def record_hrtfs(subject_id, repetitions, signal, n_directions, safe=safe, speak
         recordings = recordings + (dome_rec(signal, speaker_ids, sources, repetitions))
         if i < n_directions-1:
             sources[:, 1] += 360/n_directions
-            print('Rotate chair 180 degrees clockwise \nLook at fixpoint. Press button to start recording.')
+            print('Rotate chair 180 degrees and look at fixpoint. \nPress button to start recording.')
             freefield.wait_for_button()
     freefield.set_logger('INFO')
     if not kemar:

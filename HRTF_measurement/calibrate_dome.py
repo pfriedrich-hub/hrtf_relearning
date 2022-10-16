@@ -3,13 +3,13 @@ import slab
 slab.Signal.set_default_samplerate(48828)  # default samplerate for generating sounds, filters etc.
 import time
 import numpy
-import matplotlib
 from pathlib import Path
-matplotlib.use('TkAgg')
-import matplotlib.pyplot as plt
 from copy import deepcopy
 import pickle
-import copy
+# import matplotlib
+import matplotlib.pyplot as plt
+# matplotlib.use('QtAgg')
+
 
 """
 Equalize the loudspeaker array in two steps. First: equalize over all
@@ -43,17 +43,18 @@ bandwidth = 1 / 8
 alpha = 1.0
 
 # obtain target signal by recording from reference speaker
-reference_speaker = freefield.pick_speakers(reference_speaker)[0]
-temp_recs = []
-for i in range(rec_repeat):
-    rec = freefield.play_and_record(reference_speaker, signal, equalize=False)
-    # rec = slab.Sound.ramp(rec, when='both', duration=0.01)
-    temp_recs.append(rec.data)
-target = slab.Sound(data=numpy.mean(temp_recs, axis=0))
+# reference_speaker = freefield.pick_speakers(reference_speaker)[0]
+# temp_recs = []
+# for i in range(rec_repeat):
+#     rec = freefield.play_and_record(reference_speaker, signal, equalize=False)
+#     # rec = slab.Sound.ramp(rec, when='both', duration=0.01)
+#     temp_recs.append(rec.data)
+# target = slab.Sound(data=numpy.mean(temp_recs, axis=0))
 
-# use original signal as reference
+# # use original signal as reference - works better
+baseline_amp = 70
 target = deepcopy(signal)
-target.level = 20
+target.level = baseline_amp
 
 # get speaker id's for each column in the dome
 table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')
@@ -62,13 +63,15 @@ speaker_list = []
 for az in azimuthal_angles:
     speaker_list.append((speaker_table[speaker_table[:, 1] == az][:, 0]).astype('int'))
 
+speaker_list[3] = numpy.delete(speaker_list[3], [numpy.where(speaker_list[3] == 19), numpy.where(speaker_list[3] == 27)])
+
 dome_rec = []  # store all recordings from the dome for final spectral difference
 equalization = dict()  # dictionary to hold equalization parameters
 
 
 #------------------- hold on --------------------#
 # pick single column to calibrate speaker_list[0] to speaker_list[6]
-speakers = freefield.pick_speakers(speaker_list[0])
+speakers = freefield.pick_speakers(speaker_list[6])
 # place microphone 90° to source column at equal distance (recordings should be done in far field: > 1m)
 
 
@@ -95,7 +98,8 @@ equalization_levels = target.level - recordings.level
 
 # set up plot
 fig, ax = plt.subplots(4, 1, sharex=True, sharey=True, figsize=(25, 10))
-ax[3].set_xticks(numpy.arange(1000, 18000))
+ax[3].set_xlim(left=4000, right=18000)
+ax[3].set_ylim(50,70)
 ax[3].set_xlabel('Frequency (Hz)')
 for i in range(4):
     ax[i].set_ylabel('Power (dB/Hz)')
@@ -104,8 +108,8 @@ ax[0].set_title('raw')
 
 # step 2: frequency equalization
 """
-play the level-equalized signal, record and compute and a bank of inverse filter
-to equalize each speaker relative to the target one. Return filterbank and recordings
+play the level-equalized signal, record and compute a bank of inverse filters
+to equalize each speakers frequency response relative to the target speaker
 """
 recordings = []
 for speaker, level in zip(speakers, equalization_levels):
@@ -151,7 +155,7 @@ ax[2].set_title('frequency equalized')
 
 
 #------ OPTIONAL -----#
-# # step 4: adjust level after freq equalization: (?) -- sometimes worth doing!
+# step 4: adjust level after freq equalization: (?) -- sometimes worth doing!
 # level_threshold = 0.3  # correct level only for speakers that deviate more than <threshold> dB from reference speaker
 # recordings.data[:, numpy.logical_and(recordings.level > target.level-level_threshold,
 #                                      recordings.level < target.level+level_threshold)] = target.data
@@ -184,9 +188,19 @@ equalization.update(array_equalization)
 # ----------  repeat for next speaker column ----------- #
 
 # write final equalization to pkl file
-file_name = freefield.DIR / 'data' / f'calibration_dome.pkl'
+freefield_path = freefield.DIR / 'data'
+project_path = Path.cwd() / 'data'
+file_name = project_path / f'calibration_dome.pkl'
 with open(file_name, 'wb') as f:  # save the newly recorded calibration
     pickle.dump(equalization, f, pickle.HIGHEST_PROTOCOL)
+
+
+
+# load existing equalization pkl
+project_path = Path.cwd() / 'data'
+file_name = project_path / f'calibration_dome.pkl'
+with open(file_name, "rb") as f:
+    equalization = pickle.load(f)
 
 # check spectral difference across dome
 dome_recs = slab.Sound(dome_rec)

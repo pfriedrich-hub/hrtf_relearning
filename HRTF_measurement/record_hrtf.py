@@ -108,6 +108,26 @@ def create_src_txt(recordings):
     vertical_polar[vertical_polar[:, 0] > numpy.pi / 2, 0] -= numpy.pi
     vertical_polar[:, 0] = numpy.rad2deg(vertical_polar[:, 0])
     vertical_polar[:, 2] = sources[:, 2]
+
+
+    # todo: try this instead; conversion from slab hrtf class:
+    # interaural polar to cartesian
+    interaural_polar = numpy.asarray(recordings)[:, :2].astype('float')
+    cartesian = numpy.zeros_like(vertical_polar)
+    azimuths = numpy.deg2rad(vertical_polar[:, 0])
+    elevations = numpy.deg2rad(90 - vertical_polar[:, 1])
+    r = vertical_polar[:, 2].mean()  # get radii of sound sources
+    cartesian[:, 0] = r * numpy.cos(azimuths) * numpy.sin(elevations)
+    cartesian[:, 1] = r * numpy.sin(elevations) * numpy.sin(azimuths)
+    cartesian[:, 2] = r * numpy.cos(elevations)
+    vertical_polar = numpy.zeros_like(cartesian)
+    # cartesian to vertical polar
+    xy = cartesian[:, 0] ** 2 + cartesian[:, 1] ** 2
+    vertical_polar[:, 0] = numpy.rad2deg(numpy.arctan2(cartesian[:, 1], cartesian[:, 0]))
+    vertical_polar[vertical_polar[:, 0] < 0, 0] += 360
+    vertical_polar[:, 1] = 90 - numpy.rad2deg(numpy.arctan2(numpy.sqrt(xy), cartesian[:, 2]))
+    vertical_polar[:, 2] = numpy.sqrt(xy + cartesian[:, 2] ** 2)
+
     return vertical_polar.astype('float16')
 
 if __name__ == "__main__":

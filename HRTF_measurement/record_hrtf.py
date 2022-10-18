@@ -7,7 +7,7 @@ import datetime
 date = datetime.datetime.now()
 from copy import deepcopy
 
-subject_id = 'kemar_full'
+subject_id = 'test'
 
 data_dir = Path.cwd() / 'data' / 'hrtfs'
 filename = str(subject_id + date.strftime('_%d.%m'))
@@ -97,37 +97,22 @@ def dome_rec(signal, speaker_ids, sources, repetitions):
     return recordings
 
 def create_src_txt(recordings):
-    sources = numpy.asarray(recordings)[:, :2].astype('float')
-    sources = numpy.c_[sources, numpy.round(numpy.ones(len(sources))*1.4, decimals=1)]
-    vertical_polar = numpy.zeros_like(sources)
-    azimuths = numpy.deg2rad(sources[:, 0])
-    elevations = numpy.deg2rad(sources[:, 1])
-    vertical_polar[:, 1] = numpy.rad2deg(numpy.arcsin(numpy.cos(azimuths) * numpy.sin(elevations)))
-    with numpy.errstate(divide='ignore'):
-        vertical_polar[:, 0] = (numpy.pi / 2) - numpy.arctan(((1 / numpy.tan(azimuths)) * numpy.cos(elevations)))
-    vertical_polar[vertical_polar[:, 0] > numpy.pi / 2, 0] -= numpy.pi
-    vertical_polar[:, 0] = numpy.rad2deg(vertical_polar[:, 0])
-    vertical_polar[:, 2] = sources[:, 2]
-
-
-    # todo: try this instead; conversion from slab hrtf class:
     # interaural polar to cartesian
     interaural_polar = numpy.asarray(recordings)[:, :2].astype('float')
-    cartesian = numpy.zeros_like(vertical_polar)
-    azimuths = numpy.deg2rad(vertical_polar[:, 0])
-    elevations = numpy.deg2rad(90 - vertical_polar[:, 1])
-    r = vertical_polar[:, 2].mean()  # get radii of sound sources
+    cartesian = numpy.zeros((len(interaural_polar), 3))
+    vertical_polar = numpy.zeros((len(interaural_polar), 3))
+    azimuths = numpy.deg2rad(interaural_polar[:, 0])
+    elevations = numpy.deg2rad(90 - interaural_polar[:, 1])
+    r = 1.4  # get radii of sound sources
     cartesian[:, 0] = r * numpy.cos(azimuths) * numpy.sin(elevations)
-    cartesian[:, 1] = r * numpy.sin(elevations) * numpy.sin(azimuths)
-    cartesian[:, 2] = r * numpy.cos(elevations)
-    vertical_polar = numpy.zeros_like(cartesian)
+    cartesian[:, 1] = r * numpy.sin(azimuths)
+    cartesian[:, 2] = r * numpy.cos(elevations) * numpy.cos(azimuths)
     # cartesian to vertical polar
     xy = cartesian[:, 0] ** 2 + cartesian[:, 1] ** 2
     vertical_polar[:, 0] = numpy.rad2deg(numpy.arctan2(cartesian[:, 1], cartesian[:, 0]))
     vertical_polar[vertical_polar[:, 0] < 0, 0] += 360
     vertical_polar[:, 1] = 90 - numpy.rad2deg(numpy.arctan2(numpy.sqrt(xy), cartesian[:, 2]))
     vertical_polar[:, 2] = numpy.sqrt(xy + cartesian[:, 2] ** 2)
-
     return vertical_polar.astype('float16')
 
 if __name__ == "__main__":

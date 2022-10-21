@@ -8,7 +8,7 @@ from pathlib import Path
 from stats.localization_stats import localization_accuracy
 import head_tracking.meta_motion.mm_pose as motion_sensor
 
-subject_id = 'marius_ears_free_2'
+subject_id = 'gina_ears_free'
 
 fs = 48828
 slab.set_default_samplerate(fs)

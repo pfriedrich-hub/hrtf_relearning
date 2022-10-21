@@ -7,7 +7,7 @@ import datetime
 date = datetime.datetime.now()
 from copy import deepcopy
 
-subject_id = 'test'
+subject_id = 'kemar_mold_2'
 
 data_dir = Path.cwd() / 'data' / 'hrtfs'
 filename = str(subject_id + date.strftime('_%d.%m'))
@@ -17,9 +17,9 @@ slab.Signal.set_default_samplerate(fs)  # default samplerate for generating soun
 signal = slab.Sound.chirp(duration=0.1, level=85, from_frequency=200, to_frequency=18000, kind='linear')
 signal = slab.Sound.ramp(signal, when='both', duration=0.001)
 repetitions = 20
-n_directions = 2  # only from the front (1) or front-back recordings (2)
-# speakers = numpy.arange(20, 27).tolist()  # central cone - 1
-speakers = 'all'
+n_directions = 1  # only from the front (1) or front-back recordings (2)
+speakers = numpy.arange(20, 27).tolist()  # central cone - 1
+# speakers = 'all'
 safe = 'sofa'
 kemar = True
 
@@ -53,8 +53,10 @@ def record_hrtfs(subject_id, repetitions, signal, n_directions, safe=safe, speak
         recordings = recordings + (dome_rec(signal, speaker_ids, sources, repetitions))
         if i < n_directions-1:
             sources[:, 1] += 360/n_directions
-            print('Rotate chair 180 degrees and look at fixpoint. \nPress button to start recording.')
+            print('Rotate chair %i degrees clockwise and look at fixpoint. \nPress button to start recording.' % 360/n_directions)
             freefield.wait_for_button()
+    for i in range(len(recordings)):  # bandpass filter recordings 200 - 18000 hz
+        filt.apply(recordings[i][2])
     freefield.set_logger('INFO')
     if not kemar:
         freefield.write(tag='bitmask', value=0, processors=led_speaker.digital_proc)  # turn off LED
@@ -84,16 +86,12 @@ def dome_rec(signal, speaker_ids, sources, repetitions):
         # get avg of n recordings from each sound source location
         recs = []
         for r in range(repetitions):
-            rec = freefield.play_and_record(speaker, signal, compensate_delay=True,
-                  compensate_attenuation=False, equalize=True)
-            recs.append(rec.data)
+            recs.append(freefield.play_and_record(speaker, signal, equalize=True))
         rec = slab.Binaural(numpy.mean(numpy.asarray(recs), axis=0))
-        rec = filt.apply(rec)
         azimuth = sources[numpy.where(sources[:, 0] == speaker_id)[0][0]][1]
         elevation = sources[numpy.where(sources[:, 0] == speaker_id)[0][0]][2]
-        rec = [azimuth, elevation, rec]
-        recordings.append(rec)
-        print('progress: %i %%' % (int((idx+1)/len(speaker_ids)*100)))
+        recordings.append([azimuth, elevation, rec])
+        print('progress: %i %%' % (int((idx+1)/len(speaker_ids)*100)), end="\r", flush=True)
     return recordings
 
 def create_src_txt(recordings):
@@ -113,11 +111,12 @@ def create_src_txt(recordings):
     vertical_polar[vertical_polar[:, 0] < 0, 0] += 360
     vertical_polar[:, 1] = 90 - numpy.rad2deg(numpy.arctan2(numpy.sqrt(xy), cartesian[:, 2]))
     vertical_polar[:, 2] = numpy.sqrt(xy + cartesian[:, 2] ** 2)
+
     return vertical_polar.astype('float16')
 
 if __name__ == "__main__":
     recordings, sources, hrtf = record_hrtfs(subject_id, repetitions, signal, n_directions, safe=safe, speakers=speakers)
-    hrtf.plot_tf(hrtf.cone_sources(0), xlim=(0, 20000))
+    hrtf.plot_tf(hrtf.cone_sources(0), xlim=(200, 18000))
 
 # example - from terminal/shell:
 # python record_hrtf.py --id paul_hrtf

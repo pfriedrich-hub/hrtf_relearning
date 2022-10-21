@@ -7,7 +7,7 @@ import datetime
 date = datetime.datetime.now()
 from copy import deepcopy
 
-subject_id = 'kemar_mold_2'
+subject_id = 'paul_mold_2'
 
 data_dir = Path.cwd() / 'data' / 'hrtfs'
 filename = str(subject_id + date.strftime('_%d.%m'))
@@ -21,7 +21,7 @@ n_directions = 1  # only from the front (1) or front-back recordings (2)
 speakers = numpy.arange(20, 27).tolist()  # central cone - 1
 # speakers = 'all'
 safe = 'sofa'
-kemar = True
+kemar = False
 
 def record_hrtfs(subject_id, repetitions, signal, n_directions, safe=safe, speakers=speakers):
     global filt

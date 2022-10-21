@@ -11,15 +11,13 @@ import numpy
 
 ### ---- HRTF plots ----- ###
 data_dir = Path.cwd() / 'data' / 'hrtfs'
-hrtf_free = slab.HRTF(data_dir / 'kemar_mold_1_19.10.sofa')
+hrtf_free = slab.HRTF(data_dir / 'gina_ears_free_21.10.sofa')
 hrtf_mold = slab.HRTF(data_dir / 'kemar_full_16.10.sofa')
-hrtf_free, hrtf_mold = hrtf_free.diffuse_field_equalization(), hrtf_mold.diffuse_field_equalization()
+# hrtf_free, hrtf_mold = hrtf_free.diffuse_field_equalization(), hrtf_mold.diffuse_field_equalization()
 
 # data_dir = Path.cwd() / 'data' / 'subject_data' / 'max'
 
-group_stats = False
-duration = 5  # duration of learning in days / samples
-n_bins = 96
+
 
 def get_hrtfs(data_dir):
     subj_files = os.listdir(str(data_dir))
@@ -138,7 +136,9 @@ def plot_correlation(hrtf_free, hrtf_mold, sources):
 if __name__ == '__main__':
     # plot learning
     # plot_learning(data_dir, group_stats=False)
-
+    group_stats = False
+    duration = 5  # duration of learning in days / samples
+    n_bins = 96
     if not group_stats:
         # compare free vs mold
         fig, axis = plt.subplots(2, 2)

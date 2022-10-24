@@ -8,14 +8,19 @@ import stats.HRTF_stats as hrtf_corr
 import stats.localization_stats as loc_acc
 import numpy
 
+group_stats = False
+duration = 5  # duration of learning in days / samples
+n_bins = 96
 
 ### ---- HRTF plots ----- ###
 data_dir = Path.cwd() / 'data' / 'hrtfs'
-hrtf_free = slab.HRTF(data_dir / 'gina_ears_free_21.10.sofa')
-hrtf_mold = slab.HRTF(data_dir / 'kemar_full_16.10.sofa')
-# hrtf_free, hrtf_mold = hrtf_free.diffuse_field_equalization(), hrtf_mold.diffuse_field_equalization()
+hrtf = slab.HRTF(data_dir / 'paul_mold_2_24.10.sofa')
 
-# data_dir = Path.cwd() / 'data' / 'subject_data' / 'max'
+"""hrtf_free = slab.HRTF(data_dir / 'gina_ears_free_21.10.sofa')
+hrtf_mold = slab.HRTF(data_dir / 'kemar_full_16.10.sofa')
+hrtf_free, hrtf_mold = hrtf_free.diffuse_field_equalization(), hrtf_mold.diffuse_field_equalization()
+
+data_dir = Path.cwd() / 'data' / 'subject_data' / 'max'"""
 
 
 
@@ -134,11 +139,13 @@ def plot_correlation(hrtf_free, hrtf_mold, sources):
 # def plot_trial_accuracy():
 
 if __name__ == '__main__':
-    # plot learning
+    sources = hrtf.cone_sources(0)
+    fig, axis = plt.subplots(2, 1)
+    hrtf.plot_tf(sources, n_bins=n_bins, kind='waterfall', axis=axis[0])
+    plot_vsi(hrtf, sources, n_bins=n_bins, axis=axis[1])
+"""    # plot learning
     # plot_learning(data_dir, group_stats=False)
-    group_stats = False
-    duration = 5  # duration of learning in days / samples
-    n_bins = 96
+
     if not group_stats:
         # compare free vs mold
         fig, axis = plt.subplots(2, 2)
@@ -154,4 +161,4 @@ if __name__ == '__main__':
         axis[0, 1].set_title('mold')
 
         # cross correlation
-        # plot_hrtf_correlation(hrtf_free, hrtf_mold, src)
+        # plot_hrtf_correlation(hrtf_free, hrtf_mold, src)"""

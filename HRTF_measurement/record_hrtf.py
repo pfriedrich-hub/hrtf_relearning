@@ -9,7 +9,7 @@ from copy import deepcopy
 
 subject_id = 'paul_mold_2'
 
-data_dir = Path.cwd() / 'data' / 'hrtfs'
+data_dir = Path.cwd() / 'data' / 'hrtfs' / 'pilot'
 filename = str(subject_id + date.strftime('_%d.%m'))
 filepath = str(data_dir / filename)
 fs = 48828  # sampling rate

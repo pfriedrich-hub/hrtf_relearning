@@ -13,16 +13,15 @@ duration = 5  # duration of learning in days / samples
 n_bins = 96
 
 ### ---- HRTF plots ----- ###
-data_dir = Path.cwd() / 'data' / 'hrtfs'
-hrtf = slab.HRTF(data_dir / 'paul_mold_2_24.10.sofa')
+data_dir = Path.cwd() / 'data' / 'hrtfs' / 'pilot'
+# data_dir = Path.cwd() / 'data' / 'subject_data' / 'hannah'
+filename = 'meike_ears_free_30.09.sofa'
+hrtf = slab.HRTF(data_dir / filename)
 
 """hrtf_free = slab.HRTF(data_dir / 'gina_ears_free_21.10.sofa')
 hrtf_mold = slab.HRTF(data_dir / 'kemar_full_16.10.sofa')
 hrtf_free, hrtf_mold = hrtf_free.diffuse_field_equalization(), hrtf_mold.diffuse_field_equalization()
-
 data_dir = Path.cwd() / 'data' / 'subject_data' / 'max'"""
-
-
 
 def get_hrtfs(data_dir):
     subj_files = os.listdir(str(data_dir))
@@ -143,6 +142,7 @@ if __name__ == '__main__':
     fig, axis = plt.subplots(2, 1)
     hrtf.plot_tf(sources, n_bins=n_bins, kind='waterfall', axis=axis[0])
     plot_vsi(hrtf, sources, n_bins=n_bins, axis=axis[1])
+    axis[0].set_title(filename)
 """    # plot learning
     # plot_learning(data_dir, group_stats=False)
 

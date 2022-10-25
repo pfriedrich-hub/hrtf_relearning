@@ -7,7 +7,11 @@ import datetime
 date = datetime.datetime.now()
 from copy import deepcopy
 
-subject_id = 'paul_mold_2'
+subject_id = 'fflab_in-ear_mic_test_no_buds'
+kemar = True
+speakers = numpy.arange(20, 27).tolist()  # central cone - 1
+# speakers = 'all'
+safe = 'sofa'
 
 data_dir = Path.cwd() / 'data' / 'hrtfs'
 filename = str(subject_id + date.strftime('_%d.%m'))
@@ -18,10 +22,7 @@ signal = slab.Sound.chirp(duration=0.1, level=85, from_frequency=200, to_frequen
 signal = slab.Sound.ramp(signal, when='both', duration=0.001)
 repetitions = 20
 n_directions = 1  # only from the front (1) or front-back recordings (2)
-speakers = numpy.arange(20, 27).tolist()  # central cone - 1
-# speakers = 'all'
-safe = 'sofa'
-kemar = False
+
 
 def record_hrtfs(subject_id, repetitions, signal, n_directions, safe=safe, speakers=speakers):
     global filt

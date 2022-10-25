@@ -13,7 +13,7 @@ speakers = numpy.arange(20, 27).tolist()  # central cone - 1
 # speakers = 'all'
 safe = 'sofa'
 
-data_dir = Path.cwd() / 'data' / 'hrtfs'
+data_dir = Path.cwd() / 'data' / 'hrtfs' / 'pilot'
 filename = str(subject_id + date.strftime('_%d.%m'))
 filepath = str(data_dir / filename)
 fs = 48828  # sampling rate

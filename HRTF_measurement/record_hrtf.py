@@ -4,12 +4,17 @@ from pathlib import Path
 import slab
 import freefield
 import datetime
+import stats.plots as plots
 date = datetime.datetime.now()
 from copy import deepcopy
+from matplotlib import pyplot as plt
 
-subject_id = 'fflab_in-ear_mic_test_no_buds'
+subject_id = 'kemar'
 kemar = True
-speakers = numpy.arange(20, 27).tolist()  # central cone - 1
+speakers = numpy.arange(20, 27).tolist()  # central cone, with top and bottom speaker removed
+# speakers = numpy.arange(28, 35).tolist()  # 17.5 cone
+# speakers = numpy.arange(12, 19).tolist()  # -17.5 cone
+
 # speakers = 'all'
 safe = 'sofa'
 
@@ -17,16 +22,22 @@ data_dir = Path.cwd() / 'data' / 'hrtfs' / 'pilot'
 filename = str(subject_id + date.strftime('_%d.%m'))
 filepath = str(data_dir / filename)
 fs = 48828  # sampling rate
-slab.Signal.set_default_samplerate(fs)  # default samplerate for generating sounds, filters etc.
-signal = slab.Sound.chirp(duration=0.1, level=85, from_frequency=200, to_frequency=18000, kind='linear')
-signal = slab.Sound.ramp(signal, when='both', duration=0.001)
-repetitions = 20
+duration = 0.1  # short chirps <0.05s introduce variability in low freq (4-5 kHz). no improvement above 0.1s
+low_freq = 1000
+high_freq = 17000  # window of interes is 4-16
+repetitions = 10  # works on kemar
 n_directions = 1  # only from the front (1) or front-back recordings (2)
-
+n_bins = 2400
+plot_ear = 'left'
+ramp_duration = duration/20
+slab.Signal.set_default_samplerate(fs)  # default samplerate for generating sounds, filters etc.
+signal = slab.Sound.chirp(duration=duration, level=85, from_frequency=low_freq, to_frequency=high_freq, kind='linear')
+signal = slab.Sound.ramp(signal, when='both', duration=ramp_duration)
 
 def record_hrtfs(subject_id, repetitions, signal, n_directions, safe=safe, speakers=speakers):
     global filt
-    filt = slab.Filter.band('bp', (200, 18000))
+    # filt = slab.Filter.band('bp', (low_freq, high_freq))
+    filt = slab.Filter.band('hp', (200)) # makes no diff
     if not freefield.PROCESSORS.mode:
         freefield.initialize('dome', default='play_birec')
     freefield.set_logger('warning')
@@ -89,6 +100,7 @@ def dome_rec(signal, speaker_ids, sources, repetitions):
         for r in range(repetitions):
             recs.append(freefield.play_and_record(speaker, signal, equalize=True))
         rec = slab.Binaural(numpy.mean(numpy.asarray(recs), axis=0))
+        rec = slab.Binaural.ramp(rec, when='both', duration=ramp_duration)
         azimuth = sources[numpy.where(sources[:, 0] == speaker_id)[0][0]][1]
         elevation = sources[numpy.where(sources[:, 0] == speaker_id)[0][0]][2]
         recordings.append([azimuth, elevation, rec])
@@ -112,12 +124,16 @@ def create_src_txt(recordings):
     vertical_polar[vertical_polar[:, 0] < 0, 0] += 360
     vertical_polar[:, 1] = 90 - numpy.rad2deg(numpy.arctan2(numpy.sqrt(xy), cartesian[:, 2]))
     vertical_polar[:, 2] = numpy.sqrt(xy + cartesian[:, 2] ** 2)
-
     return vertical_polar.astype('float16')
 
 if __name__ == "__main__":
     recordings, sources, hrtf = record_hrtfs(subject_id, repetitions, signal, n_directions, safe=safe, speakers=speakers)
-    hrtf.plot_tf(hrtf.cone_sources(0), xlim=(200, 18000))
+    sources = list(range(hrtf.n_sources-1, -1, -1))
+    fig, axis = plt.subplots(2, 1)
+    hrtf.plot_tf(sources, n_bins=n_bins, kind='waterfall', axis=axis[0], ear=plot_ear, xlim=(4000, 16000))
+    plots.plot_vsi(hrtf, sources, n_bins=n_bins, axis=axis[1])
+    axis[0].set_title(subject_id)
+    hrtf.plot_tf(sources, xlim=(low_freq, high_freq), ear=plot_ear)
 
 # example - from terminal/shell:
 # python record_hrtf.py --id paul_hrtf

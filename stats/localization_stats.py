@@ -7,7 +7,7 @@ from matplotlib import pyplot as plt
 import numpy
 
 data_dir = Path.cwd() / 'data' / 'localization_data' / 'pilot'
-subject_id = 'paul_mold_2_24.10'
+subject_id = 'gina_mold_1_26.10'
 
 def localization_accuracy(subject_id, show=True):
     # calculate elevation gain
@@ -29,17 +29,22 @@ def localization_accuracy(subject_id, show=True):
                 for target in numpy.unique(target_elevations)])
     if show:
         fig, axis = plt.subplots(1, 1)
-        axis.set_ylim(-60, 60)
-        axis.set_xlim(-60, 60)
+        elevation_ticks = numpy.unique(target_elevations)
+        axis.set_yticks(elevation_ticks)
+        axis.set_xticks(elevation_ticks)
+        axis.set_ylim(numpy.min(elevation_ticks)-10, numpy.max(elevation_ticks)+10)
+        axis.set_xlim(numpy.min(elevation_ticks)-10, numpy.max(elevation_ticks)+10)
         axis.set_xlabel('target elevations')
         axis.set_ylabel('perceived elevations')
+        axis.grid(visible=True, which='major', axis='both', linestyle='dashed', linewidth=0.5, color='grey')
+        axis.set_axisbelow(True)
         # scatter plot with regression line (elevation gain)
         axis.scatter(target_elevations[left_ids], perceived_elevations[left_ids], s=10, c='red', label='left')
         axis.scatter(target_elevations[right_ids], perceived_elevations[right_ids], s=10, c='blue', label='right')
         axis.scatter(target_elevations[mid_ids], perceived_elevations[mid_ids], s=10, c='black', label='middle')
         x = numpy.arange(-55, 56)
         y = elevation_gain * x + n
-        axis.plot(x, y, c='grey', linewidth=0.6, label='elevation gain %.2f' % elevation_gain)
+        axis.plot(x, y, c='grey', linewidth=1, label='elevation gain %.2f' % elevation_gain)
         plt.legend()
         axis.set_title(str(subject_id))
         plt.show()

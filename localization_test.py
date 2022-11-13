@@ -8,7 +8,7 @@ from pathlib import Path
 from stats.localization_stats import localization_accuracy
 import head_tracking.meta_motion.mm_pose as motion_sensor
 
-subject_id = 'paul_mold_2'
+subject_id = 'paul_ears_mold'
 
 fs = 48828
 slab.set_default_samplerate(fs)
@@ -16,6 +16,7 @@ tone = slab.Sound.tone(frequency=1000, duration=0.25, level=70)
 data_dir = Path.cwd() / 'data' / 'localization_data' / 'pilot'
 filename = str(subject_id + date.strftime('_%d.%m'))
 filepath = str(data_dir / filename)
+n = 3  # number of repetitions per speaker
 
 def localization_test():
     global speakers, stim, sensor
@@ -34,10 +35,10 @@ def localization_test():
     # read list of speaker locations
     table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')
     speakers = numpy.loadtxt(table_file, skiprows=1, usecols=(0, 3, 4), delimiter=",", dtype=float)
-    sequence = numpy.random.permutation(numpy.tile(list(range(len(speakers))), 3))
+    sequence = numpy.random.permutation(numpy.tile(list(range(len(speakers))), n))
     az_dist, ele_dist = numpy.diff(speakers[sequence, 1]), numpy.diff(speakers[sequence, 2])
     while any([az_dist[i] == 0 and ele_dist[i] == 0 for i in range(len(az_dist))]):
-        sequence = numpy.random.permutation(numpy.tile(list(range(len(speakers))), 3))
+        sequence = numpy.random.permutation(numpy.tile(list(range(len(speakers))), n))
         az_dist, ele_dist = numpy.diff(speakers[sequence, 1]), numpy.diff(speakers[sequence, 2])
     sequence = numpy.delete(sequence, [numpy.where(sequence == 19), numpy.where(sequence == 27)])
     # generate trial sequence with target speaker locations
@@ -47,7 +48,7 @@ def localization_test():
     for index in trial_sequence:
         progress = int(trial_sequence.this_n / trial_sequence.n_trials * 100)
         trial_sequence.add_response(play_trial(sequence[index], progress))
-    trial_sequence.save_pickle(filepath)
+    trial_sequence.save_pickle(filepath, clobber=True)
     freefield.halt()
     motion_sensor.disconnect(sensor)
     print('localization test completed!')

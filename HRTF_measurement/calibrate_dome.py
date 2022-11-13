@@ -29,11 +29,11 @@ azimuthal_angles = numpy.array([-52.5, -35, -17.5, 0, 17.5, 35, 52.5])
 # signal parameters
 low_cutoff = 200
 high_cutoff = 18000
-signal_length = 0.1  # how long should the chirp be?
+signal_length = 0.05  # how long should the chirp be?
 rec_repeat = 20  # how often to repeat measurement for averaging
 # signal for loudspeaker calibration
-signal = slab.Sound.chirp(duration=0.1, level=85, from_frequency=low_cutoff, to_frequency=high_cutoff, kind='linear')
-signal = slab.Sound.ramp(signal, when='both', duration=0.001)
+signal = slab.Sound.chirp(duration=signal_length, level=85, from_frequency=low_cutoff, to_frequency=high_cutoff, kind='linear')
+signal = slab.Sound.ramp(signal, when='both', duration=0.0001)
 
 # equalization parameters
 level_threshold = 0.3  # correct level only for speakers that deviate more than <threshold> dB from reference speaker
@@ -98,7 +98,7 @@ equalization_levels = target.level - recordings.level
 
 # set up plot
 fig, ax = plt.subplots(4, 1, sharex=True, sharey=True, figsize=(25, 10))
-ax[3].set_xlim(left=4000, right=18000)
+ax[3].set_xlim(left=200, right=18000)
 ax[3].set_ylim(50,70)
 ax[3].set_xlabel('Frequency (Hz)')
 for i in range(4):

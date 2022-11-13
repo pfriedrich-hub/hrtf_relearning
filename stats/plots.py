@@ -10,12 +10,12 @@ import numpy
 
 group_stats = False
 duration = 5  # duration of learning in days / samples
-n_bins = 96
+n_bins = 2000
 
 ### ---- HRTF plots ----- ###
 data_dir = Path.cwd() / 'data' / 'hrtfs' / 'pilot'
 # data_dir = Path.cwd() / 'data' / 'subject_data' / 'hannah'
-filename = 'meike_ears_free_30.09.sofa'
+filename = 'kemar_in_ear_mic_08.11.sofa'
 hrtf = slab.HRTF(data_dir / filename)
 
 """hrtf_free = slab.HRTF(data_dir / 'gina_ears_free_21.10.sofa')
@@ -143,6 +143,10 @@ if __name__ == '__main__':
     hrtf.plot_tf(sources, n_bins=n_bins, kind='waterfall', axis=axis[0])
     plot_vsi(hrtf, sources, n_bins=n_bins, axis=axis[1])
     axis[0].set_title(filename)
+    hrtf.plot_tf(hrtf.cone_sources(0), xlim=(low_freq, high_freq), ear='left')
+
+
+
 """    # plot learning
     # plot_learning(data_dir, group_stats=False)
 

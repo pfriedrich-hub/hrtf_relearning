@@ -10,7 +10,7 @@ import numpy
 
 group_stats = False
 duration = 5  # duration of learning in days / samples
-n_bins = 2000
+n_bins = 96
 
 ### ---- HRTF plots ----- ###
 data_dir = Path.cwd() / 'data' / 'hrtfs' / 'pilot'

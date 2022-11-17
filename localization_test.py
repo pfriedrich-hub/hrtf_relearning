@@ -81,4 +81,5 @@ def play_trial(speaker_id, progress):
 if __name__ == "__main__":
     trialsequence = localization_test()
     elevation_gain, rmse, sd = localization_accuracy(filename, show=True)
+    elevation_gain, rmse, sd = localization_accuracy(filename, show=True, plot_dim=2)
     print('gain: %.2f\nrmse: %.2f\nsd: %.2f' % (elevation_gain, rmse, sd))

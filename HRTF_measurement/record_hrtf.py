@@ -9,7 +9,7 @@ date = datetime.datetime.now()
 from copy import deepcopy
 from matplotlib import pyplot as plt
 
-subject_id = 'kemar'
+subject_id = 'Kemar'
 kemar = True
 speakers = numpy.arange(20, 27).tolist()  # central cone, with top and bottom speaker removed
 # speakers = numpy.arange(28, 35).tolist()  # 17.5 cone
@@ -22,22 +22,23 @@ data_dir = Path.cwd() / 'data' / 'hrtfs' / 'pilot'
 filename = str(subject_id + date.strftime('_%d.%m'))
 filepath = str(data_dir / filename)
 fs = 48828  # sampling rate
-duration = 0.1  # short chirps <0.05s introduce variability in low freq (4-5 kHz). no improvement above 0.1s
+level = 80
+duration = 0.05  # short chirps <0.05s introduce variability in low freq (4-5 kHz). no improvement above 0.1s
 low_freq = 1000
 high_freq = 17000  # window of interes is 4-16
-repetitions = 10  # works on kemar
+repetitions = 50  # works on kemar
 n_directions = 1  # only from the front (1) or front-back recordings (2)
 n_bins = 2400
 plot_ear = 'left'
 ramp_duration = duration/20
 slab.Signal.set_default_samplerate(fs)  # default samplerate for generating sounds, filters etc.
-signal = slab.Sound.chirp(duration=duration, level=85, from_frequency=low_freq, to_frequency=high_freq, kind='linear')
+signal = slab.Sound.chirp(duration=duration, level=level, from_frequency=low_freq, to_frequency=high_freq, kind='linear')
 signal = slab.Sound.ramp(signal, when='both', duration=ramp_duration)
 
 def record_hrtfs(subject_id, repetitions, signal, n_directions, safe=safe, speakers=speakers):
     global filt
     # filt = slab.Filter.band('bp', (low_freq, high_freq))
-    filt = slab.Filter.band('hp', (200)) # makes no diff
+    filt = slab.Filter.band('hp', (200))  # makes no diff
     if not freefield.PROCESSORS.mode:
         freefield.initialize('dome', default='play_birec')
     freefield.set_logger('warning')
@@ -134,6 +135,7 @@ if __name__ == "__main__":
     plots.plot_vsi(hrtf, sources, n_bins=n_bins, axis=axis[1])
     axis[0].set_title(subject_id)
     hrtf.plot_tf(sources, xlim=(low_freq, high_freq), ear=plot_ear)
+    hrtf.plot_tf(sources, xlim=(4000, 16000), ear=plot_ear)
 
 # example - from terminal/shell:
 # python record_hrtf.py --id paul_hrtf

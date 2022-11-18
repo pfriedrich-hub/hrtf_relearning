@@ -7,9 +7,10 @@ from matplotlib import pyplot as plt
 import numpy
 
 data_dir = Path.cwd() / 'data' / 'localization_data' / 'pilot'
-subject_id = 'paul_ears_free_21.10'
+# data_dir = Path.cwd() / 'data' / 'subject_data' / 'hannah'
+subject_id = 'Lioba_ears_mold_05.11'
 
-def localization_accuracy(subject_id, show=True, plot_dim=1):
+def localization_accuracy(subject_id, show=True, plot_dim=1, binned=True):
     # calculate elevation gain
     sequence = slab.Trialsequence(conditions=47, n_reps=1)
     sequence.load_pickle(file_name=data_dir / subject_id)
@@ -31,15 +32,29 @@ def localization_accuracy(subject_id, show=True, plot_dim=1):
 
     # mean perceived location for each target speaker
     i = 0
-    mean_loc_data = numpy.zeros((45, 2, 2))
+    mean_loc = numpy.zeros((45, 2, 2))
     for az_id, azimuth in enumerate(numpy.unique(target_azimuths)):
         for ele_id, elevation in enumerate(numpy.unique(target_elevations)):
             [perceived_targets] = loc_data[numpy.where(numpy.logical_and(loc_data[:, 1, 1] == elevation,
                           loc_data[:, 1, 0] == azimuth)), 0]
             if perceived_targets.size != 0:
                 mean_perceived = numpy.mean(perceived_targets, axis=0)
-                mean_loc_data[i] = numpy.array(((azimuth, mean_perceived[0]), (elevation, mean_perceived[1])))
+                mean_loc[i] = numpy.array(((azimuth, mean_perceived[0]), (elevation, mean_perceived[1])))
                 i += 1
+
+    # divide target space in 16 half overlapping sectors and get mean response for each sector
+    mean_loc_binned = numpy.empty((0, 2, 2))
+    for a in range(6):
+        for e in range(6):
+            tar_bin = loc_data[numpy.logical_or(loc_data[:, 1, 0] == azimuths[a],
+                                                loc_data[:, 1, 0] == azimuths[a+1])]
+            tar_bin = tar_bin[numpy.logical_or(tar_bin[:, 1, 1] == elevations[e],
+                                               tar_bin[:, 1, 1] == elevations[e+1])]
+            tar_bin[:, 1] = numpy.array((numpy.mean([azimuths[a], azimuths[a+1]]),
+                                         numpy.mean([elevations[e], elevations[e+1]])))
+            mean_tar_bin = numpy.mean(tar_bin, axis=0).T
+            mean_tar_bin[:, [0, 1]] = mean_tar_bin[:, [1, 0]]
+            mean_loc_binned = numpy.concatenate((mean_loc_binned, [mean_tar_bin]))
 
     elevation_gain, n = scipy.stats.linregress(target_elevations, perceived_elevations)[:2]
     rmse = numpy.sqrt(numpy.square(numpy.subtract(target_elevations, perceived_elevations)).mean())
@@ -54,25 +69,29 @@ def localization_accuracy(subject_id, show=True, plot_dim=1):
         if plot_dim == 2:
             axis.set_xticks(azimuth_ticks)
             axis.set_xlim(numpy.min(azimuth_ticks)-15, numpy.max(azimuth_ticks)+15)
-            for az in azimuths:  # plot lines between mean perceived locations for each target
-                [x] = mean_loc_data[numpy.where(mean_loc_data[:, 0, 0]==az), 0, 0]
-                [y] = mean_loc_data[numpy.where(mean_loc_data[:, 0, 0]==az), 1, 0]
-                axis.plot(x, y, color='black', linewidth=0.5)
-            for ele in elevations:
-                [x] = mean_loc_data[numpy.where(mean_loc_data[:, 1, 0] == ele), 0, 0]
-                [y] = mean_loc_data[numpy.where(mean_loc_data[:, 1, 0] == ele), 1, 0]
-                axis.plot(x, y, color='black', linewidth=0.5)
             axis.scatter(perceived_azimuths, perceived_elevations, s=8, edgecolor='grey', facecolor='none')
-            axis.scatter(mean_loc_data[:, 0, 1], mean_loc_data[:, 1, 1], color='black', s=25)
+            if binned:
+                azimuths = numpy.unique(mean_loc_binned[:, 0, 0])
+                elevations = numpy.unique(mean_loc_binned[:, 1, 0])
+                mean_loc = mean_loc_binned
+            axis.scatter(mean_loc[:, 0, 1], mean_loc[:, 1, 1], color='black', s=25)
+            for az in azimuths:  # plot lines between target locations
+                [x] = mean_loc[numpy.where(mean_loc[:, 0, 0]==az), 0, 0]
+                [y] = mean_loc[numpy.where(mean_loc[:, 0, 0]==az), 1, 0]
+                axis.plot(x, y, color='black', linewidth=0.5)
+            for ele in elevations:
+                [x] = mean_loc[numpy.where(mean_loc[:, 1, 0] == ele), 0, 0]
+                [y] = mean_loc[numpy.where(mean_loc[:, 1, 0] == ele), 1, 0]
+                axis.plot(x, y, color='black', linewidth=0.5)
             for az in azimuths:  # plot lines between mean perceived locations for each target
-                [x] = mean_loc_data[numpy.where(mean_loc_data[:, 0, 0]==az), 0, 1]
-                [y] = mean_loc_data[numpy.where(mean_loc_data[:, 0, 0]==az), 1, 1]
+                [x] = mean_loc[numpy.where(mean_loc[:, 0, 0]==az), 0, 1]
+                [y] = mean_loc[numpy.where(mean_loc[:, 0, 0]==az), 1, 1]
                 axis.plot(x, y, color='black')
             for ele in elevations:
-                [x] = mean_loc_data[numpy.where(mean_loc_data[:, 1, 0] == ele), 0, 1]
-                [y] = mean_loc_data[numpy.where(mean_loc_data[:, 1, 0] == ele), 1, 1]
+                [x] = mean_loc[numpy.where(mean_loc[:, 1, 0] == ele), 0, 1]
+                [y] = mean_loc[numpy.where(mean_loc[:, 1, 0] == ele), 1, 1]
                 axis.plot(x, y, color='black')
-        if plot_dim == 1:
+        elif plot_dim == 1:
             axis.set_xticks(elevation_ticks)
             axis.set_xlim(numpy.min(elevation_ticks)-15, numpy.max(elevation_ticks)+15)
             axis.set_xlabel('target elevations')
@@ -116,7 +135,7 @@ def trial_to_trial_performance(subject_id, show=True):
 if __name__ == "__main__":
     trial_to_trial_performance(subject_id, show=True)
     elevation_gain, rmse, sd = localization_accuracy(subject_id, show=True, plot_dim=1)
-    elevation_gain, rmse, sd = localization_accuracy(subject_id, show=True, plot_dim=2)
+    elevation_gain, rmse, sd = localization_accuracy(subject_id, show=True, plot_dim=2, binned=True)
     print('gain: %.2f\nrmse: %.2f\nsd: %.2f' % (elevation_gain, rmse, sd))
 
 """

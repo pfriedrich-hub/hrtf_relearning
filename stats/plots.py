@@ -139,7 +139,6 @@ if __name__ == '__main__':
     n_bins = 96
     low_freq = 4000
     high_freq = 16000
-    n_bins =
     sources = hrtf.cone_sources(0)
     fig, axis = plt.subplots(2, 1)
     hrtf.plot_tf(sources, n_bins=n_bins, kind='waterfall', axis=axis[0], xlim=(low_freq, high_freq))

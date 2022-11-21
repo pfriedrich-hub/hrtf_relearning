@@ -32,6 +32,7 @@ def localization_test():
     stim = slab.Sound.sequence(noise, silence, noise, silence, noise,
                                silence, noise, silence, noise)
     stim = stim.ramp(when='both', duration=0.01)
+    bell = slab.Sound.read(Path.cwd() / 'data' / 'sounds' / 'bell.wav')
     # read list of speaker locations
     table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')
     speakers = numpy.loadtxt(table_file, skiprows=1, usecols=(0, 3, 4), delimiter=",", dtype=float)
@@ -47,6 +48,9 @@ def localization_test():
     # loop over trials
     for index in trial_sequence:
         progress = int(trial_sequence.this_n / trial_sequence.n_trials * 100)
+        if progress == 50:
+            freefield.set_signal_and_speaker(signal=bell, speaker=23)
+            freefield.play()
         trial_sequence.add_response(play_trial(sequence[index], progress))
     trial_sequence.save_pickle(filepath, clobber=True)
     freefield.halt()

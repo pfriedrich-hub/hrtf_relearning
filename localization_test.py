@@ -8,7 +8,7 @@ from pathlib import Path
 from stats.localization_stats import localization_accuracy
 import head_tracking.meta_motion.mm_pose as motion_sensor
 
-subject_id = 'toni_mold'
+subject_id = 'natalie_earmold'
 
 fs = 48828
 slab.set_default_samplerate(fs)
@@ -16,7 +16,7 @@ tone = slab.Sound.tone(frequency=1000, duration=0.25, level=70)
 data_dir = Path.cwd() / 'data' / 'localization_data' / 'pilot'
 filename = str(subject_id + date.strftime('_%d.%m'))
 filepath = str(data_dir / filename)
-n = 3  # number of repetitions per speaker
+n = 2  # number of repetitions per speaker
 
 def localization_test():
     global speakers, stim, sensor
@@ -51,6 +51,7 @@ def localization_test():
         if progress == 50:
             freefield.set_signal_and_speaker(signal=bell, speaker=23)
             freefield.play()
+            freefield.wait_to_finish_playing()
         trial_sequence.add_response(play_trial(sequence[index], progress))
     trial_sequence.save_pickle(filepath, clobber=True)
     freefield.halt()

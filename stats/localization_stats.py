@@ -8,7 +8,7 @@ import numpy
 
 data_dir = Path.cwd() / 'data' / 'localization_data' / 'pilot'
 # data_dir = Path.cwd() / 'data' / 'subject_data' / 'hannah'
-subject_id = 'Lioba_ears_mold_05.11'
+subject_id = 'natalie_earmold_21.11'
 
 def localization_accuracy(subject_id, show=True, plot_dim=1, binned=True):
     # calculate elevation gain

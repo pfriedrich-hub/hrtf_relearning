@@ -11,8 +11,11 @@ import numpy
 ### ---- HRTF plots ----- ###
 data_dir = Path.cwd() / 'data' / 'hrtfs' / 'pilot'
 # data_dir = Path.cwd() / 'data' / 'subject_data' / 'hannah'
-filename = 'kemar_in_ear_mic_13.11.sofa'
+filename = 'Natalie_earmolds_21.11.sofa'
 hrtf = slab.HRTF(data_dir / filename)
+
+group_stats = False
+duration = 5  # duration of learning in days / samples
 
 """hrtf_free = slab.HRTF(data_dir / 'gina_ears_free_21.10.sofa')
 hrtf_mold = slab.HRTF(data_dir / 'kemar_full_16.10.sofa')
@@ -134,8 +137,7 @@ def plot_correlation(hrtf_free, hrtf_mold, sources):
 # def plot_trial_accuracy():
 
 if __name__ == '__main__':
-    group_stats = False
-    duration = 5  # duration of learning in days / samples
+
     n_bins = 96
     low_freq = 4000
     high_freq = 16000

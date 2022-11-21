@@ -38,10 +38,9 @@ def hrtf_training(max_pulse_interval=500, target_size=3, target_time=0.5, trial_
     freefield.write(tag='data', value=stim.data, processors=['RX81', 'RX82'])
     coin = slab.Sound(data=data_dir / 'sounds' / 'coin.wav')  # load goal sound to buffer
     coins = slab.Sound(data=data_dir / 'sounds' / 'coins.wav')  # load goal sound to buffer
-    coin.level, coins.level = 3, 4
+    coin.level, coins.level = 70, 70
     freefield.write(tag='goal_len', value=coin.n_samples, processors=['RX81', 'RX82'])
-    buzzer = slab.Sound(data_dir / 'sounds' / 'Buzzer1.wav')
-    buzzer.level = 70
+    buzzer = slab.Sound(data_dir / 'sounds' / 'buzzer.wav')
     # set variables to control pulse train and goal condition
     table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')
     speakers = numpy.loadtxt(table_file, skiprows=1, usecols=(0, 3, 4), delimiter=",", dtype=float)

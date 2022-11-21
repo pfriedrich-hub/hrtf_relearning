@@ -9,8 +9,8 @@ date = datetime.datetime.now()
 from copy import deepcopy
 from matplotlib import pyplot as plt
 
-subject_id = 'Kemar'
-kemar = True
+subject_id = 'Natalie_earmolds'
+kemar = False
 speakers = numpy.arange(20, 27).tolist()  # central cone, with top and bottom speaker removed
 # speakers = numpy.arange(28, 35).tolist()  # 17.5 cone
 # speakers = numpy.arange(12, 19).tolist()  # -17.5 cone

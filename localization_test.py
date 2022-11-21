@@ -81,6 +81,7 @@ def play_trial(speaker_id, progress):
         print('Response| azimuth: %.1f, elevation: %.1f' % (pose[0], pose[1]))
     freefield.set_signal_and_speaker(signal=tone, speaker=23)
     freefield.play()
+    freefield.wait_to_finish_playing()
     return numpy.array((pose, target))
 
 if __name__ == "__main__":

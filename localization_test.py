@@ -61,7 +61,12 @@ def localization_test():
 
 def play_trial(speaker_id, progress):
     time.sleep(.5)
-    offset = motion_sensor.calibrate_pose(sensor)
+    while True:
+        offset = motion_sensor.calibrate_pose(sensor)
+        if any(offset > 140 * numpy.tan(numpy.deg2rad(1.5))):
+            freefield.play_warning_sound(0.25, 23)
+        else:  # check if head position is within tolerance margin of 1.5 cm
+            break  # todo test this
     target = speakers[speaker_id, 1:]
     print('%i%%: TARGET| azimuth: %.1f, elevation %.1f' % (progress, target[0], target[1]))
     time.sleep(.5)

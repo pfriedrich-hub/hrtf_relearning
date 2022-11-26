@@ -14,7 +14,7 @@ slab.set_default_samplerate(fs)
 # file settings
 subject_id = 'paul'
 condition = 'ears_free'  # can be 'ears_free' or 'earmolds' - important for file naming!
-kemar = True  # requires no button press if true
+kemar = False  # requires no button press if true
 safe = 'both'  # decide if additionally save in-ear-recordings
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_1' / subject_id / condition
 
@@ -26,7 +26,7 @@ level = 80  # minimize to reduce reverb ripple effect, apparently kemar recordin
 duration = 0.1  # short chirps <0.05s introduce variability in low freq (4-5 kHz). improvement at 0.1s for kemar vsi
 low_freq = 1000
 high_freq = 17000  # window of interes is 4-16
-repetitions = 10  # 10 work for kemar, 30-50 for in ear mics
+repetitions = 30  # 10 work for kemar, 30-50 for in ear mics
 n_directions = 1  # only from the front (1) or front-back recordings (2)
 ramp_duration = duration/20
 slab.Signal.set_default_samplerate(fs)  # default samplerate for generating sounds, filters etc.

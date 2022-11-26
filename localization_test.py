@@ -55,21 +55,20 @@ def localization_test(subject_id, data_dir, condition, repetitions):
             freefield.wait_to_finish_playing()
         trial_sequence.add_response(play_trial(sequence[index], progress))
     data_dir.mkdir(parents=True, exist_ok=True)  # create subject data directory if it doesnt exist
-    file_name = subject_id + date.strftime('_%d.%m')
+    file_name = subject_id + '_' + condition + date.strftime('_%d.%m')
     trial_sequence.save_pickle(data_dir / ('localization_' + file_name), clobber=True)
     freefield.halt()
     motion_sensor.disconnect(sensor)
     print('localization test completed!')
-    return
+    return trial_sequence
 
 def play_trial(speaker_id, progress):
     time.sleep(.5)
-    while True:
-        offset = motion_sensor.calibrate_pose(sensor)
-        if any(offset > 140 * numpy.tan(numpy.deg2rad(1.5))):
-            freefield.play_warning_sound(0.25, 23)
-        else:  # check if head position is within tolerance margin of 1.5 cm
-            break  # todo test this
+    offset = motion_sensor.calibrate_pose(sensor)
+        # if any(offset > 140 * numpy.tan(numpy.deg2rad(1.5))):
+        #     freefield.play_warning_sound(0.25, 23)
+        # else:  # check if head position is within tolerance margin of 1.5 cm
+        #     break  # todo test this - doesnt work with drifting sensor..
     target = speakers[speaker_id, 1:]
     print('%i%%: TARGET| azimuth: %.1f, elevation %.1f' % (progress, target[0], target[1]))
     time.sleep(.5)
@@ -93,7 +92,9 @@ def play_trial(speaker_id, progress):
     return numpy.array((pose, target))
 
 if __name__ == "__main__":
-    sequence = localization_test(subject_id, data_dir, condition, repetitions=n_rep)
-    elevation_gain, rmse, sd = localization_accuracy(sequence, show=True, plot_dim=1)
-    elevation_gain, rmse, sd = localization_accuracy(sequence, show=True, plot_dim=2, binned=False)
+    sequence = localization_test(subject_id, data_dir, condition, repetitions)
+    elevation_gain, rmse, sd = localization_accuracy(sequence, show=True, plot_dim=1, subject_id=subject_id)
+    elevation_gain, rmse, sd = localization_accuracy(sequence, show=True, plot_dim=2, binned=True,
+                                                     subject_id=subject_id)
     print('gain: %.2f\nrmse: %.2f\nsd: %.2f' % (elevation_gain, rmse, sd))
+

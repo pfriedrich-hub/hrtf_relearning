@@ -15,32 +15,28 @@ data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_1' / subject_id / condi
 
 
 """ plot HRTF and VSI across bands"""
-sofa_name = 'kemar_ears_free_26.11.sofa'
+sofa_name = 'paul_ears_free_26.11.sofa'
 # plot settings
 plot_bins = 2400
 plot_ear = 'left'
 dfe = False  # apply diffuse field equalization
 hrtf = slab.HRTF(data_dir / sofa_name)
 sources = list(range(hrtf.n_sources - 1, -1, -1))  # get sources to plot, works for 0°/+/-17.5° cone
-
 # plot
 fig, axis = plt.subplots(2, 1)
 hrtf_analysis.plot_tf(hrtf, sources, plot_bins, kind='waterfall', axis=axis[0], ear=plot_ear, xlim=(4000, 16000),
                       dfe=dfe)
 hrtf_analysis.vsi_across_bands(hrtf, sources, n_bins=plot_bins, axis=axis[1], dfe=dfe)
 axis[0].set_title(subject_id)
-
+# hrtf_analysis.plot_tf(hrtf, sources, n_bins=2400, kind='waterfall', ear=plot_ear, xlim=(2000, 18000), dfe=dfe)
 
 """ plot localization accuracy """
 file_name = 'localization_paul_26.11'
 sequence = slab.Trialsequence()
 sequence.load_pickle(file_name=data_dir / file_name)
 elevation_gain, rmse, sd = localization_accuracy(sequence, show=True, plot_dim=1)
-elevation_gain, rmse, sd = localization_accuracy(sequence, show=True, plot_dim=2, binned=False)
+elevation_gain, rmse, sd = localization_accuracy(sequence, show=True, plot_dim=2, binned=True)
 print('gain: %.2f\nrmse: %.2f\nsd: %.2f' % (elevation_gain, rmse, sd))
-
-
-
 
 
 """

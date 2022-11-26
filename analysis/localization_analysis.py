@@ -100,7 +100,7 @@ def localization_accuracy(sequence, show=True, plot_dim=1, binned=True):
             y = elevation_gain * x + n
             axis.plot(x, y, c='grey', linewidth=1, label='elevation gain %.2f' % elevation_gain)
             plt.legend()
-        axis.set_title(str(subject_id))
+        axis.set_title('elevation gain: %.2f' % elevation_gain)
         plt.show()
     return elevation_gain, rmse, sd
 

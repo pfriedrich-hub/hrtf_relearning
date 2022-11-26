@@ -8,7 +8,7 @@ import analysis.hrtf_analysis as hrtf_analysis
 date = datetime.datetime.now()
 from copy import deepcopy
 from matplotlib import pyplot as plt
-fs = 48828  # sampling rate
+fs = 97656  # 97656.25, 195312.5
 slab.set_default_samplerate(fs)
 
 # file settings
@@ -20,7 +20,7 @@ data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_1' / subject_id / condi
 
 # HRTF recording settings
 speakers = numpy.arange(20, 27).tolist()  #sources to record HRTF from # central cone, with top and bottom speaker removed
-# speakers = numpy.arange(28, 35).tolist()  # 17.5 cone
+# speakers = numpy.arange(28, 35).tolist()  # 17.5 cone  # still to be calibrated
 # speakers = numpy.arange(12, 19).tolist()  # -17.5 cone
 level = 80  # minimize to reduce reverb ripple effect, apparently kemar recordings are not affected?
 duration = 0.1  # short chirps <0.05s introduce variability in low freq (4-5 kHz). improvement at 0.1s for kemar vsi
@@ -46,8 +46,12 @@ def record_hrtf(subject_id, data_dir, condition, signal, repetitions, n_directio
     # filt = slab.Filter.band('bp', (low_freq, high_freq))
     filt = slab.Filter.band('hp', (200))  # makes no diff
     if not freefield.PROCESSORS.mode:
-        freefield.initialize('dome', default='play_birec')
-    freefield.load_equalization(file=Path.cwd() / 'data' / 'calibration' / 'central_arc_calibration')
+        proc_list = [['RP2', 'RP2', Path.cwd() / 'data' / 'rcx' / 'bi_rec_buf.rcx'],
+                     ['RX81', 'RX8', Path.cwd() / 'data' / 'rcx' / 'play_buf.rcx'],
+                     ['RX82', 'RX8', Path.cwd() / 'data' / 'rcx' / 'play_buf.rcx']]
+        freefield.initialize('dome', device=proc_list)
+        freefield.PROCESSORS.mode = 'play_birec'
+    freefield.load_equalization(file=Path.cwd() / 'data' / 'calibration' / 'central_arc_calibration_100k')
     freefield.set_logger('warning')
     table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')  # get speaker coordinates
     if isinstance(speakers, str) and speakers == 'all':
@@ -73,7 +77,8 @@ def record_hrtf(subject_id, data_dir, condition, signal, repetitions, n_directio
         recordings = recordings + (dome_rec(signal, speaker_ids, sources, repetitions))
         if i < n_directions-1:
             sources[:, 1] += 360/n_directions
-            print('Rotate chair %i degrees clockwise and look at fixpoint. \nPress button to start recording.' % 360/n_directions)
+            print('Rotate chair %i degrees clockwise and look at fixpoint. \nPress button to start recording.'
+                  % 360/n_directions)
             freefield.wait_for_button()
     for i in range(len(recordings)):  # highpass filter recordings 200
         recordings[i][2] = filt.apply(recordings[i][2])
@@ -103,10 +108,11 @@ def dome_rec(signal, speaker_ids, sources, repetitions):
     recordings = []  # list to store binaural recordings and source coordinates
     for idx, speaker_id in enumerate(speaker_ids):
         [speaker] = freefield.pick_speakers(speaker_id)
+        to_play = freefield.apply_equalization(signal, speaker)
         # get avg of n recordings from each sound source location
         recs = []
         for r in range(repetitions):
-            recs.append(freefield.play_and_record(speaker, signal, equalize=True))
+            recs.append(freefield.play_and_record(speaker, to_play, equalize=False))
         rec = slab.Binaural(numpy.mean(numpy.asarray(recs), axis=0))
         rec = slab.Binaural.ramp(rec, when='both', duration=ramp_duration)
         azimuth = sources[numpy.where(sources[:, 0] == speaker_id)[0][0]][1]

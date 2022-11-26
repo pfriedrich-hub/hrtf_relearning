@@ -1,6 +1,6 @@
 import freefield
 import slab
-fs = 48828
+fs = 97656
 slab.Signal.set_default_samplerate(fs)  # default samplerate for generating sounds, filters etc.
 import time
 import numpy
@@ -19,8 +19,13 @@ difference by inverse filtering. For more details on how the
 inverse filters are computed see the documentation of slab.Filter.equalizing_filterbank
 """
 
-freefield.initialize('dome', default='play_rec')  # initialize setup
+# freefield.initialize('dome', default='play_rec')  # initialize setup
 freefield.set_logger('warning')
+proc_list = [['RP2', 'RP2', Path.cwd() / 'data' / 'rcx' / 'rec_buf.rcx'],
+             ['RX81', 'RX8', Path.cwd() / 'data' / 'rcx' / 'play_buf.rcx'],
+             ['RX82', 'RX8', Path.cwd() / 'data' / 'rcx' / 'play_buf.rcx']]
+freefield.initialize('dome', device=proc_list)
+freefield.PROCESSORS.mode = 'play_rec'
 
 # dome parameters
 reference_speaker = 23
@@ -84,13 +89,13 @@ Record the signal from each speaker in the list and return the level of each
 speaker relative to the target speaker(target speaker must be in the list)
 """
 
-freefield.load_equalization(file=Path.cwd() / 'data' / 'central_arc_calibration')
+# freefield.load_equalization(file=Path.cwd() / 'data' / 'central_arc_calibration')
 
 recordings = []
 for speaker in speakers:
     temp_recs = []
     for i in range(rec_repeat):
-        rec = freefield.play_and_record(speaker, signal, equalize=True)
+        rec = freefield.play_and_record(speaker, signal, equalize=False)
         # rec = slab.Sound.ramp(rec, when='offset', duration=0.01)
         temp_recs.append(rec.data)
     recordings.append(slab.Sound(data=numpy.mean(temp_recs, axis=0)))
@@ -196,7 +201,7 @@ equalization.update(array_equalization)
 # write final equalization to pkl file
 freefield_path = freefield.DIR / 'data'
 project_path = Path.cwd() / 'data'
-file_name = project_path / f'central_arc_calibration'
+file_name = project_path / f'central_arc_calibration_100k'
 with open(file_name, 'wb') as f:  # save the newly recorded calibration
     pickle.dump(equalization, f, pickle.HIGHEST_PROTOCOL)
 

@@ -4,43 +4,50 @@ from pathlib import Path
 import slab
 import freefield
 import datetime
-import stats.plots as plots
+import analysis.hrtf_analysis as hrtf_analysis
 date = datetime.datetime.now()
 from copy import deepcopy
 from matplotlib import pyplot as plt
+fs = 48828  # sampling rate
+slab.set_default_samplerate(fs)
 
-subject_id = 'Natalie_earmolds'
-kemar = False
-speakers = numpy.arange(20, 27).tolist()  # central cone, with top and bottom speaker removed
+# file settings
+subject_id = 'paul'
+condition = 'ears_free'  # can be 'ears_free' or 'earmolds' - important for file naming!
+kemar = True  # requires no button press if true
+safe = 'both'  # decide if additionally save in-ear-recordings
+data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_1' / subject_id / condition
+
+# HRTF recording settings
+speakers = numpy.arange(20, 27).tolist()  #sources to record HRTF from # central cone, with top and bottom speaker removed
 # speakers = numpy.arange(28, 35).tolist()  # 17.5 cone
 # speakers = numpy.arange(12, 19).tolist()  # -17.5 cone
-
-# speakers = 'all'
-safe = 'sofa'
-
-data_dir = Path.cwd() / 'data' / 'hrtfs' / 'pilot'
-filename = str(subject_id + date.strftime('_%d.%m'))
-filepath = str(data_dir / filename)
-fs = 48828  # sampling rate
-level = 80
-duration = 0.05  # short chirps <0.05s introduce variability in low freq (4-5 kHz). no improvement above 0.1s
+level = 80  # minimize to reduce reverb ripple effect, apparently kemar recordings are not affected?
+duration = 0.1  # short chirps <0.05s introduce variability in low freq (4-5 kHz). improvement at 0.1s for kemar vsi
 low_freq = 1000
 high_freq = 17000  # window of interes is 4-16
-repetitions = 50  # works on kemar
+repetitions = 10  # 10 work for kemar, 30-50 for in ear mics
 n_directions = 1  # only from the front (1) or front-back recordings (2)
-n_bins = 2400
-plot_ear = 'left'
 ramp_duration = duration/20
 slab.Signal.set_default_samplerate(fs)  # default samplerate for generating sounds, filters etc.
 signal = slab.Sound.chirp(duration=duration, level=level, from_frequency=low_freq, to_frequency=high_freq, kind='linear')
 signal = slab.Sound.ramp(signal, when='both', duration=ramp_duration)
+# todo replace signal with mean central arc recording?
+# signal = slab.Sound.read(Path.cwd() / 'data' / 'sounds' / 'mean_central_arc_rec.wav')
 
-def record_hrtfs(subject_id, repetitions, signal, n_directions, safe=safe, speakers=speakers):
+# plotting options
+dfe = False  # whether to use diffuse field equalization to plot hrtf and compute vsi
+plot_bins = 2400  # number of bins also used to calculate vsi across bands (use 80 to minimize´frequency-resolution dependend vsi change)
+plot_ear = 'left'  # ear for which to plot HRTFs
+
+
+def record_hrtf(subject_id, data_dir, condition, signal, repetitions, n_directions, safe, speakers, kemar=False):
     global filt
     # filt = slab.Filter.band('bp', (low_freq, high_freq))
     filt = slab.Filter.band('hp', (200))  # makes no diff
     if not freefield.PROCESSORS.mode:
         freefield.initialize('dome', default='play_birec')
+    freefield.load_equalization(file=Path.cwd() / 'data' / 'calibration' / 'central_arc_calibration')
     freefield.set_logger('warning')
     table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')  # get speaker coordinates
     if isinstance(speakers, str) and speakers == 'all':
@@ -68,27 +75,27 @@ def record_hrtfs(subject_id, repetitions, signal, n_directions, safe=safe, speak
             sources[:, 1] += 360/n_directions
             print('Rotate chair %i degrees clockwise and look at fixpoint. \nPress button to start recording.' % 360/n_directions)
             freefield.wait_for_button()
-    for i in range(len(recordings)):  # bandpass filter recordings 200 - 18000 hz
-        filt.apply(recordings[i][2])
+    for i in range(len(recordings)):  # highpass filter recordings 200
+        recordings[i][2] = filt.apply(recordings[i][2])
     freefield.set_logger('INFO')
     if not kemar:
         freefield.write(tag='bitmask', value=0, processors=led_speaker.digital_proc)  # turn off LED
-
-    # save .sofa / recordings.wav and sources.txt
     sources = create_src_txt(recordings)  # create source coordinate array
+
+    # save files
+    data_dir.mkdir(parents=True, exist_ok=True)  # create condition directory if it doesnt exist
     if safe == 'sofa' or safe == 'both':  # compute HRTFs and write to sofa file
         print('Creating sofa file...')
         recorded_hrtf = slab.HRTF.estimate_hrtf([rec[2] for rec in recordings], signal, sources)
-        recorded_hrtf.write_sofa(filepath + '.sofa')
-
+        recorded_hrtf.write_sofa(str(data_dir / (subject_id + '_' + condition + date.strftime('_%d.%m'))) + '.sofa')
     if safe == 'wav' or safe == 'both':  # write recordings to wav files
+        wav_dir = data_dir / 'in_ear_recordings'
+        wav_dir.mkdir(parents=True, exist_ok=True)
         print('Creating wav files...')
         for idx, bi_rec in enumerate(recordings):    # save recordings as .wav
-            filename = '%s_src_id%02d_az%i_el%i.wav' % (subject_id, idx, bi_rec[0], bi_rec[1])
-            bi_rec[2].write('in-ear_recordings' / filename)
-
-        numpy.savetxt(str('in-ear_recordings') + '/sources_%s.txt' % subject_id,
-                   sources, fmt='%1.1f')   # save source coordinates to a text file
+            filename = '%s_%s_%02d_az%i_el%i.wav' % (subject_id, condition, idx, bi_rec[0], bi_rec[1])
+            bi_rec[2].write(wav_dir / filename)
+        numpy.savetxt(wav_dir / ('sources_%s_%s.txt' % (subject_id, condition)), sources, fmt='%1.1f')
     return recordings, sources, recorded_hrtf
 
 def dome_rec(signal, speaker_ids, sources, repetitions):
@@ -109,6 +116,7 @@ def dome_rec(signal, speaker_ids, sources, repetitions):
     return recordings
 
 def create_src_txt(recordings):
+    # convert interaural_polar to vertical_polar coordinates for sofa file
     # interaural polar to cartesian
     interaural_polar = numpy.asarray(recordings)[:, :2].astype('float')
     cartesian = numpy.zeros((len(interaural_polar), 3))
@@ -128,26 +136,29 @@ def create_src_txt(recordings):
     return vertical_polar.astype('float16')
 
 if __name__ == "__main__":
-    recordings, sources, hrtf = record_hrtfs(subject_id, repetitions, signal, n_directions, safe=safe, speakers=speakers)
-    sources = list(range(hrtf.n_sources-1, -1, -1))
+    recordings, sources, hrtf = record_hrtf(subject_id, data_dir, condition, signal, repetitions, n_directions, safe, speakers, kemar)
+    sources = list(range(hrtf.n_sources-1, -1, -1))  # works for 0°/+/-17.5° cone
     fig, axis = plt.subplots(2, 1)
-    hrtf.plot_tf(sources, n_bins=n_bins, kind='waterfall', axis=axis[0], ear=plot_ear, xlim=(4000, 16000))
-    plots.plot_vsi(hrtf, sources, n_bins=n_bins, axis=axis[1])
+    hrtf_analysis.plot_tf(hrtf, sources, plot_bins, kind='waterfall', axis=axis[0], ear=plot_ear, xlim=(4000, 16000), dfe=dfe)
+    hrtf_analysis.vsi_across_bands(hrtf, sources, n_bins=plot_bins, axis=axis[1], dfe=dfe)
     axis[0].set_title(subject_id)
-    hrtf.plot_tf(sources, xlim=(low_freq, high_freq), ear=plot_ear)
+    # hrtf.plot_tf(sources, xlim=(low_freq, high_freq), ear=plot_ear)
     hrtf.plot_tf(sources, xlim=(4000, 16000), ear=plot_ear)
 
-# example - from terminal/shell:
-# python record_hrtf.py --id paul_hrtf
 
-# todo: implement this into freefield?
-# ap = argparse.ArgumentParser()
-# ap.add_argument("-t", "--id", type=str,
-# 	default="paul_hrtf",
-# 	help="enter subject id")
-# args = vars(ap.parse_args())
-# id = args["id"]
-# print('record from %s speakers, subj_id: %i'%(id, 9))
+"""
+# example - from terminal/shell:
+python record_hrtf.py --id paul_hrtf
+
+todo: implement this into freefield?
+ap = argparse.ArgumentParser()
+ap.add_argument("-t", "--id", type=str,
+	default="paul_hrtf",
+	help="enter subject id")
+args = vars(ap.parse_args())
+id = args["id"]
+print('record from %s speakers, subj_id: %i'%(id, 9))
+"""
 
 """
 ### extra: arrange dome ####

@@ -5,21 +5,20 @@ import time
 import datetime
 date = datetime.datetime.now()
 from pathlib import Path
-from stats.localization_stats import localization_accuracy
+from analysis.localization_analysis import localization_accuracy
 import head_tracking.meta_motion.mm_pose as motion_sensor
-
-subject_id = 'natalie_earmold'
-
 fs = 48828
 slab.set_default_samplerate(fs)
-tone = slab.Sound.tone(frequency=1000, duration=0.25, level=70)
-data_dir = Path.cwd() / 'data' / 'localization_data' / 'pilot'
-filename = str(subject_id + date.strftime('_%d.%m'))
-filepath = str(data_dir / filename)
-n = 2  # number of repetitions per speaker
 
-def localization_test():
-    global speakers, stim, sensor
+subject_id = 'paul'
+condition = 'ears_free'
+data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_1' / subject_id / condition
+
+repetitions = 1  # number of repetitions per speaker
+
+
+def localization_test(subject_id, data_dir, condition, repetitions):
+    global speakers, stim, sensor, tone
     sensor = motion_sensor.start_sensor()
     freefield.set_logger('warning')
     if not freefield.PROCESSORS.mode:
@@ -33,10 +32,12 @@ def localization_test():
                                silence, noise, silence, noise)
     stim = stim.ramp(when='both', duration=0.01)
     bell = slab.Sound.read(Path.cwd() / 'data' / 'sounds' / 'bell.wav')
+    tone = slab.Sound.tone(frequency=1000, duration=0.25, level=70)
+
     # read list of speaker locations
     table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')
     speakers = numpy.loadtxt(table_file, skiprows=1, usecols=(0, 3, 4), delimiter=",", dtype=float)
-    sequence = numpy.random.permutation(numpy.tile(list(range(len(speakers))), n))
+    sequence = numpy.random.permutation(numpy.tile(list(range(len(speakers))), repetitions))
     az_dist, ele_dist = numpy.diff(speakers[sequence, 1]), numpy.diff(speakers[sequence, 2])
     while any([az_dist[i] == 0 and ele_dist[i] == 0 for i in range(len(az_dist))]):
         sequence = numpy.random.permutation(numpy.tile(list(range(len(speakers))), n))
@@ -53,7 +54,9 @@ def localization_test():
             freefield.play()
             freefield.wait_to_finish_playing()
         trial_sequence.add_response(play_trial(sequence[index], progress))
-    trial_sequence.save_pickle(filepath, clobber=True)
+    data_dir.mkdir(parents=True, exist_ok=True)  # create subject data directory if it doesnt exist
+    file_name = subject_id + date.strftime('_%d.%m')
+    trial_sequence.save_pickle(data_dir / ('localization_' + file_name), clobber=True)
     freefield.halt()
     motion_sensor.disconnect(sensor)
     print('localization test completed!')
@@ -90,7 +93,7 @@ def play_trial(speaker_id, progress):
     return numpy.array((pose, target))
 
 if __name__ == "__main__":
-    trialsequence = localization_test()
-    elevation_gain, rmse, sd = localization_accuracy(filename, show=True, plot_dim=1)
-    elevation_gain, rmse, sd = localization_accuracy(filename, show=True, plot_dim=2, binned=False)
+    sequence = localization_test(subject_id, data_dir, condition, repetitions=n_rep)
+    elevation_gain, rmse, sd = localization_accuracy(sequence, show=True, plot_dim=1)
+    elevation_gain, rmse, sd = localization_accuracy(sequence, show=True, plot_dim=2, binned=False)
     print('gain: %.2f\nrmse: %.2f\nsd: %.2f' % (elevation_gain, rmse, sd))

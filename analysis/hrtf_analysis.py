@@ -4,23 +4,12 @@ from pathlib import Path
 import matplotlib
 # matplotlib.use('TkAgg')
 from matplotlib import pyplot as plt
-import stats.HRTF_stats as hrtf_corr
-import stats.localization_stats as loc_acc
+import analysis.localization_analysis as loc_acc
 import numpy
 
-### ---- HRTF plots ----- ###
-data_dir = Path.cwd() / 'data' / 'hrtfs' / 'pilot'
-# data_dir = Path.cwd() / 'data' / 'subject_data' / 'hannah'
-filename = 'Natalie_earmolds_21.11.sofa'
-hrtf = slab.HRTF(data_dir / filename)
-
-group_stats = False
-duration = 5  # duration of learning in days / samples
-
-"""hrtf_free = slab.HRTF(data_dir / 'gina_ears_free_21.10.sofa')
-hrtf_mold = slab.HRTF(data_dir / 'kemar_full_16.10.sofa')
-hrtf_free, hrtf_mold = hrtf_free.diffuse_field_equalization(), hrtf_mold.diffuse_field_equalization()
-data_dir = Path.cwd() / 'data' / 'subject_data' / 'max'"""
+# todo: fix problem of resolution downscaling with frequency for vsi:
+#  for example kemar vsi with 0.1s looks better than for 0.05 seconds (higher frequencies have to
+#  few samples here to be represented correctly in vsi)
 
 def get_hrtfs(data_dir):
     subj_files = os.listdir(str(data_dir))
@@ -32,7 +21,15 @@ def get_hrtfs(data_dir):
     # hrtf_free, hrtf_mold = hrtf_free.diffuse_field_equalization(), hrtf_mold.diffuse_field_equalization()
     return hrtf_free, hrtf_mold
 
-def plot_vsi(hrtf, sources, n_bins, axis=None):
+# plot waterfall
+def plot_tf(hrtf, sources, n_bins=None, kind=None, axis=None, ear=None, xlim=None, dfe=False):
+    if dfe:
+        hrtf = hrtf.diffuse_field_equalization()
+    hrtf.plot_tf(sources, n_bins=n_bins, kind='waterfall', axis=axis, ear=ear, xlim=(4000, 16000))
+
+def vsi_across_bands(hrtf, sources, n_bins, axis=None, dfe=False):
+    if dfe:
+        hrtf = hrtf.diffuse_field_equalization()
     # plot vsi across 1/2 octave frequency bands
     dtfs = hrtf.tfs_from_sources(sources, n_bins)
     frequencies = numpy.linspace(0, hrtf[0].frequencies[-1], n_bins)
@@ -65,8 +62,8 @@ def plot_vsi(hrtf, sources, n_bins, axis=None):
 
 # plot Elevation Gain, RMSE and response variability across experiment
 # get files
-def plot_learning(data_dir=data_dir, group_stats=group_stats):
-    # get localization accuracy data (if group stats, get data from subject subdirectories,
+def plot_learning(data_dir, group_stats):
+    # get localization accuracy data (if group analysis, get data from subject subdirectories,
     if group_stats:
         subject_list = next(os.walk(data_dir))[1]
     else:
@@ -114,7 +111,6 @@ def plot_learning(data_dir=data_dir, group_stats=group_stats):
         ax[2].errorbar(days, numpy.mean(rmse, axis=0), capsize=3, yerr=numpy.abs(numpy.diff(rmse, axis=0)),
                        fmt="o", c='k', elinewidth=0.5, markersize=3)
 
-# plot waterfall
 # hrtf_free.plot_tf(sources, n_bins=200, kind='image', ear='left', xlim=(4000, 16000))
 def plot_correlation(hrtf_free, hrtf_mold, sources):
     # compare heatmap of hrtf free and with mold
@@ -124,30 +120,58 @@ def plot_correlation(hrtf_free, hrtf_mold, sources):
     fig.text(0.3, 0.9, 'Ear Free', ha='center')
     fig.text(0.7, 0.9, 'With Mold', ha='center')
     # plot hrtf autocorrelation free
-    corr_mtx, cbar_1 = hrtf_corr.dtf_correlation(hrtf_free, hrtf_free, show=True, bandwidth=None,
+    corr_mtx, cbar_1 = dtf_correlation(hrtf_free, hrtf_free, show=True, bandwidth=None,
                                          n_bins=96, axis=axis[1, 0])
     # plot hrtf correlation free vs mold
-    cross_corr_mtx, cbar_2 = hrtf_corr.dtf_correlation(hrtf_free, hrtf_mold, show=True, bandwidth=None,
+    cross_corr_mtx, cbar_2 = dtf_correlation(hrtf_free, hrtf_mold, show=True, bandwidth=None,
                                                n_bins=96, axis=axis[1, 1])
     fig.text(0.3, 0.5, 'Autocorrelation Ear Free', ha='center')
     fig.text(0.7, 0.5, 'Correlation Free vs. Mold', ha='center')
     cbar_1.remove()
 
-# # plot trial to trial performance in the accuracy test over days
-# def plot_trial_accuracy():
+def dtf_correlation(hrtf_1, hrtf_2, show=False, bandwidth=None, n_bins=96, axis=None, cbar=None):
+    # get sources and dtfs
+    sources = hrtf_1.cone_sources(0)
+    dtf = hrtf_1.tfs_from_sources(sources, n_bins)
+    dtf_2 = hrtf_2.tfs_from_sources(sources, n_bins)
+    if bandwidth:  # cap dtf to bandwidth
+        frequencies = numpy.linspace(0, hrtf_1[0].frequencies[-1], n_bins)
+        dtf = dtf[numpy.logical_and(frequencies >= bandwidth[0], frequencies <= bandwidth[1])]
+        dtf_2 = dtf_2[numpy.logical_and(frequencies >= bandwidth[0], frequencies <= bandwidth[1])]
+    # calculate correlation coefficients
+    n_sources = len(sources)
+    corr_mtx = numpy.zeros((n_sources, n_sources))
+    for i in range(n_sources):
+        for j in range(n_sources):
+            corr_mtx[i, j] = numpy.corrcoef(dtf[:, i], dtf_2[:, j])[1, 0]
+    # plot correlation matrix
+    if show:
+        if axis is None:
+            fig, axis = plt.subplots()
+        else:
+            fig = axis.figure
+        levels = numpy.linspace(-1, 1, 11)
+        contour = axis.contourf(hrtf_1.sources.vertical_polar[sources, 1],
+                                hrtf_2.sources.vertical_polar[sources, 1], corr_mtx,
+                                cmap='viridis', levels=levels)
+        axis.set_xticks(numpy.arange(-37.5, 38, 12.5))
+        axis.set_yticks(numpy.arange(-37.5, 38, 12.5))
+        divider = make_axes_locatable(axis)
+        cax = divider.append_axes('right', size='5%', pad=0.05)
+        cbar = fig.colorbar(contour, cax, orientation="vertical", ticks=numpy.linspace(-1, 1, 11),
+                     label='Correlation Coefficient')
+        axis.set_ylabel('Elevation (degrees)')
+        axis.set_xlabel('Elevation (degrees)')
+        plt.show()
+    return corr_mtx, cbar
 
-if __name__ == '__main__':
-
-    n_bins = 96
-    low_freq = 4000
-    high_freq = 16000
-    sources = hrtf.cone_sources(0)
-    fig, axis = plt.subplots(2, 1)
-    hrtf.plot_tf(sources, n_bins=n_bins, kind='waterfall', axis=axis[0], xlim=(low_freq, high_freq))
-    plot_vsi(hrtf, sources, n_bins=n_bins, axis=axis[1])
-    axis[0].set_title(filename)
-    hrtf.plot_tf(hrtf.cone_sources(0), xlim=(low_freq, high_freq), ear='left')
-
+def vsi_dissimilarity(hrtf_1, hrtf_2, bandwidth):
+    # get correlation matrices
+    correlation_free_v_mold = dtf_correlation(hrtf_1, hrtf_2, bandwidth=bandwidth)
+    autocorrelation_free = dtf_correlation(hrtf_1, hrtf_1, bandwidth=bandwidth)
+    # VSI dissimilarity: euclidean distance between the matrices
+    vsi_dissimilarity = numpy.linalg.norm(correlation_free_v_mold - autocorrelation_free)
+    return vsi_dissimilarity
 
 
 """    # plot learning

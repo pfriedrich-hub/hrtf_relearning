@@ -6,14 +6,8 @@ import matplotlib
 from matplotlib import pyplot as plt
 import numpy
 
-data_dir = Path.cwd() / 'data' / 'localization_data' / 'pilot'
-# data_dir = Path.cwd() / 'data' / 'subject_data' / 'hannah'
-subject_id = 'natalie_earmold_21.11'
-
-def localization_accuracy(subject_id, show=True, plot_dim=1, binned=True):
+def localization_accuracy(sequence, show=True, plot_dim=1, binned=True):
     # calculate elevation gain
-    sequence = slab.Trialsequence(conditions=47, n_reps=1)
-    sequence.load_pickle(file_name=data_dir / subject_id)
     loc_data = numpy.asarray(sequence.data)
     loc_data = loc_data.reshape(loc_data.shape[0], 2, 2)
     elevations = numpy.unique(loc_data[:, 1, 1])
@@ -132,12 +126,6 @@ def trial_to_trial_performance(subject_id, show=True):
         axis.plot(x, y)
     return trial_error, m, n
 
-if __name__ == "__main__":
-    trial_to_trial_performance(subject_id, show=True)
-    elevation_gain, rmse, sd = localization_accuracy(subject_id, show=True, plot_dim=1)
-    elevation_gain, rmse, sd = localization_accuracy(subject_id, show=True, plot_dim=2, binned=True)
-    print('gain: %.2f\nrmse: %.2f\nsd: %.2f' % (elevation_gain, rmse, sd))
-
 """
 # for azimuth:
 az_x = loc_data[:, 1, 0]
@@ -145,5 +133,5 @@ az_y = loc_data[:, 0, 0]
 bads_idx = numpy.where(az_y == None)
 az_y = numpy.array(numpy.delete(az_y, bads_idx), dtype=numpy.float)
 az_x = numpy.array(numpy.delete(az_x, bads_idx), dtype=numpy.float)
-azimuth_gain = scipy.stats.linregress(az_x, az_y)[0]
+azimuth_gain = scipy.analysis.linregress(az_x, az_y)[0]
 """

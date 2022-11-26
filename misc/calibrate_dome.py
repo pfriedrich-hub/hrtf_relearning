@@ -1,6 +1,7 @@
 import freefield
 import slab
-slab.Signal.set_default_samplerate(48828)  # default samplerate for generating sounds, filters etc.
+fs = 48828
+slab.Signal.set_default_samplerate(fs)  # default samplerate for generating sounds, filters etc.
 import time
 import numpy
 from pathlib import Path
@@ -27,34 +28,35 @@ azimuthal_angles = numpy.array([-52.5, -35, -17.5, 0, 17.5, 35, 52.5])
 # speaker_idx = [19,20,21,22,23,24,25,26,27]  # central array
 
 # signal parameters
-low_cutoff = 200
-high_cutoff = 18000
+low_cutoff = 1000
+high_cutoff = 17000
 signal_length = 0.05  # how long should the chirp be?
-rec_repeat = 20  # how often to repeat measurement for averaging
+rec_repeat = 50  # how often to repeat measurement for averaging
 # signal for loudspeaker calibration
-signal = slab.Sound.chirp(duration=signal_length, level=85, from_frequency=low_cutoff, to_frequency=high_cutoff, kind='linear')
-signal = slab.Sound.ramp(signal, when='both', duration=0.0001)
+ramp_duration = signal_length/20
+signal = slab.Sound.chirp(duration=signal_length, level=80, from_frequency=low_cutoff, to_frequency=high_cutoff, kind='linear')
+signal = slab.Sound.ramp(signal, when='both', duration=ramp_duration)
 
 # equalization parameters
 level_threshold = 0.3  # correct level only for speakers that deviate more than <threshold> dB from reference speaker
-freq_bins = 1000  # can not be changes as of now
+freq_bins = 1000  # can not be changed as of now
 level_threshold = 0.3  # correct level only for speakers that deviate more than <threshold> dB from reference speaker
-bandwidth = 1 / 8
+bandwidth = 1 / 50
 alpha = 1.0
 
 # obtain target signal by recording from reference speaker
-# reference_speaker = freefield.pick_speakers(reference_speaker)[0]
-# temp_recs = []
-# for i in range(rec_repeat):
-#     rec = freefield.play_and_record(reference_speaker, signal, equalize=False)
-#     # rec = slab.Sound.ramp(rec, when='both', duration=0.01)
-#     temp_recs.append(rec.data)
-# target = slab.Sound(data=numpy.mean(temp_recs, axis=0))
+reference_speaker = freefield.pick_speakers(reference_speaker)[0]
+temp_recs = []
+for i in range(rec_repeat):
+    rec = freefield.play_and_record(reference_speaker, signal, equalize=False)
+    # rec = slab.Sound.ramp(rec, when='both', duration=0.01)
+    temp_recs.append(rec.data)
+target = slab.Sound(data=numpy.mean(temp_recs, axis=0))
 
-# # use original signal as reference - works better
-baseline_amp = 70
-target = deepcopy(signal)
-target.level = baseline_amp
+# use original signal as reference - works better
+# baseline_amp = 60
+# target = deepcopy(signal)
+# target.level = baseline_amp
 
 # get speaker id's for each column in the dome
 table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')
@@ -71,7 +73,7 @@ equalization = dict()  # dictionary to hold equalization parameters
 
 #------------------- hold on --------------------#
 # pick single column to calibrate speaker_list[0] to speaker_list[6]
-speakers = freefield.pick_speakers(speaker_list[6])
+speakers = freefield.pick_speakers(speaker_list[3])
 # place microphone 90° to source column at equal distance (recordings should be done in far field: > 1m)
 
 
@@ -81,14 +83,18 @@ speakers = freefield.pick_speakers(speaker_list[6])
 Record the signal from each speaker in the list and return the level of each
 speaker relative to the target speaker(target speaker must be in the list)
 """
+
+freefield.load_equalization(file=Path.cwd() / 'data' / 'central_arc_calibration')
+
 recordings = []
 for speaker in speakers:
     temp_recs = []
     for i in range(rec_repeat):
-        rec = freefield.play_and_record(speaker, signal, equalize=False)
+        rec = freefield.play_and_record(speaker, signal, equalize=True)
         # rec = slab.Sound.ramp(rec, when='offset', duration=0.01)
         temp_recs.append(rec.data)
     recordings.append(slab.Sound(data=numpy.mean(temp_recs, axis=0)))
+    # recordings.append(numpy.mean(temp_recs, axis=0))
 recordings = slab.Sound(recordings)
 
 # thresholding
@@ -99,11 +105,11 @@ equalization_levels = target.level - recordings.level
 # set up plot
 fig, ax = plt.subplots(4, 1, sharex=True, sharey=True, figsize=(25, 10))
 ax[3].set_xlim(left=200, right=18000)
-ax[3].set_ylim(50,70)
+ax[3].set_ylim(20, 70)
 ax[3].set_xlabel('Frequency (Hz)')
 for i in range(4):
     ax[i].set_ylabel('Power (dB/Hz)')
-diff = freefield.spectral_range(recordings, plot=ax[0])
+diff = freefield.spectral_range(recordings, plot=ax[0], bandwidth=bandwidth)
 ax[0].set_title('raw')
 
 # step 2: frequency equalization
@@ -190,7 +196,7 @@ equalization.update(array_equalization)
 # write final equalization to pkl file
 freefield_path = freefield.DIR / 'data'
 project_path = Path.cwd() / 'data'
-file_name = project_path / f'calibration_dome.pkl'
+file_name = project_path / f'central_arc_calibration'
 with open(file_name, 'wb') as f:  # save the newly recorded calibration
     pickle.dump(equalization, f, pickle.HIGHEST_PROTOCOL)
 

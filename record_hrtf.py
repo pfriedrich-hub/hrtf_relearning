@@ -116,7 +116,6 @@ def dome_rec(signal, speaker_ids, sources, repetitions):
     recordings = []  # list to store binaural recordings and source coordinates
     for idx, speaker_id in enumerate(speaker_ids):
         [speaker] = freefield.pick_speakers(speaker_id)
-        to_play = freefield.apply_equalization(signal, speaker)
         # get avg of n recordings from each sound source location
         recs = []
         for r in range(repetitions):
@@ -148,6 +147,42 @@ def create_src_txt(recordings):
     vertical_polar[:, 1] = 90 - numpy.rad2deg(numpy.arctan2(numpy.sqrt(xy), cartesian[:, 2]))
     vertical_polar[:, 2] = numpy.sqrt(xy + cartesian[:, 2] ** 2)
     return vertical_polar.astype('float16')
+
+def record_in_intervals(signal, speaker, repetitions, rec_samplerate):
+    recording_samplerate = fs
+    direct_delay = freefield.get_recording_delay(distance=1.4, sample_rate=recording_samplerate,
+                                            play_from="RX8", rec_from="RP2") + 50
+    reverb_delay = freefield.get_recording_delay(distance=3, sample_rate=recording_samplerate,
+                                            play_from="RX8", rec_from="RP2")
+    n_slice = reverb_delay - direct_delay
+
+    freefield.set_signal_and_speaker(signal, speaker, equalize=True)  # write to RX8 buffers, set output channels
+    freefield.write(tag="n_slice", value=n_slice, processors=["RX81", "RX82"])  # set playbuflen to n_slice datapoints
+    # set slice + delay as recording length
+    freefield.write(tag="n_slice", value=n_slice + direct_delay, processors="RP2")
+    # record until the whole signal (including signal delays) is captured by the recording buffer
+    n_rec = signal.n_samples
+    delay_ids = numpy.empty(0)
+    delay_start = 0
+    recs = []
+    for i in range(repetitions):
+        while not (freefield.read('buf_idx', processor='RP2', n_samples=1) >= n_rec):
+            freefield.play('zBusA')  # iterate over slices
+            freefield.wait_to_finish_playing()
+            n_rec += direct_delay
+            delay_stop = delay_start + direct_delay
+            delay_ids = numpy.concatenate((delay_ids, numpy.arange(delay_start, delay_stop)))
+            delay_start = delay_stop + n_slice
+        freefield.play('zBusB') # reset buffer index
+        rec_l = read(tag='datal', processor='RP2', n_samples=n_rec)
+        rec_r = read(tag='datar', processor='RP2', n_samples=n_rec)
+        # remove direct delays before each slice
+        rec_l = numpy.delete(rec_l, delay_ids)
+        rec_r = numpy.delete(rec_r, delay_ids)
+        recs.append[rec_l, rec_r]
+
+        rec = slab.Binaural(numpy.mean(recs, axis=0), samplerate=recording_samplerate)
+        return rec
 
 if __name__ == "__main__":
     recordings, sources, hrtf = record_hrtf(subject_id, data_dir, condition, signal, repetitions, n_directions, safe, speakers, kemar)

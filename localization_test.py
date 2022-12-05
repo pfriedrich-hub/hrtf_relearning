@@ -10,7 +10,7 @@ import head_tracking.meta_motion.mm_pose as motion_sensor
 fs = 48828
 slab.set_default_samplerate(fs)
 
-subject_id = 'ma'
+subject_id = 'nn'
 condition = 'earmolds'
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_1' / subject_id / condition
 
@@ -95,7 +95,7 @@ def play_trial(speaker_id, progress):
 
 if __name__ == "__main__":
     sequence = localization_test(subject_id, data_dir, condition, repetitions)
-    elevation_gain, rmse, sd = localization_accuracy(sequence, show=True, plot_dim=1)
     elevation_gain, rmse, sd = localization_accuracy(sequence, show=True, plot_dim=2, binned=True)
+    elevation_gain, rmse, sd = localization_accuracy(sequence, show=True, plot_dim=1)
     print('gain: %.2f\nrmse: %.2f\nsd: %.2f' % (elevation_gain, rmse, sd))
 

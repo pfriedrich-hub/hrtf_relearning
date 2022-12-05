@@ -3,24 +3,26 @@ from pathlib import Path
 from analysis.localization_analysis import localization_accuracy
 import numpy
 import os
+from matplotlib import pyplot as plt
 
 # plot Elevation Gain, RMSE and response variability across experiment
 # get files
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_1'
+subject_id = 'cw'
 
-def plot_learning(data_dir, group_stats):
+def plot_learning(data_dir, group_stats=True, subject_id=None, duration=6):
     # get localization accuracy data (if group analysis, get data from subject subdirectories,
     if group_stats:
         subject_list = next(os.walk(data_dir))[1]
     else:
-        subject_list = [data_dir.name]
+        subject_list = [subject_id]
         data_dir = data_dir.parent
 
-    ele_gain = numpy.zeros((len(subject_list), 6))  # for now, 6 measurements per participant
-    rmse = numpy.zeros((len(subject_list), 6))
-    sd = numpy.zeros((len(subject_list), 6))
+    ele_gain = numpy.zeros((len(subject_list), duration))  # for now, 6 measurements per participant
+    rmse = numpy.zeros((len(subject_list), duration))
+    sd = numpy.zeros((len(subject_list), duration))
     for subj_idx, subject_folder in enumerate(subject_list):
-        subj_files = os.listdir(str(data_dir / subject_folder))
+        subj_files = os.listdir(str(data_dir / subject_folder / 'ears_free'))
         subj_files = [fname for fname in subj_files if not fname.endswith('.sofa')]  # remove sofa files from list
         if '.DS_Store' in subj_files: subj_files.remove('.DS_Store')
         subj_files.sort()

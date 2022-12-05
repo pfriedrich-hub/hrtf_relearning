@@ -64,11 +64,6 @@ def localization_accuracy(sequence, show=True, plot_dim=1, binned=True):
             axis.set_xticks(azimuth_ticks)
             axis.set_xlim(numpy.min(azimuth_ticks)-15, numpy.max(azimuth_ticks)+15)
             axis.scatter(perceived_azimuths, perceived_elevations, s=8, edgecolor='grey', facecolor='none')
-            if binned:
-                azimuths = numpy.unique(mean_loc_binned[:, 0, 0])
-                elevations = numpy.unique(mean_loc_binned[:, 1, 0])
-                mean_loc = mean_loc_binned
-            axis.scatter(mean_loc[:, 0, 1], mean_loc[:, 1, 1], color='black', s=25)
             for az in azimuths:  # plot lines between target locations
                 [x] = mean_loc[numpy.where(mean_loc[:, 0, 0]==az), 0, 0]
                 [y] = mean_loc[numpy.where(mean_loc[:, 0, 0]==az), 1, 0]
@@ -77,6 +72,11 @@ def localization_accuracy(sequence, show=True, plot_dim=1, binned=True):
                 [x] = mean_loc[numpy.where(mean_loc[:, 1, 0] == ele), 0, 0]
                 [y] = mean_loc[numpy.where(mean_loc[:, 1, 0] == ele), 1, 0]
                 axis.plot(x, y, color='black', linewidth=0.5)
+            if binned:
+                azimuths = numpy.unique(mean_loc_binned[:, 0, 0])
+                elevations = numpy.unique(mean_loc_binned[:, 1, 0])
+                mean_loc = mean_loc_binned
+            axis.scatter(mean_loc[:, 0, 1], mean_loc[:, 1, 1], color='black', s=25)
             for az in azimuths:  # plot lines between mean perceived locations for each target
                 [x] = mean_loc[numpy.where(mean_loc[:, 0, 0]==az), 0, 1]
                 [y] = mean_loc[numpy.where(mean_loc[:, 0, 0]==az), 1, 1]
@@ -128,21 +128,26 @@ def trial_to_trial_performance(subject_id, show=True):
 
 
 """
-subject_id = 'cs'
-condition = 'earmolds'
+subject_id = 'lw'
+condition = 'ears_free'
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_1' / subject_id / condition
 import datetime
 date = datetime.datetime.now()
 
-file_name = 'localization_' + subject_id + '_' + condition + date.strftime('_%d.%m')
+file_name = 'localization_' + subject_id + '_' + condition + date.strftime('_%d.%m') + '_1'
 sequence = slab.Trialsequence(conditions=45, n_reps=1)
 sequence.load_pickle(file_name=data_dir / file_name)
 
-elevation_gain, rmse, sd = localization_accuracy(sequence, show=True, plot_dim=1)
+# elevation_gain, rmse, sd = localization_accuracy(sequence, show=True, plot_dim=1)
 elevation_gain, rmse, sd = localization_accuracy(sequence, show=True, plot_dim=2, binned=True)
+plt.title(file_name)
 
+
+
+
+### correct azimuth for >300°
 for i, entry in enumerate(sequence.data):
-    sequence.data[i][0][sequence.data[i][0] > 300] -= 360
+    sequence.data[i][0][sequence.data[i][0] < -300] += 360
 
 file_name = 'localization_' + subject_id + '_' + condition + date.strftime('_%d.%m')
 sequence.save_pickle(data_dir / file_name, clobber=True)

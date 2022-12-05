@@ -7,12 +7,11 @@ import datetime
 import analysis.hrtf_analysis as hrtf_analysis
 date = datetime.datetime.now()
 from copy import deepcopy
-from matplotlib import pyplot as plt
 fs = 97656  # 97656.25, 195312.5
 slab.set_default_samplerate(fs)
 
 # file settings
-subject_id = 'ma'
+subject_id = 'nn'
 condition = 'earmolds'  # can be 'ears_free' or 'earmolds' - important for file naming!
 kemar = False  # requires no button press if true
 safe = 'both'  # decide if additionally save in-ear-recordings

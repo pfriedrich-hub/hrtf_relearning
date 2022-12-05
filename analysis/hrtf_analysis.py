@@ -4,7 +4,6 @@ from pathlib import Path
 import matplotlib
 # matplotlib.use('TkAgg')
 from matplotlib import pyplot as plt
-import analysis.localization_analysis as loc_acc
 import numpy
 
 # todo: fix problem of resolution downscaling with frequency for vsi:
@@ -125,8 +124,8 @@ def vsi_dissimilarity(hrtf_1, hrtf_2, bandwidth):
 
 
 """   
-subject_id = 'lw'
-condition = 'ears_free'
+subject_id = 'nn'
+condition = 'earmolds'
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_1' / subject_id / condition
 import datetime
 date = datetime.datetime.now()

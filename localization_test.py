@@ -10,12 +10,11 @@ import head_tracking.meta_motion.mm_pose as motion_sensor
 fs = 48828
 slab.set_default_samplerate(fs)
 
-subject_id = 'paul'
-condition = 'ears_free'
+subject_id = 'ma'
+condition = 'earmolds'
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_1' / subject_id / condition
 
-repetitions = 1  # number of repetitions per speaker
-
+repetitions = 3  # number of repetitions per speaker
 
 def localization_test(subject_id, data_dir, condition, repetitions):
     global speakers, stim, sensor, tone
@@ -40,12 +39,11 @@ def localization_test(subject_id, data_dir, condition, repetitions):
     sequence = numpy.random.permutation(numpy.tile(list(range(len(speakers))), repetitions))
     az_dist, ele_dist = numpy.diff(speakers[sequence, 1]), numpy.diff(speakers[sequence, 2])
     while any([az_dist[i] == 0 and ele_dist[i] == 0 for i in range(len(az_dist))]):
-        sequence = numpy.random.permutation(numpy.tile(list(range(len(speakers))), n))
+        sequence = numpy.random.permutation(numpy.tile(list(range(len(speakers))), repetitions))
         az_dist, ele_dist = numpy.diff(speakers[sequence, 1]), numpy.diff(speakers[sequence, 2])
     sequence = numpy.delete(sequence, [numpy.where(sequence == 19), numpy.where(sequence == 27)])
     # generate trial sequence with target speaker locations
     trial_sequence = slab.Trialsequence(trials=range(len(sequence)))
-
     # loop over trials
     for index in trial_sequence:
         progress = int(trial_sequence.this_n / trial_sequence.n_trials * 100)
@@ -55,8 +53,12 @@ def localization_test(subject_id, data_dir, condition, repetitions):
             freefield.wait_to_finish_playing()
         trial_sequence.add_response(play_trial(sequence[index], progress))
     data_dir.mkdir(parents=True, exist_ok=True)  # create subject data directory if it doesnt exist
-    file_name = subject_id + '_' + condition + date.strftime('_%d.%m')
-    trial_sequence.save_pickle(data_dir / ('localization_' + file_name), clobber=True)
+    file_name = 'localization_' + subject_id + '_' + condition + date.strftime('_%d.%m')
+    counter = 1
+    while Path.exists(data_dir / file_name):
+        file_name = file_name + '_' + str(counter)
+        counter += 1
+    trial_sequence.save_pickle(data_dir / file_name, clobber=True)
     freefield.halt()
     motion_sensor.disconnect(sensor)
     print('localization test completed!')
@@ -93,8 +95,7 @@ def play_trial(speaker_id, progress):
 
 if __name__ == "__main__":
     sequence = localization_test(subject_id, data_dir, condition, repetitions)
-    elevation_gain, rmse, sd = localization_accuracy(sequence, show=True, plot_dim=1, subject_id=subject_id)
-    elevation_gain, rmse, sd = localization_accuracy(sequence, show=True, plot_dim=2, binned=True,
-                                                     subject_id=subject_id)
+    elevation_gain, rmse, sd = localization_accuracy(sequence, show=True, plot_dim=1)
+    elevation_gain, rmse, sd = localization_accuracy(sequence, show=True, plot_dim=2, binned=True)
     print('gain: %.2f\nrmse: %.2f\nsd: %.2f' % (elevation_gain, rmse, sd))
 

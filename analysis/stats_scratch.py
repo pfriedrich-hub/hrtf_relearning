@@ -13,7 +13,7 @@ subject = 'jakab_mold_1.0_12_Sep'
 # subj_id = subject + '_no_mold_01_Jul'
 
 plt.figure()
-sequence = slab.Trialsequence(conditions=47, n_reps=1)
+sequence = slab.Trialsequence(conditions=45, n_reps=1)
 sequence.load_pickle(file_name=data_dir / 'localization_data' / subject)
 loc_data = numpy.asarray(sequence.data)
 loc_data = loc_data.reshape(loc_data.shape[0], 2, 2)

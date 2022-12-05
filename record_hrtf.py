@@ -12,8 +12,8 @@ fs = 97656  # 97656.25, 195312.5
 slab.set_default_samplerate(fs)
 
 # file settings
-subject_id = 'paul'
-condition = 'ears_free'  # can be 'ears_free' or 'earmolds' - important for file naming!
+subject_id = 'ma'
+condition = 'earmolds'  # can be 'ears_free' or 'earmolds' - important for file naming!
 kemar = False  # requires no button press if true
 safe = 'both'  # decide if additionally save in-ear-recordings
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_1' / subject_id / condition
@@ -92,6 +92,14 @@ def record_hrtf(subject_id, data_dir, condition, signal, repetitions, n_directio
     if safe == 'sofa' or safe == 'both':  # compute HRTFs and write to sofa file
         print('Creating sofa file...')
         recorded_hrtf = slab.HRTF.estimate_hrtf([rec[2] for rec in recordings], signal, sources)
+
+        # file_path = str(data_dir / (subject_id + '_' + condition + date.strftime('_%d.%m')))
+        # counter = 1
+        # while Path.exists(file_path + '.sofa'):
+        #     file_path = file_path + '_' + str(counter)
+        #     counter += 1
+        # recorded_hrtf.write_sofa(file_path + '.sofa')
+
         recorded_hrtf.write_sofa(str(data_dir / (subject_id + '_' + condition + date.strftime('_%d.%m'))) + '.sofa')
     if safe == 'wav' or safe == 'both':  # write recordings to wav files
         wav_dir = data_dir / 'in_ear_recordings'

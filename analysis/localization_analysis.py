@@ -126,7 +126,27 @@ def trial_to_trial_performance(subject_id, show=True):
         axis.plot(x, y)
     return trial_error, m, n
 
+
 """
+subject_id = 'cs'
+condition = 'earmolds'
+data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_1' / subject_id / condition
+
+file_name = 'localization_' + subject_id + '_' + condition + date.strftime('_%d.%m')
+sequence = slab.Trialsequence(conditions=45, n_reps=1)
+sequence.load_pickle(file_name=data_dir / file_name)
+
+from analysis.localization_analysis import localization_accuracy
+elevation_gain, rmse, sd = localization_accuracy(sequence, show=True, plot_dim=1)
+elevation_gain, rmse, sd = localization_accuracy(sequence, show=True, plot_dim=2, binned=True)
+
+for i, entry in enumerate(sequence.data):
+    sequence.data[i][0][sequence.data[i][0] > 300] -= 360
+
+file_name = 'localization_' + subject_id + '_' + condition + date.strftime('_%d.%m')
+sequence.save_pickle(data_dir / file_name, clobber=True)
+
+    
 # for azimuth:
 az_x = loc_data[:, 1, 0]
 az_y = loc_data[:, 0, 0]

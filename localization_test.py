@@ -10,7 +10,7 @@ import head_tracking.meta_motion.mm_pose as motion_sensor
 fs = 48828
 slab.set_default_samplerate(fs)
 
-subject_id = 'nn'
+subject_id = 'ma'
 condition = 'earmolds'
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_1' / subject_id / condition
 
@@ -31,6 +31,7 @@ def localization_test(subject_id, data_dir, condition, repetitions):
                                silence, noise, silence, noise)
     stim = stim.ramp(when='both', duration=0.01)
     bell = slab.Sound.read(Path.cwd() / 'data' / 'sounds' / 'bell.wav')
+    bell.level = 75
     tone = slab.Sound.tone(frequency=1000, duration=0.25, level=70)
 
     # read list of speaker locations

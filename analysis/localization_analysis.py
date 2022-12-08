@@ -140,7 +140,7 @@ sequence.load_pickle(file_name=data_dir / file_name)
 
 # elevation_gain, rmse, sd = localization_accuracy(sequence, show=True, plot_dim=1)
 elevation_gain, rmse, sd = localization_accuracy(sequence, show=True, plot_dim=2, binned=True)
-plt.title(file_name)
+# plt.title(file_name)
 
 
 

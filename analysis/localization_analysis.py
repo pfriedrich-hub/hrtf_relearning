@@ -131,13 +131,13 @@ def trial_to_trial_performance(subject_id, show=True):
 
 
 """
-subject_id = 'cs'
+subject_id = 'nn'
 condition = 'earmolds'
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_1' / subject_id / condition
 import datetime
 date = datetime.datetime.now()
 
-file_name = 'localization_' + subject_id + '_' + condition + '_06.12'#date.strftime('_%d.%m') + '_1'
+file_name = 'localization_' + subject_id + '_' + condition + '_08.12'#date.strftime('_%d.%m') + '_1'
 sequence = slab.Trialsequence(conditions=45, n_reps=1)
 sequence.load_pickle(file_name=data_dir / file_name)
 

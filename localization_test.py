@@ -10,7 +10,7 @@ import head_tracking.meta_motion.mm_pose as motion_sensor
 fs = 48828
 slab.set_default_samplerate(fs)
 
-subject_id = 'nn'
+subject_id = 'lw'
 condition = 'earmolds'
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_1' / subject_id / condition
 
@@ -19,7 +19,7 @@ repetitions = 3  # number of repetitions per speaker
 def localization_test(subject_id, data_dir, condition, repetitions):
     global speakers, stim, sensor, tone
     sensor = motion_sensor.start_sensor()
-    freefield.set_logger('warning')
+    freefield.set_logger('info')
     if not freefield.PROCESSORS.mode:
         freefield.initialize('dome', default='play_birec')
 

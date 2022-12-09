@@ -59,6 +59,7 @@ def hrtf_training(max_pulse_interval=500, target_size=3, target_time=0.5, trial_
         az_dist, ele_dist = numpy.diff(speakers[sequence, 1]), numpy.diff(speakers[sequence, 2])
     sequence = numpy.delete(sequence, [numpy.where(sequence == 19),
                numpy.where(sequence == 23), numpy.where(sequence == 27)], 0)  # remove redundant speakers
+    print('Starting...')
     end, score, prep_time = False, 0, 0  # set end condition for training sequence
     game_start = time.time()  # start counting time
     for speaker_id in sequence:  # loop over trials

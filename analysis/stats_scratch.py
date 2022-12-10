@@ -85,7 +85,7 @@ import slab
 
 # get path for each subject data folder
 subject_dir_list = list((Path.cwd() / 'data' / 'experiment' / 'bracket_1').iterdir())
-fig, axis = plt.subplots(len(subject_dir_list), 4, sharex=True, sharey=True)
+fig, axis = plt.subplots(6, len(subject_dir_list), sharex=True, sharey=True)
 condition = 'earmolds'
 for subj_idx, subject_path in enumerate(subject_dir_list):
     subject_dir = subject_path / condition

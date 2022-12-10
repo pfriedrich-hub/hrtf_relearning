@@ -135,13 +135,13 @@ def trial_to_trial_performance(subject_id, show=True):
 
 
 """
-subject_id = 'nn'
-condition = 'earmolds'
+subject_id = 'cs'
+condition = 'earmolds_1'
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_1' / subject_id / condition
 import datetime
 date = datetime.datetime.now()
 
-file_name = 'localization_' + subject_id + '_' + condition + '_08.12'#date.strftime('_%d.%m') + '_1'
+file_name = 'localization_' + subject_id + '_' + condition + '_10.12_1_2 '#date.strftime('_%d.%m') + '_1_2'
 sequence = slab.Trialsequence(conditions=45, n_reps=1)
 sequence.load_pickle(file_name=data_dir / file_name)
 
@@ -156,7 +156,7 @@ print('gain: %.2f\nrmse: %.2f\nsd: %.2f' % (elevation_gain, rmse, sd))
 
 ### correct azimuth for >300°
 for i, entry in enumerate(sequence.data):
-    sequence.data[i][0][sequence.data[i][0] < -300] += 360
+    sequence.data[i][0][sequence.data[i][0] > 300] -= 360
 
 file_name = 'localization_' + subject_id + '_' + condition + date.strftime('_%d.%m')
 sequence.save_pickle(data_dir / file_name, clobber=True)

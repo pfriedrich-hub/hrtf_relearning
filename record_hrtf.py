@@ -12,7 +12,7 @@ from matplotlib import pyplot as plt
 slab.set_default_samplerate(fs)
 
 # file settings
-subject_id = 'cs'
+subject_id = 'nn'
 condition = 'earmolds'  # can be 'ears_free' or 'earmolds' - important for file naming!
 kemar = False  # requires no button press if true
 safe = 'both'  # decide if additionally save in-ear-recordings
@@ -102,7 +102,7 @@ def record_hrtf(subject_id, data_dir, condition, signal, repetitions, n_directio
 
         recorded_hrtf.write_sofa(str(data_dir / (subject_id + '_' + condition + date.strftime('_%d.%m'))) + '.sofa')
     if safe == 'wav' or safe == 'both':  # write recordings to wav files
-        wav_dir = data_dir / 'in_ear_recordings' + date.strftime('_%d.%m')
+        wav_dir = data_dir / str('in_ear_recordings' + date.strftime('_%d.%m'))
         wav_dir.mkdir(parents=True, exist_ok=True)
         print('Creating wav files...')
         for idx, bi_rec in enumerate(recordings):    # save recordings as .wav

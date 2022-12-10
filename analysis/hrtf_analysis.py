@@ -124,7 +124,7 @@ def vsi_dissimilarity(hrtf_1, hrtf_2, bandwidth):
 
 
 """   
-subject_id = 'cs'
+subject_id = 'nn'
 condition = 'earmolds'
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_1' / subject_id / condition
 import datetime

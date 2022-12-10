@@ -77,7 +77,7 @@ d = (numpy.mean(x1) - numpy.mean(x2)) / numpy.sqrt(((std1**2)+(std2**2))/2)
 # calculate N
 N = tt_solve_power(power=0,effect_size=0,alpha=0)
 
-# plot localization accuracy of all participants
+# -------  plot localization accuracy of all participants ------#
 from analysis.localization_analysis import localization_accuracy
 from pathlib import Path
 import matplotlib.pyplot as plt
@@ -85,7 +85,8 @@ import slab
 
 # get path for each subject data folder
 subject_dir_list = list((Path.cwd() / 'data' / 'experiment' / 'bracket_1').iterdir())
-fig, axis = plt.subplots(len(subject_dir_list), 4, sharex=True, sharey=True)
+subject_dir_list.remove(Path.cwd() / 'data' / 'experiment' / 'bracket_1'/ '.DS_Store')
+fig, axis = plt.subplots(6, len(subject_dir_list), sharex=True, sharey=True)
 condition = 'earmolds'
 for subj_idx, subject_path in enumerate(subject_dir_list):
     subject_dir = subject_path / condition

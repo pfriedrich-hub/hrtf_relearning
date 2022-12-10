@@ -10,8 +10,8 @@ import head_tracking.meta_motion.mm_pose as motion_sensor
 fs = 48828
 slab.set_default_samplerate(fs)
 
-subject_id = 'cs'
-condition = 'earmolds_1'
+subject_id = 'nn'
+condition = 'earmolds'
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_1' / subject_id / condition
 
 repetitions = 3  # number of repetitions per speaker

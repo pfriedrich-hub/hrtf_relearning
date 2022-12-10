@@ -77,7 +77,7 @@ d = (numpy.mean(x1) - numpy.mean(x2)) / numpy.sqrt(((std1**2)+(std2**2))/2)
 # calculate N
 N = tt_solve_power(power=0,effect_size=0,alpha=0)
 
-# plot localization accuracy of all participants
+# -------  plot localization accuracy of all participants ------#
 from analysis.localization_analysis import localization_accuracy
 from pathlib import Path
 import matplotlib.pyplot as plt

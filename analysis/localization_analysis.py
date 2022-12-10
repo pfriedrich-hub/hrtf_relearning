@@ -59,18 +59,18 @@ def localization_accuracy(sequence, show=True, plot_dim=1, binned=True, axis=Non
             fig, axis = plt.subplots(1, 1)
         elevation_ticks = numpy.unique(target_elevations)
         azimuth_ticks = numpy.unique(target_azimuths)
-        axis.set_yticks(elevation_ticks)
-        axis.set_ylim(numpy.min(elevation_ticks)-15, numpy.max(elevation_ticks)+15)
+        # axis.set_yticks(elevation_ticks)
+        # axis.set_ylim(numpy.min(elevation_ticks)-15, numpy.max(elevation_ticks)+15)
         if plot_dim == 2:
-            axis.set_xticks(azimuth_ticks)
-            axis.set_xlim(numpy.min(azimuth_ticks)-15, numpy.max(azimuth_ticks)+15)
+            # axis.set_xticks(azimuth_ticks)
+            # axis.set_xlim(numpy.min(azimuth_ticks)-15, numpy.max(azimuth_ticks)+15)
             axis.scatter(perceived_azimuths, perceived_elevations, s=8, edgecolor='grey', facecolor='none')
             if binned:
                 azimuths = numpy.unique(mean_loc_binned[:, 0, 0])
                 elevations = numpy.unique(mean_loc_binned[:, 1, 0])
                 mean_loc = mean_loc_binned
-                elevation_ticks = numpy.unique(target_elevations)
-                azimuth_ticks = numpy.unique(target_azimuths)
+                # azimuth_ticks = azimuths
+                # elevation_ticks = elevations
             for az in azimuths:  # plot lines between target locations
                 [x] = mean_loc[numpy.where(mean_loc[:, 0, 0]==az), 0, 0]
                 [y] = mean_loc[numpy.where(mean_loc[:, 0, 0]==az), 1, 0]
@@ -103,6 +103,10 @@ def localization_accuracy(sequence, show=True, plot_dim=1, binned=True, axis=Non
             y = elevation_gain * x + n
             axis.plot(x, y, c='grey', linewidth=1, label='elevation gain %.2f' % elevation_gain)
             plt.legend()
+        axis.set_yticks(elevation_ticks)
+        axis.set_ylim(numpy.min(elevation_ticks) - 15, numpy.max(elevation_ticks) + 15)
+        axis.set_xticks(azimuth_ticks)
+        axis.set_xlim(numpy.min(azimuth_ticks) - 15, numpy.max(azimuth_ticks) + 15)
         axis.set_title('elevation gain: %.2f' % elevation_gain)
         plt.show()
     return elevation_gain, rmse, sd

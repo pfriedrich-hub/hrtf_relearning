@@ -12,8 +12,8 @@ from matplotlib import pyplot as plt
 slab.set_default_samplerate(fs)
 
 # file settings
-subject_id = 'nn'
-condition = 'earmolds'  # can be 'ears_free' or 'earmolds' - important for file naming!
+subject_id = 'lw'
+condition = 'earmolds_1'  # can be 'ears_free' or 'earmolds' - important for file naming!
 kemar = False  # requires no button press if true
 safe = 'both'  # decide if additionally save in-ear-recordings
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_1' / subject_id / condition

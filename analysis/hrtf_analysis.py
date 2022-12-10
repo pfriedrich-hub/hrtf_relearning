@@ -121,19 +121,19 @@ def vsi_dissimilarity(hrtf_1, hrtf_2, bandwidth):
     # VSI dissimilarity: euclidean distance between the matrices
     vsi_dissimilarity = numpy.linalg.norm(correlation_free_v_mold - autocorrelation_free)
     return vsi_dissimilarity
-
-def average_hrtf(hrtf_list):
-    dtf_list = []
-    sources = hrtf_list[0].cone_sources(0)
-    for hrtf in hrtf_list:
-        dtf_left = hrtf.tfs_from_sources(sources, ear='left', n_bins=).T
-        dtf_right = hrtf.tfs_from_sources(sources, ear='right').T
-        dtfs = numpy.stack((dtf_left, dtf_right), axis=1)
-        dtf_list.append(dtfs)
-    dtf_list = numpy.asarray(dtf_list)
-    mean_dtfs = numpy.mean(dtf_list, axis=0)
-    return slab.HRTF(data=mean_dtfs, samplerate=97656, datatype='TF',
-           sources=hrtf.sources.vertical_polar)
+#
+# def average_hrtf(hrtf_list):
+#     dtf_list = []
+#     sources = hrtf_list[0].cone_sources(0)
+#     for hrtf in hrtf_list:
+#         dtf_left = hrtf.tfs_from_sources(sources, ear='left', n_bins=).T
+#         dtf_right = hrtf.tfs_from_sources(sources, ear='right').T
+#         dtfs = numpy.stack((dtf_left, dtf_right), axis=1)
+#         dtf_list.append(dtfs)
+#     dtf_list = numpy.asarray(dtf_list)
+#     mean_dtfs = numpy.mean(dtf_list, axis=0)
+#     return slab.HRTF(data=mean_dtfs, samplerate=97656, datatype='TF',
+#            sources=hrtf.sources.vertical_polar)
 
 """   
 subject_id = 'nn'

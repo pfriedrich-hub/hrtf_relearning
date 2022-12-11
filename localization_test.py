@@ -51,7 +51,7 @@ def localization_test(subject_id, data_dir, condition, repetitions):
     file_name = 'localization_' + subject_id + '_' + condition + date.strftime('_%d.%m')
     counter = 1
     while Path.exists(data_dir / file_name):
-        file_name = file_name + '_' + str(counter)
+        file_name = 'localization_' + subject_id + '_' + condition + date.strftime('_%d.%m') + '_' + str(counter)
         counter += 1
     for index in trial_sequence:
         progress = int(trial_sequence.this_n / trial_sequence.n_trials * 100)

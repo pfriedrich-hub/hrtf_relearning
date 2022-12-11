@@ -121,19 +121,24 @@ def vsi_dissimilarity(hrtf_1, hrtf_2, bandwidth):
     # VSI dissimilarity: euclidean distance between the matrices
     vsi_dissimilarity = numpy.linalg.norm(correlation_free_v_mold - autocorrelation_free)
     return vsi_dissimilarity
-#
-# def average_hrtf(hrtf_list):
-#     dtf_list = []
-#     sources = hrtf_list[0].cone_sources(0)
-#     for hrtf in hrtf_list:
-#         dtf_left = hrtf.tfs_from_sources(sources, ear='left', n_bins=).T
-#         dtf_right = hrtf.tfs_from_sources(sources, ear='right').T
-#         dtfs = numpy.stack((dtf_left, dtf_right), axis=1)
-#         dtf_list.append(dtfs)
-#     dtf_list = numpy.asarray(dtf_list)
-#     mean_dtfs = numpy.mean(dtf_list, axis=0)
-#     return slab.HRTF(data=mean_dtfs, samplerate=97656, datatype='TF',
-#            sources=hrtf.sources.vertical_polar)
+
+def average_hrtf(hrtf_list):
+    tf_data = numpy.zeros((hrtf_list[0].n_sources, len(hrtf_list), hrtf_list[0][0].n_samples, 2))
+    for hrtf_idx, hrtf in enumerate(hrtf_list):
+        for src_idx, filter in enumerate(hrtf.data):
+            tf_data[src_idx, hrtf_idx] = filter.data
+    tf_data = numpy.mean(tf_data, axis=1)
+    for src_idx, filter_data in enumerate(tf_data):
+        hrtf[src_idx].data = filter_data
+    return hrtf
+
+def amplify_hrtf(hrtf, gain=30):
+    for filter in hrtf:
+        tf = 10 ** (filter.data/20)
+        tf += gain
+        tf = 20 * numpy.log(filter.data)
+        filter.data = tf
+    return hrtf
 
 """   
 subject_id = 'nn'

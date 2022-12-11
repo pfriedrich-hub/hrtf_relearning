@@ -96,7 +96,7 @@ def record_hrtf(subject_id, data_dir, condition, signal, repetitions, n_directio
         # file_path = str(data_dir / (subject_id + '_' + condition + date.strftime('_%d.%m')))
         # counter = 1
         # while Path.exists(file_path + '.sofa'):
-        #     file_path = file_path + '_' + str(counter)
+        #     file_path = file_path + ('_%i' % counter)
         #     counter += 1
         # recorded_hrtf.write_sofa(file_path + '.sofa')
 

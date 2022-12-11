@@ -85,8 +85,8 @@ import slab
 
 # get path for each subject data folder
 subject_dir_list = list((Path.cwd() / 'data' / 'experiment' / 'bracket_1').iterdir())
-fig, axis = plt.subplots(6, len(subject_dir_list), sharex=True, sharey=True)
-condition = 'earmolds'
+fig, axis = plt.subplots(3, len(subject_dir_list), sharex=True, sharey=True)
+condition = 'earmolds_1'
 for subj_idx, subject_path in enumerate(subject_dir_list):
     subject_dir = subject_path / condition
     # iterate over localization accuracy files
@@ -112,7 +112,7 @@ import slab
 import analysis.hrtf_analysis as hrtf_analysis
 subject_dir_list = list((Path.cwd() / 'data' / 'experiment' / 'bracket_1').iterdir())
 # fig, axis = plt.subplots(6, len(subject_dir_list), sharex=True, sharey=True)
-condition = 'earmolds_1'
+condition = 'ears_free'
 hrtf_list = []
 for subj_idx, subject_path in enumerate(subject_dir_list):
     subject_dir = subject_path / condition
@@ -120,8 +120,12 @@ for subj_idx, subject_path in enumerate(subject_dir_list):
     for file_name in sorted(list(subject_dir.iterdir())):
         if file_name.is_file() and file_name.suffix == '.sofa':
             hrtf_list.append(slab.HRTF(file_name))
+
 hrtf = hrtf_analysis.average_hrtf(hrtf_list)
-hrtf.plot_tf(n_bins=300, kind='image', xlim=(4000,16000), sourceidx=hrtf.cone_sources(0))
+
+hrtf = hrtf_analysis.amplify(hrtf, increase=30)
+
+hrtf.plot_tf(n_bins=300, kind='waterfall', xlim=(4000, 16000), sourceidx=hrtf.cone_sources(0))
 
 
 # remove invalid values, this is redundant for meta motion head tracking

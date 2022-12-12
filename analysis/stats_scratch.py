@@ -2,8 +2,6 @@ import scipy
 import slab
 from pathlib import Path
 data_dir = Path.cwd() / 'data'
-import matplotlib
-# matplotlib.use('TkAgg')
 from matplotlib import pyplot as plt
 import numpy
 
@@ -85,11 +83,11 @@ import slab
 
 # get path for each subject data folder
 subject_dir_list = list((Path.cwd() / 'data' / 'experiment' / 'bracket_1').iterdir())
-fig, axis = plt.subplots(3, len(subject_dir_list), sharex=True, sharey=True)
 condition = 'earmolds_1'
+fig, axis = plt.subplots(4, len(subject_dir_list), sharex=True, sharey=True)
+
 for subj_idx, subject_path in enumerate(subject_dir_list):
     subject_dir = subject_path / condition
-    # iterate over localization accuracy files
     file_idx = 0
     for file_name in sorted(list(subject_dir.iterdir())):
         if file_name.is_file() and not file_name.suffix == '.sofa':
@@ -103,29 +101,38 @@ for subj_idx, subject_path in enumerate(subject_dir_list):
 fig.text(0.5, 0.07, 'Response azimuth (deg)', ha='center')
 fig.text(0.08, 0.5, 'Response elevation (deg)', va='center', rotation='vertical')
 axis[0,0].set_xticks(axis[0,0].get_xticks().astype('int'))
-
+for idx, i in enumerate(range(2, 10, 2)):
+    fig.text(i/10, 0.95, subject_dir_list[idx].name)
 
 #------ get grand average of participants hrtf -----#
+import pathlib
 from pathlib import Path
 import matplotlib.pyplot as plt
 import slab
 import analysis.hrtf_analysis as hrtf_analysis
 subject_dir_list = list((Path.cwd() / 'data' / 'experiment' / 'bracket_1').iterdir())
 # fig, axis = plt.subplots(6, len(subject_dir_list), sharex=True, sharey=True)
-condition = 'ears_free'
+condition = 'earmolds'
+freq_range = (4000, 16000)
 hrtf_list = []
+file_list = []
 for subj_idx, subject_path in enumerate(subject_dir_list):
     subject_dir = subject_path / condition
     # iterate over localization accuracy files
     for file_name in sorted(list(subject_dir.iterdir())):
         if file_name.is_file() and file_name.suffix == '.sofa':
             hrtf_list.append(slab.HRTF(file_name))
+            file_list.append(file_name.name)
+
+for subj_idx, hrtf in enumerate(hrtf_list):
+    fig, axis = plt.subplots()
+    hrtf = hrtf_analysis.process_hrtf(hrtf, freq_range=freq_range)
+    hrtf.plot_tf(n_bins=300, kind='image', xlim=freq_range, sourceidx=hrtf.cone_sources(0), axis=axis)
+    axis.set_title(file_list[subj_idx])
 
 hrtf = hrtf_analysis.average_hrtf(hrtf_list)
 
-hrtf = hrtf_analysis.amplify(hrtf, increase=30)
-
-hrtf.plot_tf(n_bins=300, kind='waterfall', xlim=(4000, 16000), sourceidx=hrtf.cone_sources(0))
+hrtf.plot_tf(n_bins=300, kind='image', xlim=freq_range, sourceidx=hrtf.cone_sources(0))
 
 
 # remove invalid values, this is redundant for meta motion head tracking

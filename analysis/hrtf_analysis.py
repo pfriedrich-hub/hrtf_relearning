@@ -5,6 +5,7 @@ import matplotlib
 # matplotlib.use('TkAgg')
 from matplotlib import pyplot as plt
 import numpy
+import copy
 
 # todo: fix problem of resolution downscaling with frequency for vsi:
 #  for example kemar vsi with 0.1s looks better than for 0.05 seconds (higher frequencies have to
@@ -125,29 +126,39 @@ def vsi_dissimilarity(hrtf_1, hrtf_2, bandwidth):
 def average_hrtf(hrtf_list):
     tf_data = numpy.zeros((hrtf_list[0].n_sources, len(hrtf_list), hrtf_list[0][0].n_samples, 2))
     for hrtf_idx, hrtf in enumerate(hrtf_list):
-        for src_idx, filter in enumerate(hrtf.data):
-            tf_data[src_idx, hrtf_idx] = filter.data
+        for src_idx, tf in enumerate(hrtf.data):
+            tf_data[src_idx, hrtf_idx] = tf.data
     tf_data = numpy.mean(tf_data, axis=1)
-    for src_idx, filter_data in enumerate(tf_data):
-        hrtf[src_idx].data = filter_data
+    for src_idx, tf_data in enumerate(tf_data):
+        hrtf[src_idx].data = tf_data
     return hrtf
 
-def amplify_hrtf(hrtf, gain=30):
-    for filter in hrtf:
-        tf = 10 ** (filter.data/20)
-        tf += gain
-        tf = 20 * numpy.log(filter.data)
-        filter.data = tf
-    return hrtf
+def process_hrtf(hrtf, freq_range=(2000, 16000)):
+    "center transfer functions around 0"
+    hrtf_out = copy.deepcopy(hrtf)
+    for src_idx, tf in enumerate(hrtf_out):
+        db_data = 20 * numpy.log10(tf.data)
+        # set values outside of freq_range to mean of data in freq range
+        in_range = db_data[numpy.logical_and(tf.frequencies > freq_range[0],
+                                 tf.frequencies < freq_range[1])]
+        mean = numpy.mean(in_range, axis=0)
+        db_data[numpy.logical_or(tf.frequencies < freq_range[0],
+                                 tf.frequencies > freq_range[1])] = mean
+        # center data around zero
+        db_data -= mean
+        tf_data = 10 ** (db_data/20)
+        hrtf_out[src_idx].data = tf_data
+    return hrtf_out
+
 
 """   
 subject_id = 'nn'
-condition = 'earmolds'
+condition = 'earmolds_1'
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_1' / subject_id / condition
 import datetime
 date = datetime.datetime.now()
 
-hrtf = slab.HRTF(str(data_dir / (subject_id + '_' + condition + date.strftime('_%d.%m'))) + '.sofa')
+hrtf = slab.HRTF(data_dir / str(subject_id + '_' + condition + 10.12.sofa')) #date.strftime('_%d.%m'))) + '.sofa')
 
 dfe = False  # whether to use diffuse field equalization to plot hrtf and compute vsi
 plot_bins = 2400  # number of bins also used to calculate vsi across bands (use 80 to minimize´frequency-resolution dependend vsi change)

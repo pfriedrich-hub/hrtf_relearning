@@ -51,9 +51,16 @@ def localization_accuracy(sequence, show=True, plot_dim=1, binned=True, axis=Non
             mean_loc_binned = numpy.concatenate((mean_loc_binned, [mean_tar_bin]))
 
     elevation_gain, n = scipy.stats.linregress(target_elevations, perceived_elevations)[:2]
-    rmse = numpy.sqrt(numpy.square(numpy.subtract(target_elevations, perceived_elevations)).mean())
-    sd = numpy.mean([numpy.std(perceived_elevations[numpy.where(target_elevations == target)])
-                for target in numpy.unique(target_elevations)])
+    rmse = numpy.sqrt(numpy.mean(numpy.square(target_elevations - perceived_elevations)))
+    dev = numpy.abs(target_elevations - perceived_elevations) - \
+          numpy.mean(numpy.abs(target_elevations - perceived_elevations))
+    sd = numpy.sqrt(numpy.mean(numpy.square(dev)))
+
+    # sd = numpy.sqrt(numpy.mean(numpy.abs(numpy.subtract(target_elevations, perceived_elevations))))
+    # sd = numpy.std(numpy.abs(numpy.subtract(target_elevations, perceived_elevations)))
+    # sd = numpy.mean([numpy.std(perceived_elevations[numpy.where(target_elevations == target)])
+    #             for target in numpy.unique(target_elevations)])
+
     if show:
         if not axis:
             fig, axis = plt.subplots(1, 1)
@@ -142,18 +149,24 @@ import datetime
 date = datetime.datetime.now()
 
 # file_name = 'localization_' + subject_id + '_' + condition + '_10.12_1 '#date.strftime('_%d.%m') + '_1_2'
-file_name = 'localization_nn_earmolds_1_11.12_2'
+file_name = 'localization_nn_earmolds_1_14.12_2'
 sequence = slab.Trialsequence(conditions=45, n_reps=1)
 sequence.load_pickle(file_name=data_dir / file_name)
 
+# plot
 # elevation_gain, rmse, sd = localization_accuracy(sequence, show=True, plot_dim=1)
 elevation_gain, rmse, sd = localization_accuracy(sequence, show=True, plot_dim=2, binned=True)
 print(file_name)
 print('gain: %.2f\nrmse: %.2f\nsd: %.2f' % (elevation_gain, rmse, sd))
 # plt.title(file_name)
 
-
-
+# stitch incomplete sequences
+from copy import deepcopy
+sequence = deepcopy(sequence_1)
+data_1 = sequence_1.data[:-sequence_1.n_remaining]
+data_2 = sequence_2.data[:-sequence_2.n_remaining]
+data = data_1 + data_2
+sequence.data = data
 
 ### correct azimuth for >300°
 for i, entry in enumerate(sequence.data):
@@ -162,14 +175,10 @@ for i, entry in enumerate(sequence.data):
 for i, entry in enumerate(sequence.data):
     sequence.data[i][0][sequence.data[i][0] < 300] += 360
     
-
-file_name = 'localization_' + subject_id + '_' + condition + date.strftime('_%d.%m')
+# save
 sequence.save_pickle(data_dir / file_name, clobber=True)
 
 
-
-
-    
 # for azimuth:
 az_x = loc_data[:, 1, 0]
 az_y = loc_data[:, 0, 0]

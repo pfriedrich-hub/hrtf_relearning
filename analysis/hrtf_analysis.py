@@ -11,18 +11,18 @@ import copy
 #  for example kemar vsi with 0.1s looks better than for 0.05 seconds (higher frequencies have to
 #  few samples here to be represented correctly in vsi)
 
-def list_hrtfs(path, condition):
+def get_hrtfs(path, conditions):
     subject_dir_list = list(path.iterdir())
-    hrtf_list = []
-    file_list = []
-    for subj_idx, subject_path in enumerate(subject_dir_list):
-        subject_dir = subject_path / condition
-        # iterate over localization accuracy files
-        for file_name in sorted(list(subject_dir.iterdir())):
-            if file_name.is_file() and file_name.suffix == '.sofa':
-                hrtf_list.append(slab.HRTF(file_name))
-                file_list.append(file_name.name)
-    return hrtf_list
+    hrtf_dict = {}
+    for condition in conditions:
+        hrtf_dict[condition] = {}
+        for subj_idx, subject_path in enumerate(subject_dir_list):
+            subject_dir = subject_path / condition
+            # iterate over localization accuracy files
+            for file_name in sorted(list(subject_dir.iterdir())):
+                if file_name.is_file() and file_name.suffix == '.sofa':
+                    hrtf_dict[condition][subject_path.name] = slab.HRTF(file_name)
+    return hrtf_dict
 
 def baseline_hrtf(hrtf, bandwidth=(3000, 17000)):
     "Center transfer functions around 0"
@@ -64,11 +64,10 @@ def hrtf_difference(hrtf_1, hrtf_2):
         hrtf_diff[src_idx].data = 10 ** (hrtf_diff_db/20)
     return hrtf_diff
 
-def plot_hrtf_image(hrtf, bandwidth=(4000, 16000), n_bins=300, axis=None, z_min=-10, z_max=8, cbar = False):
+def plot_hrtf_image(hrtf, bandwidth=(4000, 16000), n_bins=300, axis=None, z_min=None, z_max=None, cbar=True):
     src = hrtf.cone_sources(0)
     elevations = hrtf.sources.vertical_polar[src, 1]
     ticks = [str(x) for x in (numpy.arange(4000, 16000 + 1, 4000) / 1000).astype('int')]
-    cbar_levels = numpy.linspace(z_min, z_max, 100)
     img = numpy.zeros((n_bins, len(src)))
     if not axis:
         fig, axis = plt.subplots()
@@ -80,6 +79,11 @@ def plot_hrtf_image(hrtf, bandwidth=(4000, 16000), n_bins=300, axis=None, z_min=
         img[:, idx] = h.flatten()
     img[img < -40] = -40  # clip at -40 dB transfer
     freq_idx = numpy.logical_and(freqs >= bandwidth[0], freqs <= bandwidth[1])
+    if not z_min:
+        z_min = numpy.floor(numpy.min(img[freq_idx]))
+    if not z_max:
+        z_max = numpy.ceil(numpy.max(img[freq_idx]))
+    cbar_levels = numpy.linspace(z_min, z_max, 100)
     contour = axis.contourf(freqs[freq_idx], elevations, img.T[:, freq_idx],
                         cmap='RdYlBu', origin='upper', levels=cbar_levels)
     axis.set_yticks(numpy.linspace(-30, 30, 5))
@@ -97,6 +101,7 @@ def plot_hrtf_image(hrtf, bandwidth=(4000, 16000), n_bins=300, axis=None, z_min=
         cax.tick_params(axis='both', direction="in", bottom=True, top=True, left=True, right=True,
                                labelsize=13, width=1.5, length=2)
         cax.set_title('dB')
+    return axis
 
 def vsi_across_bands(hrtf, cone=0, n_bins=300, show=True, axis=None):
     # calculate vsi across 1/2 octave frequency bands
@@ -176,16 +181,92 @@ def vsi_dissimilarity(hrtf_1, hrtf_2, bandwidth):
     vsi_dissimilarity = numpy.linalg.norm(correlation_free_v_mold - autocorrelation_free)
     return vsi_dissimilarity
 
+
+def hrtf_plots(plot_dict, n_bins, bandwidth, title=None):
+    # input is a dictionary with keys = condition and value = HRTF, 3 conditions
+    dict = copy.deepcopy(plot_dict)
+    conditions = list(dict.keys())
+    diff_conditions = ['Difference Ears Free - Mold 1',
+                       'Difference Ears Free - Mold 2', 'Difference Mold 1 - Mold 2']
+    corr_conditions = ['Correlation Ears Free - Mold 1',
+                       'Correlation Ears Free - Mold 2', 'Correlation Mold 1 - Mold 2']
+    compare = [['ears_free', 'earmolds'], ['ears_free', 'earmolds_1'], ['earmolds', 'earmolds_1']]
+    src_idx = dict[conditions[0]].cone_sources(0)
+    # get difference HRTFs
+    dict['difference'], dict['min'], dict['max'] = {}, [], []
+    for i in range(3):
+        dict['difference'][diff_conditions[i]] = hrtf_difference(dict[compare[i][0]], dict[compare[i][1]])
+    # get min and max values for img cbar scaling etc
+    frequencies = dict[conditions[0]][0].frequencies
+    frequencies = numpy.linspace(0, frequencies[-1], n_bins)
+    freqidx = numpy.logical_and(frequencies > bandwidth[0], frequencies < bandwidth[1])
+    for condition in conditions:
+        dict['min'].append(dict[condition].tfs_from_sources(src_idx, n_bins)[freqidx].min())
+        dict['max'].append(dict[condition].tfs_from_sources(src_idx, n_bins)[freqidx].max())
+    for condition in diff_conditions:
+        dict['min'].append(dict['difference'][condition].tfs_from_sources(src_idx, n_bins)[freqidx].min())
+        dict['max'].append(dict['difference'][condition].tfs_from_sources(src_idx, n_bins)[freqidx].max())
+    z_min = numpy.floor(numpy.min(dict['min'])) - 1
+    z_max = numpy.ceil(numpy.max(dict['max']))
+    title_list = [['Ears Free', 'Week 1 Molds', 'Week 2 Molds'], diff_conditions, corr_conditions]
+
+    # plot
+    fig, axis = plt.subplots(2, 3, sharey=True, figsize=(13, 8))
+    fig.subplots_adjust(left=None, bottom=None, right=None, top=None, wspace=0.05)
+    cbar = False
+    for i in range(3):
+        if i == 2:
+            cbar = True
+        # plot HRTF
+        plot_hrtf_image(dict[conditions[i]], n_bins=n_bins,
+                                      bandwidth=bandwidth, axis=axis[0, i], z_min=z_min, z_max=z_max, cbar=cbar)
+        axis[0, i].set_title(title_list[0][i])
+        # plot HRTF differences
+        plot_hrtf_image(dict['difference'][diff_conditions[i]], n_bins=n_bins,
+                                      bandwidth=bandwidth, axis=axis[1, i], z_min=z_min, z_max=z_max, cbar=cbar)
+        axis[1, i].set_title(title_list[1][i])
+    fig.text(0.5, 0.04, 'Frequency (kHz)', ha='center', size=13)
+    fig.text(0.07, 0.5, 'Elevation (degrees)', va='center', rotation='vertical', size=13)
+    if title:
+        fig.suptitle(title)
+    # compute and plot HRTF correlation
+    correlation = []
+    fig, axis = plt.subplots(1, 3, sharey=True, figsize=(12, 4))
+    fig.subplots_adjust(left=None, bottom=None, right=None, top=None, wspace=0.05)
+    cbar = False
+    for i in range(3):
+        if i == 2:
+            cbar = True
+        correlation.append(hrtf_correlation(dict[compare[i][0]], dict[compare[i][1]],show=True, axis=axis[i],
+                                            bandwidth=bandwidth, cbar=cbar, n_bins=n_bins))
+        axis[i].set_title(title_list[2][i])
+    fig.text(0.5, 0.02, 'Elevation (degrees)', ha='center', size=13)
+    fig.text(0.07, 0.5, 'Elevation (degrees)', va='center', rotation='vertical', size=13)
+    if title:
+        fig.suptitle(title)
+
 """   
-subject_id = 'nn'
-condition = 'earmolds'
+subject_id = 'ma'
+condition = 'earmolds_1'
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_1' / subject_id / condition
-import datetime
-date = datetime.datetime.now()
+file_name = 'ma_earmolds_1_10.12.sofa'
+hrtf = slab.HRTF(data_dir / file_name)
+bandwidth = (4000, 16000)
+n_bins = 300
+hrtf = baseline_hrtf(hrtf, bandwidth=bandwidth)
+hrtf = hrtf.diffuse_field_equalization()
 
-hrtf = slab.HRTF(data_dir / str(subject_id + '_' + condition + '_05.12.sofa')) #date.strftime('_%d.%m'))) + '.sofa')
+# image
+axis = plot_hrtf_image(hrtf, bandwidth, n_bins)
+ax = axis.figure.get_axes()[1]
+ax_pos = list(ax.get_position().bounds)
+ax_pos[0] = 0.92
+ax.set_position(ax_pos) # move cbar
 
-dfe = False  # whether to use diffuse field equalization to plot hrtf and compute vsi
+# waterfall
+hrtf.plot_tf(sourceidx=hrtf.cone_sources(0), xlim=bandwidth, n_bins=n_bins)
+
+
 plot_bins = 2400  # number of bins also used to calculate vsi across bands (use 80 to minimize´frequency-resolution dependend vsi change)
 plot_ear = 'left'  # ear for which to plot HRTFs
 sources = list(range(hrtf.n_sources-1, -1, -1))  # works for 0°/+/-17.5° cone

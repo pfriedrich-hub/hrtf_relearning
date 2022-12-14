@@ -6,13 +6,13 @@ import slab
 from matplotlib import pyplot as plt
 import scipy
 
-
 """ plot mean learning curve """
+bracket = 'bracket_1'
 w2_exclude = ['cs']
 
 # plot Elevation Gain, RMSE and response variability across experiment
 n = 17  # number of measurements per participant
-subject_paths = list((Path.cwd() / 'data' / 'experiment' / 'bracket_1').iterdir())
+subject_paths = list((Path.cwd() / 'data' / 'experiment' / bracket).iterdir())
 condition_list = ['ears_free', 'earmolds', 'earmolds_1']
 subj_list = []
 data = numpy.zeros((len(subject_paths), 3, n))  # subject_id x measurement (eg, rmse, sd) x n datapoints
@@ -52,7 +52,7 @@ w1_data = numpy.delete(w1_data, excl_idx, axis=0)
 # standard mean error (sd / sqrt(n)): (sd = sqrt(var), var = mean distance from sample mean)
 w1_err, w2_err = scipy.stats.sem(w1_data, axis=0), scipy.stats.sem(w2_data, axis=0)
 
-fig, ax = plt.subplots(2, 1, sharex=True)
+fig, ax = plt.subplots(2, 1)
 # EG # week 1
 ax[0].plot(w1[:2], numpy.mean(w1_data[:, 0, :2], axis=0), c='k', ls=(0, (5, 10)), lw=0.8)  # day one mold insertion
 ax[0].plot(w1[1:-1], numpy.mean(w1_data[:, 0, 1:-1], axis=0), c='k', linewidth=1.5)  # week 1 learning curve
@@ -82,10 +82,10 @@ ax[0].errorbar(w2[-1:], numpy.mean(w2_data[:, 0, -1], axis=0), capsize=3, yerr=w
 # week 1
  # week 1 learning curve
 colors = ['k', '0.6']
-labels = ['MSE', 'SD']
+labels = ['RMSE', 'SD']
 for i in range(1, 3):
     ax[1].plot(w1[:2], numpy.mean(w1_data[:, i, :2], axis=0), c=colors[i-1], ls=(0, (5, 10)), lw=0.8)  # day one mold insertion
-    ax[1].plot(w1[1:-1], numpy.mean(w1_data[:, i, 1:-1], axis=0), c='k', linewidth=1.5, label=labels[i])  # week 1 learning curve
+    ax[1].plot(w1[1:-1], numpy.mean(w1_data[:, i, 1:-1], axis=0), c=colors[i-1], linewidth=1.5, label=labels[i-1])  # week 1 learning curve
     ax[1].plot(w1[-2:], numpy.mean(w1_data[:, i, -2:], axis=0), c=colors[i-1], ls=(0, (5, 10)), lw=0.8)  # week 1 mold removal
     # week 2
     ax[1].plot(w2[:2], numpy.mean(w2_data[:, i, :2], axis=0), c=colors[i-1], ls=(0, (5, 10)), lw=0.8)  # week 2 mold insertion
@@ -108,9 +108,9 @@ for i in range(1, 3):
     ax[1].errorbar(w2[-1:], numpy.mean(w2_data[:, i, -1], axis=0), capsize=3, yerr=w2_err[i, -1],
                    fmt="o", c=colors[i-1], elinewidth=0.8, markersize=5)
 
+
 ax[0].set_yticks(numpy.arange(0, 1.2, 0.2))
 ax[0].set_xticks(days)
-ax[0].set_xlabel('Days')
 ax[0].set_ylabel('Elevation Gain')
 ax[1].set_xlabel('Days')
 ax[1].set_ylabel('Elevation in degrees')

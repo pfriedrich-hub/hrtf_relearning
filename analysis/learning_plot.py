@@ -4,30 +4,30 @@ import numpy
 import slab
 from matplotlib import pyplot as plt
 import scipy
-
 """ -------  plot group averaged learning curve ------ """
 
-w2_exclude = ['cs']
+
+exclude = []
+w2_exclude = ['cs', 'lw']
 bracket = 'bracket_1'
 conditions = ['ears_free', 'earmolds', 'earmolds_1']
 path = Path.cwd() / 'data' / 'experiment' / 'bracket_1'
 loc_dict = localization.get_localization_data(path, conditions)
 subjects = list(loc_dict['ears_free'].keys())
+for ex in exclude: subjects.remove(ex)
 for condition in conditions:
     loc_dict[condition]['data'] = numpy.zeros((len(subjects), 7, 3))  # subject x days x eg/rmse/sd
     loc_dict[condition]['SE'] = numpy.zeros((7, 3))  # SE for each measure days x eg/rmse/sd
     for s, subject in enumerate(subjects):
-        if not (subject in w2_exclude and condition == 'earmolds_1'):
-            sequence_list = loc_dict[condition][subject]
-            for idx, sequence in enumerate(sequence_list):
-                loc_dict[condition]['data'][s, idx] = localization.localization_accuracy(sequence, show=False)
-                if s+1 == len(subjects):
-                    loc_dict[condition]['SE'][idx] = scipy.stats.sem(loc_dict[condition]['data'][:, idx], axis=0)
-                # standard mean error (sd / sqrt(n)): (sd = sqrt(var), var = mean distance from sample mean)
+        sequence_list = loc_dict[condition][subject]
+        for idx, sequence in enumerate(sequence_list):
+            loc_dict[condition]['data'][s, idx] = localization.localization_accuracy(sequence, show=False)
+            if s+1 == len(subjects):
+                loc_dict[condition]['SE'][idx] = scipy.stats.sem(loc_dict[condition]['data'][:, idx], axis=0)
+            # standard mean error (sd / sqrt(n)): (sd = sqrt(var), var = mean distance from sample mean)
 
 ex_idx = [subjects.index(ex) for ex in w2_exclude]  # remove w2 excludes
 loc_dict['earmolds_1']['data'] = numpy.delete(loc_dict['earmolds_1']['data'], ex_idx, axis=0)
-
 days = numpy.arange(1, 13) # days of measurement
 days[-1] = 16
 ef = numpy.mean(loc_dict['ears_free']['data'], axis=0)  # means

@@ -173,13 +173,13 @@ def hrtf_correlation(hrtf_1, hrtf_2, show=False, bandwidth=(4000, 16000), n_bins
                             labelsize=13, width=1.5, length=2)
     return corr_mtx
 
-def vsi_dissimilarity(hrtf_1, hrtf_2, bandwidth):
+def hrtf_dissimilarity(hrtf_1, hrtf_2, bandwidth):
     # get correlation matrices
     correlation_free_v_mold = hrtf_correlation(hrtf_1, hrtf_2, bandwidth=bandwidth)
     autocorrelation_free = hrtf_correlation(hrtf_1, hrtf_1, bandwidth=bandwidth)
     # VSI dissimilarity: euclidean distance between the matrices
-    vsi_dissimilarity = numpy.linalg.norm(correlation_free_v_mold - autocorrelation_free)
-    return vsi_dissimilarity
+    hrtf_dissimilarity = numpy.linalg.norm(correlation_free_v_mold - autocorrelation_free)
+    return hrtf_dissimilarity
 
 
 def hrtf_plots(plot_dict, n_bins, bandwidth, title=None):

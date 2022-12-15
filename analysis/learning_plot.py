@@ -1,4 +1,3 @@
-import analysis.hrtf_analysis as hrtf_analysis
 from pathlib import Path
 from analysis.localization_analysis import localization_accuracy
 import numpy
@@ -6,9 +5,10 @@ import slab
 from matplotlib import pyplot as plt
 import scipy
 
-""" plot mean learning curve """
+""" -------  plot group averaged learning curve ------ """
+
 bracket = 'bracket_1'
-w2_exclude = ['cs']
+w2_exclude = ['cs', 'lw']
 
 # plot Elevation Gain, RMSE and response variability across experiment
 n = 17  # number of measurements per participant
@@ -115,14 +115,4 @@ ax[0].set_ylabel('Elevation Gain')
 ax[1].set_xlabel('Days')
 ax[1].set_ylabel('Elevation in degrees')
 ax[1].legend()
-
-# plot participants EG
-# fig, ax = plt.subplots(1, 1, sharex=True)
-# for i in range(ele_gain.shape[0]):
-#     ax.scatter(days, ele_gain[i, :], label='participant %i'% i)
-#     ax.plot(days, ele_gain[i, :])
-# ax.set_xticks(days)
-# ax.set_ylabel('Elevation Gain')
-# ax.set_xlabel('Days')
-# ax.set_yticks(numpy.arange(0, 1.2, 0.1))
-# ax.legend()
+plt.show()

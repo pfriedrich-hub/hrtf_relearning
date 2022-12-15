@@ -6,6 +6,19 @@ import matplotlib
 from matplotlib import pyplot as plt
 import numpy
 
+def get_localization_data(path, conditions)
+    subject_dir_list = list(path.iterdir())
+    hrtf_dict = {}
+    for condition in conditions:
+        hrtf_dict[condition] = {}
+        for subj_idx, subject_path in enumerate(subject_dir_list):
+            subject_dir = subject_path / condition
+            # iterate over localization accuracy files
+            for file_name in sorted(list(subject_dir.iterdir())):
+                if file_name.is_file() and file_name.suffix == '.sofa':
+                    hrtf_dict[condition][subject_path.name] = slab.HRTF(file_name)
+    return hrtf_dict
+
 def localization_accuracy(sequence, show=True, plot_dim=1, binned=True, axis=None):
     # calculate elevation gain
     loc_data = numpy.asarray(sequence.data)

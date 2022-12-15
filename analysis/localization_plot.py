@@ -2,8 +2,6 @@ from analysis.localization_analysis import localization_accuracy
 from pathlib import Path
 import matplotlib.pyplot as plt
 import slab
-
-
 """ -------  plot localization accuracy of all participants ------ """
 # get path for each subject data folder
 subject_dir_list = list((Path.cwd() / 'data' / 'experiment' / 'bracket_1').iterdir())

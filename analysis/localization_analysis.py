@@ -9,17 +9,21 @@ import numpy
 def get_localization_data(path, conditions):
     subject_dir_list = list(path.iterdir())
     loc_dict = {}
+    loc_dict['files'] = {}
     for condition in conditions:
         loc_dict[condition] = {}
+        loc_dict['files'][condition] = {}
         for subj_idx, subject_path in enumerate(subject_dir_list):
             subject_dir = subject_path / condition
             loc_dict[condition][subject_path.name] = []
+            loc_dict['files'][condition][subject_path.name] = []
             # iterate over localization accuracy files
             for file_name in sorted(list(subject_dir.iterdir())):
                 if file_name.is_file() and file_name.suffix != '.sofa':
                     sequence = slab.Trialsequence(conditions=45, n_reps=3)
                     sequence.load_pickle(file_name=file_name)
                     loc_dict[condition][subject_path.name].append(sequence)
+                    loc_dict['files'][condition][subject_path.name].append(file_name.name)
     return loc_dict
 
 def localization_accuracy(sequence, show=True, plot_dim=1, binned=True, axis=None):
@@ -68,14 +72,14 @@ def localization_accuracy(sequence, show=True, plot_dim=1, binned=True, axis=Non
 
     elevation_gain, n = scipy.stats.linregress(target_elevations, perceived_elevations)[:2]
     rmse = numpy.sqrt(numpy.mean(numpy.square(target_elevations - perceived_elevations)))
-    dev = numpy.abs(target_elevations - perceived_elevations) - \
-          numpy.mean(numpy.abs(target_elevations - perceived_elevations))
-    sd = numpy.sqrt(numpy.mean(numpy.square(dev)))
+    sd = numpy.mean([numpy.std(perceived_elevations[numpy.where(target_elevations == target)])
+                for target in elevations])
 
-    # sd = numpy.sqrt(numpy.mean(numpy.abs(numpy.subtract(target_elevations, perceived_elevations))))
-    # sd = numpy.std(numpy.abs(numpy.subtract(target_elevations, perceived_elevations)))
-    # sd = numpy.mean([numpy.std(perceived_elevations[numpy.where(target_elevations == target)])
-    #             for target in numpy.unique(target_elevations)])
+    # dev = numpy.abs(target_elevations - perceived_elevations) - \
+    #       numpy.mean(numpy.abs(target_elevations - perceived_elevations))
+    # sd = numpy.sqrt(numpy.mean(numpy.square(dev)))
+    # # sd = numpy.sqrt(numpy.mean(numpy.abs(numpy.subtract(target_elevations, perceived_elevations))))
+    # # sd = numpy.std(numpy.abs(numpy.subtract(target_elevations, perceived_elevations)))
 
     if show:
         if not axis:
@@ -158,20 +162,18 @@ def trial_to_trial_performance(subject_id, show=True):
 
 
 """
-subject_id = 'nn'
+subject_id = 'ma'
 condition = 'earmolds_1'
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_1' / subject_id / condition
 import datetime
 date = datetime.datetime.now()
-
-# file_name = 'localization_' + subject_id + '_' + condition + '_10.12_1 '#date.strftime('_%d.%m') + '_1_2'
-file_name = 'localization_nn_earmolds_1_14.12_2'
+file_name = 'localization_' + subject_id + '_earmolds_1_15.12_2'
 sequence = slab.Trialsequence(conditions=45, n_reps=1)
 sequence.load_pickle(file_name=data_dir / file_name)
-
 # plot
-# elevation_gain, rmse, sd = localization_accuracy(sequence, show=True, plot_dim=1)
 elevation_gain, rmse, sd = localization_accuracy(sequence, show=True, plot_dim=2, binned=True)
+
+# elevation_gain, rmse, sd = localization_accuracy(sequence, show=True, plot_dim=1)
 print(file_name)
 print('gain: %.2f\nrmse: %.2f\nsd: %.2f' % (elevation_gain, rmse, sd))
 # plt.title(file_name)

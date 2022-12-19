@@ -37,14 +37,26 @@ def localization_test(subject_id, data_dir, condition, repetitions):
     # read list of speaker locations
     table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')
     speakers = numpy.loadtxt(table_file, skiprows=1, usecols=(0, 3, 4), delimiter=",", dtype=float)
-    sequence = numpy.random.permutation(numpy.tile(list(range(len(speakers))), repetitions))
-    az_dist, ele_dist = numpy.diff(speakers[sequence, 1]), numpy.diff(speakers[sequence, 2])
-    while any([az_dist[i] == 0 and ele_dist[i] == 0 for i in range(len(az_dist))]):
-    # while any([numpy.abs(ele_dist[i]) <= 25 for i in range(len(ele_dist))]):
-        sequence = numpy.random.permutation(numpy.tile(list(range(len(speakers))), repetitions))
-        az_dist, ele_dist = numpy.diff(speakers[sequence, 1]), numpy.diff(speakers[sequence, 2])
-    sequence = numpy.delete(sequence, [numpy.where(sequence == 19), numpy.where(sequence == 27)])
-    # generate trial sequence with target speaker locations
+    speakers = numpy.delete(speakers, [19, 23, 27], axis=0)  # remove speaker from speaker_list
+    sequence = numpy.zeros(repetitions * len(speakers)).astype('int')
+    # create n_repetitions sequences with more than 35° angular distance between successive targets
+    print('Setting target sequence...')
+    while True:
+        for s in range(repetitions):
+            seq = numpy.random.permutation(list(range(len(speakers))))
+            diff = numpy.diff(speakers[seq, 1:], axis=0)
+            euclidean_dist = numpy.sqrt(diff[:, 0] ** 2 + diff[:, 1] ** 2)
+            while any(euclidean_dist < 35):  # or any(diff[:, 1] == 0):  # avoid similar targets in successive trials
+                seq = numpy.random.permutation(list(range(len(speakers))))
+                diff = numpy.diff(speakers[seq, 1:], axis=0)
+                euclidean_dist = numpy.sqrt(diff[:, 0] ** 2 + diff[:, 1] ** 2)
+            sequence[s*len(seq):s*len(seq)+len(seq)] = seq
+            dist = numpy.zeros(repetitions * len(speakers) - 1)
+        for i in range(len(sequence)-1):  #
+            [diff] = numpy.diff((speakers[int(sequence[i]), 1:], speakers[int(sequence[i+1]), 1:]), axis=0)
+            dist[i] = numpy.sqrt(diff[0] ** 2 + diff[1] ** 2)
+        if all(dist >= 35):
+            break
     trial_sequence = slab.Trialsequence(trials=range(len(sequence)))
     # loop over trials
     data_dir.mkdir(parents=True, exist_ok=True)  # create subject data directory if it doesnt exist
@@ -69,10 +81,6 @@ def localization_test(subject_id, data_dir, condition, repetitions):
 def play_trial(speaker_id, progress):
     time.sleep(.5)
     offset = motion_sensor.calibrate_pose(sensor)
-        # if any(offset > 140 * numpy.tan(numpy.deg2rad(1.5))):
-        #     freefield.play_warning_sound(0.25, 23)
-        # else:  # check if head position is within tolerance margin of 1.5 cm
-        #     break  # todo test this - doesnt work with drifting sensor..
     target = speakers[speaker_id, 1:]
     print('%i%%: TARGET| azimuth: %.1f, elevation %.1f' % (progress, target[0], target[1]))
     time.sleep(.5)

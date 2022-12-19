@@ -43,30 +43,28 @@ def hrtf_training(max_pulse_interval=500, target_size=3, target_time=0.5, trial_
     buzzer = slab.Sound(data_dir / 'sounds' / 'buzzer.wav')
     buzzer.level = 75
     # set variables to control pulse train and goal condition
-    table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')
-    speakers = numpy.loadtxt(table_file, skiprows=1, usecols=(0, 3, 4), delimiter=",", dtype=float)
     pulse_attr = {'max_distance': la.norm(numpy.min(speakers[:, 1:], axis=0) - [0, 0]),
                   'max_pulse_interval': max_pulse_interval}
     goal_attr = {'target_size': target_size, 'target_time': target_time,
                  'game_time': game_time, 'trial_time': trial_time}
-
-    # create sequence of speakers to play from, without direct repetition of azimuth or elevation
-    print('Setting target sequence...')
-    sequence = numpy.random.permutation(numpy.tile(list(range(len(speakers))), 1))
-    az_dist, ele_dist = numpy.diff(speakers[sequence, 1]), numpy.diff(speakers[sequence, 2])
-    while any([az_dist[i] == 0 and ele_dist[i] == 0 for i in range(len(az_dist))]):
-        sequence = numpy.random.permutation(numpy.tile(list(range(len(speakers))), 1))
-        az_dist, ele_dist = numpy.diff(speakers[sequence, 1]), numpy.diff(speakers[sequence, 2])
-    sequence = numpy.delete(sequence, [numpy.where(sequence == 19),
-               numpy.where(sequence == 23), numpy.where(sequence == 27)], 0)  # remove redundant speakers
-    print('Starting...')
-    end, score, prep_time = False, 0, 0  # set end condition for training sequence
-    game_start = time.time()  # start counting time
-    for speaker_id in sequence:  # loop over trials
-        if not end:
-            play_trial(speaker_id)  # play trial
-        else:  # end training sequence
-            break
+    table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')
+    speakers = numpy.loadtxt(table_file, skiprows=1, usecols=(0, 3, 4), delimiter=",", dtype=float)
+    speaker = speakers[int(numpy.random.choice(speakers[:, 0]))]
+    speakers = numpy.delete(speakers, [int(speaker[0]), 19, 23, 27], axis=0)  # remove speaker from speaker_list
+    while True:  # loop over trials
+        end, score, prep_time = False, 0, 0  # reset trial parameters
+        print('Starting...')
+        game_start = time.time()  # start counting time
+        play_trial(speaker[0])  # play trial
+        next_speaker = speakers[int(numpy.random.choice(speakers[:, 0]))]  # pick next target 45° away from previous
+        diff = numpy.diff((speaker[1:], next_speaker[1:]), axis=0)
+        euclidean_dist = numpy.sqrt(diff[:, 0] ** 2 + diff[:, 1] ** 2)
+        while euclidean_dist < 45:
+            next_speaker = speakers[int(numpy.random.choice(speakers[:, 0]))]
+            diff = numpy.diff((speaker[1:], next_speaker[1:]), axis=0)
+            euclidean_dist = numpy.sqrt(diff[:, 0] ** 2 + diff[:, 1] ** 2)
+        speakers = numpy.delete(speakers, [int(next_speaker[0]), 19, 23, 27], axis=0)
+        speaker = next_speaker
     return
 
 def play_trial(speaker_id):
@@ -154,8 +152,7 @@ def get_pose():
     return pose
 
 if __name__ == "__main__":
-    repeat = True
-    while repeat:
+    while True:
         hrtf_training()
-        print('Press button to play again.')
-        freefield.wait_for_button()  # start calibration after button press
+        print('Press button to continue.')
+        freefield.wait_for_button()

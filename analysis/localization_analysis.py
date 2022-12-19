@@ -158,18 +158,20 @@ def trial_to_trial_performance(subject_id, show=True):
 
 
 """
-subject_id = 'ma'
+subject_id = 'nn'
 condition = 'earmolds_1'
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_1' / subject_id / condition
 import datetime
 date = datetime.datetime.now()
-file_name = 'localization_' + subject_id + '_earmolds_1_15.12_2'
+
+# file_name = 'localization_' + subject_id + '_' + condition + '_10.12_1 '#date.strftime('_%d.%m') + '_1_2'
+file_name = 'localization_nn_earmolds_1_14.12_2'
 sequence = slab.Trialsequence(conditions=45, n_reps=1)
 sequence.load_pickle(file_name=data_dir / file_name)
-# plot
-elevation_gain, rmse, sd = localization_accuracy(sequence, show=True, plot_dim=2, binned=True)
 
+# plot
 # elevation_gain, rmse, sd = localization_accuracy(sequence, show=True, plot_dim=1)
+elevation_gain, rmse, sd = localization_accuracy(sequence, show=True, plot_dim=2, binned=True)
 print(file_name)
 print('gain: %.2f\nrmse: %.2f\nsd: %.2f' % (elevation_gain, rmse, sd))
 # plt.title(file_name)

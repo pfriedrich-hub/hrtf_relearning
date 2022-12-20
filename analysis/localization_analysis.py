@@ -6,7 +6,7 @@ import matplotlib
 from matplotlib import pyplot as plt
 import numpy
 
-def get_localization_data(path, conditions):
+def get_localization_data(path, conditions)
     subject_dir_list = list(path.iterdir())
     loc_dict = {}
     loc_dict['files'] = {}

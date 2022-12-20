@@ -133,6 +133,13 @@ def vsi_across_bands(hrtf, cone=0, n_bins=300, show=True, axis=None):
         axis.set_ylabel('VSI')
     return vsi
 
+def smoothe_hrtf(hrtf):
+    filt = slab.Filter.band(kind='lp', frequency=200, length=hrtf[0].n_samples, fir=True)
+    for tf in hrtf:
+        data = slab.Sound(tf.data, samplerate=hrtf.samplerate)
+        data = filt.apply(data)
+
+
 def hrtf_correlation(hrtf_1, hrtf_2, show=False, bandwidth=(4000, 16000), n_bins=300, axis=None, cbar=True):
     # get sources and dtfs
     sources = hrtf_1.cone_sources(0)

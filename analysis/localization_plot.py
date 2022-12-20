@@ -28,9 +28,6 @@ axis[0, 0].set_xticks(axis[0, 0].get_xticks().astype('int'))
 for sub_idx, i in enumerate(range(2, 10, 2)):
     fig.text(i/10, 0.95, subjects[sub_idx])
 
-
-
-
 """ -------  plot localization free, 1st vs last day of molds --------- """
 exclude = []
 w2_exclude = []

@@ -52,7 +52,7 @@ N = tt_solve_power(power=0,effect_size=0,alpha=0)
 # bads_idx = numpy.where(ele_y == None)
 # ele_y = numpy.array(numpy.delete(ele_y, bads_idx), dtype='float')
 # ele_x = numpy.array(numpy.delete(ele_x, bads_idx), dtype='float')
-"""
+
 
 
 

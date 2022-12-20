@@ -3,16 +3,16 @@ import analysis.hrtf_analysis as hrtf_analysis
 
 
 """ Plot Images, Differences, Correlation of HRTFs """
-
+exclude = []
+n_bins = 150
+bandwidth = (4000, 16000)
 path = Path.cwd() / 'data' / 'experiment' / 'bracket_1'
 subject_list = [subj.name for subj in list(path.iterdir())]
 conditions = ['ears_free', 'earmolds', 'earmolds_1']
-n_bins = 150
-bandwidth = (4000, 16000)
-# load hrtfs
+
+# read sofa files
 hrtf_dict = hrtf_analysis.get_hrtfs(path, conditions)
 # baseline HRTFs and return average for each condition
-exclude = []
 for condition in conditions:
     for subj in subject_list:
         # get HRTFs from one condition

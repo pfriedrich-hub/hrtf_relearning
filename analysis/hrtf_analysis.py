@@ -138,10 +138,10 @@ def hrtf_correlation(hrtf_1, hrtf_2, show=False, bandwidth=(4000, 16000), n_bins
     sources = hrtf_1.cone_sources(0)
     dtf_1 = hrtf_1.tfs_from_sources(sources, n_bins)
     dtf_2 = hrtf_2.tfs_from_sources(sources, n_bins)
-    if bandwidth:  # cap dtf to bandwidth
-        frequencies = numpy.linspace(0, hrtf_1[0].frequencies[-1], n_bins)
-        dtf_1 = dtf_1[numpy.logical_and(frequencies >= bandwidth[0], frequencies <= bandwidth[1])]
-        dtf_2 = dtf_2[numpy.logical_and(frequencies >= bandwidth[0], frequencies <= bandwidth[1])]
+    # cap frequencies by bandwidth
+    frequencies = numpy.linspace(0, hrtf_1[0].frequencies[-1], n_bins)
+    dtf_1 = dtf_1[numpy.logical_and(frequencies >= bandwidth[0], frequencies <= bandwidth[1])]
+    dtf_2 = dtf_2[numpy.logical_and(frequencies >= bandwidth[0], frequencies <= bandwidth[1])]
     # calculate correlation coefficients
     n_sources = len(sources)
     corr_mtx = numpy.zeros((n_sources, n_sources))

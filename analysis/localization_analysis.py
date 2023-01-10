@@ -27,15 +27,25 @@ def get_localization_data(path, conditions):
     return loc_dict
 
 def localization_accuracy(sequence, show=True, plot_dim=1, binned=True, axis=None):
-    # calculate elevation gain
+    # retrieve data
     loc_data = numpy.asarray(sequence.data)
     loc_data = loc_data.reshape(loc_data.shape[0], 2, 2)
+    targets = loc_data[:, 1]  # [az, ele]
+    responses = loc_data[:, 0]
     elevations = numpy.unique(loc_data[:, 1, 1])
     azimuths = numpy.unique(loc_data[:, 1, 0])
-    target_elevations = loc_data[:, 1, 1]  # target elevations
-    perceived_elevations = loc_data[:, 0, 1]  # percieved elevations
-    target_azimuths = loc_data[:, 1, 0]
-    perceived_azimuths = loc_data[:, 0, 0]
+    targets[:, 1] = loc_data[:, 1, 1]  # target elevations
+    responses[:, 1] = loc_data[:, 0, 1]  # percieved elevations
+    targets[:, 0] = loc_data[:, 1, 0]
+    responses[:, 0] = loc_data[:, 0, 0]
+    #  elevation gain, rmse, response variability
+    elevation_gain, n = scipy.stats.linregress(targets[:, 1], responses[:, 1])[:2]
+    rmse = numpy.sqrt(numpy.mean(numpy.square(targets - responses), axis=0))
+    variability = numpy.mean([numpy.std(responses[numpy.where(numpy.all(targets == target, axis=1))], axis=0)
+                    for target in numpy.unique(targets, axis=0)], axis=0)
+
+    az_rmse, ele_rmse = rmse[0], rmse[1]
+    az_var, ele_var = variability[0], variability[1]
 
     # target ids
     right_ids = numpy.where(loc_data[:, 1, 0] > 0)
@@ -47,8 +57,8 @@ def localization_accuracy(sequence, show=True, plot_dim=1, binned=True, axis=Non
     # mean perceived location for each target speaker
     i = 0
     mean_loc = numpy.zeros((45, 2, 2))
-    for az_id, azimuth in enumerate(numpy.unique(target_azimuths)):
-        for ele_id, elevation in enumerate(numpy.unique(target_elevations)):
+    for az_id, azimuth in enumerate(numpy.unique(targets[:, 0])):
+        for ele_id, elevation in enumerate(numpy.unique(targets[:, 1])):
             [perceived_targets] = loc_data[numpy.where(numpy.logical_and(loc_data[:, 1, 1] == elevation,
                           loc_data[:, 1, 0] == azimuth)), 0]
             if perceived_targets.size != 0:
@@ -70,28 +80,17 @@ def localization_accuracy(sequence, show=True, plot_dim=1, binned=True, axis=Non
             mean_tar_bin[:, [0, 1]] = mean_tar_bin[:, [1, 0]]
             mean_loc_binned = numpy.concatenate((mean_loc_binned, [mean_tar_bin]))
 
-    elevation_gain, n = scipy.stats.linregress(target_elevations, perceived_elevations)[:2]
-    rmse = numpy.sqrt(numpy.mean(numpy.square(target_elevations - perceived_elevations)))
-    sd = numpy.mean([numpy.std(perceived_elevations[numpy.where(target_elevations == target)])
-                for target in elevations])
-
-    # dev = numpy.abs(target_elevations - perceived_elevations) - \
-    #       numpy.mean(numpy.abs(target_elevations - perceived_elevations))
-    # sd = numpy.sqrt(numpy.mean(numpy.square(dev)))
-    # # sd = numpy.sqrt(numpy.mean(numpy.abs(numpy.subtract(target_elevations, perceived_elevations))))
-    # # sd = numpy.std(numpy.abs(numpy.subtract(target_elevations, perceived_elevations)))
-
     if show:
         if not axis:
             fig, axis = plt.subplots(1, 1)
-        elevation_ticks = numpy.unique(target_elevations)
-        azimuth_ticks = numpy.unique(target_azimuths)
+        elevation_ticks = numpy.unique(targets[:, 1])
+        azimuth_ticks = numpy.unique(targets[:, 0])
         # axis.set_yticks(elevation_ticks)
         # axis.set_ylim(numpy.min(elevation_ticks)-15, numpy.max(elevation_ticks)+15)
         if plot_dim == 2:
             # axis.set_xticks(azimuth_ticks)
             # axis.set_xlim(numpy.min(azimuth_ticks)-15, numpy.max(azimuth_ticks)+15)
-            axis.scatter(perceived_azimuths, perceived_elevations, s=8, edgecolor='grey', facecolor='none')
+            axis.scatter(responses[:, 0], responses[:, 1], s=8, edgecolor='grey', facecolor='none')
             if binned:
                 azimuths = numpy.unique(mean_loc_binned[:, 0, 0])
                 elevations = numpy.unique(mean_loc_binned[:, 1, 0])
@@ -123,9 +122,9 @@ def localization_accuracy(sequence, show=True, plot_dim=1, binned=True, axis=Non
             axis.grid(visible=True, which='major', axis='both', linestyle='dashed', linewidth=0.5, color='grey')
             axis.set_axisbelow(True)
             # scatter plot with regression line (elevation gain)
-            axis.scatter(target_elevations[left_ids], perceived_elevations[left_ids], s=10, c='red', label='left')
-            axis.scatter(target_elevations[right_ids], perceived_elevations[right_ids], s=10, c='blue', label='right')
-            axis.scatter(target_elevations[mid_ids], perceived_elevations[mid_ids], s=10, c='black', label='middle')
+            axis.scatter(targets[:, 1][left_ids], responses[:, 1][left_ids], s=10, c='red', label='left')
+            axis.scatter(targets[:, 1][right_ids], responses[:, 1][right_ids], s=10, c='blue', label='right')
+            axis.scatter(targets[:, 1][mid_ids], responses[:, 1][mid_ids], s=10, c='black', label='middle')
             x = numpy.arange(-55, 56)
             y = elevation_gain * x + n
             axis.plot(x, y, c='grey', linewidth=1, label='elevation gain %.2f' % elevation_gain)
@@ -136,20 +135,21 @@ def localization_accuracy(sequence, show=True, plot_dim=1, binned=True, axis=Non
         axis.set_xlim(numpy.min(azimuth_ticks) - 15, numpy.max(azimuth_ticks) + 15)
         axis.set_title('elevation gain: %.2f' % elevation_gain)
         plt.show()
-    return elevation_gain, rmse, sd
+    #  return EG, RMSE and Response Variability
+    return elevation_gain, ele_rmse, ele_var, az_rmse, az_var
 
 def trial_to_trial_performance(subject_id, show=True):
     sequence = slab.Trialsequence(conditions=47, n_reps=1)
     sequence.load_pickle(file_name=data_dir / subject_id)
     loc_data = numpy.asarray(sequence.data)
     loc_data = loc_data.reshape(loc_data.shape[0], 2, 2)
-    target_elevations = loc_data[:, 1, 1]  # target elevations
-    perceived_elevations = loc_data[:, 0, 1]  # percieved elevations
+    targets[:, 1] = loc_data[:, 1, 1]  # target elevations
+    responses[:, 1] = loc_data[:, 0, 1]  # percieved elevations
     # target ids
     right_ids = numpy.where(loc_data[:, 1, 0] > 0)
     left_ids = numpy.where(loc_data[:, 1, 0] < 0)
     mid_ids = numpy.where(loc_data[:, 1, 0] == 0)
-    trial_error = numpy.abs(numpy.subtract(target_elevations, perceived_elevations))
+    trial_error = numpy.abs(numpy.subtract(targets[:, 1], responses[:, 1]))
     if show:
         x = numpy.arange(len(trial_error))
         m, n = scipy.stats.linregress(x, trial_error)[:2]
@@ -162,14 +162,13 @@ def trial_to_trial_performance(subject_id, show=True):
 
 
 """
-subject_id = 'ma'
-condition = 'earmolds_1'
+subject_id = 'lw'
+condition = 'Earmolds Week 2'
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_1' / subject_id / condition
-import datetime
-date = datetime.datetime.now()
-file_name = 'localization_' + subject_id + '_earmolds_1_15.12_2'
+file_name = 'localization_lw_earmolds_1_14.12_1'
 sequence = slab.Trialsequence(conditions=45, n_reps=1)
 sequence.load_pickle(file_name=data_dir / file_name)
+
 # plot
 elevation_gain, rmse, sd = localization_accuracy(sequence, show=True, plot_dim=2, binned=True)
 

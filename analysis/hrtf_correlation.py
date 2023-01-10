@@ -31,27 +31,9 @@ for condition in conditions:
 
 lst = [subj for subj in subject_list if subj not in exclude]
 
-"""plot subject hrtfs / diff / corr"""
-# for s in lst:
-#     to_plot = s
-#     plot_dict = {}
-#     for c in conditions:
-#         plot_dict[c] = hrtf_dict[c][to_plot]
-#     hrtf_analysis.hrtf_images(plot_dict, n_bins, bandwidth=(4000, 16000), title=('participant id: %s' % s))
-
-"""    plot group averages    """
 to_plot = 'average'  # 'average' or subject id
 plot_dict = {}
 for c in conditions:
     plot_dict[c] = hrtf_dict[c][to_plot]
-hrtf_analysis.hrtf_images(plot_dict, n_bins, bandwidth=(4000, 16000), show_tf=True)
+hrtf_analysis.hrtf_images(plot_dict, n_bins, bandwidth=(4000, 16000), show_tf=False, show_corr=True)
 
-# hrtf_analysis.mean_vsi_across_bands(hrtf_dict, show=True)
-
-
-
-
-
-# fig = plt.figure()
-# ax = fig.add_subplot(111, projection='3d')
-# hrtf.plot_tf(sources

@@ -7,7 +7,7 @@ import scipy
 
 """ -------  plot group averaged learning curve ------ """
 
-exclude = ['cs']
+exclude = ['cs', 'lw']
 w2_exclude = []
 bracket = 'bracket_1'
 conditions = ['Ears Free', 'Earmolds Week 1', 'Earmolds Week 2']
@@ -25,7 +25,7 @@ for condition in conditions:
             loc_dict[condition]['data'][s, idx] = localization.localization_accuracy(sequence, show=False)
             if s+1 == len(subjects):
                 loc_dict[condition]['SE'][idx] = scipy.stats.sem(loc_dict[condition]['data'][:, idx], axis=0)
-            # standard mean error (sd / sqrt(n)): (sd = sqrt(var), var = mean squared distance from sample mean)
+
 
 ex_idx = [subjects.index(ex) for ex in w2_exclude]  # remove w2 excludes
 loc_dict['Earmolds Week 2']['data'] = numpy.delete(loc_dict['Earmolds Week 2']['data'], ex_idx, axis=0)
@@ -42,39 +42,36 @@ labels = ['RMSE', 'SD']
 colors = ['k', '0.6']
 color = colors[0]
 label = None
-fig, axes = plt.subplots(2, 1, figsize=(14, 8))
-for i, ax_id in enumerate([0, 1, 1]):
-    if i >= 1:
-        label = labels[i-1]
-        color = colors[i-1]
+fig, axes = plt.subplots(1, 1, figsize=(14, 4))
+# for i, ax_id in enumerate([0, 1, 1]):
+for i in [3, 4]:
+    label = labels[i-3]
+    color = colors[i-3]
     # EG # week 1
-    axes[ax_id].plot([1, 1], [ef[0, i], m1[0, i]], c=color, ls=(0, (5, 10)), lw=0.8)  # day one mold insertion
-    axes[ax_id].plot(days[:6], m1[:6, i], c=color, linewidth=1.5, label=label)  # week 1 learning curve
-    axes[ax_id].plot([6, 6], [m1[5, i], ef[1, i]], c=color, ls=(0, (5, 10)), lw=0.8)  # week 1 mold removal
+    axes.plot([1, 1], [ef[0, i], m1[0, i]], c=color, ls=(0, (5, 10)), lw=0.8)  # day one mold insertion
+    axes.plot(days[:6], m1[:6, i], c=color, linewidth=1.5, label=label)  # week 1 learning curve
+    axes.plot([6, 6], [m1[5, i], ef[1, i]], c=color, ls=(0, (5, 10)), lw=0.8)  # week 1 mold removal
     # week 2
-    axes[ax_id].plot([6, 6], [ef[1, i], m2[0, i]], c=color, ls=(0, (5, 10)), lw=0.8)  # week 2 mold insertion
-    axes[ax_id].plot(days[5:11], m2[:6, i], c=color, linewidth=1.5)  # week 2 learning curve
-    axes[ax_id].plot([11, 11], [m2[5, i], ef[2, i]], c=color, ls=(0, (5, 10)), lw=0.8)  # week 2 mold removal
+    axes.plot([6, 6], [ef[1, i], m2[0, i]], c=color, ls=(0, (5, 10)), lw=0.8)  # week 2 mold insertion
+    axes.plot(days[5:11], m2[:6, i], c=color, linewidth=1.5)  # week 2 learning curve
+    axes.plot([11, 11], [m2[5, i], ef[2, i]], c=color, ls=(0, (5, 10)), lw=0.8)  # week 2 mold removal
     # mold 1 adaptation persistence
-    axes[ax_id].plot([6, 11], m1[-2:, i], c=color, ls=(0, (5, 10)), lw=0.8)
+    axes.plot([6, 11], m1[-2:, i], c=color, ls=(0, (5, 10)), lw=0.8)
     # mold 2 adaptation persistence
-    axes[ax_id].plot(days[-2:], m2[-2:, i], c=color, ls=(0, (5, 10)), lw=0.8)
+    axes.plot(days[-2:], m2[-2:, i], c=color, ls=(0, (5, 10)), lw=0.8)
     # error bars
-    axes[ax_id].errorbar([1, 6, 11], ef[:3, i], capsize=3, yerr=loc_dict['Ears Free']['SE'][:3, i],
+    axes.errorbar([1, 6, 11], ef[:3, i], capsize=3, yerr=loc_dict['Ears Free']['SE'][:3, i],
                    fmt="o", c=color, elinewidth=0.8, markersize=5, fillstyle='none')  # error bar ears free
-    axes[ax_id].errorbar(numpy.append(days[:6], 11), m1[:7, i], capsize=3, yerr=loc_dict['Earmolds Week 1']['SE'][:7, i],  # error bar mold 2
+    axes.errorbar(numpy.append(days[:6], 11), m1[:7, i], capsize=3, yerr=loc_dict['Earmolds Week 1']['SE'][:7, i],  # error bar mold 2
                    fmt="o", c=color, elinewidth=0.8, markersize=5)
-    axes[ax_id].errorbar(days[5:], m2[:7, i], capsize=3, yerr=loc_dict['Earmolds Week 2']['SE'][:7, i],  # error bar mold 2
+    axes.errorbar(days[5:], m2[:7, i], capsize=3, yerr=loc_dict['Earmolds Week 2']['SE'][:7, i],  # error bar mold 2
                    fmt="o", c=color, elinewidth=0.8, markersize=5)
-    axes[ax_id].errorbar(days[5:-1], m2[:6, i], capsize=3, yerr=loc_dict['Earmolds Week 2']['SE'][:6, i],  # error bar mold 2
+    axes.errorbar(days[5:-1], m2[:6, i], capsize=3, yerr=loc_dict['Earmolds Week 2']['SE'][:6, i],  # error bar mold 2
                    fmt="o", c=color, elinewidth=0.8, markersize=5)
 
-axes[0].set_yticks(numpy.arange(0, 1.2, 0.2))
-axes[0].set_xticks(days)
-axes[0].set_ylabel('Elevation Gain')
-axes[1].set_xlabel('Days')
-axes[1].set_ylabel('Elevation in degrees')
-axes[1].legend()
+axes.set_xlabel('Days')
+axes.set_ylabel('Azimuth in degrees')
+axes.legend()
 
 fig.text(0.3, 0.8, f'n={len(subjects)}', ha='center', size=10)
 fig.text(0.5, 0.8, f'n={len(subjects) - len(w2_exclude)}', ha='center', size=10)

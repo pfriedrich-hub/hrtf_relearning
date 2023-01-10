@@ -6,39 +6,60 @@ import matplotlib
 from matplotlib import pyplot as plt
 import numpy
 import copy
+import scipy
 
 # todo: fix problem of resolution downscaling with frequency for vsi:
 #  for example kemar vsi with 0.1s looks better than for 0.05 seconds (higher frequencies have to
 #  few samples here to be represented correctly in vsi)
 
-def get_hrtfs(path, conditions):
+def get_hrtfs(path, conditions, processed=False):
     subject_dir_list = list(path.iterdir())
     hrtf_dict = {}
     for condition in conditions:
         hrtf_dict[condition] = {}
         for subj_idx, subject_path in enumerate(subject_dir_list):
-            subject_dir = subject_path / condition
-            # iterate over localization accuracy files
+            if processed:
+                subject_dir = subject_path / condition / 'processed_hrtf'
+            elif not processed:
+                subject_dir = subject_path / condition
             for file_name in sorted(list(subject_dir.iterdir())):
                 if file_name.is_file() and file_name.suffix == '.sofa':
                     hrtf_dict[condition][subject_path.name] = slab.HRTF(file_name)
     return hrtf_dict
 
+def write_hrtfs(hrtf_dict, path):
+    subject_dir_list = list(path.iterdir())
+    for condition in hrtf_dict.keys():
+        for subj_idx, subject_path in enumerate(subject_dir_list):
+            if subject_path.name in hrtf_dict[condition].keys():
+                Path.mkdir(subject_path / condition / 'processed_hrtf', exist_ok=True)
+                hrtf_dict[condition][subject_path.name].write_sofa(subject_path / condition /
+                                                    'processed_hrtf' / str(condition + '_smoothed.sofa'))
+
 def baseline_hrtf(hrtf, bandwidth=(3000, 17000)):
     "Center transfer functions around 0"
     hrtf_out = copy.deepcopy(hrtf)
-    for src_idx, tf in enumerate(hrtf_out):
-        db_data = 20 * numpy.log10(tf.data)
-        # set values outside of freq_range to mean of data in freq range
-        in_range = db_data[numpy.logical_and(tf.frequencies > bandwidth[0],
-                                 tf.frequencies < bandwidth[1])]
-        mean = numpy.mean(in_range, axis=0)
-        db_data[numpy.logical_or(tf.frequencies < bandwidth[0],
-                                 tf.frequencies > bandwidth[1])] = mean
-        # center data around zero
-        db_data -= mean
-        tf_data = 10 ** (db_data/20)
-        hrtf_out[src_idx].data = tf_data
+    sources = hrtf_out.cone_sources(0)
+    frequencies = hrtf[0].frequencies
+    tf_data = hrtf_out.tfs_from_sources(sources, n_bins=len(frequencies), ear='both')
+    in_range = tf_data[:, numpy.logical_and(frequencies > bandwidth[0], frequencies < bandwidth[1])]
+    tf_data -= numpy.mean(numpy.mean(in_range, axis=1), axis=0)
+    tf_data[:, numpy.logical_or(frequencies < bandwidth[0], frequencies > bandwidth[1])] = 0
+    tf_data = 10 ** (tf_data / 20)
+    for idx, source in enumerate(sources):
+        hrtf_out[source].data = tf_data[idx]
+    return hrtf_out
+
+def smoothe_hrtf(hrtf, high_cutoff=1500):
+    hrtf_out = copy.deepcopy(hrtf)
+    filt = slab.Filter.band(kind='lp', frequency=high_cutoff, samplerate=hrtf.samplerate,
+                            length=hrtf[0].n_samples, fir=True)
+    for tf in hrtf_out:
+        tf_data = 20 * numpy.log10(tf.data)
+        to_filter = slab.Sound(tf_data, samplerate=tf.samplerate)
+        filtered = filt.apply(to_filter)
+        tf_data = 10 ** (filtered.data/20)
+        tf.data = tf_data
     return hrtf_out
 
 def average_hrtf(hrtf_list):
@@ -112,12 +133,12 @@ def vsi_across_bands(hrtf, cone=0, n_bins=300, show=True, axis=None):
     vsi = numpy.zeros(len(bandwidths))
     # extract vsi for each band
     for idx, bw in enumerate(bandwidths):
-        dtf_band = dtfs[numpy.logical_and(frequencies >= bw[0], frequencies <= bw[1])]
+        dtf_band = dtfs[:, numpy.logical_and(frequencies >= bw[0], frequencies <= bw[1])]
         sum_corr = 0
         n = 0
         for i in range(len(sources)):
             for j in range(i + 1, len(sources)):
-                sum_corr += numpy.corrcoef(dtf_band[:, i], dtf_band[:, j])[1, 0]
+                sum_corr += numpy.corrcoef(dtf_band[i].flatten(), dtf_band[j].flatten())[1, 0]
                 n += 1
         vsi[idx] = 1 - sum_corr / n
     if show:
@@ -133,12 +154,33 @@ def vsi_across_bands(hrtf, cone=0, n_bins=300, show=True, axis=None):
         axis.set_ylabel('VSI')
     return vsi
 
-def smoothe_hrtf(hrtf):
-    filt = slab.Filter.band(kind='lp', frequency=200, length=hrtf[0].n_samples, fir=True)
-    for tf in hrtf:
-        data = slab.Sound(tf.data, samplerate=hrtf.samplerate)
-        data = filt.apply(data)
-
+def mean_vsi_across_bands(hrtf_dict, show=True):
+    vsi_mtx = numpy.zeros((len(hrtf_dict.keys()), 2, 5))
+    for c_idx, condition in enumerate(hrtf_dict.keys()):
+        vsi_list = []
+        subj_dict = hrtf_dict[condition]
+        for subj in subj_dict.keys():
+            vsi_list.append(vsi_across_bands(hrtf_dict[condition][subj], n_bins=4884, show=False))
+            vsi_mean = numpy.mean(vsi_list, axis=0)
+            vsi_se = scipy.stats.sem(vsi_list, axis=0)
+            vsi_mtx[c_idx] = numpy.array((vsi_mean, vsi_se))
+        if show:
+            bandwidths = numpy.array(((4, 8), (4.8, 9.5), (5.7, 11.3), (6.7, 13.5), (8, 16))) * 1000
+            fig, axis = plt.subplots(1, 3, sharey=True, sharex=True, figsize=(14, 4))
+            fig.subplots_adjust(left=0.05, bottom=None, right=0.95, top=None, wspace=0.1)
+            for i in range(3):
+                ax = axis[i]
+                ax.plot(vsi_mtx[i, 0], c='black', linewidth=0.5)
+                ax.set_xticks([0, 1, 2, 3, 4])
+                ax.errorbar(ax.get_xticks(), vsi_mtx[i, 0], yerr=vsi_mtx[i, 1],
+                            fmt="o", c='black', elinewidth=0.5, markersize=4, capsize=2, fillstyle='none')
+                labels = [item.get_text() for item in ax.get_xticklabels()]
+                for idx, band in enumerate(bandwidths / 1000):
+                    labels[idx] = '%.1f - %.1f' % (band[0], band[1])
+                ax.set_xticklabels(labels)
+                ax.set_xlabel('Frequency bands (kHz)')
+                ax.set_title(list(hrtf_dict.keys())[i])
+            axis[0].set_ylabel('VSI')
 
 def hrtf_correlation(hrtf_1, hrtf_2, show=False, bandwidth=(4000, 16000), n_bins=300, axis=None, cbar=True):
     # get sources and dtfs
@@ -147,14 +189,15 @@ def hrtf_correlation(hrtf_1, hrtf_2, show=False, bandwidth=(4000, 16000), n_bins
     dtf_2 = hrtf_2.tfs_from_sources(sources, n_bins)
     # cap frequencies by bandwidth
     frequencies = numpy.linspace(0, hrtf_1[0].frequencies[-1], n_bins)
-    dtf_1 = dtf_1[numpy.logical_and(frequencies >= bandwidth[0], frequencies <= bandwidth[1])]
-    dtf_2 = dtf_2[numpy.logical_and(frequencies >= bandwidth[0], frequencies <= bandwidth[1])]
+    freq_idx = numpy.logical_and(frequencies >= bandwidth[0], frequencies <= bandwidth[1])
+    dtf_1 = dtf_1[:, freq_idx]
+    dtf_2 = dtf_2[:, freq_idx]
     # calculate correlation coefficients
     n_sources = len(sources)
     corr_mtx = numpy.zeros((n_sources, n_sources))
     for i in range(n_sources):
         for j in range(n_sources):
-            corr_mtx[i, j] = numpy.corrcoef(dtf_1[:, i], dtf_2[:, j])[1, 0]
+            corr_mtx[i, j] = numpy.corrcoef(dtf_1[i].flatten(), dtf_2[j].flatten())[1, 0]
     # plot correlation matrix
     if show:
         if axis is None:
@@ -189,7 +232,7 @@ def hrtf_dissimilarity(hrtf_1, hrtf_2, bandwidth):
     return hrtf_dissimilarity
 
 
-def hrtf_plots(plot_dict, n_bins, bandwidth, title=None):
+def hrtf_images(plot_dict, n_bins, bandwidth, title=None, show_tf=True, show_corr=False):
     # input is a dictionary with keys = condition and value = HRTF, 3 conditions
     dict = copy.deepcopy(plot_dict)
     conditions = list(dict.keys())
@@ -197,7 +240,8 @@ def hrtf_plots(plot_dict, n_bins, bandwidth, title=None):
                        'Difference Ears Free - Mold 2', 'Difference Mold 1 - Mold 2']
     corr_conditions = ['Correlation Ears Free - Mold 1',
                        'Correlation Ears Free - Mold 2', 'Correlation Mold 1 - Mold 2']
-    compare = [['ears_free', 'earmolds'], ['ears_free', 'earmolds_1'], ['earmolds', 'earmolds_1']]
+    compare = [['Ears Free', 'Earmolds Week 1'], ['Ears Free', 'Earmolds Week 2'],
+               ['Earmolds Week 1', 'Earmolds Week 2']]
     src_idx = dict[conditions[0]].cone_sources(0)
     # get difference HRTFs
     dict['difference'], dict['min'], dict['max'] = {}, [], []
@@ -208,55 +252,58 @@ def hrtf_plots(plot_dict, n_bins, bandwidth, title=None):
     frequencies = numpy.linspace(0, frequencies[-1], n_bins)
     freqidx = numpy.logical_and(frequencies > bandwidth[0], frequencies < bandwidth[1])
     for condition in conditions:
-        dict['min'].append(dict[condition].tfs_from_sources(src_idx, n_bins)[freqidx].min())
-        dict['max'].append(dict[condition].tfs_from_sources(src_idx, n_bins)[freqidx].max())
+        dict['min'].append(dict[condition].tfs_from_sources(src_idx, n_bins)[:, freqidx].min())
+        dict['max'].append(dict[condition].tfs_from_sources(src_idx, n_bins)[:, freqidx].max())
     for condition in diff_conditions:
-        dict['min'].append(dict['difference'][condition].tfs_from_sources(src_idx, n_bins)[freqidx].min())
-        dict['max'].append(dict['difference'][condition].tfs_from_sources(src_idx, n_bins)[freqidx].max())
+        dict['min'].append(dict['difference'][condition].tfs_from_sources(src_idx, n_bins)[:, freqidx].min())
+        dict['max'].append(dict['difference'][condition].tfs_from_sources(src_idx, n_bins)[:, freqidx].max())
     z_min = numpy.floor(numpy.min(dict['min'])) - 1
     z_max = numpy.ceil(numpy.max(dict['max']))
     title_list = [['Ears Free', 'Week 1 Molds', 'Week 2 Molds'], diff_conditions, corr_conditions]
 
     # plot
-    fig, axis = plt.subplots(2, 3, sharey=True, figsize=(13, 8))
-    fig.subplots_adjust(left=None, bottom=None, right=None, top=None, wspace=0.05)
-    cbar = False
-    for i in range(3):
-        if i == 2:
-            cbar = True
-        # plot HRTF
-        plot_hrtf_image(dict[conditions[i]], n_bins=n_bins,
-                                      bandwidth=bandwidth, axis=axis[0, i], z_min=z_min, z_max=z_max, cbar=cbar)
-        axis[0, i].set_title(title_list[0][i])
-        # plot HRTF differences
-        plot_hrtf_image(dict['difference'][diff_conditions[i]], n_bins=n_bins,
-                                      bandwidth=bandwidth, axis=axis[1, i], z_min=z_min, z_max=z_max, cbar=cbar)
-        axis[1, i].set_title(title_list[1][i])
-    fig.text(0.5, 0.04, 'Frequency (kHz)', ha='center', size=13)
-    fig.text(0.07, 0.5, 'Elevation (degrees)', va='center', rotation='vertical', size=13)
-    if title:
-        fig.suptitle(title)
+    if show_tf:
+        fig, axis = plt.subplots(2, 3, sharey=True, figsize=(13, 8))
+        fig.subplots_adjust(left=None, bottom=None, right=None, top=None, wspace=0.05)
+        cbar = False
+        for i in range(3):
+            if i == 2:
+                cbar = True
+            # plot HRTF
+            plot_hrtf_image(dict[conditions[i]], n_bins=n_bins,
+                                          bandwidth=bandwidth, axis=axis[0, i], z_min=z_min, z_max=z_max, cbar=cbar)
+            axis[0, i].set_title(title_list[0][i])
+            # plot HRTF differences
+            plot_hrtf_image(dict['difference'][diff_conditions[i]], n_bins=n_bins,
+                                          bandwidth=bandwidth, axis=axis[1, i], z_min=z_min, z_max=z_max, cbar=cbar)
+            axis[1, i].set_title(title_list[1][i])
+        fig.text(0.5, 0.04, 'Frequency (kHz)', ha='center', size=13)
+        fig.text(0.07, 0.5, 'Elevation (degrees)', va='center', rotation='vertical', size=13)
+        if title:
+            fig.suptitle(title)
+
     # compute and plot HRTF correlation
-    correlation = []
-    fig, axis = plt.subplots(1, 3, sharey=True, figsize=(12, 4))
-    fig.subplots_adjust(left=None, bottom=None, right=None, top=None, wspace=0.05)
-    cbar = False
-    for i in range(3):
-        if i == 2:
-            cbar = True
-        correlation.append(hrtf_correlation(dict[compare[i][0]], dict[compare[i][1]],show=True, axis=axis[i],
-                                            bandwidth=bandwidth, cbar=cbar, n_bins=n_bins))
-        axis[i].set_title(title_list[2][i])
-    fig.text(0.5, 0.02, 'Elevation (degrees)', ha='center', size=13)
-    fig.text(0.07, 0.5, 'Elevation (degrees)', va='center', rotation='vertical', size=13)
-    if title:
-        fig.suptitle(title)
+    if show_corr:
+        correlation = []
+        fig, axis = plt.subplots(1, 3, sharey=True, figsize=(12, 4))
+        fig.subplots_adjust(left=None, bottom=None, right=None, top=None, wspace=0.05)
+        cbar = False
+        for i in range(3):
+            if i == 2:
+                cbar = True
+            correlation.append(hrtf_correlation(dict[compare[i][0]], dict[compare[i][1]], show=True, axis=axis[i],
+                                                bandwidth=bandwidth, cbar=cbar, n_bins=n_bins))
+            axis[i].set_title(title_list[2][i])
+        fig.text(0.5, 0.02, 'Elevation (degrees)', ha='center', size=13)
+        fig.text(0.07, 0.5, 'Elevation (degrees)', va='center', rotation='vertical', size=13)
+        if title:
+            fig.suptitle(title)
 
 """   
 subject_id = 'ma'
-condition = 'earmolds_1'
+condition = 'Earmolds Week 2'
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_1' / subject_id / condition
-file_name = 'ma_earmolds_1_10.12.sofa'
+file_name = 'ma_Earmolds Week 2_10.12.sofa'
 hrtf = slab.HRTF(data_dir / file_name)
 bandwidth = (4000, 16000)
 n_bins = 300
@@ -282,5 +329,5 @@ plot_tf(hrtf, sources, plot_bins, kind='waterfall', axis=axis[0], ear=plot_ear, 
 vsi_across_bands(hrtf, sources, n_bins=plot_bins, axis=axis[1], dfe=dfe)
 axis[0].set_title(subject_id + ' ' + condition)
 # hrtf.plot_tf(sources, xlim=(low_freq, high_freq), ear=plot_ear)
-# hrtf.plot_tf(sources, xlim=(4000, 16000), ear=plot_ear)
-"""
+# hrtf.plot_tf(sources, xlim=(4000, 16000), ear=plot_ear
+ """

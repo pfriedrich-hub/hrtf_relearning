@@ -12,11 +12,11 @@ from matplotlib import pyplot as plt
 slab.set_default_samplerate(fs)
 
 # file settings
-subject_id = 'lw'
-condition = 'earmolds_1'  # can be 'ears_free' or 'earmolds' - important for file naming!
+subject_id = 'kemar'
+condition = 'ears_free'  # can be 'ears_free' or 'earmolds' - important for file naming!
 kemar = False  # requires no button press if true
 safe = 'both'  # decide if additionally save in-ear-recordings
-data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_1' / subject_id / condition
+data_dir = Path.cwd() / 'data' / 'experiment' / 'test' / subject_id / condition
 
 # HRTF recording settings
 speakers = numpy.arange(20, 27).tolist()  #sources to record HRTF from # central cone, with top and bottom speaker removed
@@ -119,8 +119,10 @@ def dome_rec(signal, speaker_ids, sources, repetitions):
         # get avg of n recordings from each sound source location
         recs = []
         for r in range(repetitions):
-            recs.append(freefield.play_and_record(speaker, to_play, equalize=False))
-        rec = slab.Binaural(numpy.mean(numpy.asarray(recs), axis=0))
+            recs.append(freefield.play_and_record(speaker, signal, equalize=False))
+        rec = slab.Binaural(numpy.mean(numpy.asarray(recs), axis=0))  # average
+        rec.data -= numpy.mean(rec.data, axis=0)  # baseline
+
         rec = slab.Binaural.ramp(rec, when='both', duration=ramp_duration)
         azimuth = sources[numpy.where(sources[:, 0] == speaker_id)[0][0]][1]
         elevation = sources[numpy.where(sources[:, 0] == speaker_id)[0][0]][2]

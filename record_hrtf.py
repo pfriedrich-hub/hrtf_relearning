@@ -12,11 +12,11 @@ from matplotlib import pyplot as plt
 slab.set_default_samplerate(fs)
 
 # file settings
-subject_id = 'kemar'
-condition = 'ears_free'  # can be 'ears_free' or 'earmolds' - important for file naming!
+subject_id = 'vk'
+condition = 'Ears Free'  # can be 'ears_free' or 'earmolds' - important for file naming!
 kemar = False  # requires no button press if true
 safe = 'both'  # decide if additionally save in-ear-recordings
-data_dir = Path.cwd() / 'data' / 'experiment' / 'test' / subject_id / condition
+data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_2' / subject_id / condition
 
 # HRTF recording settings
 speakers = numpy.arange(20, 27).tolist()  #sources to record HRTF from # central cone, with top and bottom speaker removed
@@ -150,54 +150,72 @@ def create_src_txt(recordings):
     vertical_polar[:, 2] = numpy.sqrt(xy + cartesian[:, 2] ** 2)
     return vertical_polar.astype('float16')
 
-def record_in_intervals(signal, speaker, repetitions, rec_samplerate):
-    recording_samplerate = fs
-    direct_delay = freefield.get_recording_delay(distance=1.4, sample_rate=recording_samplerate,
-                                            play_from="RX8", rec_from="RP2") + 50
-    reverb_delay = freefield.get_recording_delay(distance=3, sample_rate=recording_samplerate,
-                                            play_from="RX8", rec_from="RP2")
-    n_slice = reverb_delay - direct_delay
-
-    freefield.set_signal_and_speaker(signal, speaker, equalize=True)  # write to RX8 buffers, set output channels
-    freefield.write(tag="n_slice", value=n_slice, processors=["RX81", "RX82"])  # set playbuflen to n_slice datapoints
-    # set slice + delay as recording length
-    freefield.write(tag="n_slice", value=n_slice + direct_delay, processors="RP2")
-    # record until the whole signal (including signal delays) is captured by the recording buffer
-    n_rec = signal.n_samples
-    delay_ids = numpy.empty(0)
-    delay_start = 0
-    recs = []
-    for i in range(repetitions):
-        while not (freefield.read('buf_idx', processor='RP2', n_samples=1) >= n_rec):
-            freefield.play('zBusA')  # iterate over slices
-            freefield.wait_to_finish_playing()
-            n_rec += direct_delay
-            delay_stop = delay_start + direct_delay
-            delay_ids = numpy.concatenate((delay_ids, numpy.arange(delay_start, delay_stop)))
-            delay_start = delay_stop + n_slice
-        freefield.play('zBusB') # reset buffer index
-        rec_l = read(tag='datal', processor='RP2', n_samples=n_rec)
-        rec_r = read(tag='datar', processor='RP2', n_samples=n_rec)
-        # remove direct delays before each slice
-        rec_l = numpy.delete(rec_l, delay_ids)
-        rec_r = numpy.delete(rec_r, delay_ids)
-        recs.append[rec_l, rec_r]
-
-        rec = slab.Binaural(numpy.mean(recs, axis=0), samplerate=recording_samplerate)
-        return rec
+# def record_in_intervals(signal, speaker, repetitions, rec_samplerate):
+#     recording_samplerate = fs
+#     direct_delay = freefield.get_recording_delay(distance=1.4, sample_rate=recording_samplerate,
+#                                             play_from="RX8", rec_from="RP2") + 50
+#     reverb_delay = freefield.get_recording_delay(distance=3, sample_rate=recording_samplerate,
+#                                             play_from="RX8", rec_from="RP2")
+#     n_slice = reverb_delay - direct_delay
+#
+#     freefield.set_signal_and_speaker(signal, speaker, equalize=True)  # write to RX8 buffers, set output channels
+#     freefield.write(tag="n_slice", value=n_slice, processors=["RX81", "RX82"])  # set playbuflen to n_slice datapoints
+#     # set slice + delay as recording length
+#     freefield.write(tag="n_slice", value=n_slice + direct_delay, processors="RP2")
+#     # record until the whole signal (including signal delays) is captured by the recording buffer
+#     n_rec = signal.n_samples
+#     delay_ids = numpy.empty(0)
+#     delay_start = 0
+#     recs = []
+#     for i in range(repetitions):
+#         while not (freefield.read('buf_idx', processor='RP2', n_samples=1) >= n_rec):
+#             freefield.play('zBusA')  # iterate over slices
+#             freefield.wait_to_finish_playing()
+#             n_rec += direct_delay
+#             delay_stop = delay_start + direct_delay
+#             delay_ids = numpy.concatenate((delay_ids, numpy.arange(delay_start, delay_stop)))
+#             delay_start = delay_stop + n_slice
+#         freefield.play('zBusB') # reset buffer index
+#         rec_l = read(tag='datal', processor='RP2', n_samples=n_rec)
+#         rec_r = read(tag='datar', processor='RP2', n_samples=n_rec)
+#         # remove direct delays before each slice
+#         rec_l = numpy.delete(rec_l, delay_ids)
+#         rec_r = numpy.delete(rec_r, delay_ids)
+#         recs.append[rec_l, rec_r]
+#
+#         rec = slab.Binaural(numpy.mean(recs, axis=0), samplerate=recording_samplerate)
+#         return rec
 
 if __name__ == "__main__":
     recordings, sources, hrtf = record_hrtf(subject_id, data_dir, condition, signal, repetitions, n_directions, safe, speakers, kemar)
-    sources = list(range(hrtf.n_sources-1, -1, -1))  # works for 0°/+/-17.5° cone
-    fig, axis = plt.subplots(2, 1)
-    hrtf_analysis.plot_tf(hrtf, sources, plot_bins, kind='waterfall', axis=axis[0], ear=plot_ear, xlim=(4000, 16000), dfe=dfe)
-    hrtf_analysis.vsi_across_bands(hrtf, sources, n_bins=plot_bins, axis=axis[1], dfe=dfe)
-    axis[0].set_title(subject_id)
-    # hrtf.plot_tf(sources, xlim=(low_freq, high_freq), ear=plot_ear)
-    hrtf.plot_tf(sources, xlim=(4000, 16000), ear=plot_ear)
+    # sources = list(range(hrtf.n_sources-1, -1, -1))  # works for 0°/+/-17.5° cone
+    # fig, axis = plt.subplots(2, 1)
+    # hrtf_analysis.plot_hrtf_image(hrtf, sources, plot_bins, kind='waterfall', axis=axis[0], ear=plot_ear, xlim=(4000, 16000), dfe=dfe)
+    # hrtf_analysis.vsi_across_bands(hrtf, sources, n_bins=plot_bins, axis=axis[1], dfe=dfe)
+    # axis[0].set_title(subject_id)
+    # # hrtf.plot_tf(sources, xlim=(low_freq, high_freq), ear=plot_ear)
+    # hrtf.plot_tf(sources, xlim=(4000, 16000), ear=plot_ear)
 
 
 """
+import analysis.hrtf_analysis as hrtf_analysis
+import slab
+from pathlib import Path
+subject_id = 'vk'
+filename = 'vk_Ears Free_12.01.sofa'
+condition = 'Ears Free'
+plot_bins = 2400  # number of bins also used to calculate vsi across bands (use 80 to minimize´frequency-resolution dependend vsi change)
+plot_ear = 'left' 
+hrtf = slab.HRTF(Path.cwd() / 'data' / 'experiment' / 'bracket_2' / subject_id / condition / filename)
+sources = hrtf.cone_sources(0)
+hrtf.plot_tf(sources, n_bins=plot_bins)
+
+
+hrtf_analysis.plot_hrtf_image(hrtf, bandwidth=(4000, 16000), n_bins=300, axis=None, z_min=None, z_max=None, cbar=True)
+
+
+
+
 # example - from terminal/shell:
 python record_hrtf.py --id paul_hrtf
 

@@ -31,7 +31,7 @@ def hrtf_training(max_pulse_interval=500, target_size=3, target_time=0.5, trial_
                      ['RX82', 'RX8', data_dir / 'rcx' / 'play_buf_pulse.rcx'],
                      ['RP2', 'RP2', data_dir / 'rcx' / 'arduino_analog.rcx']]
         freefield.initialize('dome', device=proc_list)
-
+        freefield.load_equalization(data_dir / 'calibration' / 'calibration_dome_12.01')
     # generate sounds
     stim = slab.Sound.pinknoise(duration=10.0)
     freefield.write(tag='playbuflen', value=stim.n_samples, processors=['RX81', 'RX82'])

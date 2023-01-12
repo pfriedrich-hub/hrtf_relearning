@@ -1,7 +1,5 @@
 import freefield
 import slab
-fs = 97656
-slab.Signal.set_default_samplerate(fs)  # default samplerate for generating sounds, filters etc.
 import time
 import numpy
 from pathlib import Path
@@ -19,13 +17,22 @@ difference by inverse filtering. For more details on how the
 inverse filters are computed see the documentation of slab.Filter.equalizing_filterbank
 """
 
-# freefield.initialize('dome', default='play_rec')  # initialize setup
+# initialize setup with standard samplerate (48824)
+fs = 48828
+signal_length = 0.1  # how long should the chirp be?
+freefield.initialize('dome', default='play_rec')
+
+# initialize setup with modified samplerate (97656)
+# fs = 97656
+# signal_length = 0.05  # how long should the chirp be?
+# proc_list = [['RP2', 'RP2', Path.cwd() / 'data' / 'rcx' / 'rec_buf.rcx'],
+#              ['RX81', 'RX8', Path.cwd() / 'data' / 'rcx' / 'play_buf.rcx'],
+#              ['RX82', 'RX8', Path.cwd() / 'data' / 'rcx' / 'play_buf.rcx']]
+# freefield.initialize('dome', device=proc_list)
+# freefield.PROCESSORS.mode = 'play_rec'
+
 freefield.set_logger('warning')
-proc_list = [['RP2', 'RP2', Path.cwd() / 'data' / 'rcx' / 'rec_buf.rcx'],
-             ['RX81', 'RX8', Path.cwd() / 'data' / 'rcx' / 'play_buf.rcx'],
-             ['RX82', 'RX8', Path.cwd() / 'data' / 'rcx' / 'play_buf.rcx']]
-freefield.initialize('dome', device=proc_list)
-freefield.PROCESSORS.mode = 'play_rec'
+slab.Signal.set_default_samplerate(fs)  # default samplerate for generating sounds, filters etc.
 
 # dome parameters
 reference_speaker = 23
@@ -33,13 +40,12 @@ azimuthal_angles = numpy.array([-52.5, -35, -17.5, 0, 17.5, 35, 52.5])
 # speaker_idx = [19,20,21,22,23,24,25,26,27]  # central array
 
 # signal parameters
-low_cutoff = 1000
-high_cutoff = 17000
-signal_length = 0.05  # how long should the chirp be?
-rec_repeat = 50  # how often to repeat measurement for averaging
+low_cutoff = 200
+high_cutoff = 20000
+rec_repeat = 20  # how often to repeat measurement for averaging
 # signal for loudspeaker calibration
 ramp_duration = signal_length/20
-signal = slab.Sound.chirp(duration=signal_length, level=80, from_frequency=low_cutoff, to_frequency=high_cutoff, kind='linear')
+signal = slab.Sound.chirp(duration=signal_length, level=90, from_frequency=low_cutoff, to_frequency=high_cutoff, kind='linear')
 signal = slab.Sound.ramp(signal, when='both', duration=ramp_duration)
 
 # equalization parameters
@@ -58,8 +64,9 @@ for i in range(rec_repeat):
     temp_recs.append(rec.data)
 target = slab.Sound(data=numpy.mean(temp_recs, axis=0))
 
-# use original signal as reference - works better
-# baseline_amp = 60
+# # use original signal as reference - WARNING could result in unrealistic equalization filters,
+#  can be used for HRTF measurement calibration to get really flat chirp spectra
+# baseline_amp = target.level  # at 10 db gain on preamp and signal level 90 dB!
 # target = deepcopy(signal)
 # target.level = baseline_amp
 
@@ -82,14 +89,12 @@ speakers = freefield.pick_speakers(speaker_list[3])
 # place microphone 90° to source column at equal distance (recordings should be done in far field: > 1m)
 
 
-# start calibration
+# ---- START calibration ----#
 # step 1: level equalization
 """
 Record the signal from each speaker in the list and return the level of each
 speaker relative to the target speaker(target speaker must be in the list)
 """
-
-# freefield.load_equalization(file=Path.cwd() / 'data' / 'central_arc_calibration')
 
 recordings = []
 for speaker in speakers:
@@ -108,11 +113,11 @@ recordings.data[:, numpy.logical_and(recordings.level > target.level-level_thres
 equalization_levels = target.level - recordings.level
 
 # set up plot
-fig, ax = plt.subplots(4, 1, sharex=True, sharey=True, figsize=(25, 10))
-ax[3].set_xlim(left=200, right=18000)
-ax[3].set_ylim(20, 70)
-ax[3].set_xlabel('Frequency (Hz)')
-for i in range(4):
+fig, ax = plt.subplots(3, 1, sharex=True, sharey=True, figsize=(25, 10))
+ax[2].set_xlim(left=200, right=18000)
+ax[2].set_ylim(-20, 50)
+ax[2].set_xlabel('Frequency (Hz)')
+for i in range(3):
     ax[i].set_ylabel('Power (dB/Hz)')
 diff = freefield.spectral_range(recordings, plot=ax[0], bandwidth=bandwidth)
 ax[0].set_title('raw')
@@ -163,6 +168,77 @@ recordings = slab.Sound(recordings)
 # plot
 diff = freefield.spectral_range(recordings, plot=ax[2])
 ax[2].set_title('frequency equalized')
+fig.suptitle('Calibration for dome speaker column at %.1f° azimuth. \n Difference in power spectrum' % speakers[0].azimuth, fontsize=16)
+
+# save equalization
+array_equalization = {f"{speakers[i].index}": {"level": equalization_levels[i], "filter": filter_bank.channel(i)}
+                for i in range(len(speakers))}
+equalization.update(array_equalization)
+
+
+# ----------  repeat for next speaker column ----------- #
+
+
+
+# write final equalization to pkl file
+freefield_path = freefield.DIR / 'data'
+project_path = Path.cwd() / 'data' / 'calibration'
+file_name = project_path / f'calibration_dome_12.01'
+with open(file_name, 'wb') as f:  # save the newly recorded calibration
+    pickle.dump(equalization, f, pickle.HIGHEST_PROTOCOL)
+
+
+
+
+# ------------------  test calibration  ---------------------#
+
+import freefield
+import slab
+import numpy
+import time
+from pathlib import Path
+freefield.initialize('dome', default='play_rec')  # initialize setup
+freefield.set_logger('WARNING')
+azimuthal_angles = numpy.array([-52.5, -35, -17.5, 0, 17.5, 35, 52.5])
+table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')
+speaker_table = numpy.loadtxt(table_file, skiprows=1, usecols=(0, 3, 4), delimiter=",", dtype=float)
+speaker_list = []
+for az in azimuthal_angles:
+    speaker_list.append((speaker_table[speaker_table[:, 1] == az][:, 0]).astype('int'))
+speaker_list[3] = numpy.delete(speaker_list[3], [numpy.where(speaker_list[3] == 19), numpy.where(speaker_list[3] == 27)])
+# pick a column to test calibration for
+# signal parameters
+fs = 48828
+low_cutoff = 1000
+high_cutoff = 17000
+signal_length = 0.1  # how long should the chirp be?
+rec_repeat = 5  # how often to repeat measurement for averaging
+# signal for loudspeaker calibration
+ramp_duration = signal_length/20
+signal = slab.Sound.chirp(duration=signal_length, level=80, from_frequency=low_cutoff, to_frequency=high_cutoff,
+                          kind='linear', samplerate=fs)
+signal = slab.Sound.ramp(signal, when='both', duration=ramp_duration)
+
+
+freefield.load_equalization(file=Path.cwd() / 'data' / 'calibration' / 'calibration_dome_12.01')
+freefield.load_equalization(file=Path.cwd() / 'data' / 'calibration' / 'calibration_dome.pkl')
+
+# measure spectral range across speakers of the selected column
+speakers = freefield.pick_speakers(speaker_list[6])
+recordings = []
+for speaker in speakers:
+    temp_recs = []  # <------------- (-.-) 2h bugfix
+    for i in range(rec_repeat):
+        rec = freefield.play_and_record(speaker, signal, equalize=True)
+        # rec = slab.Sound.ramp(rec, when='offset', duration=0.01)
+        temp_recs.append(rec.data)
+    recordings.append(slab.Sound(data=numpy.mean(temp_recs, axis=0)))
+recordings = slab.Sound(recordings)
+# plot
+diff = freefield.spectral_range(recordings)
+
+
+
 
 
 #------ OPTIONAL -----#
@@ -187,52 +263,20 @@ ax[2].set_title('frequency equalized')
 # diff = freefield.spectral_range(recordings, plot=ax[3])
 # ax[3].set_title('final level correction')
 
-az = speakers[0].azimuth
-fig.suptitle('Calibration for dome speaker column at %.1f° azimuth. \n Difference in power spectrum' % az, fontsize=16)
-
-# save equalization
-array_equalization = {f"{speakers[i].index}": {"level": equalization_levels[i], "filter": filter_bank.channel(i)}
-                for i in range(len(speakers))}
-equalization.update(array_equalization)
-
-
-# ----------  repeat for next speaker column ----------- #
-
-# write final equalization to pkl file
-freefield_path = freefield.DIR / 'data'
-project_path = Path.cwd() / 'data'
-file_name = project_path / f'central_arc_calibration_100k'
-with open(file_name, 'wb') as f:  # save the newly recorded calibration
-    pickle.dump(equalization, f, pickle.HIGHEST_PROTOCOL)
-
-
 
 # load existing equalization pkl
-project_path = Path.cwd() / 'data'
-file_name = project_path / f'calibration_dome.pkl'
+project_path = Path.cwd() / 'data' / 'calibration'
+file_name = project_path / f'dome_calibration_10.01.23'
 with open(file_name, "rb") as f:
     equalization = pickle.load(f)
-
 # check spectral difference across dome
 dome_recs = slab.Sound(dome_rec)
 diff = freefield.spectral_range(dome_recs)
 
-# test calibration
-import freefield
-import slab
-import numpy
-import time
-freefield.initialize('dome', default='play_rec')  # initialize setup
-
-sound = slab.Sound.chirp(duration=1.0, from_frequency=20, to_frequency=20000, level=80)
-sound = slab.Sound.pinknoise(duration=0.1, level=80)
-sound = slab.Sound.ramp(sound, when='both', duration=0.01)
-speaker_ids = list(numpy.arange(46))
-
 # - on human listener
 time.sleep(10)
 for speaker_id in speaker_ids:
-    freefield.set_signal_and_speaker(sound, speaker_id, equalize=True)
+    freefield.set_signal_and_speaker(signal, speaker_id, equalize=True)
     freefield.play()
     freefield.wait_to_finish_playing()
 

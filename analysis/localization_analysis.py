@@ -162,10 +162,10 @@ def trial_to_trial_performance(subject_id, show=True):
 
 
 """
-subject_id = 'lw'
-condition = 'Earmolds Week 2'
-data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_1' / subject_id / condition
-file_name = 'localization_lw_earmolds_1_14.12_1'
+subject_id = 'vk'
+condition = 'Ears Free'
+data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_2' / subject_id / condition
+file_name = 'localization_vk_Ears Free_12.01_9'
 sequence = slab.Trialsequence(conditions=45, n_reps=1)
 sequence.load_pickle(file_name=data_dir / file_name)
 

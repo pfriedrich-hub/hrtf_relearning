@@ -13,7 +13,7 @@ slab.set_default_samplerate(fs)
 
 # file settings
 subject_id = 'vk'
-condition = 'Ears Free'  # can be 'ears_free' or 'earmolds' - important for file naming!
+condition = 'Earmolds Week 1'  # can be 'ears_free' or 'earmolds' - important for file naming!
 kemar = False  # requires no button press if true
 safe = 'both'  # decide if additionally save in-ear-recordings
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_2' / subject_id / condition
@@ -188,7 +188,8 @@ def create_src_txt(recordings):
 
 if __name__ == "__main__":
     recordings, sources, hrtf = record_hrtf(subject_id, data_dir, condition, signal, repetitions, n_directions, safe, speakers, kemar)
-    # sources = list(range(hrtf.n_sources-1, -1, -1))  # works for 0°/+/-17.5° cone
+    sources = list(range(hrtf.n_sources-1, -1, -1))  # works for 0°/+/-17.5° cone
+    hrtf.plot_tf(sources, xlim=(4000,16000))
     # fig, axis = plt.subplots(2, 1)
     # hrtf_analysis.plot_hrtf_image(hrtf, sources, plot_bins, kind='waterfall', axis=axis[0], ear=plot_ear, xlim=(4000, 16000), dfe=dfe)
     # hrtf_analysis.vsi_across_bands(hrtf, sources, n_bins=plot_bins, axis=axis[1], dfe=dfe)
@@ -209,8 +210,6 @@ plot_ear = 'left'
 hrtf = slab.HRTF(Path.cwd() / 'data' / 'experiment' / 'bracket_2' / subject_id / condition / filename)
 sources = hrtf.cone_sources(0)
 hrtf.plot_tf(sources, n_bins=plot_bins)
-
-
 hrtf_analysis.plot_hrtf_image(hrtf, bandwidth=(4000, 16000), n_bins=300, axis=None, z_min=None, z_max=None, cbar=True)
 
 

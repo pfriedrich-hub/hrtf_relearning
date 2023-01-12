@@ -6,15 +6,17 @@ from matplotlib import pyplot as plt
 import scipy
 
 """ -------  plot group averaged learning curve ------ """
-
-exclude = ['cs']
-w2_exclude = []
+to_plot = 'nn'
+exclude = []
+w2_exclude = ['cs', 'lw']
 bracket = 'bracket_1'
 conditions = ['Ears Free', 'Earmolds Week 1', 'Earmolds Week 2']
 path = Path.cwd() / 'data' / 'experiment' / 'bracket_1'
 loc_dict = localization.get_localization_data(path, conditions)
 subjects = list(loc_dict['Ears Free'].keys())
 for ex in exclude: subjects.remove(ex)
+if not to_plot == 'average':
+    subjects = [to_plot]
 for condition in conditions:
     # subject x days x eg/ele_rmse/ele_sd/az_rmse/az_sd
     loc_dict[condition]['data'] = numpy.zeros((len(subjects), 7, 5))

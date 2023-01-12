@@ -4,15 +4,12 @@ import matplotlib.pyplot as plt
 import numpy
 
 """ -------  plot localization free, 1st vs last day of molds --------- """
-exclude = []
-w2_exclude = []
 bracket = 'bracket_1'
 
 conditions = ['Ears Free', 'Earmolds Week 1', 'Earmolds Week 2']
 path = Path.cwd() / 'data' / 'experiment' / 'bracket_1'
 loc_dict = localization.get_localization_data(path, conditions)
 subjects = list(loc_dict['Ears Free'].keys())
-for ex in exclude: subjects.remove(ex)
 
 fig, axis = plt.subplots(7, len(subjects), sharex=True, sharey=True, figsize=[15, 8])
 fig.subplots_adjust(left=None, bottom=0.1, right=0.96, top=0.96, wspace=0.05, hspace=0.1)

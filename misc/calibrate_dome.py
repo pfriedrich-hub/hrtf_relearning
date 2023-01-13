@@ -85,7 +85,7 @@ equalization = dict()  # dictionary to hold equalization parameters
 
 #------------------- hold on --------------------#
 # pick single column to calibrate speaker_list[0] to speaker_list[6]
-speakers = freefield.pick_speakers(speaker_list[3])
+speakers = freefield.pick_speakers(speaker_list[6])
 # place microphone 90° to source column at equal distance (recordings should be done in far field: > 1m)
 
 
@@ -183,11 +183,14 @@ equalization.update(array_equalization)
 # write final equalization to pkl file
 freefield_path = freefield.DIR / 'data'
 project_path = Path.cwd() / 'data' / 'calibration'
-file_name = project_path / f'calibration_dome_12.01'
+file_name = project_path / f'calibration_dome_13.01'
 with open(file_name, 'wb') as f:  # save the newly recorded calibration
     pickle.dump(equalization, f, pickle.HIGHEST_PROTOCOL)
 
 
+# check spectral difference across dome
+dome_recs = slab.Sound(dome_rec)
+diff = freefield.spectral_range(dome_recs)
 
 
 # ------------------  test calibration  ---------------------#
@@ -218,12 +221,10 @@ ramp_duration = signal_length/20
 signal = slab.Sound.chirp(duration=signal_length, level=80, from_frequency=low_cutoff, to_frequency=high_cutoff,
                           kind='linear', samplerate=fs)
 signal = slab.Sound.ramp(signal, when='both', duration=ramp_duration)
-
-
-freefield.load_equalization(file=Path.cwd() / 'data' / 'calibration' / 'calibration_dome_12.01')
-freefield.load_equalization(file=Path.cwd() / 'data' / 'calibration' / 'calibration_dome.pkl')
+freefield.load_equalization(file=Path.cwd() / 'data' / 'calibration' / 'calibration_dome_13.01')
 
 # measure spectral range across speakers of the selected column
+
 speakers = freefield.pick_speakers(speaker_list[6])
 recordings = []
 for speaker in speakers:
@@ -240,6 +241,22 @@ diff = freefield.spectral_range(recordings)
 
 
 
+noise = slab.Sound.pinknoise(duration=0.025, level=90)
+noise = noise.ramp(when='both', duration=0.01)
+silence = slab.Sound.silence(duration=0.025)
+stim = slab.Sound.sequence(noise, silence, noise, silence, noise,
+                           silence, noise, silence, noise)
+stim = stim.ramp(when='both', duration=0.01)
+for s in speaker_list:
+    speakers = freefield.pick_speakers(s)
+    for speaker in speakers:
+        # for i in range(5):
+        #     rec = freefield.play_and_record(speaker, noise, equalize=True)
+        #     freefield.wait_to_finish_playing()
+        freefield.set_signal_and_speaker(signal=stim, speaker=speaker, equalize=True)
+        for i in range(5):
+            freefield.play()
+            freefield.wait_to_finish_playing()
 
 #------ OPTIONAL -----#
 # step 4: adjust level after freq equalization: (?) -- sometimes worth doing!

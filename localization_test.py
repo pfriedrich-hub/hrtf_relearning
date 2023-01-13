@@ -10,7 +10,7 @@ import head_tracking.meta_motion.mm_pose as motion_sensor
 fs = 48828
 slab.set_default_samplerate(fs)
 
-subject_id = 'vk'
+subject_id = 'test'
 condition = 'Earmolds Week 1'
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_2' / subject_id / condition
 
@@ -22,7 +22,7 @@ def localization_test(subject_id, data_dir, condition, repetitions):
     freefield.set_logger('warning')
     if not freefield.PROCESSORS.mode:
         freefield.initialize('dome', default='play_rec')
-    freefield.load_equalization(Path.cwd() / 'data' / 'calibration' / 'calibration_dome_22.pkl')
+    freefield.load_equalization(Path.cwd() / 'data' / 'calibration' / 'calibration_dome_13.01')
 
     # generate stimulus
     noise = slab.Sound.pinknoise(duration=0.025, level=90)

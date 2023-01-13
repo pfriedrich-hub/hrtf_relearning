@@ -22,7 +22,7 @@ def localization_test(subject_id, data_dir, condition, repetitions):
     freefield.set_logger('warning')
     if not freefield.PROCESSORS.mode:
         freefield.initialize('dome', default='play_rec')
-    freefield.load_equalization(Path.cwd() / 'data' / 'calibration' / 'calibration_dome_12.01')
+    freefield.load_equalization(Path.cwd() / 'data' / 'calibration' / 'calibration_dome_13.01')
     # load sounds
     bell = slab.Sound.read(Path.cwd() / 'data' / 'sounds' / 'bell.wav')
     bell.level = 75

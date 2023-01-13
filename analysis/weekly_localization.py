@@ -8,7 +8,7 @@ plot_condition = 'Earmolds Week 1'
 bracket = 'bracket_1'
 
 conditions = ['Ears Free', 'Earmolds Week 1', 'Earmolds Week 2']
-path = Path.cwd() / 'data' / 'experiment' / 'bracket_1'
+path = Path.cwd() / 'data' / 'experiment' / bracket
 loc_dict = localization.get_localization_data(path, conditions)
 subjects = list(loc_dict['Ears Free'].keys())
 # for ex in exclude: subjects.remove(ex)
@@ -25,5 +25,6 @@ axis[0, 0].set_xticks(axis[0, 0].get_xticks().astype('int'))
 for sub_idx, i in enumerate(range(2, 10, 2)):
     fig.text(i/10, 0.95, subjects[sub_idx])
 fig.text(0.5, 0.97, plot_condition, ha='center', size=15)
+
 # save as scalable vector graphics
 # fig.savefig(Path.cwd() / 'data' / 'experiment' / 'images' / 'bracket_1' / 'prelim_localization_accuracy.svg', format='svg')

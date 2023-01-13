@@ -163,14 +163,14 @@ def trial_to_trial_performance(subject_id, show=True):
 
 """
 subject_id = 'vk'
-condition = 'Ears Free'
+condition = 'Earmolds Week 1'
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_2' / subject_id / condition
-file_name = 'localization_vk_Ears Free_12.01_9'
+file_name = 'localization_vk_Earmolds Week 1_13.01_1'
 sequence = slab.Trialsequence(conditions=45, n_reps=1)
 sequence.load_pickle(file_name=data_dir / file_name)
 
 # plot
-elevation_gain, rmse, sd = localization_accuracy(sequence, show=True, plot_dim=2, binned=True)
+elevation_gain, rmse, sd, _, _, = localization_accuracy(sequence, show=True, plot_dim=2, binned=True)
 
 # elevation_gain, rmse, sd = localization_accuracy(sequence, show=True, plot_dim=1)
 print(file_name)

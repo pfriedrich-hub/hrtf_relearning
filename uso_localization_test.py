@@ -27,7 +27,7 @@ def localization_test(subject_id, data_dir, condition, repetitions):
     bell = slab.Sound.read(Path.cwd() / 'data' / 'sounds' / 'bell.wav')
     bell.level = 75
     tone = slab.Sound.tone(frequency=1000, duration=0.25, level=70)
-    uso_dir = Path.cwd() / 'data' / 'sounds' / 'dry_USOs'
+    uso_dir = Path.cwd() / 'data' / 'sounds' / 'uso'
     uso_list = []
     for file_name in list(uso_dir.iterdir()):
         if file_name.is_file() and file_name.suffix == '.wav':
@@ -54,9 +54,7 @@ def localization_test(subject_id, data_dir, condition, repetitions):
             dist[i] = numpy.sqrt(diff[0] ** 2 + diff[1] ** 2)
         if all(dist >= 35):  # check if distance is never smaller than 35°
             break
-    uso_sequence = numpy.random.randint(0, len(uso_list), size=len(sequence))
-    while any(numpy.abs(numpy.diff(uso_sequence)) == 0):  # avoid repetitions
-        uso_sequence = numpy.random.randint(0, len(uso_list), size=len(sequence))
+    uso_sequence = numpy.random.choice(len(uso_list), len(sequence), replace=False)
     trial_sequence = slab.Trialsequence(trials=range(len(sequence)))
     # loop over trials
     data_dir.mkdir(parents=True, exist_ok=True)  # create subject data directory if it doesnt exist

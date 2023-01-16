@@ -62,10 +62,10 @@ def localization_test(subject_id, data_dir, condition, repetitions):
     data_dir.mkdir(parents=True, exist_ok=True)  # create subject data directory if it doesnt exist
     file_name = 'localization_' + subject_id + '_' + condition + date.strftime('_%d.%m')
     counter = 1
-    played_bell = False
     while Path.exists(data_dir / file_name):
         file_name = 'localization_' + subject_id + '_' + condition + date.strftime('_%d.%m') + '_' + str(counter)
         counter += 1
+    played_bell = False
     print('Starting...')
     for index in trial_sequence:
         progress = int(trial_sequence.this_n / trial_sequence.n_trials * 100)
@@ -118,12 +118,14 @@ if __name__ == "__main__":
 import slab
 from analysis.localization_analysis import localization_accuracy
 subject_id = 'vk'
-condition = 'Earmolds Week 1'
+condition = 'Ears Free'
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_2' / subject_id / condition
-file_name = 'localization_vk_Earmolds Week 1_12.01_1'
+file_name = 'localization_vk_Ears Free_12.01_1'
 sequence = slab.Trialsequence(conditions=45, n_reps=1)
 sequence.load_pickle(file_name=data_dir / file_name)
 
 # plot
 elevation_gain, ele_rmse, ele_var, az_rmse, az_var = localization_accuracy(sequence, show=True, plot_dim=2, binned=True)
+
+
 """

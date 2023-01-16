@@ -6,7 +6,7 @@ from matplotlib import pyplot as plt
 import scipy
 
 """ -------  plot group averaged learning curve ------ """
-to_plot = 'nn'
+to_plot = 'average'
 exclude = []
 w2_exclude = ['cs', 'lw']
 bracket = 'bracket_1'

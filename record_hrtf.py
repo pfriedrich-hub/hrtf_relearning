@@ -12,7 +12,7 @@ from matplotlib import pyplot as plt
 slab.set_default_samplerate(fs)
 
 # file settings
-subject_id = 'vk'
+subject_id = 'tk'
 condition = 'Earmolds Week 1'  # can be 'ears_free' or 'earmolds' - important for file naming!
 kemar = False  # requires no button press if true
 safe = 'both'  # decide if additionally save in-ear-recordings

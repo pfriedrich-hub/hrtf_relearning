@@ -12,9 +12,9 @@ from matplotlib import pyplot as plt
 slab.set_default_samplerate(fs)
 
 # file settings
-subject_id = 'tk'
-condition = 'Earmolds Week 1'  # can be 'ears_free' or 'earmolds' - important for file naming!
-kemar = False  # requires no button press if true
+subject_id = 'test'
+condition = 'Ears Free'  # can be 'ears_free' or 'earmolds' - important for file naming!
+kemar = True  # requires no button press if true
 safe = 'both'  # decide if additionally save in-ear-recordings
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_2' / subject_id / condition
 
@@ -51,7 +51,7 @@ def record_hrtf(subject_id, data_dir, condition, signal, repetitions, n_directio
                      ['RX82', 'RX8', Path.cwd() / 'data' / 'rcx' / 'play_buf.rcx']]
         freefield.initialize('dome', device=proc_list)
         freefield.PROCESSORS.mode = 'play_birec'
-    freefield.load_equalization(file=Path.cwd() / 'data' / 'calibration' / 'central_arc_calibration_100k')
+        freefield.load_equalization(file=Path.cwd() / 'data' / 'calibration' / 'central_arc_calibration_100k')
     freefield.set_logger('warning')
     table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')  # get speaker coordinates
     if isinstance(speakers, str) and speakers == 'all':

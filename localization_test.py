@@ -10,7 +10,7 @@ import head_tracking.meta_motion.mm_pose as motion_sensor
 fs = 48828
 slab.set_default_samplerate(fs)
 
-subject_id = 'vk'
+subject_id = 'lk'
 condition = 'Earmolds Week 1'
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_2' / subject_id / condition
 
@@ -19,10 +19,10 @@ repetitions = 3  # number of repetitions per speaker
 def localization_test(subject_id, data_dir, condition, repetitions):
     global speakers, stim, sensor, tone
     sensor = motion_sensor.start_sensor()
-    freefield.set_logger('warning')
     if not freefield.PROCESSORS.mode:
         freefield.initialize('dome', default='play_rec')
     freefield.load_equalization(Path.cwd() / 'data' / 'calibration' / 'calibration_dome_13.01')
+    freefield.set_logger('warning')
 
     # generate stimulus
     noise = slab.Sound.pinknoise(duration=0.025, level=90)
@@ -118,14 +118,12 @@ if __name__ == "__main__":
 import slab
 from analysis.localization_analysis import localization_accuracy
 subject_id = 'vk'
-condition = 'Ears Free'
+condition = 'Earmolds Week 1'
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_2' / subject_id / condition
-file_name = 'localization_vk_Ears Free_12.01_1'
+file_name = 'localization_vk_Earmolds Week 1_12.01_1'
 sequence = slab.Trialsequence(conditions=45, n_reps=1)
 sequence.load_pickle(file_name=data_dir / file_name)
 
 # plot
 elevation_gain, ele_rmse, ele_var, az_rmse, az_var = localization_accuracy(sequence, show=True, plot_dim=2, binned=True)
-
-
 """

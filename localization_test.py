@@ -4,6 +4,7 @@ import numpy
 import time
 import datetime
 date = datetime.datetime.now()
+from matplotlib import pyplot as plt
 from pathlib import Path
 from analysis.localization_analysis import localization_accuracy
 import head_tracking.meta_motion.mm_pose as motion_sensor
@@ -17,7 +18,7 @@ data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_2' / subject_id / condi
 repetitions = 3  # number of repetitions per speaker
 
 def localization_test(subject_id, data_dir, condition, repetitions):
-    global speakers, stim, sensor, tone
+    global speakers, stim, sensor, tone, file_name
     sensor = motion_sensor.start_sensor()
     if not freefield.PROCESSORS.mode:
         freefield.initialize('dome', default='play_rec')
@@ -108,7 +109,12 @@ def play_trial(speaker_id, progress):
 
 if __name__ == "__main__":
     sequence = localization_test(subject_id, data_dir, condition, repetitions)
-    elevation_gain, ele_rmse, ele_var, az_rmse, az_var = localization_accuracy(sequence, show=True, plot_dim=2, binned=True)
+    fig, axis = plt.subplots()
+    elevation_gain, ele_rmse, ele_var, az_rmse, az_var = localization_accuracy(sequence, axis=axis,
+                                                                            show=True, plot_dim=2, binned=True)
+    axis.set_title(file_name)
+    (data_dir / 'images').mkdir(parents=True, exist_ok=True)  # create subject image directory
+    fig.savefig(data_dir / 'images' / str(file_name + '.png'), format='png')  # save image
     elevation_gain, ele_rmse, ele_var, az_rmse, az_var = localization_accuracy(sequence, show=True, plot_dim=1)
     print('gain: %.2f\nrmse: %.2f\nsd: %.2f' % (elevation_gain, ele_rmse, ele_var))
 

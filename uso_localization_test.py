@@ -85,6 +85,7 @@ def play_trial(speaker_id, uso, progress):
     target = speakers[speaker_id, 1:]
     print('%i%%: TARGET| azimuth: %.1f, elevation %.1f' % (progress, target[0], target[1]))
     time.sleep(.5)
+    uso.level = 88
     freefield.set_signal_and_speaker(signal=uso, speaker=speaker_id, equalize=True)
     freefield.play()
     freefield.wait_to_finish_playing()

@@ -116,11 +116,12 @@ if __name__ == "__main__":
 
 """
 import slab
+from pathlib import Path
 from analysis.localization_analysis import localization_accuracy
-subject_id = 'vk'
+subject_id = 'lk'
 condition = 'Earmolds Week 1'
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_2' / subject_id / condition
-file_name = 'localization_vk_Earmolds Week 1_12.01_1'
+file_name = 'localization_lk_Earmolds Week 1_17.01'
 sequence = slab.Trialsequence(conditions=45, n_reps=1)
 sequence.load_pickle(file_name=data_dir / file_name)
 

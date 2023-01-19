@@ -5,6 +5,7 @@ from numpy import linalg as la
 from pathlib import Path
 import time
 import head_tracking.meta_motion.mm_pose as motion_sensor
+import copy
 data_dir = Path.cwd() / 'data'
 fs = 48828
 slab.set_default_samplerate(fs)
@@ -49,11 +50,11 @@ def hrtf_training(max_pulse_interval=500, target_size=3, target_time=0.5, trial_
                   'max_pulse_interval': max_pulse_interval}
     goal_attr = {'target_size': target_size, 'target_time': target_time,
                  'game_time': game_time, 'trial_time': trial_time}
+    speakers = numpy.delete(speakers, [19, 23, 27], axis=0)
     while True:
         speaker_choices = speakers
-        speaker = speaker_choices[int(numpy.random.choice(speaker_choices[:, 0]))]
-        speaker_choices = numpy.delete(speaker_choices, [int(speaker[0]), 19, 23, 27],
-                                       axis=0)  # remove speaker from speaker_list
+        speaker = speaker_choices[int(numpy.random.choice(speaker_choices[:, 0]))]  # select speaker to play from
+        speaker_choices = numpy.delete(speaker_choices, [int(speaker[0])], axis=0)  # remove speaker from speaker_list
         print('Starting...')
         game_start = time.time()  # start counting time
         end, score, prep_time = False, 0, 0  # reset trial parameters

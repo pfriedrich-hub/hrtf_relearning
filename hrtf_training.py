@@ -10,10 +10,12 @@ import analysis.localization_analysis as localization
 data_dir = Path.cwd() / 'data'
 fs = 48828
 slab.set_default_samplerate(fs)
+
+# get probabilities for target speakers, depending on previous localisation performance
 subject_id = 'vk'
 subject_dir = data_dir / 'experiment' / 'bracket_2' / subject_id / 'Earmolds Week 1'
 sequence = localization.load_latest(subject_dir)
-target_error = localization.target_response_error(sequence)
+target_p = localization.get_target_proabilities(sequence)
 
 # max_pulse_interval: maximal pulse interval in ms
 # target_window: target window as euclidean distance of head pose from target speaker
@@ -56,11 +58,12 @@ def hrtf_training(max_pulse_interval=500, target_size=3, target_time=0.5, trial_
     goal_attr = {'target_size': target_size, 'target_time': target_time,
                  'game_time': game_time, 'trial_time': trial_time}
     # calculate target probabilities depending on previous localisation performance
-    target_p = target_error[:, 2] / numpy.sum(target_error[:, 2])
+    target_p = numpy.expand_dims(target_p[:, 3], axis=1)
     while True:
         # get list of speaker to play from
         speaker_choices = numpy.delete(speakers, [19, 23, 27], axis=0)
-        speaker = speaker_choices[int(numpy.random.choice(speaker_choices[:, 0]))]
+        speaker_choices = numpy.hstack((speaker_choices, target_p))
+        speaker = speaker_choices[int(numpy.random.choice(speaker_choices[:, 0], p=speaker_choices[:, 3]))][:3]
         # remove target speaker from speaker_choices to avoid repetition
         speaker_choices = numpy.delete(speaker_choices, numpy.where(speaker_choices[:, 0] == speaker[0]), axis=0)
         print('Starting...')
@@ -69,11 +72,11 @@ def hrtf_training(max_pulse_interval=500, target_size=3, target_time=0.5, trial_
         while not end:  # loop over trials
             play_trial(int(speaker[0]))  # play trial
             # pick next target 45° away from previous
-            next_speaker = speaker_choices[int(numpy.random.choice(range(len(speaker_choices))))]
+            next_speaker = speaker_choices[int(numpy.random.choice(speaker_choices[:, 0], p=speaker_choices[:, 3]))][:3]
             diff = numpy.diff((speaker[1:], next_speaker[1:]), axis=0)
             euclidean_dist = numpy.sqrt(diff[:, 0] ** 2 + diff[:, 1] ** 2)
             while euclidean_dist < 45:
-                next_speaker = speaker_choices[int(numpy.random.choice(range(len(speaker_choices))))]
+                next_speaker = speaker_choices[int(numpy.random.choice(speaker_choices[:, 0], p=speaker_choices[:, 3]))][:3]
                 diff = numpy.diff((speaker[1:], next_speaker[1:]), axis=0)
                 euclidean_dist = numpy.sqrt(diff[:, 0] ** 2 + diff[:, 1] ** 2)
             speaker_choices = numpy.delete(speaker_choices, numpy.where(speaker_choices[:, 0] == next_speaker[0]), axis=0)

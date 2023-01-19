@@ -161,7 +161,8 @@ def trial_to_trial_performance(subject_id, show=True):
         axis.plot(x, y)
     return trial_error, m, n
 
-def target_response_error(sequence):
+def get_target_proabilities(sequence, show=False):
+    # calculate target probabilities depending on localization error
     # retrieve data
     loc_data = numpy.asarray(sequence.data)
     loc_data = loc_data.reshape(loc_data.shape[0], 2, 2)
@@ -174,6 +175,34 @@ def target_response_error(sequence):
         mean_response = numpy.mean(perceived_targets, axis=0)
         error = numpy.linalg.norm(target - mean_response)
         response_error[idx] = numpy.append(target, error)
+    target_p = numpy.expand_dims(response_error[:, 2], axis=1) / numpy.sum(response_error[:, 2])
+    response_error = numpy.hstack((response_error, target_p))
+    if show:
+        elevations = numpy.unique(loc_data[:, 1, 1])
+        azimuths = numpy.unique(loc_data[:, 1, 0])
+        img = numpy.zeros((len(elevations), len(azimuths)))
+        for target in targets:
+            az_idx = numpy.where(numpy.unique(targets[:,0]) == target[0])[0][0]
+            ele_idx = numpy.where(numpy.unique(targets[:,1]) == target[1])[0][0]
+            img[az_idx][ele_idx] = response_error[numpy.all(response_error[:, :2] == target, axis=1), 3]
+        img[img==0] = None
+        if not axis:
+            fig, axis = plt.subplots()
+        cbar_levels = numpy.linspace(0, 0.1, 10)
+        contour = axis.pcolormesh(azimuths, elevations, img) #, levels = cbar_levels)
+        cax_pos = list(axis.get_position().bounds)  # (x0, y0, width, height)
+        cax_pos[0] += 0.8  # x0
+        cax_pos[2] = 0.012  # width
+        cax = fig.add_axes(cax_pos)
+        cbar = fig.colorbar(contour, cax, orientation="vertical", ticks=numpy.linspace(0, 0.1, 5))
+        cax.set_title('Probability')
+        axis.set_xlabel('Azimuth')
+        axis.set_ylabel('Elevation')
+        axis.set_yticks(elevations)
+        axis.set_ylim(numpy.min(elevations) - 15, numpy.max(elevations) + 15)
+        axis.set_xticks(azimuths)
+        axis.set_xlim(numpy.min(azimuths) - 15, numpy.max(azimuths) + 15)
+        # localization_accuracy(sequence, show=True, axis=axis, plot_dim=2, binned=False)
     return response_error
 
 def load_latest(subject_dir):
@@ -186,7 +215,6 @@ def load_latest(subject_dir):
     sequence.load_pickle(file_name=file_list[-1])
     print(f'Loaded {file_list[-1].name}')
     return(sequence)
-
 
 """
 subject_id = 'vk'

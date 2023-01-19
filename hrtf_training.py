@@ -50,16 +50,18 @@ def hrtf_training(max_pulse_interval=500, target_size=3, target_time=0.5, trial_
     goal_attr = {'target_size': target_size, 'target_time': target_time,
                  'game_time': game_time, 'trial_time': trial_time}
     while True:
-        speaker_choices = speakers
+        # get list of speaker to play from
+        speaker_choices = numpy.delete(speakers, [19, 23, 27], axis=0)
         speaker = speaker_choices[int(numpy.random.choice(speaker_choices[:, 0]))]
-        speaker_choices = numpy.delete(speaker_choices, [int(speaker[0]), 19, 23, 27],
-                                       axis=0)  # remove speaker from speaker_list
+        # remove target speaker from speaker_choices to avoid repetition
+        speaker_choices = numpy.delete(speaker_choices, numpy.where(speaker_choices[:, 0] == speaker[0]), axis=0)
         print('Starting...')
         game_start = time.time()  # start counting time
         end, score, prep_time = False, 0, 0  # reset trial parameters
         while not end:  # loop over trials
             play_trial(int(speaker[0]))  # play trial
-            next_speaker = speaker_choices[int(numpy.random.choice(range(len(speaker_choices))))]  # pick next target 45° away from previous
+            # pick next target 45° away from previous
+            next_speaker = speaker_choices[int(numpy.random.choice(range(len(speaker_choices))))]
             diff = numpy.diff((speaker[1:], next_speaker[1:]), axis=0)
             euclidean_dist = numpy.sqrt(diff[:, 0] ** 2 + diff[:, 1] ** 2)
             while euclidean_dist < 45:

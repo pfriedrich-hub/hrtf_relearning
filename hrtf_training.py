@@ -5,9 +5,15 @@ from numpy import linalg as la
 from pathlib import Path
 import time
 import head_tracking.meta_motion.mm_pose as motion_sensor
+import analysis.localization_analysis as localization
+
 data_dir = Path.cwd() / 'data'
 fs = 48828
 slab.set_default_samplerate(fs)
+subject_id = 'vk'
+subject_dir = data_dir / 'experiment' / 'bracket_2' / subject_id / 'Earmolds Week 1'
+sequence = localization.load_latest(subject_dir)
+target_error = localization.target_response_error(sequence)
 
 # max_pulse_interval: maximal pulse interval in ms
 # target_window: target window as euclidean distance of head pose from target speaker
@@ -49,6 +55,8 @@ def hrtf_training(max_pulse_interval=500, target_size=3, target_time=0.5, trial_
                   'max_pulse_interval': max_pulse_interval}
     goal_attr = {'target_size': target_size, 'target_time': target_time,
                  'game_time': game_time, 'trial_time': trial_time}
+    # calculate target probabilities depending on previous localisation performance
+    target_p = target_error[:, 2] / numpy.sum(target_error[:, 2])
     while True:
         speaker_choices = speakers
         speaker = speaker_choices[int(numpy.random.choice(speaker_choices[:, 0]))]

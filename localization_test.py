@@ -121,16 +121,18 @@ if __name__ == "__main__":
 
 
 """
+
 import slab
 from pathlib import Path
 from analysis.localization_analysis import localization_accuracy
 subject_id = 'lk'
 condition = 'Earmolds Week 1'
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_2' / subject_id / condition
-file_name = 'localization_lk_Earmolds Week 1_17.01'
+file_name = 'localization_lk_Earmolds Week 1_18.01'
 sequence = slab.Trialsequence(conditions=45, n_reps=1)
 sequence.load_pickle(file_name=data_dir / file_name)
 
 # plot
 elevation_gain, ele_rmse, ele_var, az_rmse, az_var = localization_accuracy(sequence, show=True, plot_dim=2, binned=True)
+
 """

@@ -161,7 +161,7 @@ def trial_to_trial_performance(subject_id, show=True):
         axis.plot(x, y)
     return trial_error, m, n
 
-def get_target_proabilities(sequence, show=False):
+def get_target_proabilities(sequence, show=False, axis=None):
     # calculate target probabilities depending on localization error
     # retrieve data
     loc_data = numpy.asarray(sequence.data)
@@ -182,14 +182,14 @@ def get_target_proabilities(sequence, show=False):
         azimuths = numpy.unique(loc_data[:, 1, 0])
         img = numpy.zeros((len(elevations), len(azimuths)))
         for target in targets:
-            az_idx = numpy.where(numpy.unique(targets[:,0]) == target[0])[0][0]
-            ele_idx = numpy.where(numpy.unique(targets[:,1]) == target[1])[0][0]
-            img[az_idx][ele_idx] = response_error[numpy.all(response_error[:, :2] == target, axis=1), 3]
+            az_idx = numpy.where(azimuths == target[0])[0][0]
+            ele_idx = numpy.where(elevations == target[1])[0][0]
+            img[ele_idx][az_idx] = response_error[numpy.all(response_error[:, :2] == target, axis=1), 3]
         img[img==0] = None
         if not axis:
             fig, axis = plt.subplots()
         cbar_levels = numpy.linspace(0, 0.1, 10)
-        contour = axis.pcolormesh(azimuths, elevations, img) #, levels = cbar_levels)
+        contour = axis.pcolormesh(azimuths, elevations, img)
         cax_pos = list(axis.get_position().bounds)  # (x0, y0, width, height)
         cax_pos[0] += 0.8  # x0
         cax_pos[2] = 0.012  # width
@@ -202,7 +202,7 @@ def get_target_proabilities(sequence, show=False):
         axis.set_ylim(numpy.min(elevations) - 15, numpy.max(elevations) + 15)
         axis.set_xticks(azimuths)
         axis.set_xlim(numpy.min(azimuths) - 15, numpy.max(azimuths) + 15)
-        # localization_accuracy(sequence, show=True, axis=axis, plot_dim=2, binned=False)
+        localization_accuracy(sequence, show=True, plot_dim=2, binned=True)
     return response_error
 
 def load_latest(subject_dir):

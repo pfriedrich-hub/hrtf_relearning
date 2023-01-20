@@ -15,14 +15,20 @@ slab.set_default_samplerate(fs)
 subject_id = 'lk'
 subject_dir = data_dir / 'experiment' / 'bracket_2' / subject_id / 'Earmolds Week 1'
 sequence = localization.load_latest(subject_dir)
-target_p = localization.get_target_proabilities(sequence, show=True)
+#
+# try:
+#     sequence = localization.load_latest(subject_dir)
+#     except error
+target_p = localization.get_target_proabilities(sequence, show=False)
+# target_p = None
+
 
 # max_pulse_interval: maximal pulse interval in ms
 # target_window: target window as euclidean distance of head pose from target speaker
 # target_time: time matching head direction required to finish a trial
-# test
+# target_p: target speaker probabilities based on previous localization accuracy
 
-def hrtf_training(max_pulse_interval=500, target_size=3, target_time=0.5, trial_time=10, game_time=90):
+def hrtf_training(max_pulse_interval=500, target_size=3, target_time=0.5, trial_time=10, game_time=90, target_p=None):
     global proc_list, speakers, sensor, game_start, buzzer, end, pulse_attr, goal_attr, \
            offset, prep_time, score, coin, coins
     # initialize sensor
@@ -57,29 +63,35 @@ def hrtf_training(max_pulse_interval=500, target_size=3, target_time=0.5, trial_
                   'max_pulse_interval': max_pulse_interval}
     goal_attr = {'target_size': target_size, 'target_time': target_time,
                  'game_time': game_time, 'trial_time': trial_time}
-    # calculate target probabilities depending on previous localisation performance
-    target_p = numpy.expand_dims(target_p[:, 3], axis=1)
+    if target_p is not None:
+        target_p = numpy.expand_dims(target_p[:, 3], axis=1)
     while True:
         # get list of speaker to play from
         speaker_choices = numpy.delete(speakers, [19, 23, 27], axis=0)
-        speaker_choices = numpy.hstack((speaker_choices, target_p))
-        speaker = speaker_choices[int(numpy.random.choice(speaker_choices[:, 0], p=speaker_choices[:, 3]))][:3]
+        if target_p is not None:
+            speaker_choices = numpy.hstack((speaker_choices, target_p))
+        [speaker] = speaker_choices[numpy.where(speaker_choices[:, 0] == int(numpy.random.choice(speaker_choices[:, 0],
+                                                                    p=speaker_choices[:, 3])))][:3]
         # remove target speaker from speaker_choices to avoid repetition
         speaker_choices = numpy.delete(speaker_choices, numpy.where(speaker_choices[:, 0] == speaker[0]), axis=0)
+        speaker_choices[:, 3] = speaker_choices[:, 3] / speaker_choices[:, 3].sum()  # update probabilities
         print('Starting...')
         game_start = time.time()  # start counting time
         end, score, prep_time = False, 0, 0  # reset trial parameters
         while not end:  # loop over trials
             play_trial(int(speaker[0]))  # play trial
             # pick next target 45° away from previous
-            next_speaker = speaker_choices[int(numpy.random.choice(speaker_choices[:, 0], p=speaker_choices[:, 3]))][:3]
+            [next_speaker] = speaker_choices[numpy.where(speaker_choices[:, 0] == int(numpy.random.choice(speaker_choices[:, 0],
+                                                                    p=speaker_choices[:, 3])))][:3]
             diff = numpy.diff((speaker[1:], next_speaker[1:]), axis=0)
             euclidean_dist = numpy.sqrt(diff[:, 0] ** 2 + diff[:, 1] ** 2)
             while euclidean_dist < 45:
-                next_speaker = speaker_choices[int(numpy.random.choice(speaker_choices[:, 0], p=speaker_choices[:, 3]))][:3]
+                [next_speaker] = speaker_choices[numpy.where(speaker_choices[:, 0] == int(numpy.random.choice(speaker_choices[:, 0],
+                                                                    p=speaker_choices[:, 3])))][:3]
                 diff = numpy.diff((speaker[1:], next_speaker[1:]), axis=0)
                 euclidean_dist = numpy.sqrt(diff[:, 0] ** 2 + diff[:, 1] ** 2)
             speaker_choices = numpy.delete(speaker_choices, numpy.where(speaker_choices[:, 0] == next_speaker[0]), axis=0)
+            speaker_choices[:, 3] = speaker_choices[:, 3] / speaker_choices[:, 3].sum()  # update probabilities
             speaker = next_speaker
         print('Press button to play again.')
         freefield.wait_for_button()
@@ -169,4 +181,4 @@ def get_pose():
     return pose
 
 if __name__ == "__main__":
-    hrtf_training()
+    hrtf_training(target_p=target_p)

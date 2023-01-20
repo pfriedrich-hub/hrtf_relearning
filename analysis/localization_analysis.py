@@ -185,12 +185,14 @@ def get_target_proabilities(sequence, show=False, axis=None):
     target_p = numpy.expand_dims(response_error[:, 2], axis=1) / numpy.sum(response_error[:, 2])
     response_error = numpy.hstack((response_error, target_p))
     if show:
+        elevations = numpy.unique(loc_data[:, 1, 1])
+        azimuths = numpy.unique(loc_data[:, 1, 0])
         img = numpy.zeros((len(elevations), len(azimuths)))
         for target in targets:
             az_idx = numpy.where(azimuths == target[0])[0][0]
             ele_idx = numpy.where(elevations == target[1])[0][0]
             img[ele_idx][az_idx] = response_error[numpy.all(response_error[:, :2] == target, axis=1), 3]
-        img[img==0] = None
+        img[img == 0] = None
         if not axis:
             fig, axis = plt.subplots()
         cbar_levels = numpy.linspace(0, 0.1, 10)

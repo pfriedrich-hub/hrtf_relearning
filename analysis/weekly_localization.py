@@ -5,9 +5,11 @@ import matplotlib.pyplot as plt
 """ -------  plot localization accuracy of all participants --------- """
 
 plot_condition = 'Earmolds Week 1'
-bracket = 'bracket_1'
+bracket = 'bracket_2'
 
 conditions = ['Ears Free', 'Earmolds Week 1', 'Earmolds Week 2']
+conditions = ['Ears Free', 'Earmolds Week 1'] #, 'Earmolds Week 2']
+
 path = Path.cwd() / 'data' / 'experiment' / bracket
 loc_dict = localization.get_localization_data(path, conditions)
 subjects = list(loc_dict['Ears Free'].keys())

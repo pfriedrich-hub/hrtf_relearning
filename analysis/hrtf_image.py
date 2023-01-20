@@ -2,7 +2,7 @@ from pathlib import Path
 import analysis.hrtf_analysis as hrtf_analysis
 
 """ Plot Images and Differences of HRTFs """
-to_plot = 'nn'  # 'average' or subject id
+to_plot = 'average'  # 'average' or subject id
 exclude = []  # to exclude from group average
 n_bins = 4884
 bandwidth = (4000, 16000)

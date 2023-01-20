@@ -4,10 +4,11 @@ import matplotlib.pyplot as plt
 import numpy
 
 """ -------  plot localization free, 1st vs last day of molds --------- """
-bracket = 'bracket_1'
+bracket = 'bracket_2'
 
 conditions = ['Ears Free', 'Earmolds Week 1', 'Earmolds Week 2']
-path = Path.cwd() / 'data' / 'experiment' / 'bracket_1'
+
+path = Path.cwd() / 'data' / 'experiment' / 'bracket'
 loc_dict = localization.get_localization_data(path, conditions)
 subjects = list(loc_dict['Ears Free'].keys())
 

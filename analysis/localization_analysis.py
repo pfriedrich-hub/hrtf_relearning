@@ -35,7 +35,7 @@ def localization_accuracy(sequence, show=True, plot_dim=1, binned=True, axis=Non
     elevations = numpy.unique(loc_data[:, 1, 1])
     azimuths = numpy.unique(loc_data[:, 1, 0])
     targets[:, 1] = loc_data[:, 1, 1]  # target elevations
-    responses[:, 1] = loc_data[:, 0, 1]  # percieved elevations
+    responses[:, 1] = loc_data[:, 0, 1]  # perceived elevations
     targets[:, 0] = loc_data[:, 1, 0]
     responses[:, 0] = loc_data[:, 0, 0]
     #  elevation gain, rmse, response variability

@@ -11,7 +11,7 @@ import head_tracking.meta_motion.mm_pose as motion_sensor
 fs = 48828
 slab.set_default_samplerate(fs)
 
-subject_id = 'lk'
+subject_id = 'test'
 condition = 'Earmolds Week 1'
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_2' / subject_id / condition
 

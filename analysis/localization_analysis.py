@@ -168,6 +168,7 @@ def get_target_proabilities(sequence, show=False, axis=None):
     loc_data = loc_data.reshape(loc_data.shape[0], 2, 2)
     responses = loc_data[:, 0]
     targets = numpy.unique(loc_data[:, 1], axis=0)  # [az, ele]
+
     # mean response error each target speaker
     response_error = numpy.zeros((len(targets), 3))
     for idx, target in enumerate(targets):
@@ -185,7 +186,7 @@ def get_target_proabilities(sequence, show=False, axis=None):
             az_idx = numpy.where(azimuths == target[0])[0][0]
             ele_idx = numpy.where(elevations == target[1])[0][0]
             img[ele_idx][az_idx] = response_error[numpy.all(response_error[:, :2] == target, axis=1), 3]
-        img[img==0] = None
+        img[img == 0] = None
         if not axis:
             fig, axis = plt.subplots()
         cbar_levels = numpy.linspace(0, 0.1, 10)

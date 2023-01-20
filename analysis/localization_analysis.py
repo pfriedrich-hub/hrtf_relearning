@@ -170,11 +170,12 @@ def get_target_proabilities(sequence, show=False, axis=None):
     azimuths = numpy.unique(loc_data[:, 1, 0])
     elevations = numpy.unique(loc_data[:, 1, 1])
     targets = []
-    for az in azimuths:
+    for az in azimuths:  # this makes no sense but is in alignment with ff speaker table
         for ele in -numpy.sort(-elevations):
             targets.append([az, ele])
-    targets = numpy.asarray(targets)  # this makes no sense but is in alignment with ff speaker table
-    # targets = numpy.unique(loc_data[:, 1], axis=0)  # [az, ele]
+    targets = numpy.asarray(targets)
+    targets = numpy.delete(targets, [0, 6, -1, -7], axis=0)
+    targets = numpy.unique(loc_data[:, 1], axis=0)
     # mean response error each target speaker
     response_error = numpy.zeros((len(targets), 3))
     for idx, target in enumerate(targets):

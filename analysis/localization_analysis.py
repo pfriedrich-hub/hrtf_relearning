@@ -175,7 +175,7 @@ def get_target_proabilities(sequence, show=False, axis=None):
             targets.append([az, ele])
     targets = numpy.asarray(targets)
     targets = numpy.delete(targets, [0, 6, -1, -7], axis=0)
-    targets = numpy.unique(loc_data[:, 1], axis=0)
+    # targets = numpy.unique(loc_data[:, 1], axis=0)
     # mean response error each target speaker
     response_error = numpy.zeros((len(targets), 3))
     for idx, target in enumerate(targets):

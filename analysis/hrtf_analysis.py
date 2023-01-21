@@ -20,7 +20,10 @@ def get_hrtfs(path, subject_list, conditions, smoothe=True, baseline=True, bandw
             if smoothe:
                 subject_dir = Path(path / subject_path / condition / 'processed_hrtf')
             elif not smoothe:
-                subject_dir = subject_path / condition
+                subject_dir = Path(path/ subject_path / condition)
+            # create subject dir if it doesnt exist
+            if not subject_dir.exists():
+                subject_dir.mkdir()
             for file_name in sorted(list(subject_dir.iterdir())):
                 if file_name.is_file() and file_name.suffix == '.sofa':
                     hrtf = slab.HRTF(file_name)
@@ -32,14 +35,14 @@ def get_hrtfs(path, subject_list, conditions, smoothe=True, baseline=True, bandw
         hrtf_dict[condition]['average'] = average_hrtf(list(hrtf_dict[condition].values()))
     return hrtf_dict
 
-def write_hrtfs(hrtf_dict, path):
+def write_processed_hrtf(hrtf_dict, path, dir_name='processed_hrtf'):
     subject_dir_list = list(path.iterdir())
     for condition in hrtf_dict.keys():
         for subj_idx, subject_path in enumerate(subject_dir_list):
             if subject_path.name in hrtf_dict[condition].keys():
-                Path.mkdir(subject_path / condition / 'processed_hrtf', exist_ok=True)
+                Path.mkdir(subject_path / condition / dir_name, exist_ok=True)
                 hrtf_dict[condition][subject_path.name].write_sofa(subject_path / condition /
-                                                    'processed_hrtf' / str(condition + '_smoothed.sofa'))
+                                                    dir_name / str(condition + '_processed.sofa'))
 
 def baseline_hrtf(hrtf, bandwidth=(3000, 17000)):
     "Center transfer functions around 0"

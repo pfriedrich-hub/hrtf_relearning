@@ -225,10 +225,10 @@ def load_latest(subject_dir):
     return(sequence)
 
 """
-subject_id = 'vk'
-condition = 'Ears Free'
+subject_id = 'tk'
+condition = 'Earmolds Week 2'
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_2' / subject_id / condition
-file_name = 'localization_vk_Ears Free_12.01_1'
+file_name = 'localization_tk_Earmolds Week 2_21.01_3'
 sequence = slab.Trialsequence(conditions=45, n_reps=1)
 sequence.load_pickle(file_name=data_dir / file_name)
 

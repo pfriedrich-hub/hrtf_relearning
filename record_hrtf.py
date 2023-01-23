@@ -12,7 +12,7 @@ from matplotlib import pyplot as plt
 slab.set_default_samplerate(fs)
 
 # file settings
-subject_id = 'vk'
+subject_id = 'lk'
 condition = 'Earmolds Week 2'  # can be 'ears_free' or 'earmolds' - important for file naming!
 kemar = False  # requires no button press if true
 safe = 'both'  # decide if additionally save in-ear-recordings
@@ -199,20 +199,23 @@ if __name__ == "__main__":
 
 
 """
+
 import analysis.hrtf_analysis as hrtf_analysis
 import slab
+from matplotlib import pyplot as plt
 from pathlib import Path
 subject_id = 'vk'
-filename = 'localization_vk_Earmolds Week 1_15.01'
-condition = 'Earmolds Week 1'
+filename = 'vk_Ears Free_12.01.sofa'
+condition = 'Ears Free'
 plot_bins = 2400  # number of bins also used to calculate vsi across bands (use 80 to minimize´frequency-resolution dependend vsi change)
 plot_ear = 'left' 
 hrtf = slab.HRTF(Path.cwd() / 'data' / 'experiment' / 'bracket_2' / subject_id / condition / filename)
 sources = hrtf.cone_sources(0)
+hrtf = hrtf_analysis.baseline_hrtf(hrtf)
 hrtf.plot_tf(sources, n_bins=plot_bins)
-hrtf_analysis.plot_hrtf_image(hrtf, bandwidth=(4000, 16000), n_bins=300, axis=None, z_min=None, z_max=None, cbar=True)
-
-
+fig, axis = plt.subplots()
+hrtf_analysis.hrtf_image(hrtf, bandwidth=(4000, 16000), n_bins=300, axis=axis, z_min=None, z_max=None, cbar=True)
+fig.axes[1].set_position([0.925, 0.10999999999999999, 0.012, 0.77])
 
 
 # example - from terminal/shell:

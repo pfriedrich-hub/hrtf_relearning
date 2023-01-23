@@ -18,18 +18,18 @@ inverse filters are computed see the documentation of slab.Filter.equalizing_fil
 """
 
 # initialize setup with standard samplerate (48824)
-fs = 48828
-signal_length = 0.1  # how long should the chirp be?
-freefield.initialize('dome', default='play_rec')
+# fs = 48828
+# signal_length = 0.1  # how long should the chirp be?
+# freefield.initialize('dome', default='play_rec')
 
 # initialize setup with modified samplerate (97656)
-# fs = 97656
-# signal_length = 0.05  # how long should the chirp be?
-# proc_list = [['RP2', 'RP2', Path.cwd() / 'data' / 'rcx' / 'rec_buf.rcx'],
-#              ['RX81', 'RX8', Path.cwd() / 'data' / 'rcx' / 'play_buf.rcx'],
-#              ['RX82', 'RX8', Path.cwd() / 'data' / 'rcx' / 'play_buf.rcx']]
-# freefield.initialize('dome', device=proc_list)
-# freefield.PROCESSORS.mode = 'play_rec'
+fs = 97656
+signal_length = 0.05  # how long should the chirp be?
+proc_list = [['RP2', 'RP2', Path.cwd() / 'data' / 'rcx' / 'rec_buf.rcx'],
+             ['RX81', 'RX8', Path.cwd() / 'data' / 'rcx' / 'play_buf.rcx'],
+             ['RX82', 'RX8', Path.cwd() / 'data' / 'rcx' / 'play_buf.rcx']]
+freefield.initialize('dome', device=proc_list)
+freefield.PROCESSORS.mode = 'play_rec'
 
 freefield.set_logger('warning')
 slab.Signal.set_default_samplerate(fs)  # default samplerate for generating sounds, filters etc.
@@ -66,9 +66,9 @@ target = slab.Sound(data=numpy.mean(temp_recs, axis=0))
 
 # # use original signal as reference - WARNING could result in unrealistic equalization filters,
 #  can be used for HRTF measurement calibration to get really flat chirp spectra
-# baseline_amp = target.level  # at 10 db gain on preamp and signal level 90 dB!
-# target = deepcopy(signal)
-# target.level = baseline_amp
+baseline_amp = target.level  # at 10 db gain on preamp and signal level 90 dB!
+target = deepcopy(signal)
+target.level = baseline_amp
 
 # get speaker id's for each column in the dome
 table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')
@@ -85,7 +85,7 @@ equalization = dict()  # dictionary to hold equalization parameters
 
 #------------------- hold on --------------------#
 # pick single column to calibrate speaker_list[0] to speaker_list[6]
-speakers = freefield.pick_speakers(speaker_list[6])
+speakers = freefield.pick_speakers(speaker_list[3])
 # place microphone 90° to source column at equal distance (recordings should be done in far field: > 1m)
 
 
@@ -179,11 +179,10 @@ equalization.update(array_equalization)
 # ----------  repeat for next speaker column ----------- #
 
 
-
 # write final equalization to pkl file
 freefield_path = freefield.DIR / 'data'
 project_path = Path.cwd() / 'data' / 'calibration'
-file_name = project_path / f'calibration_dome_13.01'
+file_name = project_path / f'calibration_center_cone_100k'
 with open(file_name, 'wb') as f:  # save the newly recorded calibration
     pickle.dump(equalization, f, pickle.HIGHEST_PROTOCOL)
 

@@ -204,9 +204,9 @@ import analysis.hrtf_analysis as hrtf_analysis
 import slab
 from matplotlib import pyplot as plt
 from pathlib import Path
-subject_id = 'vk'
-filename = 'vk_Ears Free_12.01.sofa'
-condition = 'Ears Free'
+subject_id = 'lk'
+filename = 'lk_Earmolds Week 2_22.01.sofa'
+condition = 'Earmolds Week 2'
 plot_bins = 2400  # number of bins also used to calculate vsi across bands (use 80 to minimize´frequency-resolution dependend vsi change)
 plot_ear = 'left' 
 hrtf = slab.HRTF(Path.cwd() / 'data' / 'experiment' / 'bracket_2' / subject_id / condition / filename)
@@ -215,7 +215,7 @@ hrtf = hrtf_analysis.baseline_hrtf(hrtf)
 hrtf.plot_tf(sources, n_bins=plot_bins)
 fig, axis = plt.subplots()
 hrtf_analysis.hrtf_image(hrtf, bandwidth=(4000, 16000), n_bins=300, axis=axis, z_min=None, z_max=None, cbar=True)
-fig.axes[1].set_position([0.925, 0.10999999999999999, 0.012, 0.77])
+fig.axes[1].set_position([0.925, 0.101, 0.012, 0.77])
 
 
 # example - from terminal/shell:

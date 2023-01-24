@@ -14,13 +14,12 @@ slab.set_default_samplerate(fs)
 # get probabilities for target speakers, depending on previous localisation performance
 subject_id = 'vk'
 subject_dir = data_dir / 'experiment' / 'bracket_2' / subject_id / 'Earmolds Week 2'
-sequence = localization.load_latest(subject_dir)
-#
-# try:
-#     sequence = localization.load_latest(subject_dir)
-#     except error
-target_p = localization.get_target_proabilities(sequence, show=True)
-# target_p = None
+try:
+    sequence = localization.load_latest(subject_dir)
+    target_p = localization.get_target_proabilities(sequence, show=False)
+except:
+    print('Could not load localization data. Using equal target probabilities.')
+    target_p = numpy.ones((44, 4))
 
 
 # max_pulse_interval: maximal pulse interval in ms

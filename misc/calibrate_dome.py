@@ -24,7 +24,7 @@ inverse filters are computed see the documentation of slab.Filter.equalizing_fil
 
 # initialize setup with modified samplerate (97656)
 fs = 97656
-signal_length = 0.05  # how long should the chirp be?
+signal_length = 0.1  # how long should the chirp be?
 proc_list = [['RP2', 'RP2', Path.cwd() / 'data' / 'rcx' / 'rec_buf.rcx'],
              ['RX81', 'RX8', Path.cwd() / 'data' / 'rcx' / 'play_buf.rcx'],
              ['RX82', 'RX8', Path.cwd() / 'data' / 'rcx' / 'play_buf.rcx']]
@@ -45,7 +45,7 @@ high_cutoff = 20000
 rec_repeat = 20  # how often to repeat measurement for averaging
 # signal for loudspeaker calibration
 ramp_duration = signal_length/20
-signal = slab.Sound.chirp(duration=signal_length, level=90, from_frequency=low_cutoff, to_frequency=high_cutoff, kind='linear')
+signal = slab.Sound.chirp(duration=signal_length, level=80, from_frequency=low_cutoff, to_frequency=high_cutoff, kind='linear')
 signal = slab.Sound.ramp(signal, when='both', duration=ramp_duration)
 
 # equalization parameters
@@ -182,7 +182,7 @@ equalization.update(array_equalization)
 # write final equalization to pkl file
 freefield_path = freefield.DIR / 'data'
 project_path = Path.cwd() / 'data' / 'calibration'
-file_name = project_path / f'calibration_center_cone_100k'
+file_name = project_path / f'calibration_central_cone_100k'
 with open(file_name, 'wb') as f:  # save the newly recorded calibration
     pickle.dump(equalization, f, pickle.HIGHEST_PROTOCOL)
 
@@ -199,7 +199,13 @@ import slab
 import numpy
 import time
 from pathlib import Path
-freefield.initialize('dome', default='play_rec')  # initialize setup
+# freefield.initialize('dome', default='play_rec')  # initialize setup
+proc_list = [['RP2', 'RP2', Path.cwd() / 'data' / 'rcx' / 'bi_rec_buf.rcx'],
+             ['RX81', 'RX8', Path.cwd() / 'data' / 'rcx' / 'play_buf.rcx'],
+             ['RX82', 'RX8', Path.cwd() / 'data' / 'rcx' / 'play_buf.rcx']]
+freefield.initialize('dome', device=proc_list)
+freefield.PROCESSORS.mode = 'play_birec'
+
 freefield.set_logger('WARNING')
 azimuthal_angles = numpy.array([-52.5, -35, -17.5, 0, 17.5, 35, 52.5])
 table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')
@@ -210,26 +216,29 @@ for az in azimuthal_angles:
 speaker_list[3] = numpy.delete(speaker_list[3], [numpy.where(speaker_list[3] == 19), numpy.where(speaker_list[3] == 27)])
 # pick a column to test calibration for
 # signal parameters
+
 fs = 48828
+fs = 97656  # 97656.25, 195312.5
+slab.set_default_samplerate(fs)
 low_cutoff = 1000
 high_cutoff = 17000
 signal_length = 0.1  # how long should the chirp be?
-rec_repeat = 5  # how often to repeat measurement for averaging
+rec_repeat = 30  # how often to repeat measurement for averaging
 # signal for loudspeaker calibration
 ramp_duration = signal_length/20
 signal = slab.Sound.chirp(duration=signal_length, level=80, from_frequency=low_cutoff, to_frequency=high_cutoff,
                           kind='linear', samplerate=fs)
 signal = slab.Sound.ramp(signal, when='both', duration=ramp_duration)
-freefield.load_equalization(file=Path.cwd() / 'data' / 'calibration' / 'calibration_dome_13.01')
+# freefield.load_equalization(file=Path.cwd() / 'data' / 'calibration' / 'calibration_central_cone_100k')
 
 # measure spectral range across speakers of the selected column
 
-speakers = freefield.pick_speakers(speaker_list[6])
+speakers = freefield.pick_speakers(speaker_list[3])
 recordings = []
 for speaker in speakers:
     temp_recs = []  # <------------- (-.-) 2h bugfix
     for i in range(rec_repeat):
-        rec = freefield.play_and_record(speaker, signal, equalize=True)
+        rec = freefield.play_and_record(speaker, signal, equalize=False)
         # rec = slab.Sound.ramp(rec, when='offset', duration=0.01)
         temp_recs.append(rec.data)
     recordings.append(slab.Sound(data=numpy.mean(temp_recs, axis=0)))
@@ -281,8 +290,10 @@ for s in speaker_list:
 
 
 # load existing equalization pkl
+from pathlib import Path
+import pickle
 project_path = Path.cwd() / 'data' / 'calibration'
-file_name = project_path / f'dome_calibration_10.01.23'
+file_name = project_path / f'central_arc_calibration_100k'
 with open(file_name, "rb") as f:
     equalization = pickle.load(f)
 # check spectral difference across dome

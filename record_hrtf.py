@@ -5,16 +5,16 @@ import slab
 import freefield
 import datetime
 import analysis.hrtf_analysis as hrtf_analysis
+from matplotlib import pyplot as plt
 date = datetime.datetime.now()
 from copy import deepcopy
 fs = 97656  # 97656.25, 195312.5
-from matplotlib import pyplot as plt
 slab.set_default_samplerate(fs)
 
 # file settings
-subject_id = 'sm'
-condition = 'Earmolds Week 1'  # can be 'ears_free' or 'earmolds' - important for file naming!
-kemar = False  # requires no button press if true
+subject_id = 'test'
+condition = 'Ears Free'  # can be 'ears_free' or 'earmolds' - important for file naming!
+kemar = True  # requires no button press if true
 safe = 'both'  # decide if additionally save in-ear-recordings
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_2' / subject_id / condition
 
@@ -22,12 +22,12 @@ data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_2' / subject_id / condi
 speakers = numpy.arange(20, 27).tolist()  #sources to record HRTF from # central cone, with top and bottom speaker removed
 # speakers = numpy.arange(28, 35).tolist()  # 17.5 cone  # still to be calibrated
 # speakers = numpy.arange(12, 19).tolist()  # -17.5 cone
+n_directions = 1  # only from the front (1) or front-back recordings (2)
 level = 80  # minimize to reduce reverb ripple effect, apparently kemar recordings are not affected?
 duration = 0.1  # short chirps <0.05s introduce variability in low freq (4-5 kHz). improvement at 0.1s for kemar vsi
 low_freq = 1000
 high_freq = 17000  # window of interes is 4-16
 repetitions = 30  # 10 work for kemar, 30-50 for in ear mics
-n_directions = 1  # only from the front (1) or front-back recordings (2)
 ramp_duration = duration/20
 slab.Signal.set_default_samplerate(fs)  # default samplerate for generating sounds, filters etc.
 signal = slab.Sound.chirp(duration=duration, level=level, from_frequency=low_freq, to_frequency=high_freq, kind='linear')
@@ -51,7 +51,7 @@ def record_hrtf(subject_id, data_dir, condition, signal, repetitions, n_directio
                      ['RX82', 'RX8', Path.cwd() / 'data' / 'rcx' / 'play_buf.rcx']]
         freefield.initialize('dome', device=proc_list)
         freefield.PROCESSORS.mode = 'play_birec'
-        freefield.load_equalization(file=Path.cwd() / 'data' / 'calibration' / 'central_arc_calibration_100k')
+        freefield.load_equalization(file=Path.cwd() / 'data' / 'calibration' / 'calibration_central_cone_100k')
     freefield.set_logger('warning')
     table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')  # get speaker coordinates
     if isinstance(speakers, str) and speakers == 'all':
@@ -119,7 +119,7 @@ def dome_rec(signal, speaker_ids, sources, repetitions):
         # get avg of n recordings from each sound source location
         recs = []
         for r in range(repetitions):
-            recs.append(freefield.play_and_record(speaker, signal, equalize=False))
+            recs.append(freefield.play_and_record(speaker, signal, equalize=True))
         rec = slab.Binaural(numpy.mean(numpy.asarray(recs), axis=0))  # average
         rec.data -= numpy.mean(rec.data, axis=0)  # baseline
 

@@ -224,29 +224,28 @@ def load_latest(subject_dir):
     print(f'Loaded {file_list[-1].name}')
     return(sequence)
 
-"""
+""" # ----------- plot and work on localization data ------------- #
+from pathlib import Path
+from copy import deepcopy
+import slab
 
-subject_id = 'vk'
-condition = 'Earmolds Week 2'
+subject_id = 'sm'
+condition = 'Earmolds Week 1'
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_2' / subject_id / condition
-file_name = 'localization_vk_Earmolds Week 2_22.01'
+
+file_name = 'localization_sm_Earmolds Week 1_23.01'
 sequence = slab.Trialsequence(conditions=45, n_reps=1)
 sequence.load_pickle(file_name=data_dir / file_name)
-
 # plot
 elevation_gain, rmse, sd, _, _, = localization_accuracy(sequence, show=True, plot_dim=2, binned=True)
-
-# elevation_gain, rmse, sd = localization_accuracy(sequence, show=True, plot_dim=1)
-print(file_name)
-print('gain: %.2f\nrmse: %.2f\nsd: %.2f' % (elevation_gain, rmse, sd))
+print('elevation_gain: %.2f\nrmse: %.2f\nsd: %.2f' % (elevation_gain, rmse, sd))
 # plt.title(file_name)
 
 
 #--------- stitch incomplete sequences ------------------#
 
-from copy import deepcopy
-filename_1 = 'localization_sm_Earmolds Week 1_23.01'
-filename_2 = 'localization_sm_Earmolds Week 1_23.01_1'
+filename_1 = 'localization_sm_Earmolds Week 1_25.01'
+filename_2 = 'localization_sm_Earmolds Week 1_25.01_1'
 sequence_1 = slab.Trialsequence(conditions=45, n_reps=1)
 sequence_2 = deepcopy(sequence_1)
 sequence_1.load_pickle(file_name=data_dir / filename_1)
@@ -254,16 +253,23 @@ sequence_2.load_pickle(file_name=data_dir / filename_2)
 data_1 = sequence_1.data[:-sequence_1.n_remaining]
 data_2 = sequence_2.data[:-sequence_2.n_remaining]
 data = data_1 + data_2
+sequence = sequence_1
+file_name = filename_1
 sequence.data = data
 
-### correct azimuth for >300°
+#  save
+sequence.save_pickle(data_dir / file_name, clobber=True)
+
+# ----------- correct azimuth for >300° ---------- #
+
 for i, entry in enumerate(sequence.data):
     sequence.data[i][0][sequence.data[i][0] > 300] -= 360
     
 for i, entry in enumerate(sequence.data):
     sequence.data[i][0][sequence.data[i][0] < 300] += 360
     
-# save
+# -------------- save ------------------#
+
 sequence.save_pickle(data_dir / file_name, clobber=True)
 
 

@@ -11,8 +11,8 @@ import head_tracking.meta_motion.mm_pose as motion_sensor
 fs = 48828
 slab.set_default_samplerate(fs)
 
-subject_id = 'vk'
-condition = 'Earmolds Week 2'
+subject_id = 'sm'
+condition = 'Earmolds Week 1'
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_2' / subject_id / condition
 
 repetitions = 3  # number of repetitions per speaker
@@ -125,10 +125,10 @@ if __name__ == "__main__":
 import slab
 from pathlib import Path
 from analysis.localization_analysis import localization_accuracy
-subject_id = 'lk'
+subject_id = 'sm'
 condition = 'Earmolds Week 1'
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_2' / subject_id / condition
-file_name = 'localization_lk_Earmolds Week 1_18.01'
+file_name = 'localization_sm_Earmolds Week 1_23.01'
 sequence = slab.Trialsequence(conditions=45, n_reps=1)
 sequence.load_pickle(file_name=data_dir / file_name)
 

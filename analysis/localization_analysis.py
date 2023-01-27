@@ -233,7 +233,7 @@ subject_id = 'sm'
 condition = 'Earmolds Week 1'
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_2' / subject_id / condition
 
-file_name = 'localization_sm_Earmolds Week 1_23.01'
+file_name = 'localization_sm_Earmolds Week 1_27.01'
 sequence = slab.Trialsequence(conditions=45, n_reps=1)
 sequence.load_pickle(file_name=data_dir / file_name)
 # plot
@@ -244,8 +244,8 @@ print('elevation_gain: %.2f\nrmse: %.2f\nsd: %.2f' % (elevation_gain, rmse, sd))
 
 #--------- stitch incomplete sequences ------------------#
 
-filename_1 = 'localization_sm_Earmolds Week 1_25.01'
-filename_2 = 'localization_sm_Earmolds Week 1_25.01_1'
+filename_1 = 'localization_sm_Earmolds Week 1_26.01_1'
+filename_2 = 'localization_sm_Earmolds Week 1_26.01_2'
 sequence_1 = slab.Trialsequence(conditions=45, n_reps=1)
 sequence_2 = deepcopy(sequence_1)
 sequence_1.load_pickle(file_name=data_dir / filename_1)

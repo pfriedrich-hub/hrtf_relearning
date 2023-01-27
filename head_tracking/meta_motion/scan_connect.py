@@ -28,6 +28,8 @@ while selection == -1:
         print("[%d] %s (%s)" % (i, address, name))
         i += 1
 
+    # if name == Metawear
+
     msg = "Select your device (-1 to rescan): "
     selection = int(raw_input(msg) if platform.python_version_tuple()[0] == '2' else input(msg))
 

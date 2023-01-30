@@ -229,11 +229,11 @@ from pathlib import Path
 from copy import deepcopy
 import slab
 
-subject_id = 'sm'
+subject_id = 'vk'
 condition = 'Earmolds Week 2'
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_2' / subject_id / condition
 
-file_name = 'localization_sm_Earmolds Week 2_29.01_1'
+file_name = 'localization_vk_Earmolds Week 2_20.01'
 sequence = slab.Trialsequence(conditions=45, n_reps=1)
 sequence.load_pickle(file_name=data_dir / file_name)
 # plot

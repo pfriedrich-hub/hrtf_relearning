@@ -13,7 +13,7 @@ slab.set_default_samplerate(fs)
 
 # get probabilities for target speakers, depending on previous localisation performance
 subject_id = 'sm'
-condition = 'Earmolds week 1'
+condition = 'Earmolds week 2'
 subject_dir = data_dir / 'experiment' / 'bracket_2' / subject_id / condition
 try:
     sequence = localization.load_latest(subject_dir)

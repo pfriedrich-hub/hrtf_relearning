@@ -12,14 +12,15 @@ fs = 97656  # 97656.25, 195312.5
 slab.set_default_samplerate(fs)
 
 # file settings
-subject_id = 'sm'
-condition = 'Earmolds Week 2'  # can be 'ears_free' or 'earmolds' - important for file naming!
+subject_id = 'test'
+condition = 'Earmolds Week 1'  # can be 'ears_free' or 'earmolds' - important for file naming!
 kemar = False  # requires no button press if true
 safe = 'both'  # decide if additionally save in-ear-recordings
-data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_2' / subject_id / condition
+data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_3' / subject_id / condition
 
 # HRTF recording settings
 speakers = numpy.arange(20, 27).tolist()  #sources to record HRTF from # central cone, with top and bottom speaker removed
+# speakers = 'all'  # full dome
 # speakers = numpy.arange(28, 35).tolist()  # 17.5 cone  # still to be calibrated
 # speakers = numpy.arange(12, 19).tolist()  # -17.5 cone
 n_directions = 1  # only from the front (1) or front-back recordings (2)
@@ -28,6 +29,7 @@ duration = 0.1  # short chirps <0.05s introduce variability in low freq (4-5 kHz
 low_freq = 1000
 high_freq = 17000  # window of interes is 4-16
 repetitions = 30  # 10 work for kemar, 30-50 for in ear mics
+
 ramp_duration = duration/20
 slab.Signal.set_default_samplerate(fs)  # default samplerate for generating sounds, filters etc.
 signal = slab.Sound.chirp(duration=duration, level=level, from_frequency=low_freq, to_frequency=high_freq, kind='linear')
@@ -42,7 +44,7 @@ plot_ear = 'left'  # ear for which to plot HRTFs
 
 
 def record_hrtf(subject_id, data_dir, condition, signal, repetitions, n_directions, safe, speakers, kemar=False):
-    global filt
+    global filt, sources
     # filt = slab.Filter.band('bp', (low_freq, high_freq))
     filt = slab.Filter.band('hp', (200))  # makes no diff
     if not freefield.PROCESSORS.mode:
@@ -133,7 +135,8 @@ def dome_rec(signal, speaker_ids, sources, repetitions):
 def create_src_txt(recordings):
     # convert interaural_polar to vertical_polar coordinates for sofa file
     # interaural polar to cartesian
-    interaural_polar = numpy.asarray(recordings)[:, :2].astype('float')
+    # interaural_polar = numpy.asarray(recordings)[:, :2].astype('float')  # deprecated numpy
+    interaural_polar = sources[:, 1:]
     cartesian = numpy.zeros((len(interaural_polar), 3))
     vertical_polar = numpy.zeros((len(interaural_polar), 3))
     azimuths = numpy.deg2rad(interaural_polar[:, 0])

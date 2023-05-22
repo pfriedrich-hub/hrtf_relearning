@@ -6,12 +6,13 @@ from matplotlib import pyplot as plt
 import scipy
 
 """ -------  plot group averaged learning curve ------ """
-to_plot = 'average'
+to_plot = 'average'  # subject id or 'average'
 exclude = []
+w2_exclude = []
 w2_exclude = ['cs', 'lw']
 bracket = 'bracket_1'
 conditions = ['Ears Free', 'Earmolds Week 1', 'Earmolds Week 2']
-path = Path.cwd() / 'data' / 'experiment' / 'bracket_1'
+path = Path.cwd() / 'data' / 'experiment' / bracket
 loc_dict = localization.get_localization_data(path, conditions)
 subjects = list(loc_dict['Ears Free'].keys())
 for ex in exclude: subjects.remove(ex)
@@ -20,7 +21,7 @@ if not to_plot == 'average':
 for condition in conditions:
     # subject x days x eg/ele_rmse/ele_sd/az_rmse/az_sd
     loc_dict[condition]['data'] = numpy.zeros((len(subjects), 7, 5))
-    loc_dict[condition]['SE'] = numpy.zeros((7, 5))  # SE for each measure days x eg/rmse/sd
+    loc_dict[condition]['SE'] = numpy.zeros((7, 5))  # SE for each measure days x eg/ele_rmse/sd/ele_az_rmse/az_sd
     for s, subject in enumerate(subjects):
         sequence_list = loc_dict[condition][subject]
         for idx, sequence in enumerate(sequence_list):
@@ -90,4 +91,4 @@ plt.suptitle(f'w1: {w1}, w2: {w2}')
 plt.show()
 
 # save as scalable vector graphics
-# fig.savefig(Path.cwd() / 'data' / 'experiment' / 'images' / 'bracket_1' / 'hrtf_relearning.svg', format='svg')
+fig.savefig(Path.cwd() / 'data' / 'presentation' / 'learning_plot.svg', format='svg')

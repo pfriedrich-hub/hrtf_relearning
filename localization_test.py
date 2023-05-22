@@ -125,14 +125,19 @@ if __name__ == "__main__":
 import slab
 from pathlib import Path
 from analysis.localization_analysis import localization_accuracy
-subject_id = 'sm'
-condition = 'Earmolds Week 1'
-data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_2' / subject_id / condition
-file_name = 'localization_sm_Earmolds Week 1_23.01'
+subject_id = 'nn'
+condition = 'Ears Free'
+data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_1' / subject_id / condition
+file_name = 'localization_nn_ears_free_10.12'
 sequence = slab.Trialsequence(conditions=45, n_reps=1)
 sequence.load_pickle(file_name=data_dir / file_name)
 
 # plot
-elevation_gain, ele_rmse, ele_var, az_rmse, az_var = localization_accuracy(sequence, show=True, plot_dim=2, binned=True)
+from matplotlib import pyplot as plt
+fig, axis = plt.subplots(1, 1)
+elevation_gain, ele_rmse, ele_var, az_rmse, az_var = localization_accuracy(sequence, show=True, plot_dim=2,
+ binned=True, axis=axis)
+axis.set_xlabel('Response Azimuth (degrees)')
+axis.set_ylabel('Response Elevation (degrees)')
 
 """

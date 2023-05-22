@@ -99,8 +99,8 @@ def localization_accuracy(sequence, show=True, plot_dim=1, binned=True, axis=Non
                 # azimuth_ticks = azimuths
                 # elevation_ticks = elevations
             for az in azimuths:  # plot lines between target locations
-                [x] = mean_loc[numpy.where(mean_loc[:, 0, 0]==az), 0, 0]
-                [y] = mean_loc[numpy.where(mean_loc[:, 0, 0]==az), 1, 0]
+                [x] = mean_loc[numpy.where(mean_loc[:, 0, 0] == az), 0, 0]
+                [y] = mean_loc[numpy.where(mean_loc[:, 0, 0] == az), 1, 0]
                 axis.plot(x, y, color='black', linewidth=0.5)
             for ele in elevations:
                 [x] = mean_loc[numpy.where(mean_loc[:, 1, 0] == ele), 0, 0]
@@ -108,8 +108,8 @@ def localization_accuracy(sequence, show=True, plot_dim=1, binned=True, axis=Non
                 axis.plot(x, y, color='black', linewidth=0.5)
             axis.scatter(mean_loc[:, 0, 1], mean_loc[:, 1, 1], color='black', s=25)
             for az in azimuths:  # plot lines between mean perceived locations for each target
-                [x] = mean_loc[numpy.where(mean_loc[:, 0, 0]==az), 0, 1]
-                [y] = mean_loc[numpy.where(mean_loc[:, 0, 0]==az), 1, 1]
+                [x] = mean_loc[numpy.where(mean_loc[:, 0, 0] == az), 0, 1]
+                [y] = mean_loc[numpy.where(mean_loc[:, 0, 0] == az), 1, 1]
                 axis.plot(x, y, color='black')
             for ele in elevations:
                 [x] = mean_loc[numpy.where(mean_loc[:, 1, 0] == ele), 0, 1]
@@ -134,7 +134,7 @@ def localization_accuracy(sequence, show=True, plot_dim=1, binned=True, axis=Non
         axis.set_ylim(numpy.min(elevation_ticks) - 15, numpy.max(elevation_ticks) + 15)
         axis.set_xticks(azimuth_ticks)
         axis.set_xlim(numpy.min(azimuth_ticks) - 15, numpy.max(azimuth_ticks) + 15)
-        axis.set_title('elevation gain: %.2f' % elevation_gain)
+        # axis.set_title('elevation gain: %.2f' % elevation_gain)
         plt.show()
     #  return EG, RMSE and Response Variability
     return elevation_gain, ele_rmse, ele_var, az_rmse, az_var
@@ -229,11 +229,11 @@ from pathlib import Path
 from copy import deepcopy
 import slab
 
-subject_id = 'vk'
-condition = 'Earmolds Week 2'
+subject_id = 'tk'
+condition = 'Ears Free'
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_2' / subject_id / condition
 
-file_name = 'localization_vk_Earmolds Week 2_20.01'
+file_name = 'localization_tk_Ears Free_26.01_1'
 sequence = slab.Trialsequence(conditions=45, n_reps=1)
 sequence.load_pickle(file_name=data_dir / file_name)
 # plot
@@ -244,7 +244,7 @@ print('elevation_gain: %.2f\nrmse: %.2f\nsd: %.2f' % (elevation_gain, rmse, sd))
 
 #--------- stitch incomplete sequences ------------------#
 
-filename_1 = 'localization_sm_Earmolds Week 1_29.01'
+filename_1 = 'localization_sm_Earmolds Week 1_6_29.01'
 filename_2 = 'localization_sm_Earmolds Week 1_29.01_1'
 sequence_1 = slab.Trialsequence(conditions=45, n_reps=1)
 sequence_2 = deepcopy(sequence_1)
@@ -266,7 +266,7 @@ for i, entry in enumerate(sequence.data):
     sequence.data[i][0][sequence.data[i][0] > 300] -= 360
     
 for i, entry in enumerate(sequence.data):
-    sequence.data[i][0][sequence.data[i][0] < 300] += 360
+    sequence.data[i][0][sequence.data[i][0] < -300] += 360
     
 # -------------- save ------------------#
 

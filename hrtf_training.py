@@ -12,15 +12,16 @@ fs = 48828
 slab.set_default_samplerate(fs)
 
 # get probabilities for target speakers, depending on previous localisation performance
-subject_id = 'sm'
-condition = 'Earmolds week 2'
-subject_dir = data_dir / 'experiment' / 'bracket_2' / subject_id / condition
+subject_id = 'pp'
+condition = 'Earmolds week 1'
+subject_dir = data_dir / 'experiment' / 'bracket_3' / subject_id / condition
 try:
     sequence = localization.load_latest(subject_dir)
     target_p = localization.get_target_proabilities(sequence, show=False)
 except:
     print('Could not load localization data. Using equal target probabilities.')
     target_p = numpy.ones((44, 4))
+    target_p = None
 
 
 # max_pulse_interval: maximal pulse interval in ms
@@ -46,7 +47,7 @@ def hrtf_training(max_pulse_interval=500, target_size=3, target_time=0.5, trial_
                      ['RP2', 'RP2', data_dir / 'rcx' / 'arduino_analog.rcx']]
         freefield.initialize('dome', device=proc_list)
         freefield.load_equalization(data_dir / 'calibration' / 'calibration_dome_13.01')
-    # generate sounds
+    # generate sounds, set experiment parameters
     stim = slab.Sound.pinknoise(duration=10.0)
     freefield.write(tag='playbuflen', value=stim.n_samples, processors=['RX81', 'RX82'])
     freefield.write(tag='data', value=stim.data, processors=['RX81', 'RX82'])
@@ -65,11 +66,12 @@ def hrtf_training(max_pulse_interval=500, target_size=3, target_time=0.5, trial_
                  'game_time': game_time, 'trial_time': trial_time}
     if target_p is not None:
         target_p = numpy.expand_dims(target_p[:, 3], axis=1)
+    else:
+        target_p = numpy.expand_dims(numpy.ones(len(speakers)), axis=1) / len(speakers)
     while True:
         # get list of speaker to play from
         speaker_choices = numpy.delete(speakers, [19, 23, 27], axis=0)
-        if target_p is not None:
-            speaker_choices = numpy.hstack((speaker_choices, target_p))
+        speaker_choices = numpy.hstack((speaker_choices, target_p))
         [speaker] = speaker_choices[numpy.where(speaker_choices[:, 0] == int(numpy.random.choice(speaker_choices[:, 0],
                                                                     p=speaker_choices[:, 3])))][:3]
         # remove target speaker from speaker_choices to avoid repetition

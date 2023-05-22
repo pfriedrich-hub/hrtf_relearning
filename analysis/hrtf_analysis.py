@@ -1,4 +1,3 @@
-import os
 import slab
 from pathlib import Path
 import matplotlib
@@ -27,10 +26,10 @@ def get_hrtfs(path, subject_list, conditions, smoothe=True, baseline=True, bandw
             for file_name in sorted(list(subject_dir.iterdir())):
                 if file_name.is_file() and file_name.suffix == '.sofa':
                     hrtf = slab.HRTF(file_name)
-                    if baseline:
-                        hrtf = baseline_hrtf(hrtf, bandwidth=bandwidth)
                     if dfe:
                         hrtf = hrtf.diffuse_field_equalization()
+                    if baseline:
+                        hrtf = baseline_hrtf(hrtf, bandwidth=bandwidth)
                     hrtf_dict[condition][subject_path] = hrtf
         hrtf_dict[condition]['average'] = average_hrtf(list(hrtf_dict[condition].values()))
     return hrtf_dict
@@ -160,6 +159,7 @@ def mean_vsi_across_bands(hrtf_dict, show=True):
             axis[0].set_ylabel('VSI')
 
 def hrtf_images(plot_dict, n_bins, bandwidth, title=None, plot='image'):
+    """Plots HRTFs and HRTF differences """
     # input is a dictionary with keys = condition and value = HRTF, 3 conditions
     dict = copy.deepcopy(plot_dict)
     conditions = list(dict.keys())
@@ -314,22 +314,30 @@ def hrtf_image(hrtf, bandwidth=(4000, 16000), n_bins=300, axis=None, z_min=None,
 
 
 """   
-subject_id = 'ma'
-condition = 'Earmolds Week 2'
-data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_1' / subject_id / condition
-file_name = 'ma_Earmolds Week 2_10.12.sofa'
+subject_id = 'lk'
+condition = 'Earmolds Week 1'
+data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_2' / subject_id / condition
+file_name = 'lk_Earmolds Week 1_27.01.sofa'
 hrtf = slab.HRTF(data_dir / file_name)
 bandwidth = (4000, 16000)
-n_bins = 300
+n_bins = 4884
+
+hrtf.plot_tf(sourceidx=hrtf.cone_sources(0), xlim=bandwidth, n_bins=n_bins)
+
+
 hrtf = baseline_hrtf(hrtf, bandwidth=bandwidth)
 hrtf = hrtf.diffuse_field_equalization()
 
-# image
-axis = plot_hrtf_image(hrtf, bandwidth, n_bins)
+# single hrtf image
+axis = hrtf_image(hrtf1, bandwidth, n_bins)
 ax = axis.figure.get_axes()[1]
 ax_pos = list(ax.get_position().bounds)
 ax_pos[0] = 0.92
+ax_pos[2] = 0.02  # width
 ax.set_position(ax_pos) # move cbar
+axis.set_xlabel('Frequency (kHz)', size=13)
+axis.set_ylabel('Elevation (degrees)', size=13)
+axis.set_title('Modified')
 
 # waterfall
 hrtf.plot_tf(sourceidx=hrtf.cone_sources(0), xlim=bandwidth, n_bins=n_bins)

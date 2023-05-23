@@ -1,14 +1,15 @@
 import analysis.localization_analysis as localization
 from pathlib import Path
 import matplotlib.pyplot as plt
+import numpy
 
 """ -------  plot localization accuracy of all participants --------- """
 
 plot_condition = 'Earmolds Week 1'
-bracket = 'bracket_2'
+bracket = 'bracket_1'
 
 conditions = ['Ears Free', 'Earmolds Week 1', 'Earmolds Week 2']
-conditions = ['Ears Free', 'Earmolds Week 1'] #, 'Earmolds Week 2']
+# conditions = ['Ears Free', 'Earmolds Week 1'] #, 'Earmolds Week 2']
 
 path = Path.cwd() / 'data' / 'experiment' / bracket
 loc_dict = localization.get_localization_data(path, conditions)
@@ -23,7 +24,8 @@ for s_id, subj in enumerate(subjects):
                                                plot_dim=2, binned=True, axis=axis[f_id, s_id])
 fig.text(0.5, 0.07, 'Response azimuth (deg)', ha='center')
 fig.text(0.08, 0.5, 'Response elevation (deg)', va='center', rotation='vertical')
-axis[0, 0].set_xticks(axis[0, 0].get_xticks().astype('int'))
+axis[0, 0].set_xticks(numpy.array((-50, 0, 50)))
+axis[0, 0].set_yticks(numpy.array((-30, 0, 30)))
 for sub_idx, i in enumerate(range(2, 10, 2)):
     fig.text(i/10, 0.95, subjects[sub_idx])
 fig.text(0.5, 0.97, plot_condition, ha='center', size=15)

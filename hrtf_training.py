@@ -20,9 +20,7 @@ try:
     target_p = localization.get_target_proabilities(sequence, show=False)
 except:
     print('Could not load localization data. Using equal target probabilities.')
-    target_p = numpy.ones((44, 4))
     target_p = None
-
 
 # max_pulse_interval: maximal pulse interval in ms
 # target_window: target window as euclidean distance of head pose from target speaker
@@ -60,17 +58,18 @@ def hrtf_training(max_pulse_interval=500, target_size=3, target_time=0.5, trial_
     # set variables to control pulse train and goal condition
     table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')
     speakers = numpy.loadtxt(table_file, skiprows=1, usecols=(0, 3, 4), delimiter=",", dtype=float)
+    speakers = numpy.delete(speakers, [19, 23, 27], axis=0)
     pulse_attr = {'max_distance': la.norm(numpy.min(speakers[:, 1:], axis=0) - [0, 0]),
                   'max_pulse_interval': max_pulse_interval}
     goal_attr = {'target_size': target_size, 'target_time': target_time,
                  'game_time': game_time, 'trial_time': trial_time}
-    if target_p is not None:
-        target_p = numpy.expand_dims(target_p[:, 3], axis=1)
-    else:
+    if target_p is None:
         target_p = numpy.expand_dims(numpy.ones(len(speakers)), axis=1) / len(speakers)
-    while True:
-        # get list of speaker to play from
-        speaker_choices = numpy.delete(speakers, [19, 23, 27], axis=0)
+    else:
+        target_p = numpy.expand_dims(target_p[:, 3], axis=1)
+    while True:  # loop over blocks
+        # get list of speakers to play from
+        speaker_choices = speakers
         speaker_choices = numpy.hstack((speaker_choices, target_p))
         [speaker] = speaker_choices[numpy.where(speaker_choices[:, 0] == int(numpy.random.choice(speaker_choices[:, 0],
                                                                     p=speaker_choices[:, 3])))][:3]

@@ -4,9 +4,9 @@ import analysis.hrtf_analysis as hrtf_analysis
 """ Plot Images and Differences of HRTFs """
 to_plot = 'average'  # 'average' or subject id
 exclude = []  # to exclude from group average
-n_bins = 4884
+n_bins = 300
 bandwidth = (4000, 16000)
-path = Path.cwd() / 'data' / 'experiment' / 'bracket_2'
+path = Path.cwd() / 'data' / 'experiment' / 'master'
 subject_list = [subj.name for subj in list(path.iterdir())]
 subject_list = [subj for subj in subject_list if subj not in exclude]
 conditions = ['Ears Free', 'Earmolds Week 1', 'Earmolds Week 2']
@@ -18,8 +18,9 @@ baselining subtracts mean power across DTFs within bandwidth and cuts DTFs at th
 dfe applies diffuse field equalization 
 """
 
+
 hrtf_dict = hrtf_analysis.get_hrtfs(path, subject_list, conditions, smoothe=True,
-                                    baseline=True, bandwidth=bandwidth, dfe=False)
+                                    baseline=True, bandwidth=bandwidth, dfe=True)
 
 """    plot  """
 plot_dict = {}
@@ -50,16 +51,20 @@ lst = [subj for subj in subject_list if subj not in exclude]
 
 
 #------ smoothe hrtf and write to file ------#
-hrtf_dict = hrtf_analysis.get_hrtfs(path, subject_list, conditions, smoothe=False,
+hrtf_dict = hrtf_analysis.get_hrtfs(path, subject_list, conditions, smoothe=True,
                                     baseline=False, bandwidth=bandwidth, dfe=False)
-
+import copy
 subject_dir_list = list(path.iterdir())
 for condition in hrtf_dict.keys():
     for subj_idx, subject_path in enumerate(subject_dir_list):
         if subject_path.name in hrtf_dict[condition].keys():
-            hrtf = hrtf_dict[condition][subject_path.name] 
-            hrtf_dict[condition][subject_path.name] = hrtf_analysis.smoothe_hrtf(hrtf, high_cutoff=1500)
-
+            print('processing %s %s' %(subject_path.name, condition))
+            hrtf_out = copy.deepcopy(hrtf_dict[condition][subject_path.name])
+            hrtf_out = hrtf_analysis.smoothe_hrtf(hrtf_out, high_cutoff=1500)
+            # hrtf_out = hrtf_out.diffuse_field_equalization()
+            # hrtf_out = hrtf_analysis.baseline_hrtf(hrtf_out, bandwidth=(3000, 17000))
+            hrtf_dict[condition][subject_path.name] = hrtf_out
+            
 hrtf_analysis.write_processed_hrtf(hrtf_dict, path, dir_name='processed_hrtf')
 
 """

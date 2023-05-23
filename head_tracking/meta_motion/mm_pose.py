@@ -68,7 +68,7 @@ def get_pose(sensor, n_datapoints=100):
         pose = numpy.array((sensor.pose.yaw, sensor.pose.roll))
         if not any(numpy.isnan(pose)) and all(-180 <= _pose <= 360 for _pose in pose)\
                 and not any(-1e-3 <= _pose <= 1e-3 for _pose in pose):
-            if pose[0] > 180:
+            if pose[0] > 180:  # todo fix this
                 pose[0] -= 360
             pose_log[n] = pose
             n += 1

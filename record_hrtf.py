@@ -12,14 +12,14 @@ fs = 97656  # 97656.25, 195312.5
 slab.set_default_samplerate(fs)
 
 # file settings
-subject_id = 'test'
+subject_id = 'pp'
 condition = 'Earmolds Week 1'  # can be 'ears_free' or 'earmolds' - important for file naming!
 kemar = False  # requires no button press if true
 safe = 'both'  # decide if additionally save in-ear-recordings
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_3' / subject_id / condition
 
 # HRTF recording settings
-speakers = numpy.arange(20, 27).tolist()  #sources to record HRTF from # central cone, with top and bottom speaker removed
+speakers = numpy.arange(20, 27).tolist()  # record HRTF from central cone, with top and bottom speaker removed
 # speakers = 'all'  # full dome
 # speakers = numpy.arange(28, 35).tolist()  # 17.5 cone  # still to be calibrated
 # speakers = numpy.arange(12, 19).tolist()  # -17.5 cone

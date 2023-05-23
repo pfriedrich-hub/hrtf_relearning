@@ -13,7 +13,7 @@ slab.set_default_samplerate(fs)
 
 # get probabilities for target speakers, depending on previous localisation performance
 subject_id = 'pp'
-condition = 'Earmolds week 1'
+condition = 'Ears Free'
 subject_dir = data_dir / 'experiment' / 'bracket_3' / subject_id / condition
 try:
     sequence = localization.load_latest(subject_dir)
@@ -107,7 +107,7 @@ def play_trial(speaker_id):
     other_proc.remove(freefield.pick_speakers(speaker_id)[0].analog_proc)
     freefield.write(tag='chan', value=99, processors=other_proc)
     offset = motion_sensor.calibrate_pose(sensor)  # get head pose offset
-    target = speakers[speaker_id, 1:]  # get target coordinates
+    target = speakers[numpy.where(speakers[:, 0] == speaker_id), 1:]   # get target coordinates
     print('\n TARGET| azimuth: %.1f, elevation %.1f' % (target[0], target[1]))
     set_pulse_train()  # set initial pulse train interval
     freefield.play(kind='zBusA', proc='all')  # start playing pulse train

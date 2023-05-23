@@ -11,11 +11,11 @@ import head_tracking.meta_motion.mm_pose as motion_sensor
 fs = 48828
 slab.set_default_samplerate(fs)
 
-subject_id = 'test'
+subject_id = 'pp'
 condition = 'Earmolds Week 1'
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_3' / subject_id / condition
 
-repetitions = 1  # number of repetitions per speaker
+repetitions = 3  # number of repetitions per speaker
 
 def localization_test(subject_id, data_dir, condition, repetitions):
     global speakers, stim, sensor, tone, file_name
@@ -121,16 +121,16 @@ if __name__ == "__main__":
 
 
 """
-
 import slab
 from pathlib import Path
 from analysis.localization_analysis import localization_accuracy
-subject_id = 'nn'
-condition = 'Ears Free'
-data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_1' / subject_id / condition
-file_name = 'localization_nn_ears_free_10.12'
+
+file_name = 'localization_pp_Earmolds Week 1_23.05'
+
+for path in Path.cwd().glob("**/*"+str(file_name)):
+    file_path = path
 sequence = slab.Trialsequence(conditions=45, n_reps=1)
-sequence.load_pickle(file_name=data_dir / file_name)
+sequence.load_pickle(file_path)
 
 # plot
 from matplotlib import pyplot as plt
@@ -139,5 +139,4 @@ elevation_gain, ele_rmse, ele_var, az_rmse, az_var = localization_accuracy(seque
  binned=True, axis=axis)
 axis.set_xlabel('Response Azimuth (degrees)')
 axis.set_ylabel('Response Elevation (degrees)')
-
 """

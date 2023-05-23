@@ -134,7 +134,7 @@ def localization_accuracy(sequence, show=True, plot_dim=1, binned=True, axis=Non
         axis.set_ylim(numpy.min(elevation_ticks) - 15, numpy.max(elevation_ticks) + 15)
         axis.set_xticks(azimuth_ticks)
         axis.set_xlim(numpy.min(azimuth_ticks) - 15, numpy.max(azimuth_ticks) + 15)
-        # axis.set_title('elevation gain: %.2f' % elevation_gain)
+        axis.set_title('elevation gain: %.2f' % elevation_gain)
         plt.show()
     #  return EG, RMSE and Response Variability
     return elevation_gain, ele_rmse, ele_var, az_rmse, az_var
@@ -262,15 +262,21 @@ sequence.save_pickle(data_dir / file_name, clobber=True)
 
 # ----------- correct azimuth for >300° ---------- #
 
+file_name = 'localization_pp_Earmolds Week 1_23.05'
+for path in Path.cwd().glob("**/*"+str(file_name)):
+    file_path = path
+sequence = slab.Trialsequence(conditions=45, n_reps=1)
+sequence.load_pickle(file_path)
+
 for i, entry in enumerate(sequence.data):
-    sequence.data[i][0][sequence.data[i][0] > 300] -= 360
+    sequence.data[i][0][sequence.data[i][0] > 180] -= 360
     
 for i, entry in enumerate(sequence.data):
-    sequence.data[i][0][sequence.data[i][0] < -300] += 360
+    sequence.data[i][0][sequence.data[i][0] < -180] += 360
     
 # -------------- save ------------------#
 
-sequence.save_pickle(data_dir / file_name, clobber=True)
+sequence.save_pickle(file_path, clobber=True)
 
 
 # for azimuth:

@@ -18,18 +18,18 @@ inverse filters are computed see the documentation of slab.Filter.equalizing_fil
 """
 
 # initialize setup with standard samplerate (48824)
-# fs = 48828
-# signal_length = 0.1  # how long should the chirp be?
-# freefield.initialize('dome', default='play_rec')
+fs = 48828
+signal_length = 0.1  # how long should the chirp be?
+freefield.initialize('dome', default='play_rec')
 
 # initialize setup with modified samplerate (97656)
-fs = 97656
-signal_length = 0.1  # how long should the chirp be?
-proc_list = [['RP2', 'RP2', Path.cwd() / 'data' / 'rcx' / 'rec_buf.rcx'],
-             ['RX81', 'RX8', Path.cwd() / 'data' / 'rcx' / 'play_buf.rcx'],
-             ['RX82', 'RX8', Path.cwd() / 'data' / 'rcx' / 'play_buf.rcx']]
-freefield.initialize('dome', device=proc_list)
-freefield.PROCESSORS.mode = 'play_rec'
+# fs = 97656
+# signal_length = 0.1  # how long should the chirp be?
+# proc_list = [['RP2', 'RP2', Path.cwd() / 'data' / 'rcx' / 'rec_buf.rcx'],
+#              ['RX81', 'RX8', Path.cwd() / 'data' / 'rcx' / 'play_buf.rcx'],
+#              ['RX82', 'RX8', Path.cwd() / 'data' / 'rcx' / 'play_buf.rcx']]
+# freefield.initialize('dome', device=proc_list)
+# freefield.PROCESSORS.mode = 'play_rec'
 
 freefield.set_logger('warning')
 slab.Signal.set_default_samplerate(fs)  # default samplerate for generating sounds, filters etc.
@@ -40,12 +40,13 @@ azimuthal_angles = numpy.array([-52.5, -35, -17.5, 0, 17.5, 35, 52.5])
 # speaker_idx = [19,20,21,22,23,24,25,26,27]  # central array
 
 # signal parameters
-low_cutoff = 200
+low_cutoff = 20
 high_cutoff = 20000
 rec_repeat = 20  # how often to repeat measurement for averaging
 # signal for loudspeaker calibration
-ramp_duration = signal_length/20
-signal = slab.Sound.chirp(duration=signal_length, level=80, from_frequency=low_cutoff, to_frequency=high_cutoff, kind='linear')
+ramp_duration = signal_length/50
+# use quadratic chirp to gain power in low freqs
+signal = slab.Sound.chirp(duration=signal_length, level=85, from_frequency=low_cutoff, to_frequency=high_cutoff, kind='quadratic')
 signal = slab.Sound.ramp(signal, when='both', duration=ramp_duration)
 
 # equalization parameters
@@ -66,9 +67,9 @@ target = slab.Sound(data=numpy.mean(temp_recs, axis=0))
 
 # # use original signal as reference - WARNING could result in unrealistic equalization filters,
 #  can be used for HRTF measurement calibration to get really flat chirp spectra
-baseline_amp = target.level  # at 10 db gain on preamp and signal level 90 dB!
-target = deepcopy(signal)
-target.level = baseline_amp
+# baseline_amp = target.level  # at 10 db gain on preamp and signal level 90 dB!
+# target = deepcopy(signal)
+# target.level = baseline_amp
 
 # get speaker id's for each column in the dome
 table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')
@@ -85,7 +86,7 @@ equalization = dict()  # dictionary to hold equalization parameters
 
 #------------------- hold on --------------------#
 # pick single column to calibrate speaker_list[0] to speaker_list[6]
-speakers = freefield.pick_speakers(speaker_list[3])
+speakers = freefield.pick_speakers(speaker_list[6])
 # place microphone 90° to source column at equal distance (recordings should be done in far field: > 1m)
 
 
@@ -182,8 +183,8 @@ equalization.update(array_equalization)
 # write final equalization to pkl file
 freefield_path = freefield.DIR / 'data'
 project_path = Path.cwd() / 'data' / 'calibration'
-file_name = project_path / f'calibration_central_cone_100k'
-with open(file_name, 'wb') as f:  # save the newly recorded calibration
+equalization_path = project_path / f'calibration_dome_23.05'
+with open(equalization_path, 'wb') as f:  # save the newly recorded calibration
     pickle.dump(equalization, f, pickle.HIGHEST_PROTOCOL)
 
 
@@ -199,12 +200,25 @@ import slab
 import numpy
 import time
 from pathlib import Path
-# freefield.initialize('dome', default='play_rec')  # initialize setup
-proc_list = [['RP2', 'RP2', Path.cwd() / 'data' / 'rcx' / 'bi_rec_buf.rcx'],
-             ['RX81', 'RX8', Path.cwd() / 'data' / 'rcx' / 'play_buf.rcx'],
-             ['RX82', 'RX8', Path.cwd() / 'data' / 'rcx' / 'play_buf.rcx']]
-freefield.initialize('dome', device=proc_list)
-freefield.PROCESSORS.mode = 'play_birec'
+freefield.initialize('dome', default='play_rec')  # initialize setup
+# proc_list = [['RP2', 'RP2', Path.cwd() / 'data' / 'rcx' / 'bi_rec_buf.rcx'],
+#              ['RX81', 'RX8', Path.cwd() / 'data' / 'rcx' / 'play_buf.rcx'],
+#              ['RX82', 'RX8', Path.cwd() / 'data' / 'rcx' / 'play_buf.rcx']]
+# freefield.initialize('dome', device=proc_list)
+# freefield.PROCESSORS.mode = 'play_birec'
+
+# manual testing: play broadband noise through all speakers
+freefield.load_equalization(equalization_path)
+signal = slab.Sound.pinknoise(duration=1.0, level=85)
+speakers = freefield.pick_speakers(speaker_table[:, 0].astype('int'))
+# speakers = freefield.pick_speakers(speaker_list[3])  # single column
+time.sleep(10)
+for speaker in speakers:
+    print(speaker.level)
+    freefield.set_signal_and_speaker(signal, speaker, equalize=True)
+    freefield.play()
+    freefield.wait_to_finish_playing()
+
 
 freefield.set_logger('WARNING')
 azimuthal_angles = numpy.array([-52.5, -35, -17.5, 0, 17.5, 35, 52.5])

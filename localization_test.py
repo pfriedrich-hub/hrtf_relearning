@@ -11,18 +11,18 @@ import head_tracking.meta_motion.mm_pose as motion_sensor
 fs = 48828
 slab.set_default_samplerate(fs)
 
-subject_id = 'sm'
-condition = 'Earmolds Week 2'
-data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_2' / subject_id / condition
+subject_id = 'test'
+condition = 'Earmolds Week 1'
+data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_3' / subject_id / condition
 
-repetitions = 3  # number of repetitions per speaker
+repetitions = 1  # number of repetitions per speaker
 
 def localization_test(subject_id, data_dir, condition, repetitions):
     global speakers, stim, sensor, tone, file_name
     sensor = motion_sensor.start_sensor()
     if not freefield.PROCESSORS.mode:
         freefield.initialize('dome', default='play_rec')
-    freefield.load_equalization(Path.cwd() / 'data' / 'calibration' / 'calibration_dome_13.01')
+    freefield.load_equalization(Path.cwd() / 'data' / 'calibration' / 'calibration_dome_23.05')
     freefield.set_logger('warning')
 
     # generate stimulus

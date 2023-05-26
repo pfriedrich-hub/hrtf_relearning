@@ -13,7 +13,7 @@ slab.set_default_samplerate(fs)
 
 # get probabilities for target speakers, depending on previous localisation performance
 subject_id = 'pp'
-condition = 'Ears Free'
+condition = 'Earmolds Week 1'
 subject_dir = data_dir / 'experiment' / 'bracket_3' / subject_id / condition
 try:
     sequence = localization.load_latest(subject_dir)
@@ -96,6 +96,7 @@ def hrtf_training(max_pulse_interval=500, target_size=3, target_time=0.5, trial_
             speaker = next_speaker
         print('Press button to play again.')
         freefield.wait_for_button()
+        time.sleep(1)
 
 def play_trial(speaker_id):
     global offset, target, end, score, prep_time
@@ -107,7 +108,7 @@ def play_trial(speaker_id):
     other_proc.remove(freefield.pick_speakers(speaker_id)[0].analog_proc)
     freefield.write(tag='chan', value=99, processors=other_proc)
     offset = motion_sensor.calibrate_pose(sensor)  # get head pose offset
-    target = speakers[numpy.where(speakers[:, 0] == speaker_id), 1:]   # get target coordinates
+    target = speakers[numpy.where(speakers[:, 0] == speaker_id), 1:][0][0]   # get target coordinates
     print('\n TARGET| azimuth: %.1f, elevation %.1f' % (target[0], target[1]))
     set_pulse_train()  # set initial pulse train interval
     freefield.play(kind='zBusA', proc='all')  # start playing pulse train

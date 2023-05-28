@@ -12,7 +12,7 @@ fs = 48828
 slab.set_default_samplerate(fs)
 
 subject_id = 'pp'
-condition = 'Earmolds Week 1'
+condition = 'Earmolds Week 2'
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_3' / subject_id / condition
 
 repetitions = 3  # number of repetitions per speaker
@@ -125,9 +125,9 @@ import slab
 from pathlib import Path
 from analysis.localization_analysis import localization_accuracy
 
-file_name = 'localization_pp_Earmolds Week 1_23.05'
+file_name = 'localization_pp_Ears Free_28.05'
 
-for path in Path.cwd().glob("**/*"+str(file_name)):
+for path in Path.cwd().glob("**/"+str(file_name)):
     file_path = path
 sequence = slab.Trialsequence(conditions=45, n_reps=1)
 sequence.load_pickle(file_path)

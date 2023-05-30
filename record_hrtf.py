@@ -13,7 +13,7 @@ slab.set_default_samplerate(fs)
 
 # file settings
 subject_id = 'pp'
-condition = 'Earmolds Week 1'  # can be 'ears_free' or 'earmolds' - important for file naming!
+condition = 'Earmolds Week 2'  # can be 'ears_free' or 'earmolds' - important for file naming!
 kemar = False  # requires no button press if true
 safe = 'both'  # decide if additionally save in-ear-recordings
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_3' / subject_id / condition

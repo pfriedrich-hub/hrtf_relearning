@@ -11,8 +11,8 @@ import head_tracking.meta_motion.mm_pose as motion_sensor
 fs = 48828
 slab.set_default_samplerate(fs)
 
-subject_id = 'pp'
-condition = 'Ears Free'
+subject_id = 'lm'
+condition = 'Earmolds Week 1'
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_3' / subject_id / condition
 
 repetitions = 3  # number of repetitions per speaker
@@ -125,7 +125,7 @@ import slab
 from pathlib import Path
 from analysis.localization_analysis import localization_accuracy
 
-file_name = 'localization_pp_Earmolds Week 2_28.05'
+file_name = 'localization_lm_Earmolds Week 1_06.06'
 
 for path in Path.cwd().glob("**/"+str(file_name)):
     file_path = path
@@ -139,4 +139,46 @@ elevation_gain, ele_rmse, ele_var, az_rmse, az_var = localization_accuracy(seque
  binned=True, axis=axis)
 axis.set_xlabel('Response Azimuth (degrees)')
 axis.set_ylabel('Response Elevation (degrees)')
+"""
+
+
+"""
+
+
+#--------- stitch incomplete sequences ------------------#
+
+filename_1 = 'localization_sm_Earmolds Week 1_6_29.01'
+filename_2 = 'localization_sm_Earmolds Week 1_29.01_1'
+sequence_1 = slab.Trialsequence(conditions=45, n_reps=1)
+sequence_2 = deepcopy(sequence_1)
+sequence_1.load_pickle(file_name=data_dir / filename_1)
+sequence_2.load_pickle(file_name=data_dir / filename_2)
+data_1 = sequence_1.data[:-sequence_1.n_remaining]
+data_2 = sequence_2.data[:-sequence_2.n_remaining]
+data = data_1 + data_2
+sequence = sequence_1
+file_name = filename_1
+sequence.data = data
+
+#  save
+sequence.save_pickle(data_dir / file_name, clobber=True)
+
+# ----------- correct azimuth for >300° ---------- #
+
+file_name = 'localization_lm_Ears Free_05.06_1'
+for path in Path.cwd().glob("**/*"+str(file_name)):
+    file_path = path
+sequence = slab.Trialsequence(conditions=45, n_reps=1)
+sequence.load_pickle(file_path)
+
+for i, entry in enumerate(sequence.data):
+    sequence.data[i][0][sequence.data[i][0] > 180] -= 360
+    
+for i, entry in enumerate(sequence.data):
+    sequence.data[i][0][sequence.data[i][0] < -180] += 360
+    
+# -------------- save ------------------#
+
+sequence.save_pickle(file_path, clobber=True)
+
 """

@@ -11,7 +11,7 @@ fs = 48828
 slab.set_default_samplerate(fs)
 
 subject_id = 'pp'
-condition = 'Earmolds Week 2'
+condition = 'Ears Free'
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_3' / subject_id / condition
 
 repetitions = 3  # number of repetitions per speaker
@@ -118,7 +118,7 @@ from analysis.localization_analysis import localization_accuracy
 subject_id = 'lk'
 condition = 'Earmolds Week 1'
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_2' / subject_id / condition
-file_name = 'localization_lk_Earmolds Week 1_17.01'
+file_name = 'localization_pp_Earmolds Week 2_07.06'
 sequence = slab.Trialsequence(conditions=45, n_reps=1)
 sequence.load_pickle(file_name=data_dir / file_name)
 

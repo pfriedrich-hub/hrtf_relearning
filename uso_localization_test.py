@@ -54,7 +54,7 @@ def localization_test(subject_id, data_dir, condition, repetitions):
             dist[i] = numpy.sqrt(diff[0] ** 2 + diff[1] ** 2)
         if all(dist >= 35):  # check if distance is never smaller than 35°
             break
-    uso_sequence = numpy.random.choice(len(uso_list), len(sequence), replace=False)
+    uso_sequence = uso_list[:len(sequence)]
     trial_sequence = slab.Trialsequence(trials=range(len(sequence)))
     # loop over trials
     data_dir.mkdir(parents=True, exist_ok=True)  # create subject data directory if it doesnt exist

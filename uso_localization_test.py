@@ -10,8 +10,8 @@ import head_tracking.meta_motion.mm_pose as motion_sensor
 fs = 48828
 slab.set_default_samplerate(fs)
 
-subject_id = 'lm'
-condition = 'Earmolds Week 1'
+subject_id = 'svm'
+condition = 'Ears Free'
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_3' / subject_id / condition
 
 repetitions = 3  # number of repetitions per speaker
@@ -72,7 +72,7 @@ def localization_test(subject_id, data_dir, condition, repetitions):
             freefield.play()
             freefield.wait_to_finish_playing()
             played_bell = True
-        trial_sequence.add_response(play_trial(sequence[index], uso_list[uso_sequence[index]], progress))
+        trial_sequence.add_response(play_trial(sequence[index], uso_sequence[index], progress))
         trial_sequence.save_pickle(data_dir / file_name, clobber=True)
     freefield.halt()
     # motion_sensor.disconnect(sensor)

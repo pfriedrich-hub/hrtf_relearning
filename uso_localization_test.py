@@ -10,8 +10,8 @@ import head_tracking.meta_motion.mm_pose as motion_sensor
 fs = 48828
 slab.set_default_samplerate(fs)
 
-subject_id = 'svm'
-condition = 'Ears Free'
+subject_id = 'lm'
+condition = 'Earmolds Week 1'
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_3' / subject_id / condition
 
 repetitions = 3  # number of repetitions per speaker
@@ -36,8 +36,8 @@ def localization_test(subject_id, data_dir, condition, repetitions):
     table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')
     speakers = numpy.loadtxt(table_file, skiprows=1, usecols=(0, 3, 4), delimiter=",", dtype=float)
     c_speakers = numpy.delete(speakers, [19, 23, 27], axis=0)  # remove disconnected speaker from speaker_list
-    sequence = numpy.zeros(repetitions * len(c_speakers)).astype('int')
-    print('Setting target sequence...')
+    speaker_sequence = numpy.zeros(repetitions * len(c_speakers)).astype('int')
+    print('Setting speaker sequence...')
     while True:  # create n_repetitions sequences with more than 35° angular distance between successive targets
         for s in range(repetitions):
             seq = numpy.random.choice(c_speakers[:, 0], replace=False, size=(len(c_speakers))).astype('int')
@@ -47,15 +47,23 @@ def localization_test(subject_id, data_dir, condition, repetitions):
                 seq = numpy.random.choice(c_speakers[:, 0], replace=False, size=(len(c_speakers))).astype('int')
                 diff = numpy.diff(speakers[seq, 1:], axis=0)
                 euclidean_dist = numpy.sqrt(diff[:, 0] ** 2 + diff[:, 1] ** 2)
-            sequence[s*len(seq):s*len(seq)+len(seq)] = seq
+            speaker_sequence[s*len(seq):s*len(seq)+len(seq)] = seq
             dist = numpy.zeros(repetitions * len(c_speakers) - 1)
-        for i in range(len(sequence)-1):  #
-            [diff] = numpy.diff((speakers[int(sequence[i]), 1:], speakers[int(sequence[i+1]), 1:]), axis=0)
+        for i in range(len(speaker_sequence)-1):  #
+            [diff] = numpy.diff((speakers[int(speaker_sequence[i]), 1:], speakers[int(speaker_sequence[i+1]), 1:]), axis=0)
             dist[i] = numpy.sqrt(diff[0] ** 2 + diff[1] ** 2)
         if all(dist >= 35):  # check if distance is never smaller than 35°
             break
-    uso_sequence = uso_list[:len(sequence)]
-    trial_sequence = slab.Trialsequence(trials=range(len(sequence)))
+    # uso_sequence = uso_list[:len(speaker_sequence)]
+
+    # todo: test this
+    trial_sequence = slab.Trialsequence(conditions=numpy.arange(0, len(uso_list)).tolist())
+    trial_sequence.n_trials = len(speaker_sequence)
+    trial_sequence.trials = trial_sequence.trials[:len(speaker_sequence)]
+    trial_sequence.data = trial_sequence.data[:len(speaker_sequence)]
+    trial_sequence.n_remaining = len(speaker_sequence)
+
+    # trial_sequence = slab.Trialsequence(trials=range(len(speaker_sequence)))
     # loop over trials
     data_dir.mkdir(parents=True, exist_ok=True)  # create subject data directory if it doesnt exist
     file_name = 'uso_localization_' + subject_id + '_' + condition + date.strftime('_%d.%m')
@@ -72,7 +80,11 @@ def localization_test(subject_id, data_dir, condition, repetitions):
             freefield.play()
             freefield.wait_to_finish_playing()
             played_bell = True
-        trial_sequence.add_response(play_trial(sequence[index], uso_sequence[index], progress))
+        # trial_sequence.add_response(play_trial(speaker_sequence[index], uso_list[uso_sequence[index]], progress))
+
+        trial_sequence.add_response(play_trial(speaker_sequence[trial_sequence.this_n], uso_list[index], progress))
+        # todo test this
+
         trial_sequence.save_pickle(data_dir / file_name, clobber=True)
     freefield.halt()
     # motion_sensor.disconnect(sensor)

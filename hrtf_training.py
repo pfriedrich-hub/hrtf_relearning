@@ -5,15 +5,15 @@ from numpy import linalg as la
 from pathlib import Path
 import time
 import analysis.localization_analysis as localization
-import head_tracking.meta_motion.mm_pose as motion_sensor
+# import head_tracking.meta_motion.mm_pose as motion_sensor
 
 data_dir = Path.cwd() / 'data'
 fs = 48828
 slab.set_default_samplerate(fs)
 
 # get probabilities for target speakers, depending on previous localisation performance
-subject_id = 'svm'
-condition = 'Earmolds Week 1'
+subject_id = 'pp'
+condition = 'Earmolds Week 2'
 subject_dir = data_dir / 'experiment' / 'bracket_3' / subject_id / condition
 try:
     sequence = localization.load_latest(subject_dir)

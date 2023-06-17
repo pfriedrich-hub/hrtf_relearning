@@ -54,16 +54,11 @@ def localization_test(subject_id, data_dir, condition, repetitions):
             dist[i] = numpy.sqrt(diff[0] ** 2 + diff[1] ** 2)
         if all(dist >= 35):  # check if distance is never smaller than 35°
             break
-    # uso_sequence = uso_list[:len(speaker_sequence)]
-
-    # todo: test this
     trial_sequence = slab.Trialsequence(conditions=numpy.arange(0, len(uso_list)).tolist())
     trial_sequence.n_trials = len(speaker_sequence)
     trial_sequence.trials = trial_sequence.trials[:len(speaker_sequence)]
     trial_sequence.data = trial_sequence.data[:len(speaker_sequence)]
     trial_sequence.n_remaining = len(speaker_sequence)
-
-    # trial_sequence = slab.Trialsequence(trials=range(len(speaker_sequence)))
     # loop over trials
     data_dir.mkdir(parents=True, exist_ok=True)  # create subject data directory if it doesnt exist
     file_name = 'uso_localization_' + subject_id + '_' + condition + date.strftime('_%d.%m')
@@ -80,11 +75,7 @@ def localization_test(subject_id, data_dir, condition, repetitions):
             freefield.play()
             freefield.wait_to_finish_playing()
             played_bell = True
-        # trial_sequence.add_response(play_trial(speaker_sequence[index], uso_list[uso_sequence[index]], progress))
-
         trial_sequence.add_response(play_trial(speaker_sequence[trial_sequence.this_n], uso_list[index], progress))
-        # todo test this
-
         trial_sequence.save_pickle(data_dir / file_name, clobber=True)
     freefield.halt()
     # motion_sensor.disconnect(sensor)

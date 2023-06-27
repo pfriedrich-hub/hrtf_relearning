@@ -11,8 +11,8 @@ import head_tracking.meta_motion.mm_pose as motion_sensor
 fs = 48828
 slab.set_default_samplerate(fs)
 
-subject_id = 'svm'
-condition = 'Earmolds Week 2'
+subject_id = 'll'
+condition = 'Earmolds Week 1'
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_3' / subject_id / condition
 
 repetitions = 3  # number of repetitions per speaker
@@ -125,7 +125,7 @@ import slab
 from pathlib import Path
 from analysis.localization_analysis import localization_accuracy
 
-file_name = 'localization_svm_Earmolds Week 2_18.06'
+file_name = 'localization_ll_Ears Free_27.06'
 
 for path in Path.cwd().glob("**/"+str(file_name)):
     file_path = path

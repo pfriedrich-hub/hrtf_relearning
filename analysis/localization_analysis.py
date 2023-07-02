@@ -9,25 +9,30 @@ import copy
 
 def get_localization_data(path, conditions):
     subject_dir_list = list(path.iterdir())
-    loc_dict = {}
-    loc_dict['files'] = {}
+    localization_dict = {}
     for condition in conditions:
-        loc_dict[condition] = {}
-        loc_dict['files'][condition] = {}
+        localization_dict[condition] = {}
         for subj_idx, subject_path in enumerate(subject_dir_list):
             subject_dir = subject_path / condition
-            loc_dict[condition][subject_path.name] = []
-            loc_dict['files'][condition][subject_path.name] = []
+            localization_dict[condition][subject_path.name] = {}
             # iterate over localization accuracy files
             for file_name in sorted(list(subject_dir.iterdir())):
                 if file_name.is_file() and file_name.suffix != '.sofa':
                     sequence = slab.Trialsequence(conditions=45, n_reps=3)
                     sequence.load_pickle(file_name=file_name)
-                    loc_dict[condition][subject_path.name].append(sequence)
-                    loc_dict['files'][condition][subject_path.name].append(file_name.name)
-    return loc_dict
+                    localization_dict[condition][subject_path.name][file_name.name] = sequence
+    return localization_dict
+
+    #                 if file_name.name.startswith('uso'):
+    #                     loc_dict['files'][condition][subject_path.name]['uso'] = file_name.name
+    #                 else:
+    #                     loc_dict[condition][subject_path.name].append(sequence)
+    #                     loc_dict['files'][condition][subject_path.name].append(file_name.name)
+    # return loc_dict
 
 def localization_accuracy(sequence, show=True, plot_dim=1, binned=True, axis=None):
+    if sequence.this_n == -1:
+        return None, None, None, None, None
     # retrieve data
     loc_data = numpy.asarray(sequence.data)
     loc_data = loc_data.reshape(loc_data.shape[0], 2, 2)

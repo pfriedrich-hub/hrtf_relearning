@@ -18,7 +18,6 @@ baselining subtracts mean power across DTFs within bandwidth and cuts DTFs at th
 dfe applies diffuse field equalization 
 """
 
-
 hrtf_dict = hrtf_analysis.get_hrtfs(path, subject_list, conditions, smoothe=True,
                                     baseline=True, bandwidth=bandwidth, dfe=True)
 
@@ -51,7 +50,7 @@ lst = [subj for subj in subject_list if subj not in exclude]
 
 
 #------ smoothe hrtf and write to file ------#
-hrtf_dict = hrtf_analysis.get_hrtfs(path, subject_list, conditions, smoothe=True,
+hrtf_dict = hrtf_analysis.get_hrtfs(path, subject_list, conditions, smoothe=False,
                                     baseline=False, bandwidth=bandwidth, dfe=False)
 import copy
 subject_dir_list = list(path.iterdir())

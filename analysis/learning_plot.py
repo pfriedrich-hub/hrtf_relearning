@@ -8,38 +8,42 @@ import scipy
 """ -------  plot group averaged learning curve ------ """
 to_plot = 'average'  # subject id or 'average'
 exclude = []
-w2_exclude = []
-w2_exclude = ['cs', 'lw']
-bracket = 'bracket_1'
+w2_exclude = ['cs', 'lm']
+bracket = 'master'
 conditions = ['Ears Free', 'Earmolds Week 1', 'Earmolds Week 2']
 path = Path.cwd() / 'data' / 'experiment' / bracket
-loc_dict = localization.get_localization_data(path, conditions)
-subjects = list(loc_dict['Ears Free'].keys())
+localization_dict = localization.get_localization_data(path, conditions)
+subjects = list(localization_dict['Ears Free'].keys())
 for ex in exclude: subjects.remove(ex)
 if not to_plot == 'average':
     subjects = [to_plot]
+
+
+#  fetch localization data
 for condition in conditions:
     # subject x days x eg/ele_rmse/ele_sd/az_rmse/az_sd
-    loc_dict[condition]['data'] = numpy.zeros((len(subjects), 7, 5))
-    loc_dict[condition]['SE'] = numpy.zeros((7, 5))  # SE for each measure days x eg/ele_rmse/sd/ele_az_rmse/az_sd
+    localization_dict[condition]['data'] = numpy.zeros((len(subjects), 7, 5))
+    localization_dict[condition]['SE'] = numpy.zeros((7, 5))  # SE for each measure days x eg/ele_rmse/sd/ele_az_rmse/az_sd
     for s, subject in enumerate(subjects):
-        sequence_list = loc_dict[condition][subject]
-        for idx, sequence in enumerate(sequence_list):
-            loc_dict[condition]['data'][s, idx] = localization.localization_accuracy(sequence, show=False)
-            if s+1 == len(subjects):
-                loc_dict[condition]['SE'][idx] = scipy.stats.sem(loc_dict[condition]['data'][:, idx], axis=0)
+        for idx, sequence_name in enumerate(localization_dict[condition][subject].keys()):
+            if not 'uso' in sequence_name:  # exclude uso test for now
+                sequence = localization_dict[condition][subject][sequence_name]
+                localization_dict[condition]['data'][s, idx] = localization.localization_accuracy(sequence, show=False)
+                if s+1 == len(subjects):
+                    localization_dict[condition]['SE'][idx] = numpy.asarray(scipy.stats.sem(
+                        localization_dict[condition]['data'][:, idx], nan_policy='omit', axis=0))
             # standard mean error (sd / sqrt(n)): (sd = sqrt(var), var = mean squared distance from sample mean)
 
-ex_idx = [subjects.index(ex) for ex in w2_exclude]  # remove w2 excludes
-loc_dict['Earmolds Week 2']['data'] = numpy.delete(loc_dict['Earmolds Week 2']['data'], ex_idx, axis=0)
-loc_dict['Ears Free']['data'] = numpy.delete(loc_dict['Ears Free']['data'], ex_idx, axis=0)
+ex_idx = [subjects.index(ex) for ex in w2_exclude if ex in subjects]  # remove w2 excludes
+localization_dict['Earmolds Week 2']['data'] = numpy.delete(localization_dict['Earmolds Week 2']['data'], ex_idx, axis=0)
+# localization_dict['Ears Free']['data'] = numpy.delete(localization_dict['Ears Free']['data'], ex_idx, axis=0)
 
 days = numpy.arange(1, 13)  # days of measurement
 days[-1] = 16
 # means ears free / mold1 / mold2
-ef = numpy.mean(loc_dict['Ears Free']['data'], axis=0)
-m1 = numpy.mean(loc_dict['Earmolds Week 1']['data'], axis=0)
-m2 = numpy.mean(loc_dict['Earmolds Week 2']['data'], axis=0)
+ef = numpy.nanmean(localization_dict['Ears Free']['data'], axis=0)
+m1 = numpy.nanmean(localization_dict['Earmolds Week 1']['data'], axis=0)
+m2 = numpy.nanmean(localization_dict['Earmolds Week 2']['data'], axis=0)
 
 labels = ['RMSE', 'SD']
 colors = ['k', '0.6']
@@ -63,13 +67,13 @@ for i, ax_id in enumerate([0, 1, 1]):
     # mold 2 adaptation persistence
     axes[ax_id].plot(days[-2:], m2[-2:, i], c=color, ls=(0, (5, 10)), lw=0.8)
     # error bars
-    axes[ax_id].errorbar([1, 6, 11], ef[:3, i], capsize=3, yerr=loc_dict['Ears Free']['SE'][:3, i],
+    axes[ax_id].errorbar([1, 6, 11], ef[:3, i], capsize=3, yerr=localization_dict['Ears Free']['SE'][:3, i],
                    fmt="o", c=color, elinewidth=0.8, markersize=5, fillstyle='none')  # error bar ears free
-    axes[ax_id].errorbar(numpy.append(days[:6], 11), m1[:7, i], capsize=3, yerr=loc_dict['Earmolds Week 1']['SE'][:7, i],  # error bar mold 2
+    axes[ax_id].errorbar(numpy.append(days[:6], 11), m1[:7, i], capsize=3, yerr=localization_dict['Earmolds Week 1']['SE'][:7, i],  # error bar mold 2
                    fmt="o", c=color, elinewidth=0.8, markersize=5)
-    axes[ax_id].errorbar(days[5:], m2[:7, i], capsize=3, yerr=loc_dict['Earmolds Week 2']['SE'][:7, i],  # error bar mold 2
+    axes[ax_id].errorbar(days[5:], m2[:7, i], capsize=3, yerr=localization_dict['Earmolds Week 2']['SE'][:7, i],  # error bar mold 2
                    fmt="o", c=color, elinewidth=0.8, markersize=5)
-    axes[ax_id].errorbar(days[5:-1], m2[:6, i], capsize=3, yerr=loc_dict['Earmolds Week 2']['SE'][:6, i],  # error bar mold 2
+    axes[ax_id].errorbar(days[5:-1], m2[:6, i], capsize=3, yerr=localization_dict['Earmolds Week 2']['SE'][:6, i],  # error bar mold 2
                    fmt="o", c=color, elinewidth=0.8, markersize=5)
 
 axes[0].set_yticks(numpy.arange(0, 1.2, 0.2))

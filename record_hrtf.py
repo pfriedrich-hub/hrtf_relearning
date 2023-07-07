@@ -12,8 +12,8 @@ fs = 97656  # 97656.25, 195312.5
 slab.set_default_samplerate(fs)
 
 # file settings
-subject_id = 'll'
-condition = 'Ears Free'  # can be 'ears_free' or 'earmolds' - important for file naming!
+subject_id = 'test_2'
+condition = 'Earmolds Week 1'  # can be 'ears_free' or 'earmolds' - important for file naming!
 kemar = False  # requires no button press if true
 safe = 'both'  # decide if additionally save in-ear-recordings
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_3' / subject_id / condition
@@ -202,17 +202,24 @@ if __name__ == "__main__":
 
 
 """
+file_name = 'test_2_Ears Free_06.07.sofa'
+for path in Path.cwd().glob("**/"+str(file_name)):
+    file_path = path
+hrtf = slab.HRTF(file_path)
+
 
 import analysis.hrtf_analysis as hrtf_analysis
 import slab
 from matplotlib import pyplot as plt
 from pathlib import Path
-subject_id = 'lk'
-filename = 'lk_Earmolds Week 2_22.01.sofa'
-condition = 'Earmolds Week 2'
+subject_id = 'test_1'
+filename = 'test_1_Ears Free_06.07.sofa'
+condition = 'Earmolds Week 1'
 plot_bins = 2400  # number of bins also used to calculate vsi across bands (use 80 to minimize´frequency-resolution dependend vsi change)
 plot_ear = 'left' 
-hrtf = slab.HRTF(Path.cwd() / 'data' / 'experiment' / 'bracket_2' / subject_id / condition / filename)
+hrtf = slab.HRTF(Path.cwd() / 'data' / 'experiment' / 'bracket_3' / subject_id / condition / filename)
+
+
 sources = hrtf.cone_sources(0)
 hrtf = hrtf_analysis.baseline_hrtf(hrtf)
 hrtf.plot_tf(sources, n_bins=plot_bins)

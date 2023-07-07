@@ -10,7 +10,7 @@ import head_tracking.meta_motion.mm_pose as motion_sensor
 fs = 48828
 slab.set_default_samplerate(fs)
 
-subject_id = 'lk'
+subject_id = 'll'
 condition = 'Ears Free'
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_3' / subject_id / condition
 
@@ -121,7 +121,7 @@ from analysis.localization_analysis import localization_accuracy
 subject_id = 'lk'
 condition = 'Earmolds Week 1'
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_2' / subject_id / condition
-file_name = 'localization_pp_Earmolds Week 2_07.06'
+file_name = 'localization_pp_Earmolds Week 2_7_07.06'
 sequence = slab.Trialsequence(conditions=45, n_reps=1)
 sequence.load_pickle(file_name=data_dir / file_name)
 

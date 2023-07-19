@@ -8,8 +8,9 @@ import scipy
 """ -------  plot group averaged learning curve ------ """
 to_plot = 'average'  # subject id or 'average'
 exclude = []
-w2_exclude = ['cs', 'lm']
-bracket = 'master'
+w2_exclude = []
+w2_exclude = ['cs', 'lw']
+bracket = 'bracket_1'
 conditions = ['Ears Free', 'Earmolds Week 1', 'Earmolds Week 2']
 path = Path.cwd() / 'data' / 'experiment' / bracket
 localization_dict = localization.get_localization_data(path, conditions)

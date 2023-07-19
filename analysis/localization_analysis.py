@@ -229,6 +229,34 @@ def load_latest(subject_dir):
     print(f'Loaded {file_list[-1].name}')
     return(sequence)
 
+def loc_hist(subj_id):
+    subj_id = 'pp'
+    file_list = []
+    for path in Path.cwd().glob("**/" + str(subj_id)):
+        for file in path.glob("**/" + 'localization'):
+            file_list.append(file)
+
+        file_list.append(path)
+        file_path = path
+
+    file_name = 'localization_pp_Earmolds Week 2_6_02.06'
+
+    for path in Path.cwd().glob("**/" + str(file_name)):
+        file_list.append(path)
+        file_path = path
+
+
+    sequence = slab.Trialsequence(conditions=45, n_reps=1)
+    sequence.load_pickle(file_path)
+
+    # plot
+    from matplotlib import pyplot as plt
+    fig, axis = plt.subplots(1, 1)
+    elevation_gain, ele_rmse, ele_var, az_rmse, az_var = localization_accuracy(sequence, show=True, plot_dim=2,
+                                                                               binned=True, axis=axis)
+    axis.set_xlabel('Response Azimuth (degrees)')
+    axis.set_ylabel('Response Elevation (degrees)')
+
 """ # ----------- plot and work on localization data ------------- #
 from pathlib import Path
 from copy import deepcopy
@@ -267,7 +295,7 @@ sequence.save_pickle(data_dir / file_name, clobber=True)
 
 # ----------- correct azimuth for >300° ---------- #
 
-file_name = 'localization_pp_Earmolds Week 1_23.05'
+file_name = 'localization_pp_Earmolds Week 1_1_23.05'
 for path in Path.cwd().glob("**/*"+str(file_name)):
     file_path = path
 sequence = slab.Trialsequence(conditions=45, n_reps=1)

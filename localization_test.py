@@ -26,12 +26,6 @@ def localization_test(subject_id, data_dir, condition, repetitions):
     freefield.set_logger('debug')
 
     # generate stimulus
-    noise = slab.Sound.pinknoise(duration=0.025, level=90)
-    noise = noise.ramp(when='both', duration=0.01)
-    silence = slab.Sound.silence(duration=0.025)
-    stim = slab.Sound.sequence(noise, silence, noise, silence, noise,
-                               silence, noise, silence, noise)
-    stim = stim.ramp(when='both', duration=0.01)
     bell = slab.Sound.read(Path.cwd() / 'data' / 'sounds' / 'bell.wav')
     bell.level = 75
     tone = slab.Sound.tone(frequency=1000, duration=0.25, level=70)
@@ -89,6 +83,12 @@ def play_trial(speaker_id, progress):
     target = speakers[speaker_id, 1:]
     print('%i%%: TARGET| azimuth: %.1f, elevation %.1f' % (progress, target[0], target[1]))
     # time.sleep(.5)
+    noise = slab.Sound.pinknoise(duration=0.025, level=90)
+    noise = noise.ramp(when='both', duration=0.01)
+    silence = slab.Sound.silence(duration=0.025)
+    stim = slab.Sound.sequence(noise, silence, noise, silence, noise,
+                               silence, noise, silence, noise)
+    stim = stim.ramp(when='both', duration=0.01)
     freefield.set_signal_and_speaker(signal=stim, speaker=speaker_id, equalize=True)
     freefield.play()
     freefield.wait_to_finish_playing()

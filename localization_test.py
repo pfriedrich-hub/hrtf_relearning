@@ -12,18 +12,18 @@ fs = 48828
 slab.set_default_samplerate(fs)
 
 subject_id = 'll'
-condition = 'Ears Free'
+condition = 'Earmolds Week 2'
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_3' / subject_id / condition
 
 repetitions = 3  # number of repetitions per speaker
 
 def localization_test(subject_id, data_dir, condition, repetitions):
     global speakers, stim, sensor, tone, file_name
-    sensor = motion_sensor.start_sensor()
+    # sensor = motion_sensor.start_sensor()
     if not freefield.PROCESSORS.mode:
-        freefield.initialize('dome', default='play_rec')
+        freefield.initialize('dome', default='play_rec', sensor_tracking=True)
     freefield.load_equalization(Path.cwd() / 'data' / 'calibration' / 'calibration_dome_23.05')
-    freefield.set_logger('warning')
+    freefield.set_logger('debug')
 
     # generate stimulus
     noise = slab.Sound.pinknoise(duration=0.025, level=90)
@@ -83,19 +83,21 @@ def localization_test(subject_id, data_dir, condition, repetitions):
     return trial_sequence
 
 def play_trial(speaker_id, progress):
-    time.sleep(.5)
-    offset = motion_sensor.calibrate_pose(sensor)
+    # time.sleep(.5)
+    # offset = motion_sensor.calibrate_pose(sensor)
+    freefield.calibrate_sensor()
     target = speakers[speaker_id, 1:]
     print('%i%%: TARGET| azimuth: %.1f, elevation %.1f' % (progress, target[0], target[1]))
-    time.sleep(.5)
+    # time.sleep(.5)
     freefield.set_signal_and_speaker(signal=stim, speaker=speaker_id, equalize=True)
     freefield.play()
     freefield.wait_to_finish_playing()
     response = 0
     while not response:
-        pose = motion_sensor.get_pose(sensor, 30)  # set initial isi based on pose-target difference
+        # pose = motion_sensor.get_pose(sensor, 30)  # set initial isi based on pose-target difference
+        pose = freefield.get_head_pose(method='sensor')
         if all(pose):
-            pose = pose - offset
+            # pose = pose - offset
             print('head pose: azimuth: %.1f, elevation: %.1f' % (pose[0], pose[1]), end="\r", flush=True)
         else:
             print('no head pose detected', end="\r", flush=True)
@@ -125,7 +127,7 @@ import slab
 from pathlib import Path
 from analysis.localization_analysis import localization_accuracy
 
-file_name = 'localization_ll_Earmolds Week 1_7_07.07'
+file_name = 'localization_ll_Earmolds Week 2_07.07'
 
 for path in Path.cwd().glob("**/"+str(file_name)):
     file_path = path

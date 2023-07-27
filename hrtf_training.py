@@ -5,15 +5,14 @@ from numpy import linalg as la
 from pathlib import Path
 import time
 import analysis.localization_analysis as localization
-import head_tracking.meta_motion.mm_pose as motion_sensor
 
 data_dir = Path.cwd() / 'data'
 fs = 48828
 slab.set_default_samplerate(fs)
 
 # get probabilities for target speakers, depending on previous localisation performance
-subject_id = 'll'
-condition = 'Earmolds Week 2'
+subject_id = 'test'
+condition = 'Earmolds Week 1'
 subject_dir = data_dir / 'experiment' / 'bracket_3' / subject_id / condition
 try:
     sequence = localization.load_latest(subject_dir)
@@ -30,16 +29,8 @@ except:
 def hrtf_training(max_pulse_interval=500, target_size=3, target_time=0.5, trial_time=10, game_time=90, target_p=None):
     global proc_list, speakers, sensor, game_start, buzzer, end, pulse_attr, goal_attr, \
            offset, prep_time, score, coin, coins
-    # initialize sensor
-    # try:
-    #     sensor
-    #     if not sensor.device.is_connected:
-    #         sensor = motion_sensor.start_sensor()
-    # except NameError:
-    #     sensor = motion_sensor.start_sensor()
-    # initialize processors
+    # initialize setup
     if not freefield.PROCESSORS.mode:
-        # freefield.set_logger('warning')
         proc_list = [['RX81', 'RX8', data_dir / 'rcx' / 'play_buf_pulse.rcx'],
                      ['RX82', 'RX8', data_dir / 'rcx' / 'play_buf_pulse.rcx'],
                      ['RP2', 'RP2', data_dir / 'rcx' / 'arduino_analog.rcx']]
@@ -108,7 +99,6 @@ def play_trial(speaker_id):
     other_proc.remove(freefield.pick_speakers(speaker_id)[0].analog_proc)
     freefield.write(tag='chan', value=99, processors=other_proc)
     freefield.calibrate_sensor()
-    # offset = motion_sensor.calibrate_pose(sensor)  # get head pose offset
     target = speakers[numpy.where(speakers[:, 0] == speaker_id), 1:][0][0]   # get target coordinates
     print('\n TARGET| azimuth: %.1f, elevation %.1f' % (target[0], target[1]))
     set_pulse_train()  # set initial pulse train interval
@@ -152,7 +142,6 @@ def play_trial(speaker_id):
         time.sleep(0.1)
 
 def set_pulse_train():
-    # pose = get_pose()
     pose = freefield.get_head_pose()
     if all(pose):
         az_dist = numpy.abs(target[0] - pose[0])
@@ -177,12 +166,12 @@ def set_pulse_train():
     freefield.write('interval', interval, processors=['RX81', 'RX82'])  # write isi to processors
     return window_distance
 
-def get_pose():
-    global pose
-    pose = motion_sensor.get_pose(sensor)
-    if all(pose):
-        pose = pose - offset
-    return pose
+# def get_pose():
+#     global pose
+#     pose = motion_sensor.get_pose(sensor)
+#     if all(pose):
+#         pose = pose - offset
+#     return pose
 
 if __name__ == "__main__":
     hrtf_training(target_p=target_p)

@@ -22,7 +22,7 @@ except:
     target_p = None
 
 # max_pulse_interval: maximal pulse interval in ms
-# target_window: target window as euclidean distance of head pose from target speaker
+# target_window: target window as euclidean angular distance of head pose from target speaker
 # target_time: time matching head direction required to finish a trial
 # target_p: target speaker probabilities based on previous localization accuracy
 

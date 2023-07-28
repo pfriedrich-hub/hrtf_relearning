@@ -6,8 +6,9 @@ import matplotlib
 from matplotlib import pyplot as plt
 import numpy
 import copy
+import pandas
 
-def get_localization_data(path, conditions):
+def get_localization_data(path, conditions=['Ears Free', 'Earmolds Week 1', 'Earmolds Week 2']):
     subject_dir_list = list(path.iterdir())
     localization_dict = {}
     for condition in conditions:
@@ -29,6 +30,28 @@ def get_localization_data(path, conditions):
     #                     loc_dict[condition][subject_path.name].append(sequence)
     #                     loc_dict['files'][condition][subject_path.name].append(file_name.name)
     # return loc_dict
+
+def get_dataframe(localization_dict):
+    localization_data = pandas.DataFrame({'subject': [], 'filename':[], 'condition': [], 'day':[], 'adaptation_day': [], 'EG':[],
+                                          'RMSE_ele':[], 'SD_ele':[], 'RMSE_az':[], 'SD_az':[]})
+    subjects = list(localization_dict['Ears Free'].keys())
+    test_order = ['Ears Free', 'Earmolds Week 1', 'Earmolds Week 1', 'Earmolds Week 1', 'Earmolds Week 1',
+                  'Earmolds Week 1', 'Earmolds Week 1', 'Ears Free', 'Earmolds Week 2', 'Earmolds Week 2',
+                  'Earmolds Week 2', 'Earmolds Week 2', 'Earmolds Week 2', 'Earmolds Week 2', 'Earmolds Week 1',
+                  'Ears Free',  'Earmolds Week 2']
+    total_days = [0, 0, 1, 2, 3, 4, 5, 5, 5, 6, 7, 8, 9, 10, 10, 10, 15]
+    adaptation_days = [0, 0, 1, 2, 3, 4, 5, 1, 0, 1, 2, 3, 4, 5, 6, 2, 6]
+    w2_exclude = ['cs', 'lm']
+    for subject in subjects:
+        for idx, condition in enumerate(test_order):
+            if not (subject in w2_exclude and condition) == 'Earmolds Week 2':
+                sequence_name = list(localization_dict[condition][subject].keys())[adaptation_days[idx]]
+                sequence = localization_dict[condition][subject][sequence_name]
+                new_row = [subject, sequence_name, condition, total_days[idx], adaptation_days[idx]]
+                new_row.extend(list(localization_accuracy(sequence, show=False)))
+                localization_data.loc[len(localization_data)] = new_row
+    # localization_data.to_csv('/Users/paulfriedrich/projects/hrtf_relearning/data/experiment/master/data.csv')
+    return localization_data
 
 def localization_accuracy(sequence, show=True, plot_dim=1, binned=True, axis=None):
     if sequence.this_n == -1:

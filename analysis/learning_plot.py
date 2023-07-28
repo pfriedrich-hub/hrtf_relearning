@@ -21,6 +21,7 @@ if not to_plot == 'average':
 
 
 #  fetch localization data
+subjects = list(localization_dict['Ears Free'].keys())
 for condition in conditions:
     # subject x days x eg/ele_rmse/ele_sd/az_rmse/az_sd
     localization_dict[condition]['data'] = numpy.zeros((len(subjects), 7, 5))

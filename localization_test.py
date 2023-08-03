@@ -10,9 +10,9 @@ from analysis.localization_analysis import localization_accuracy
 fs = 48828
 slab.set_default_samplerate(fs)
 
-subject_id = 'test'
-condition = 'Earmolds Week 2'
-data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_3' / subject_id / condition
+subject_id = 'jh'
+condition = 'Earmolds Week 1'
+data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_4' / subject_id / condition
 
 repetitions = 3  # number of repetitions per speaker
 
@@ -68,7 +68,7 @@ def localization_test(subject_id, data_dir, condition, repetitions):
             played_bell = True
         trial_sequence.add_response(play_trial(sequence[index], progress))
         trial_sequence.save_pickle(data_dir / file_name, clobber=True)
-    freefield.halt()
+    # freefield.halt()
     print('localization test completed!')
     return trial_sequence
 
@@ -118,7 +118,7 @@ import slab
 from pathlib import Path
 from analysis.localization_analysis import localization_accuracy
 
-file_name = 'localization_ll_Earmolds Week 2_07.07'
+file_name = 'localization_mh_Earmolds Week 1_03.08'
 
 for path in Path.cwd().glob("**/"+str(file_name)):
     file_path = path

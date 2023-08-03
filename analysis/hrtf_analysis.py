@@ -6,44 +6,47 @@ from matplotlib import pyplot as plt
 import numpy
 import copy
 import scipy
+import pandas
+pandas.set_option('display.max_rows', 1000, 'display.max_columns', 1000, 'display.width', 1000)
 
 # todo: fix problem of resolution downscaling with frequency for vsi:
 #  for example kemar vsi with 0.1s looks better than for 0.05 seconds (higher frequencies have to
 #  few samples here to be represented correctly in vsi) - temporary fix: increase samplerate to 96 kHz
 
-def get_hrtfs(path, subject_list, conditions, smoothe=True, baseline=True, bandwidth=(4000, 16000), dfe=True):
-    hrtf_dict = {}
-    for condition in conditions:
-        hrtf_dict[condition] = {}
-        for subj_idx, subject_path in enumerate(subject_list):
-            if smoothe:
-                subject_dir = Path(path / subject_path / condition / 'processed_hrtf')
-            elif not smoothe:
-                subject_dir = Path(path/ subject_path / condition)
-            # create subject dir if it doesnt exist
-            if not subject_dir.exists():
-                subject_dir.mkdir()
-            for file_name in sorted(list(subject_dir.iterdir())):
+
+def get_hrtf_df(path=Path.cwd() / 'data' / 'experiment' / 'master', processed=True):
+    subject_paths = list(path.iterdir())
+    hrtf_df = pandas.DataFrame({'subject': [], 'filename': [], 'condition': [], 'hrtf': [], 'vsi': []})
+    conditions = ['Ears Free', 'Earmolds Week 1', 'Earmolds Week 2']
+    for subject_path in subject_paths:
+        subject = subject_path.name
+        for condition in conditions:
+            if processed:
+                condition_path = subject_path / condition / 'processed_hrtf'
+            else:
+                condition_path = subject_path / condition
+            for file_name in sorted(list(condition_path.iterdir())):
                 if file_name.is_file() and file_name.suffix == '.sofa':
                     hrtf = slab.HRTF(file_name)
-                    if dfe:
-                        hrtf = hrtf.diffuse_field_equalization()
-                    if baseline:
-                        hrtf = baseline_hrtf(hrtf, bandwidth=bandwidth)
-                    hrtf_dict[condition][subject_path] = hrtf
-        hrtf_dict[condition]['average'] = average_hrtf(list(hrtf_dict[condition].values()))
-    return hrtf_dict
+                    vsi = vsi_across_bands(hrtf, n_bins=300, show=False)  # bins can significantly shape vsi peak!
+                    new_row = [subject, file_name.name, condition, hrtf, vsi]
+                    hrtf_df.loc[len(hrtf_df)] = new_row
+    # hrtf_df.to_csv('/Users/paulfriedrich/projects/hrtf_relearning/data/experiment/data.csv')
+    return hrtf_df
 
-def write_processed_hrtf(hrtf_dict, path, dir_name='processed_hrtf'):
-    subject_dir_list = list(path.iterdir())
-    for condition in hrtf_dict.keys():
-        for subj_idx, subject_path in enumerate(subject_dir_list):
-            if subject_path.name in hrtf_dict[condition].keys():
-                Path.mkdir(subject_path / condition / dir_name, exist_ok=True)
-                hrtf_dict[condition][subject_path.name].write_sofa(subject_path / condition /
-                                                    dir_name / str(condition + '_processed.sofa'))
+def process_hrtfs(path=Path.cwd() / 'data' / 'experiment' / 'master'):
+    hrtf_df = get_hrtf_df(path, processed=False)
+    for index, row in hrtf_df.iterrows():
+        processed_path = Path(path / row['subject'] / row['condition'] / 'processed_hrtf')
+        if not processed_path.exists():
+            processed_path.mkdir()
+        hrtf = copy.deepcopy(row['hrtf'])
+        hrtf = smoothe_hrtf(hrtf, high_cutoff=1500)
+        hrtf = baseline_hrtf(hrtf, bandwidth=(4000, 16000))  # baseline should be done after smoothing / dfe
+        # hrtf.diffuse_field_equalization()  # dfe completely messes up vsi
+        hrtf.write_sofa(filename=processed_path / str('proccessed_' + row['filename']))
 
-def baseline_hrtf(hrtf, bandwidth=(3000, 17000)):
+def baseline_hrtf(hrtf, bandwidth=(4000, 16000)):
     "Center transfer functions around 0"
     hrtf_out = copy.deepcopy(hrtf)
     sources = hrtf_out.cone_sources(0)
@@ -100,7 +103,58 @@ def vsi_dissimilarity(hrtf_1, hrtf_2, bandwidth):
     vsi_dissimilarity = numpy.sqrt(numpy.mean((correlation - autocorrelation)**2))
     return vsi_dissimilarity
 
-def vsi_across_bands(hrtf, cone=0, n_bins=300, show=True, axis=None):
+def hrtf_correlation(hrtf_1, hrtf_2, show=False, bandwidth=(4000, 16000), n_bins=300, axis=None, cbar=True):
+    # get sources and dtfs
+    sources = hrtf_1.cone_sources(0)
+    dtf_1 = hrtf_1.tfs_from_sources(sources, n_bins)
+    dtf_2 = hrtf_2.tfs_from_sources(sources, n_bins)
+    # cap frequencies by bandwidth
+    frequencies = numpy.linspace(0, hrtf_1[0].frequencies[-1], n_bins)
+    freq_idx = numpy.logical_and(frequencies >= bandwidth[0], frequencies <= bandwidth[1])
+    dtf_1 = dtf_1[:, freq_idx]
+    dtf_2 = dtf_2[:, freq_idx]
+    # calculate correlation coefficients
+    n_sources = len(sources)
+    corr_mtx = numpy.zeros((n_sources, n_sources))
+    for i in range(n_sources):
+        for j in range(n_sources):
+            corr_mtx[i, j] = numpy.corrcoef(dtf_1[i].flatten(), dtf_2[j].flatten())[1, 0]
+    # plot correlation matrix
+    if show:
+        if axis is None:
+            fig, axis = plt.subplots()
+        else:
+            fig = axis.get_figure()
+        cbar_levels = numpy.linspace(-1, 1, 100)
+        contour = axis.contourf(hrtf_1.sources.vertical_polar[sources, 1],
+                                hrtf_2.sources.vertical_polar[sources, 1], corr_mtx,
+                                cmap='viridis', levels=cbar_levels)
+        axis.set_xticks(numpy.linspace(-30, 30, 5))
+        axis.set_yticks(numpy.linspace(-30, 30, 5))
+        axis.tick_params(axis='both', direction="in", bottom=True, top=True, left=True, right=True,
+                         labelsize=13, width=1.5, length=2)
+        if cbar:
+            cbar_ticks = numpy.linspace(-1, 1, 11)
+            cax_pos = list(axis.get_position().bounds)  # (x0, y0, width, height)
+            cax_pos[0] += 0.26  # x0
+            cax_pos[2] = 0.012  # width
+            cax = fig.add_axes(cax_pos)
+            cbar = fig.colorbar(contour, cax, orientation="vertical", ticks=cbar_ticks)
+            cax.tick_params(axis='both', direction="in", bottom=True, top=True, left=True, right=True,
+                            labelsize=13, width=1.5, length=2)
+    return corr_mtx
+
+def test_vsi(hrtf_df):
+    n_bins = 300
+    for index, row in hrtf_df[hrtf_df['condition'] == 'Ears Free'].iterrows():
+        fig, ax = plt.subplots(1, 2, figsize=(10, 5))
+        fig.suptitle(row['subject'])
+        hrtf = copy.deepcopy(row['hrtf'])
+        hrtf.plot_tf(hrtf.cone_sources(0), axis=ax[0], xlim=(4000, 16000))
+        vsi = vsi_across_bands(hrtf, n_bins=n_bins)
+        plot_vsi_across_bands(vsi, axis=ax[1])
+
+def vsi_across_bands(hrtf, cone=0, n_bins=300):
     # calculate vsi across 1/2 octave frequency bands
     sources = hrtf.cone_sources(cone)
     dtfs = hrtf.tfs_from_sources(sources, n_bins)
@@ -117,46 +171,40 @@ def vsi_across_bands(hrtf, cone=0, n_bins=300, show=True, axis=None):
                 sum_corr += numpy.corrcoef(dtf_band[i].flatten(), dtf_band[j].flatten())[1, 0]
                 n += 1
         vsi[idx] = 1 - sum_corr / n
-    if show:
-        if not axis:
-            fig, axis = plt.subplots()
-        axis.plot(vsi, c='k')
-        axis.set_xticks([0, 1, 2, 3, 4])
-        labels = [item.get_text() for item in axis.get_xticklabels()]
-        for idx, band in enumerate(bandwidths / 1000):
-            labels[idx] = '%.1f - %.1f' % (band[0], band[1])
-        axis.set_xticklabels(labels)
-        axis.set_xlabel('Frequency bands (kHz)')
-        axis.set_ylabel('VSI')
     return vsi
 
-def mean_vsi_across_bands(hrtf_dict, show=True):
-    vsi_mtx = numpy.zeros((len(hrtf_dict.keys()), 2, 5))
-    for c_idx, condition in enumerate(hrtf_dict.keys()):
-        vsi_list = []
-        subj_dict = hrtf_dict[condition]
-        for subj in subj_dict.keys():
-            vsi_list.append(vsi_across_bands(hrtf_dict[condition][subj], n_bins=4884, show=False))
-            vsi_mean = numpy.mean(vsi_list, axis=0)
-            vsi_se = scipy.stats.sem(vsi_list, axis=0)
-            vsi_mtx[c_idx] = numpy.array((vsi_mean, vsi_se))
-        if show:
-            bandwidths = numpy.array(((4, 8), (4.8, 9.5), (5.7, 11.3), (6.7, 13.5), (8, 16))) * 1000
-            fig, axis = plt.subplots(1, 3, sharey=True, sharex=True, figsize=(14, 4))
-            fig.subplots_adjust(left=0.05, bottom=None, right=0.95, top=None, wspace=0.1)
-            for i in range(3):
-                ax = axis[i]
-                ax.plot(vsi_mtx[i, 0], c='black', linewidth=0.5)
-                ax.set_xticks([0, 1, 2, 3, 4])
-                ax.errorbar(ax.get_xticks(), vsi_mtx[i, 0], yerr=vsi_mtx[i, 1],
-                            fmt="o", c='black', elinewidth=0.5, markersize=4, capsize=2, fillstyle='none')
-                labels = [item.get_text() for item in ax.get_xticklabels()]
-                for idx, band in enumerate(bandwidths / 1000):
-                    labels[idx] = '%.1f - %.1f' % (band[0], band[1])
-                ax.set_xticklabels(labels)
-                ax.set_xlabel('Frequency bands (kHz)')
-                ax.set_title(list(hrtf_dict.keys())[i])
-            axis[0].set_ylabel('VSI')
+def mean_vsi_across_bands(hrtf_df, condition='Ears Free', show=False):
+    vsi_across_bands = hrtf_df[hrtf_df['condition'] == condition]['vsi']
+    mean_vsi_across_bands = numpy.mean(vsi_across_bands)
+    if show:
+        plot_vsi_across_bands(mean_vsi_across_bands)
+    return mean_vsi_across_bands
+
+# --- plots ---- #
+def plot_average(hrtf_df, condition='Ears Free'):
+    hrtf_list = list(hrtf_df[hrtf_df['condition']==condition]['hrtf'])
+    mean_hrtf = average_hrtf(hrtf_list)
+    mean_hrtf = mean_hrtf.diffuse_field_equalization()
+    axis = hrtf_image(mean_hrtf)
+    cbar = axis.get_figure().get_axes()[1]
+    cbar_pos = cbar.get_position()  # (x0, y0, width, height)
+    cbar_pos.x1 = 0.94
+    cbar_pos.x0 = 0.92
+    cbar.set_position(cbar_pos)
+
+
+def plot_vsi_across_bands(vsi_across_bands, axis=None):
+    if not axis:
+        fig, axis = plt.subplots()
+    axis.plot(vsi_across_bands, c='k')
+    axis.set_xticks([0, 1, 2, 3, 4])
+    labels = [item.get_text() for item in axis.get_xticklabels()]
+    bandwidths = numpy.array(((4, 8), (4.8, 9.5), (5.7, 11.3), (6.7, 13.5), (8, 16))) * 1000
+    for idx, band in enumerate(bandwidths / 1000):
+        labels[idx] = '%.1f - %.1f' % (band[0], band[1])
+    axis.set_xticklabels(labels)
+    axis.set_xlabel('Frequency bands (kHz)')
+    axis.set_ylabel('VSI')
 
 def hrtf_images(plot_dict, n_bins, bandwidth, title=None, plot='image'):
     """Plots HRTFs and HRTF differences """
@@ -232,47 +280,6 @@ def hrtf_images(plot_dict, n_bins, bandwidth, title=None, plot='image'):
     else:
         print('plot argument can be "image" or "correlation"')
 
-def hrtf_correlation(hrtf_1, hrtf_2, show=False, bandwidth=(4000, 16000), n_bins=300, axis=None, cbar=True):
-    # get sources and dtfs
-    sources = hrtf_1.cone_sources(0)
-    dtf_1 = hrtf_1.tfs_from_sources(sources, n_bins)
-    dtf_2 = hrtf_2.tfs_from_sources(sources, n_bins)
-    # cap frequencies by bandwidth
-    frequencies = numpy.linspace(0, hrtf_1[0].frequencies[-1], n_bins)
-    freq_idx = numpy.logical_and(frequencies >= bandwidth[0], frequencies <= bandwidth[1])
-    dtf_1 = dtf_1[:, freq_idx]
-    dtf_2 = dtf_2[:, freq_idx]
-    # calculate correlation coefficients
-    n_sources = len(sources)
-    corr_mtx = numpy.zeros((n_sources, n_sources))
-    for i in range(n_sources):
-        for j in range(n_sources):
-            corr_mtx[i, j] = numpy.corrcoef(dtf_1[i].flatten(), dtf_2[j].flatten())[1, 0]
-    # plot correlation matrix
-    if show:
-        if axis is None:
-            fig, axis = plt.subplots()
-        else:
-            fig = axis.get_figure()
-        cbar_levels = numpy.linspace(-1, 1, 100)
-        contour = axis.contourf(hrtf_1.sources.vertical_polar[sources, 1],
-                                hrtf_2.sources.vertical_polar[sources, 1], corr_mtx,
-                                cmap='viridis', levels=cbar_levels)
-        axis.set_xticks(numpy.linspace(-30, 30, 5))
-        axis.set_yticks(numpy.linspace(-30, 30, 5))
-        axis.tick_params(axis='both', direction="in", bottom=True, top=True, left=True, right=True,
-                         labelsize=13, width=1.5, length=2)
-        if cbar:
-            cbar_ticks = numpy.linspace(-1, 1, 11)
-            cax_pos = list(axis.get_position().bounds)  # (x0, y0, width, height)
-            cax_pos[0] += 0.26  # x0
-            cax_pos[2] = 0.012  # width
-            cax = fig.add_axes(cax_pos)
-            cbar = fig.colorbar(contour, cax, orientation="vertical", ticks=cbar_ticks)
-            cax.tick_params(axis='both', direction="in", bottom=True, top=True, left=True, right=True,
-                            labelsize=13, width=1.5, length=2)
-    return corr_mtx
-
 def hrtf_image(hrtf, bandwidth=(4000, 16000), n_bins=300, axis=None, z_min=None, z_max=None, cbar=True):
     src = hrtf.cone_sources(0)
     elevations = hrtf.sources.vertical_polar[src, 1]
@@ -313,6 +320,67 @@ def hrtf_image(hrtf, bandwidth=(4000, 16000), n_bins=300, axis=None, z_min=None,
     return axis
 
 
+# ---- deprecated ---- #
+def get_hrtf_dict(path, subject_list, conditions, smoothe=True, baseline=True, bandwidth=(4000, 16000), dfe=True):
+    hrtf_dict = {}
+    for condition in conditions:
+        hrtf_dict[condition] = {}
+        for subj_idx, subject_path in enumerate(subject_list):
+            if smoothe:
+                subject_dir = Path(path / subject_path / condition / 'processed_hrtf')
+            elif not smoothe:
+                subject_dir = Path(path/ subject_path / condition)
+            # create subject dir if it doesnt exist
+            if not subject_dir.exists():
+                subject_dir.mkdir()
+            for file_name in sorted(list(subject_dir.iterdir())):
+                if file_name.is_file() and file_name.suffix == '.sofa':
+                    hrtf = slab.HRTF(file_name)
+                    if dfe:
+                        hrtf = hrtf.diffuse_field_equalization()
+                    if baseline:
+                        hrtf = baseline_hrtf(hrtf, bandwidth=bandwidth)
+                    hrtf_dict[condition][subject_path] = hrtf
+        hrtf_dict[condition]['average'] = average_hrtf(list(hrtf_dict[condition].values()))
+    return hrtf_dict
+
+def write_processed_hrtf(hrtf_dict, path, dir_name='processed_hrtf'):
+    subject_dir_list = list(path.iterdir())
+    for condition in hrtf_dict.keys():
+        for subj_idx, subject_path in enumerate(subject_dir_list):
+            if subject_path.name in hrtf_dict[condition].keys():
+                Path.mkdir(subject_path / condition / dir_name, exist_ok=True)
+                hrtf_dict[condition][subject_path.name].write_sofa(subject_path / condition /
+                                                    dir_name / str(condition + '_processed.sofa'))
+
+
+# def mean_vsi_across_bands(hrtf_dict, show=True):
+#     vsi_mtx = numpy.zeros((len(hrtf_dict.keys()), 2, 5))
+#     for c_idx, condition in enumerate(hrtf_dict.keys()):
+#         vsi_list = []
+#         subj_dict = hrtf_dict[condition]
+#         for subj in subj_dict.keys():
+#             vsi_list.append(vsi_across_bands(hrtf_dict[condition][subj], n_bins=4884, show=False))
+#             vsi_mean = numpy.mean(vsi_list, axis=0)
+#             vsi_se = scipy.stats.sem(vsi_list, axis=0)
+#             vsi_mtx[c_idx] = numpy.array((vsi_mean, vsi_se))
+#         if show:
+#             bandwidths = numpy.array(((4, 8), (4.8, 9.5), (5.7, 11.3), (6.7, 13.5), (8, 16))) * 1000
+#             fig, axis = plt.subplots(1, 3, sharey=True, sharex=True, figsize=(14, 4))
+#             fig.subplots_adjust(left=0.05, bottom=None, right=0.95, top=None, wspace=0.1)
+#             for i in range(3):
+#                 ax = axis[i]
+#                 ax.plot(vsi_mtx[i, 0], c='black', linewidth=0.5)
+#                 ax.set_xticks([0, 1, 2, 3, 4])
+#                 ax.errorbar(ax.get_xticks(), vsi_mtx[i, 0], yerr=vsi_mtx[i, 1],
+#                             fmt="o", c='black', elinewidth=0.5, markersize=4, capsize=2, fillstyle='none')
+#                 labels = [item.get_text() for item in ax.get_xticklabels()]
+#                 for idx, band in enumerate(bandwidths / 1000):
+#                     labels[idx] = '%.1f - %.1f' % (band[0], band[1])
+#                 ax.set_xticklabels(labels)
+#                 ax.set_xlabel('Frequency bands (kHz)')
+#                 ax.set_title(list(hrtf_dict.keys())[i])
+#             axis[0].set_ylabel('VSI')
 """   
 subject_id = 'lk'
 condition = 'Earmolds Week 1'

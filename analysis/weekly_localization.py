@@ -1,5 +1,4 @@
 import analysis.localization_analysis as localization
-from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy
 
@@ -8,11 +7,10 @@ import numpy
 plot_condition = 'Earmolds Week 1'
 bracket = 'bracket_1'
 
-conditions = ['Ears Free', 'Earmolds Week 1', 'Earmolds Week 2']
 # conditions = ['Ears Free', 'Earmolds Week 1'] #, 'Earmolds Week 2']
 
-path = Path.cwd() / 'data' / 'experiment' / bracket
-loc_dict = localization.get_localization_data(path, conditions)
+loc_dict = localization.get_localization_dictionary()
+subjects = ['lku']
 subjects = list(loc_dict['Ears Free'].keys())
 # for ex in exclude: subjects.remove(ex)
 

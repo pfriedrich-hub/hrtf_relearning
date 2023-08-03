@@ -18,7 +18,7 @@ baselining subtracts mean power across DTFs within bandwidth and cuts DTFs at th
 dfe applies diffuse field equalization 
 """
 
-hrtf_dict = hrtf_analysis.get_hrtfs(path, subject_list, conditions, smoothe=True,
+hrtf_dict = hrtf_analysis.get_hrtf_dict(path, subject_list, conditions, smoothe=True,
                                     baseline=True, bandwidth=bandwidth, dfe=True)
 
 """    plot  """

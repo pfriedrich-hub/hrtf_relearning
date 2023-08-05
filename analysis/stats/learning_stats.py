@@ -53,6 +53,7 @@ w1d0_drop = loc_df[loc_df['condition'] == 'Earmolds Week 1'][loc_df['adaptation_
 ### ---- compare persistence m1 / m2 ---- ###
 
 
+### ---- correlate uso vs noise EG / RMSE ---- ###
 
 
 

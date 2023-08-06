@@ -9,7 +9,7 @@ from analysis.localization_analysis import localization_accuracy
 fs = 48828
 slab.set_default_samplerate(fs)
 
-subject_id = 'jh'
+subject_id = 'mh'
 condition = 'Earmolds Week 1'
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_4' / subject_id / condition
 
@@ -112,11 +112,12 @@ if __name__ == "__main__":
 
 """
 import slab
+from pathlib import Path
 from analysis.localization_analysis import localization_accuracy
 subject_id = 'lk'
 condition = 'Earmolds Week 1'
-data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_2' / subject_id / condition
-file_name = 'localization_pp_Earmolds Week 2_7_07.06'
+data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_4' / subject_id / condition
+file_name = 'uso_localization_mh_Earmolds Week 1_06.08'
 sequence = slab.Trialsequence(conditions=45, n_reps=1)
 sequence.load_pickle(file_name=data_dir / file_name)
 

@@ -1,4 +1,4 @@
-import analysis.localization_analysis as localization
+import analysis.localization_analysis as loc_analysis
 import numpy
 import slab
 from copy import deepcopy
@@ -6,27 +6,36 @@ from matplotlib import pyplot as plt
 from pathlib import Path
 
 ### ----- LOCALIZATION ----- ####
-def learning_plot(localization_dictionary, to_plot='average'):
+def learning_plot(to_plot='average', path=Path.cwd() / 'data' / 'experiment' / 'master', w2_exclude = ['cs', 'lm', 'lk']):
     """
     Plot m1 m2 adaptation curves throughout the experiment
     localization_dictionary (dict): dictionary of localization
     to_plot (string) can be 'average' (cross subject) or subject-id for single subject learning curve
     """
-    localization_dict = deepcopy(localization_dictionary)
+    localization_dict = loc_analysis.get_localization_dictionary(path=path)
+    # localization_dict = deepcopy(localization_dictionary)
     if not to_plot == 'average':
         subjects = [to_plot]
     else:
         subjects = list(localization_dict['Ears Free'].keys())
-    w2_exclude = ['cs', 'lm']
-    localization_dict = localization.get_localization_data(localization_dict, subjects, w2_exclude)
+    localization_dict = loc_analysis.get_localization_data(localization_dict, subjects, w2_exclude)
     days = numpy.arange(1, 13)  # days of measurement
     days[-1] = 16
     # means ears free / mold1 / mold2
     ef = numpy.nanmean(localization_dict['Ears Free']['data'], axis=0)
     m1 = numpy.nanmean(localization_dict['Earmolds Week 1']['data'], axis=0)
     m2 = numpy.nanmean(localization_dict['Earmolds Week 2']['data'], axis=0)
+    # optionally delete nan for plt to interpolate points in learning curve
+    if len(subjects) == 1:
+        if numpy.isnan(ef).any():
+            ef = numpy.delete(ef, numpy.where(numpy.isnan(ef))[0][0], numpy.where(numpy.isnan(ef))[1][0])
+        if numpy.isnan(m1).any():
+            m1 = numpy.delete(m1, numpy.where(numpy.isnan(m1))[0][0] ,numpy.where(numpy.isnan(m1))[1][0])
+        if numpy.isnan(m2).any():
+            m2 = numpy.delete(m2, numpy.where(numpy.isnan(m2))[0][0] ,numpy.where(numpy.isnan(m2))[1][0])
+    # ----- plot ----- #
     labels = ['RMSE', 'SD']
-    colors = ['k', '0.6']
+    colors = [0.3, 0.7]
     color = colors[0]
     label = None
     fig, axes = plt.subplots(2, 1, figsize=(14, 8))
@@ -35,26 +44,27 @@ def learning_plot(localization_dictionary, to_plot='average'):
             label = labels[i-1]
             color = colors[i-1]
         # EG # week 1
-        axes[ax_id].plot([1, 1], [ef[0, i], m1[0, i]], c=color, ls=(0, (5, 10)), lw=0.8)  # day one mold insertion
-        axes[ax_id].plot(days[:6], m1[:6, i], c=color, linewidth=1.5, label=label)  # week 1 learning curve
-        axes[ax_id].plot([6, 6], [m1[5, i], ef[1, i]], c=color, ls=(0, (5, 10)), lw=0.8)  # week 1 mold removal
+        axes[ax_id].plot([1, 1.05], [ef[0, i], m1[0, i]], c=str(color-0.2), ls=(0, (5, 10)), lw=0.8)  # day one mold insertion
+        axes[ax_id].plot([1.05, 2, 3, 4, 5, 5.95], m1[:6, i], c=str(color-0.2), linewidth=1.5, label=label)  # week 1 learning curve
+        axes[ax_id].plot([5.95, 6], [m1[5, i], ef[1, i]], c=str(color-0.2), ls=(0, (5, 10)), lw=0.8)  # week 1 mold removal
         # week 2
-        axes[ax_id].plot([6, 6], [ef[1, i], m2[0, i]], c=color, ls=(0, (5, 10)), lw=0.8)  # week 2 mold insertion
-        axes[ax_id].plot(days[5:11], m2[:6, i], c=color, linewidth=1.5)  # week 2 learning curve
-        axes[ax_id].plot([11, 11], [m2[5, i], ef[2, i]], c=color, ls=(0, (5, 10)), lw=0.8)  # week 2 mold removal
+        axes[ax_id].plot([6, 6.05], [ef[1, i], m2[0, i]], c=str(color+0.2), ls=(0, (5, 10)), lw=0.8)  # week 2 mold insertion
+        axes[ax_id].plot([6.05,  7,  8,  9, 10, 10.95], m2[:6, i], c=str(color+0.2), linewidth=1.5)  # week 2 learning curve
+        axes[ax_id].plot([10.95, 11], [m2[5, i], ef[2, i]], c=str(color+0.2), ls=(0, (5, 10)), lw=0.8)  # week 2 mold removal
         # mold 1 adaptation persistence
-        axes[ax_id].plot([6, 11], m1[-2:, i], c=color, ls=(0, (5, 10)), lw=0.8)
+        axes[ax_id].plot([5.95, 11.05], m1[-2:, i], c=str(color-0.2), ls=(0, (5, 10)), lw=0.8)
         # mold 2 adaptation persistence
-        axes[ax_id].plot(days[-2:], m2[-2:, i], c=color, ls=(0, (5, 10)), lw=0.8)
+        axes[ax_id].plot([10.95, 16], m2[-2:, i], c=str(color+0.2), ls=(0, (5, 10)), lw=0.8)
         # error bars
-        axes[ax_id].errorbar([1, 6, 11], ef[:3, i], capsize=3, yerr=localization_dict['Ears Free']['SE'][:3, i],
-                       fmt="o", c=color, elinewidth=0.8, markersize=5, fillstyle='none')  # error bar ears free
-        axes[ax_id].errorbar(numpy.append(days[:6], 11), m1[:7, i], capsize=3, yerr=localization_dict['Earmolds Week 1']['SE'][:7, i],  # error bar mold 2
-                       fmt="o", c=color, elinewidth=0.8, markersize=5)
-        axes[ax_id].errorbar(days[5:], m2[:7, i], capsize=3, yerr=localization_dict['Earmolds Week 2']['SE'][:7, i],  # error bar mold 2
-                       fmt="o", c=color, elinewidth=0.8, markersize=5)
-        axes[ax_id].errorbar(days[5:-1], m2[:6, i], capsize=3, yerr=localization_dict['Earmolds Week 2']['SE'][:6, i],  # error bar mold 2
-                       fmt="o", c=color, elinewidth=0.8, markersize=5)
+        if len(subjects) > 1:
+            axes[ax_id].errorbar([1, 6, 11], ef[:3, i], capsize=3, yerr=localization_dict['Ears Free']['SE'][:3, i],
+                           fmt="o", c=str(color), elinewidth=0.8, markersize=5, fillstyle='none')  # error bar ears free
+            axes[ax_id].errorbar([1.05, 2, 3, 4, 5, 5.95, 11.05], m1[:7, i], capsize=3, yerr=localization_dict
+                            ['Earmolds Week 1']['SE'][:7, i], fmt="o", c=str(color-0.2), elinewidth=0.8, markersize=5)  # err m1
+            axes[ax_id].errorbar([6.05,  7,  8,  9, 10, 10.95, 16], m2[:7, i], capsize=3, yerr=localization_dict['Earmolds Week 2']['SE'][:7, i],
+                           fmt="o", c=str(color+0.2), elinewidth=0.8, markersize=5)  # err m2
+            # axes[ax_id].errorbar([6.1,  7,  8,  9, 10, 11.1], m2[:6, i], capsize=3, yerr=localization_dict['Earmolds Week 2']['SE']
+            #                     [:6, i], fmt="o", c=color, elinewidth=0.8, markersize=5)
 
     axes[0].set_yticks(numpy.arange(0, 1.2, 0.2))
     axes[0].set_xticks(days)
@@ -73,26 +83,29 @@ def learning_plot(localization_dictionary, to_plot='average'):
     w2 = ' '.join([str(item) for item in w2])
     plt.suptitle(f'w1: {w1}, w2: {w2}')
     plt.show()
+    return axes
     #
     # # save as scalable vector graphics
     # fig.savefig(Path.cwd() / 'data' / 'presentation' / 'learning_plot.svg', format='svg')
 
-def localization_plot(localization_data, to_plot='average', binned=True):
-    """ plot localization free, 1st vs last day of molds """
-    loc_df = deepcopy(localization_data)
-    w2_exclude = ['cs', 'lm']
+def localization_plot(to_plot='average', binned=True, path=Path.cwd() / 'data' / 'experiment' / 'master'):
+    """ plot localization free, 1st vs last day of molds and persistence """
+    loc_df = loc_analysis.get_localization_dataframe(path=path)
+    # loc_df = deepcopy(loc_df)
+    w2_exclude = ['cs', 'lm', 'lk']
+    # cs and lm did not go into w2, lk did not learn in w2
     if not to_plot == 'average':
         subjects = [to_plot]
     else:
-        subjects = list(set(localization_data['subject']))
+        subjects = list(loc_df['subject'].unique())
     sequence = slab.Trialsequence()
     sequence.this_n = 1
     # m1
-    efd0, m1d0, m1d5 = deepcopy(sequence), deepcopy(sequence), deepcopy(sequence)
-    efd0.data, m1d0.data, m1d5.data = [], [], []
+    efd0, m1d0, m1d5, m1d10 = deepcopy(sequence), deepcopy(sequence), deepcopy(sequence), deepcopy(sequence)
+    efd0.data, m1d0.data, m1d5.data, m1d10.data = [], [], [], []
     # m2
-    efd5, m2d0, m2d5 = deepcopy(sequence), deepcopy(sequence), deepcopy(sequence)
-    efd5.data, m2d0.data, m2d5.data = [], [], []
+    efd5, m2d0, m2d5, m2d10 = deepcopy(sequence), deepcopy(sequence), deepcopy(sequence), deepcopy(sequence)
+    efd5.data, m2d0.data, m2d5.data, m2d10.data = [], [], [], []
     # fetch cross subject localization data across subjects
     for subject in subjects:
         # ears free day 0
@@ -104,6 +117,9 @@ def localization_plot(localization_data, to_plot='average', binned=True):
         # m 1 day 5
         m1d5.data.extend(loc_df[loc_df['condition'] =='Earmolds Week 1'][loc_df['adaptation_day']
                                                     == 5][loc_df['subject']==subject]['sequence'].values[0].data)
+        # m1 day 10
+        m1d10.data.extend(loc_df[loc_df['condition'] == 'Earmolds Week 1'][loc_df['adaptation_day']
+                                         == 6][loc_df['subject'] == subject]['sequence'].values[0].data)
         if not (subject in w2_exclude):
             # ears free day 5
             if loc_df[loc_df['condition'] =='Ears Free'][loc_df['adaptation_day']
@@ -116,59 +132,40 @@ def localization_plot(localization_data, to_plot='average', binned=True):
             # m 2 day 5
             m2d5.data.extend(loc_df[loc_df['condition'] =='Earmolds Week 2'][loc_df['adaptation_day']
                                                     == 5][loc_df['subject']==subject]['sequence'].values[0].data)
+            # m2 day 10
+            m2d10.data.extend(loc_df[loc_df['condition'] =='Earmolds Week 2'][loc_df['adaptation_day']
+                                                    == 6][loc_df['subject']==subject]['sequence'].values[0].data)
     # plot:
-    fig, axis = plt.subplots(3, 1, sharex=True, sharey=True, figsize=[6, 8])
-
+    fig, axes = plt.subplots(3, 2, sharex=True, sharey=True, figsize=[8, 8])
     # M1
-    # localization.localization_accuracy(efd0, show=True, plot_dim=2, binned=binned, axis=None)
-    # localization.localization_accuracy(m1d0, show=True, plot_dim=2, binned=binned, axis=None)
-    # localization.localization_accuracy(m1d5, show=True, plot_dim=2, binned=binned, axis=None)
-    # # M2
-    # localization.localization_accuracy(efd5, show=True, plot_dim=2, binned=binned, axis=None)
-    # localization.localization_accuracy(m2d0, show=True, plot_dim=2, binned=binned, axis=None)
-    # localization.localization_accuracy(m2d5, show=True, plot_dim=2, binned=binned, axis=None)
+    loc_analysis.localization_accuracy(efd0, True, 2, binned, axes[0, 0], False)
+    loc_analysis.localization_accuracy(m1d0, True, 2, binned, axes[1, 0], False)
+    loc_analysis.localization_accuracy(m1d5, True, 2, binned, axes[2, 0], False)
+    # loc_analysis.localization_accuracy(m1d10, True, 2, binned, axes[3, 0], False)
+    # M2
+    loc_analysis.localization_accuracy(efd5, True, 2, binned, axes[0, 1], False)
+    loc_analysis.localization_accuracy(m2d0, True, 2, binned, axes[1, 1], False)
+    loc_analysis.localization_accuracy(m2d5, True, 2, binned, axes[2, 1], False)
+    # loc_analysis.localization_accuracy(m2d10, True, 2, binned, axes[3, 1], False)
+    fig.text(0.29, 0.95, 'Mold 1', size=13)
+    fig.text(0.71, 0.95, 'Mold 2', size=13)
+    fig.text(0.03, 0.75, 'Day 0 Ears Free', size=13, rotation=90)
+    fig.text(0.03, 0.45, 'Day 0', size=13, rotation=90)
+    fig.text(0.03, 0.18, 'Day 5', size=13, rotation=90)
+    # fig.text(0.03, 0.18, 'Day 10', size=13, rotation=90)
+    fig.suptitle(to_plot)
+
     # # overall
-    efd0.data.extend(efd5.data)
-    m1d0.data.extend(m2d0.data)
-    m1d5.data.extend(m2d5.data)
-    localization.localization_accuracy(efd0, binned, axis[0], show_single_responses=False)
-    localization.localization_accuracy(m1d0, binned, axis[1], show_single_responses=False)
-    localization.localization_accuracy(m1d5, binned, axis[2], show_single_responses=False)
+    # fig, axes = plt.subplots(3, 1, sharex=True, sharey=True, figsize=[6, 8])
+    # efd0.data.extend(efd5.data)
+    # m1d0.data.extend(m2d0.data)
+    # m1d5.data.extend(m2d5.data)
+    # loc_analysis.localization_accuracy(efd0, True, 2, binned, axes[0], True)
+    # loc_analysis.localization_accuracy(m1d0, True, 2, binned, axes[1], True)
+    # loc_analysis.localization_accuracy(m1d5, True, 2, binned, axes[2], True)
+    # fig.suptitle('M1/M2 %s' % to_plot)
 
 
-
-    #
-    # fig, axis = plt.subplots(7, len(subjects), sharex=True, sharey=True, figsize=[15, 8])
-    # fig.subplots_adjust(left=None, bottom=0.1, right=0.96, top=0.96, wspace=0.05, hspace=0.1)
-    #
-    # for s_id, subj in enumerate(subjects):
-    #     ax = axis[0, s_id]
-    #     localization.localization_accuracy(loc_dict['Ears Free'][subj][0], show=True,
-    #                                        plot_dim=2, binned=True, axis=ax)  # ears free D1
-    #     eg = ax.get_title()[-4:]
-    #     ax.set_title(label=f'EG {eg}', y=0.8, size=10)
-    #     for ax_id, i in zip([0, 1], [0, 5]):
-    #         ax = axis[ax_id + 1, s_id]
-    #         localization.localization_accuracy(loc_dict['Earmolds Week 1'][subj][i], show=True,
-    #                                            plot_dim=2, binned=True, axis=ax)  # M1 D1 / D6
-    #         eg = ax.get_title()[-4:]
-    #         ax.set_title(label=f'EG {eg}', y=0.8, size=10)
-    #     if len(loc_dict['Earmolds Week 2'][subj]) >= 5:
-    #         for ax_id, i in zip([1, 2], [0, 5]):
-    #             ax = axis[ax_id + 2, s_id]
-    #             localization.localization_accuracy(loc_dict['Earmolds Week 2'][subj][i], show=True,
-    #                                                plot_dim=2, binned=True, axis=ax)  # M2 D1 / D6
-    #             eg = ax.get_title()[-4:]
-    #             ax.set_title(label=f'EG {eg}', y=0.8, size=10)
-    #         localization.localization_accuracy(loc_dict['Earmolds Week 1'][subj][-1], show=True,
-    #                                            plot_dim=2, binned=True, axis=axis[5, s_id])  # M1 D11
-    #         eg = axis[5, s_id].get_title()[-4:]
-    #         axis[5, s_id].set_title(label=f'EG {eg}', y=0.8, size=10)
-    #         localization.localization_accuracy(loc_dict['Earmolds Week 2'][subj][-1], show=True,
-    #                                            plot_dim=2, binned=True, axis=axis[6, s_id])  # M2 D16
-    #         eg = axis[6, s_id].get_title()[-4:]
-    #         axis[6, s_id].set_title(label=f'EG {eg}', y=0.8, size=10)
-    #
     # fig.text(0.5, 0.05, 'Response azimuth (deg)', ha='center', size=12)
     # fig.text(0.08, 0.5, 'Response elevation (deg)', va='center', rotation='vertical', size=12)
     # axis[0, 0].set_xticks(axis[0, 0].get_xticks().astype('int'))

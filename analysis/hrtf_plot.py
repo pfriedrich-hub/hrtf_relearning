@@ -1,6 +1,8 @@
 from pathlib import Path
 import analysis.hrtf_analysis as hrtf_analysis
-
+import numpy
+from matplotlib import pyplot as plt
+import copy
 
 def plot_hrtf_diff(hrtf_df, to_plot='average', dfe=True, axis=None):
     """
@@ -160,27 +162,50 @@ def plot_hrtf_corr(hrtf_df, to_plot='average', dfe=True, axis=None):
         fig.suptitle(title)
     return fig, axis
 
-def plot_average(hrtf_df, condition='Ears Free'):
-    hrtf_list = list(hrtf_df[hrtf_df['condition'] == condition]['hrtf'])
+def plot_average(hrtf_df, condition='Ears Free', equalize=True, kind='image'):
+    df = copy.deepcopy(hrtf_df)
+    hrtf_list = list(df[df['condition'] == condition]['hrtf'])
     mean_hrtf = hrtf_analysis.average_hrtf(hrtf_list)
-    mean_hrtf = mean_hrtf.diffuse_field_equalization()
-    axis = hrtf_image(mean_hrtf)
-    cbar = axis.get_figure().get_axes()[1]
-    cbar_pos = cbar.get_position()  # (x0, y0, width, height)
-    cbar_pos.x1 = 0.94
-    cbar_pos.x0 = 0.92
-    cbar.set_position(cbar_pos)
+    if equalize:
+        mean_hrtf = mean_hrtf.diffuse_field_equalization()
+    if kind=='image':
+        axis = hrtf_image(mean_hrtf)
+        cbar = axis.get_figure().get_axes()[1]
+        cbar_pos = cbar.get_position()  # (x0, y0, width, height)
+        cbar_pos.x1 = 0.94
+        cbar_pos.x0 = 0.92
+        cbar.set_position(cbar_pos)
+    elif kind=='waterfall':
+        mean_hrtf.plot_tf(mean_hrtf.cone_sources())
 
-
-def plot_vsi_across_bands(vsi_across_bands, axis=None):
+def plot_vsi_across_bands(vsi_across_bands, bands, axis=None):
     if not axis:
         fig, axis = plt.subplots()
     axis.plot(vsi_across_bands, c='k')
-    axis.set_xticks([0, 1, 2, 3, 4])
+    axis.set_xticks(numpy.arange(len(bands)))
     labels = [item.get_text() for item in axis.get_xticklabels()]
-    bandwidths = numpy.array(((4, 8), (4.8, 9.5), (5.7, 11.3), (6.7, 13.5), (8, 16))) * 1000
-    for idx, band in enumerate(bandwidths / 1000):
+    for idx, band in enumerate(numpy.asarray(bands) / 1000):
         labels[idx] = '%.1f - %.1f' % (band[0], band[1])
     axis.set_xticklabels(labels)
     axis.set_xlabel('Frequency bands (kHz)')
     axis.set_ylabel('VSI')
+
+def plot_hrtfs(hrtf_df):
+    hrtf_list = list(hrtf_df[hrtf_df['condition'] == condition]['hrtf'])
+    for subj_idx, hrtf in enumerate(hrtf_list):
+        hrtf.plot_tf(hrtf.cone_sources())
+        subject_id = list(hrtf_df['subject'].unique())[subj_idx]
+        plt.title(subject_id)
+        plt.savefig(f'/Users/paulfriedrich/Desktop/hrtf_relearning/data/figures/hrtfs/{subject_id}')
+
+def plot_hrtf_overview(hrtf_df, bands=None, n_bins=None, equalize=True):
+    """
+    plot hrtfs and vsi across bands
+    """
+    for index, row in hrtf_df[hrtf_df['condition'] == 'Ears Free'].iterrows():
+        fig, ax = plt.subplots(1, 2, figsize=(10, 5))
+        fig.suptitle(row['subject'])
+        hrtf = copy.deepcopy(row['hrtf'])
+        hrtf.plot_tf(hrtf.cone_sources(0), axis=ax[0], xlim=(bands[0][0], bands[-1][1]))
+        vsi = hrtf_analysis.vsi_across_bands(hrtf, bands, n_bins, equalize)
+        plot_vsi_across_bands(vsi, bands, axis=ax[1])

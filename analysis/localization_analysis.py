@@ -25,12 +25,6 @@ def get_localization_dictionary(path=Path.cwd() / 'data' / 'experiment' / 'maste
                     sequence = slab.Trialsequence(conditions=45, n_reps=3)
                     sequence.load_pickle(file_name=file_name)
                     localization_dict[condition][subject_path.name][file_name.name] = sequence
-                    #                 if file_name.name.startswith('uso'):
-                    #                     loc_dict['files'][condition][subject_path.name]['uso'] = file_name.name
-                    #                 else:
-                    #                     loc_dict[condition][subject_path.name].append(sequence)
-                    #                     loc_dict['files'][condition][subject_path.name].append(file_name.name)
-                    # return loc_dict
     return localization_dict
 
 def get_localization_data(localization_dictionary, subjects, w2_exclude=['cs', 'lm']):
@@ -58,11 +52,11 @@ def get_localization_data(localization_dictionary, subjects, w2_exclude=['cs', '
     # localization_dictionary['Ears Free']['data'] = numpy.delete(localization_dictionary['Ears Free']['data'], ex_idx, axis=0)
     return localization_dictionary
 
-def get_dataframe(w2_exclude=['cs', 'lm']):
-    localization_dict = get_localization_dictionary()
+def get_localization_dataframe(path=Path.cwd() / 'data' / 'experiment' / 'master', w2_exclude=['cs', 'lm', 'lk']):
+    localization_dict = get_localization_dictionary(path=path)
     localization_data = pandas.DataFrame({'subject': [], 'filename': [], 'sequence': [], 'condition': [], 'day': [],
-                                          'adaptation_day': [], 'EG': [], 'RMSE_ele': [], 'SD_ele': [], 'RMSE_az': [],
-                                          'SD_az': []})
+                                          'adaptation day': [], 'EG': [], 'RMSE ele': [], 'SD ele': [], 'RMSE az': [],
+                                          'SD az': []})
     subjects = list(localization_dict['Ears Free'].keys())
     test_order = ['Ears Free', 'Earmolds Week 1', 'Earmolds Week 1', 'Earmolds Week 1', 'Earmolds Week 1',
                   'Earmolds Week 1', 'Earmolds Week 1', 'Ears Free', 'Earmolds Week 2', 'Earmolds Week 2',
@@ -78,11 +72,19 @@ def get_dataframe(w2_exclude=['cs', 'lm']):
                 new_row = [subject, file_name, sequence, condition, total_days[idx], adaptation_days[idx]]
                 new_row.extend(list(localization_accuracy(sequence, show=False)))
                 localization_data.loc[len(localization_data)] = new_row
+                if adaptation_days[idx] == 5 or (adaptation_days[idx] == 2 and condition == 'Ears Free'): # add uso
+                    file_name = [name for name in list(localization_dict[condition][subject].keys())
+                                 if name.startswith('uso')]
+                    if file_name:
+                        sequence = localization_dict[condition][subject][file_name[0]]
+                        new_row = [subject, file_name[0], sequence, 'USO ' + condition, total_days[idx], adaptation_days[idx]]
+                        new_row.extend(list(localization_accuracy(sequence, show=False)))
+                        localization_data.loc[len(localization_data)] = new_row
     # localization_data.to_csv('/Users/paulfriedrich/projects/hrtf_relearning/data/experiment/data.csv')
     return localization_data
 
 def localization_accuracy(sequence, show=True, plot_dim=1, binned=True, axis=None, show_single_responses=True):
-    if sequence.this_n == -1 or sequence.n_remaining == 132:
+    if sequence.this_n == -1 or sequence.n_remaining == 132 or not sequence.data:
         return None, None, None, None, None
     # retrieve data
     loc_data = numpy.asarray(sequence.data)

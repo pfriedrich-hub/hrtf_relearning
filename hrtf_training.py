@@ -10,7 +10,7 @@ data_dir = Path.cwd() / 'data'
 fs = 48828
 slab.set_default_samplerate(fs)
 
-# get probabilities for target speakers, depending on previous localisation performance
+# get probabilities for target speakers, depending on previous localisation performancey
 subject_id = 'jh'
 condition = 'Earmolds Week 2'
 subject_dir = data_dir / 'experiment' / 'bracket_4' / subject_id / condition

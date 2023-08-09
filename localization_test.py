@@ -10,7 +10,7 @@ from analysis.localization_analysis import localization_accuracy
 fs = 48828
 slab.set_default_samplerate(fs)
 
-subject_id = 'mh'
+subject_id = 'jh'
 condition = 'Earmolds Week 2'
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_4' / subject_id / condition
 
@@ -118,7 +118,7 @@ import slab
 from pathlib import Path
 from analysis.localization_analysis import localization_accuracy
 
-file_name = 'localization_jh_Earmolds Week 2_07.08'
+file_name = 'localization_jh_Earmolds Week 2_08.08'
 
 for path in Path.cwd().glob("**/"+str(file_name)):
     file_path = path

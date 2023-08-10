@@ -12,7 +12,7 @@ fs = 97656  # 97656.25, 195312.5
 slab.set_default_samplerate(fs)
 
 # file settings
-subject_id = 'jh'
+subject_id = 'mh'
 condition = 'Earmolds Week 2'  # can be 'ears_free' or 'earmolds' - important for file naming!
 kemar = False  # requires no button press if true
 safe = 'both'  # decide if additionally save in-ear-recordings

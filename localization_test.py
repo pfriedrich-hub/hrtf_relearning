@@ -11,7 +11,7 @@ fs = 48828
 slab.set_default_samplerate(fs)
 
 subject_id = 'jh'
-condition = 'Earmolds Week 2'
+condition = 'Earmolds Week 1'
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_4' / subject_id / condition
 
 repetitions = 3  # number of repetitions per speaker
@@ -118,7 +118,7 @@ import slab
 from pathlib import Path
 from analysis.localization_analysis import localization_accuracy
 
-file_name = 'localization_jh_Earmolds Week 2_08.08'
+file_name = 'localization_jh_Earmolds Week 1_10.08'
 
 for path in Path.cwd().glob("**/"+str(file_name)):
     file_path = path
@@ -132,6 +132,7 @@ elevation_gain, ele_rmse, ele_var, az_rmse, az_var = localization_accuracy(seque
  binned=True, axis=axis)
 axis.set_xlabel('Response Azimuth (degrees)')
 axis.set_ylabel('Response Elevation (degrees)')
+fig.suptitle(file_name)
 """
 
 

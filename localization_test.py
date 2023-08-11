@@ -10,8 +10,8 @@ from analysis.localization_analysis import localization_accuracy
 fs = 48828
 slab.set_default_samplerate(fs)
 
-subject_id = 'jh'
-condition = 'Earmolds Week 1'
+subject_id = 'mh'
+condition = 'Ears Free'
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_4' / subject_id / condition
 
 repetitions = 3  # number of repetitions per speaker

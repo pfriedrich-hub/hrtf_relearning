@@ -14,7 +14,7 @@ class State:
         self.pose = None
     # callback
     def data_handler(self, ctx, data):
-        # print("QUAT: %s -> %s" % (self.device.address, parse_value(data)))
+        # print("QUAT: %s -> %s" % (self.device.address, parse_value(final_data)))
         self.pose = parse_value(data)
         self.samples+= 1
 
@@ -114,7 +114,7 @@ def calibrate_pose(sensor, limit=0.2, report=False):
         pose = get_pose(sensor)
         # print(pose)
         log = numpy.vstack((log, pose))
-        # check if orientation is stable for at least 30 data points
+        # check if orientation is stable for at least 30 final_data points
         max_logsize = 100
         if len(log) > max_logsize:
             diff = numpy.mean(numpy.abs(numpy.diff(log[-max_logsize:], axis=0)), axis=0).astype('float16')

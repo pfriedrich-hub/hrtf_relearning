@@ -128,7 +128,7 @@ def calibrate_pose(limit=0.5, report=True):
         log = numpy.vstack((log, pose))
         if log[-1, 0] == None or log[-1, 1] == None:
             print('no marker detected')
-        # check if orientation is stable for at least 30 data points
+        # check if orientation is stable for at least 30 final_data points
         if len(log) > 30 and all(log[-20:, 0] != None) and all(log[-20:, 1] != None):
             diff = numpy.mean(numpy.abs(numpy.diff(log[-20:], axis=0)), axis=0).astype('float16')
             if report:

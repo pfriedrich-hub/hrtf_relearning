@@ -29,4 +29,4 @@ for sub_idx, i in enumerate(range(2, 10, 2)):
 fig.text(0.5, 0.97, plot_condition, ha='center', size=15)
 
 # save as scalable vector graphics
-# fig.savefig(Path.cwd() / 'data' / 'experiment' / 'images' / 'bracket_1' / 'prelim_localization_accuracy.svg', format='svg')
+# fig.savefig(Path.cwd() / 'final_data' / 'experiment' / 'images' / 'bracket_1' / 'prelim_localization_accuracy.svg', format='svg')

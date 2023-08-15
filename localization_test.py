@@ -12,7 +12,7 @@ slab.set_default_samplerate(fs)
 
 subject_id = 'mh'
 condition = 'Ears Free'
-data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_4' / subject_id / condition
+data_dir = Path.cwd() / 'final_data' / 'experiment' / 'bracket_4' / subject_id / condition
 
 repetitions = 3  # number of repetitions per speaker
 
@@ -20,15 +20,15 @@ def localization_test(subject_id, data_dir, condition, repetitions):
     global speakers, stim, sensor, tone, file_name
     if not freefield.PROCESSORS.mode:
         freefield.initialize('dome', default='play_rec', sensor_tracking=True)
-    freefield.load_equalization(Path.cwd() / 'data' / 'calibration' / 'calibration_dome_23.05')
+    freefield.load_equalization(Path.cwd() / 'final_data' / 'calibration' / 'calibration_dome_23.05')
 
     # generate stimulus
-    bell = slab.Sound.read(Path.cwd() / 'data' / 'sounds' / 'bell.wav')
+    bell = slab.Sound.read(Path.cwd() / 'final_data' / 'sounds' / 'bell.wav')
     bell.level = 75
     tone = slab.Sound.tone(frequency=1000, duration=0.25, level=70)
 
     # read list of speaker locations
-    table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')
+    table_file = freefield.DIR / 'final_data' / 'tables' / Path(f'speakertable_dome.txt')
     speakers = numpy.loadtxt(table_file, skiprows=1, usecols=(0, 3, 4), delimiter=",", dtype=float)
     c_speakers = numpy.delete(speakers, [19, 23, 27], axis=0)  # remove disconnected speaker from speaker_list
     sequence = numpy.zeros(repetitions * len(c_speakers)).astype('int')
@@ -51,7 +51,7 @@ def localization_test(subject_id, data_dir, condition, repetitions):
             break
     trial_sequence = slab.Trialsequence(trials=range(len(sequence)))
     # loop over trials
-    data_dir.mkdir(parents=True, exist_ok=True)  # create subject data directory if it doesnt exist
+    data_dir.mkdir(parents=True, exist_ok=True)  # create subject final_data directory if it doesnt exist
     file_name = 'localization_' + subject_id + '_' + condition + date.strftime('_%d.%m')
     counter = 1
     while Path.exists(data_dir / file_name):
@@ -147,12 +147,12 @@ sequence_1 = slab.Trialsequence(conditions=45, n_reps=1)
 sequence_2 = deepcopy(sequence_1)
 sequence_1.load_pickle(file_name=data_dir / filename_1)
 sequence_2.load_pickle(file_name=data_dir / filename_2)
-data_1 = sequence_1.data[:-sequence_1.n_remaining]
-data_2 = sequence_2.data[:-sequence_2.n_remaining]
-data = data_1 + data_2
+data_1 = sequence_1.final_data[:-sequence_1.n_remaining]
+data_2 = sequence_2.final_data[:-sequence_2.n_remaining]
+final_data = data_1 + data_2
 sequence = sequence_1
 file_name = filename_1
-sequence.data = data
+sequence.final_data = final_data
 
 #  save
 sequence.save_pickle(data_dir / file_name, clobber=True)
@@ -165,11 +165,11 @@ for path in Path.cwd().glob("**/*"+str(file_name)):
 sequence = slab.Trialsequence(conditions=45, n_reps=1)
 sequence.load_pickle(file_path)
 
-for i, entry in enumerate(sequence.data):
-    sequence.data[i][0][sequence.data[i][0] > 180] -= 360
+for i, entry in enumerate(sequence.final_data):
+    sequence.final_data[i][0][sequence.final_data[i][0] > 180] -= 360
     
-for i, entry in enumerate(sequence.data):
-    sequence.data[i][0][sequence.data[i][0] < -180] += 360
+for i, entry in enumerate(sequence.final_data):
+    sequence.final_data[i][0][sequence.final_data[i][0] < -180] += 360
     
 # -------------- save ------------------#
 

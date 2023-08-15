@@ -1,11 +1,64 @@
-import scipy
-import slab
+import analysis.localization_analysis as loc_analysis
+import analysis.hrtf_analysis as hrtf_analysis
+import analysis.plotting.localization_plot as loc_plot
+import analysis.plotting.hrtf_plot as hrtf_plot
 from pathlib import Path
-data_dir = Path.cwd() / 'data'
-import matplotlib
-# matplotlib.use('TkAgg')
-from matplotlib import pyplot as plt
+import scipy.stats
+import pandas
 import numpy
+from matplotlib import pyplot as plt
+pandas.set_option('display.max_rows', None, 'display.max_columns', None, 'display.precision', 5,
+                  'display.expand_frame_repr', False)
+
+path = Path.cwd() / 'data' / 'experiment' / 'master'
+w2_exclude=['cs', 'lm', 'lk']
+localization_dataframe = loc_analysis.get_localization_dataframe(path, w2_exclude)
+processed = True
+bands = [(4000, 5700), (5700, 8000), (8000, 11300), (11300, 16000)]  # to modify
+n_bins=None # no big difference on the average
+equalize=False  # results in implausible vsi?
+condition = 'Ears Free'
+subject = 'jl'
+
+hrtf_dataframe = hrtf_analysis.get_hrtf_df(path, processed=processed)
+hrtf_stats = loc_analysis.localization_hrtf_df(localization_dataframe, hrtf_dataframe)
+
+# subj hrtf
+hrtf = hrtf_dataframe[hrtf_dataframe['subject']==subject][hrtf_dataframe['condition']==condition]['hrtf'].item()
+
+# overview plots
+hrtf_plot.plot_hrtf_overview(hrtf_dataframe, subject, condition, bands, n_bins, equalize)
+# hrtf_analysis.mean_vsi_across_bands(hrtf_dataframe, condition, bands, n_bins, equalize, show=True)
+# hrtf_plot.plot_average(hrtf_dataframe, condition=condition, equalize=True, kind='image')  #todo fix copy error
+
+# subject plots
+
+
+# ----- TEST VSI ------'
+# plot vsi across overlapping octave bands
+# bands = [(3500, 7000), (4200, 8300), (4900, 9900), (5900, 11800), (7000, 14000)]
+# bands = [(3500, 7000), (4200, 8500), (5100, 10200), (6200, 12400), (7500, 15000)]
+# bands = [(4000, 8000), (4800, 9500), (5700, 11300), (6700, 13500), (8000, 16000)]
+# bands = [(4000, 8000), (4800, 9500), (5700, 11300), (6700, 13500)]
+# non overlapping
+# bands = [(3500, 5000), (5000, 7200), (7200, 10400), (10400, 15000)]
+
+
+
+#todo try:
+# I
+# load processed and check vsi for a single hrtf and band,
+# see why auto correlation sometimes increases when there are notches
+# II
+# try different preprocessing steps:
+# smoothing:
+# filter hrtf with lp tresh < 1500 hz
+# use binning to smoothe
+# triangular filterbank on recordings? / cosine filterbank does not have much of an effect
+
+
+
+
 
 # elevation gain
 subject = 'jakab_mold_1.0_12_Sep'
@@ -35,7 +88,7 @@ az_x = numpy.array(numpy.delete(az_x, bads_idx), dtype=numpy.float)
 azimuth_gain = scipy.stats.linregress(az_x, az_y)[0]
 
 #  DTF correlation matrix
-data_dir = Path.cwd() / 'data'
+data_dir = Path.cwd() / 'final_data'
 filename1 = 'kemar_free.sofa'
 filename2 = 'kemar_mold_1.sofa'
 hrtf_1 = slab.HRTF(data_dir / 'hrtfs' / filename1)

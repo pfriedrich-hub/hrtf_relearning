@@ -11,7 +11,7 @@ slab.set_default_samplerate(fs)
 
 subject_id = 'mh'
 condition = 'Earmolds Week 2'
-data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_4' / subject_id / condition
+data_dir = Path.cwd() / 'final_data' / 'experiment' / 'bracket_4' / subject_id / condition
 
 repetitions = 3  # number of repetitions per speaker
 
@@ -19,18 +19,18 @@ def localization_test(subject_id, data_dir, condition, repetitions):
     global speakers, sensor, tone, uso_list
     if not freefield.PROCESSORS.mode:
         freefield.initialize('dome', default='play_rec', sensor_tracking=True)
-    freefield.load_equalization(Path.cwd() / 'data' / 'calibration' / 'calibration_dome_23.05')
+    freefield.load_equalization(Path.cwd() / 'final_data' / 'calibration' / 'calibration_dome_23.05')
     # load sounds
-    bell = slab.Sound.read(Path.cwd() / 'data' / 'sounds' / 'bell.wav')
+    bell = slab.Sound.read(Path.cwd() / 'final_data' / 'sounds' / 'bell.wav')
     bell.level = 75
     tone = slab.Sound.tone(frequency=1000, duration=0.25, level=70)
-    uso_dir = Path.cwd() / 'data' / 'sounds' / 'uso'
+    uso_dir = Path.cwd() / 'final_data' / 'sounds' / 'uso'
     uso_list = []
     for file_name in list(uso_dir.iterdir()):
         if file_name.is_file() and file_name.suffix == '.wav':
             uso_list.append(slab.Sound.read(file_name))
     # read list of speaker locations
-    table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')
+    table_file = freefield.DIR / 'final_data' / 'tables' / Path(f'speakertable_dome.txt')
     speakers = numpy.loadtxt(table_file, skiprows=1, usecols=(0, 3, 4), delimiter=",", dtype=float)
     c_speakers = numpy.delete(speakers, [19, 23, 27], axis=0)  # remove disconnected speaker from speaker_list
     speaker_sequence = numpy.zeros(repetitions * len(c_speakers)).astype('int')
@@ -57,7 +57,7 @@ def localization_test(subject_id, data_dir, condition, repetitions):
     trial_sequence.data = trial_sequence.data[:len(speaker_sequence)]
     trial_sequence.n_remaining = len(speaker_sequence)
     # loop over trials
-    data_dir.mkdir(parents=True, exist_ok=True)  # create subject data directory if it doesnt exist
+    data_dir.mkdir(parents=True, exist_ok=True)  # create subject final_data directory if it doesnt exist
     file_name = 'uso_localization_' + subject_id + '_' + condition + date.strftime('_%d.%m')
     counter = 1
     while Path.exists(data_dir / file_name):
@@ -116,7 +116,7 @@ from pathlib import Path
 from analysis.localization_analysis import localization_accuracy
 subject_id = 'lk'
 condition = 'Earmolds Week 1'
-data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_4' / subject_id / condition
+data_dir = Path.cwd() / 'final_data' / 'experiment' / 'bracket_4' / subject_id / condition
 file_name = 'uso_localization_mh_Earmolds Week 1_06.08'
 sequence = slab.Trialsequence(conditions=45, n_reps=1)
 sequence.load_pickle(file_name=data_dir / file_name)

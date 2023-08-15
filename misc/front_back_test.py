@@ -3,7 +3,7 @@ import numpy
 import random
 import freefield
 from pathlib import Path
-data_dir = Path.cwd() / 'data'
+data_dir = Path.cwd() / 'final_data'
 slab.Signal.set_default_samplerate(48828)  # default samplerate for generating sounds, filters etc.
 import os
 import time

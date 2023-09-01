@@ -89,7 +89,7 @@ to_plot = 'average'  # 'average' or subject id
 exclude = []  # to exclude from group average
 n_bins = 300
 bandwidth = (4000, 16000)
-path = Path.cwd() / 'data' / 'experiment' / 'master'
+path = Path.cwd() / 'final_data' / 'experiment' / 'master'
 subject_list = [subj.name for subj in list(path.iterdir())]
 subject_list = [subj for subj in subject_list if subj not in exclude]
 conditions = ['Ears Free', 'Earmolds Week 1', 'Earmolds Week 2']
@@ -102,7 +102,7 @@ dfe applies diffuse field equalization
 """
 
 hrtf_dict = hrtf_analysis.get_hrtf_dict(path, subject_list, conditions, smoothe=True,
-                                    baseline=True, bandwidth=bandwidth, dfe=True)
+                                        baseline=True, bandwidth=bandwidth, dfe=True)
 
 """    plot  """
 plot_dict = {}

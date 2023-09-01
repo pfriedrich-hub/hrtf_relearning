@@ -7,7 +7,7 @@ import time
 # import head_tracking.cam_tracking.aruco_pose as aruco
 # import head_tracking.sensor_tracking.sensor_pose as sensor
 import head_tracking.meta_motion.mm_pose as motion_sensor
-data_dir = Path.cwd() / 'data'
+data_dir = Path.cwd() / 'final_data'
 
 fs = 48828
 slab.set_default_samplerate(fs)
@@ -30,13 +30,13 @@ def hrtf_training(time_limit, t_max=500, target_size=5, target_time=0.5):
     # if not freefield.PROCESSORS.mode:
     freefield.initialize('dome', device=proc_list)
     freefield.set_logger('warning')
-    table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')
+    table_file = freefield.DIR / 'final_data' / 'tables' / Path(f'speakertable_dome.txt')
     speakers = numpy.loadtxt(table_file, skiprows=1, usecols=(0, 3, 4), delimiter=",", dtype=float)
 
     # generate sounds
     stim = slab.Sound.pinknoise(duration=10.0)
     freefield.write(tag='playbuflen', value=stim.n_samples, processors=['RX81', 'RX82'])
-    freefield.write(tag='data', value=stim.data, processors=['RX81', 'RX82'])
+    freefield.write(tag='final_data', value=stim.data, processors=['RX81', 'RX82'])
     # noise = slab.Sound.pinknoise(duration=0.025, level=90)
     # noise = noise.ramp(when='both', duration=0.01)
     # silence = slab.Sound.silence(duration=0.025)

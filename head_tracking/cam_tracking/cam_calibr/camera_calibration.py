@@ -7,7 +7,7 @@ from numpy import linalg as la
 import time
 
 DIR = freefield.DIR
-table_file = DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')
+table_file = DIR / 'final_data' / 'tables' / Path(f'speakertable_dome.txt')
 SPEAKERS = []
 table = np.loadtxt(table_file, skiprows=1, delimiter=",", dtype=str)
 for row in table:

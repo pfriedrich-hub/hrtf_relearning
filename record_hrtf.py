@@ -16,7 +16,7 @@ subject_id = 'mh'
 condition = 'Earmolds Week 2'  # can be 'ears_free' or 'earmolds' - important for file naming!
 kemar = False  # requires no button press if true
 safe = 'both'  # decide if additionally save in-ear-recordings
-data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_4' / subject_id / condition
+data_dir = Path.cwd() / 'final_data' / 'experiment' / 'bracket_4' / subject_id / condition
 
 # HRTF recording settings
 speakers = numpy.arange(20, 27).tolist()  # record HRTF from central cone, with top and bottom speaker removed
@@ -27,7 +27,7 @@ n_directions = 1  # only from the front (1) or front-back recordings (2)
 level = 80  # minimize to reduce reverb ripple effect, apparently kemar recordings are not affected?
 duration = 0.1  # short chirps <0.05s introduce variability in low freq (4-5 kHz). improvement at 0.1s for kemar vsi
 low_freq = 1000
-high_freq = 17000  # window of interes is 4-16
+high_freq = 17000  # window of interest is 4-16
 repetitions = 30  # 10 work for kemar, 30-50 for in ear mics
 
 ramp_duration = duration/20
@@ -35,7 +35,7 @@ slab.Signal.set_default_samplerate(fs)  # default samplerate for generating soun
 signal = slab.Sound.chirp(duration=duration, level=level, from_frequency=low_freq, to_frequency=high_freq, kind='linear')
 signal = slab.Sound.ramp(signal, when='both', duration=ramp_duration)
 # todo replace signal with mean central arc recording?
-# signal = slab.Sound.read(Path.cwd() / 'data' / 'sounds' / 'mean_central_arc_rec.wav')
+# signal = slab.Sound.read(Path.cwd() / 'final_data' / 'sounds' / 'mean_central_arc_rec.wav')
 
 # plotting options
 dfe = False  # whether to use diffuse field equalization to plot hrtf and compute vsi
@@ -48,14 +48,14 @@ def record_hrtf(subject_id, data_dir, condition, signal, repetitions, n_directio
     # filt = slab.Filter.band('bp', (low_freq, high_freq))
     filt = slab.Filter.band('hp', (200))  # makes no diff
     if not freefield.PROCESSORS.mode:
-        proc_list = [['RP2', 'RP2', Path.cwd() / 'data' / 'rcx' / 'bi_rec_buf.rcx'],
-                     ['RX81', 'RX8', Path.cwd() / 'data' / 'rcx' / 'play_buf.rcx'],
-                     ['RX82', 'RX8', Path.cwd() / 'data' / 'rcx' / 'play_buf.rcx']]
+        proc_list = [['RP2', 'RP2', Path.cwd() / 'final_data' / 'rcx' / 'bi_rec_buf.rcx'],
+                     ['RX81', 'RX8', Path.cwd() / 'final_data' / 'rcx' / 'play_buf.rcx'],
+                     ['RX82', 'RX8', Path.cwd() / 'final_data' / 'rcx' / 'play_buf.rcx']]
         freefield.initialize('dome', device=proc_list)
         freefield.PROCESSORS.mode = 'play_birec'
-        freefield.load_equalization(file=Path.cwd() / 'data' / 'calibration' / 'calibration_central_cone_100k')
+        freefield.load_equalization(file=Path.cwd() / 'final_data' / 'calibration' / 'calibration_central_cone_100k')
     freefield.set_logger('warning')
-    table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')  # get speaker coordinates
+    table_file = freefield.DIR / 'final_data' / 'tables' / Path(f'speakertable_dome.txt')  # get speaker coordinates
     if isinstance(speakers, str) and speakers == 'all':
         source_locations = numpy.loadtxt(table_file, skiprows=1, usecols=(0, 3, 4),
                                          delimiter=",", dtype=float)
@@ -217,7 +217,7 @@ filename = 'test_1_Ears Free_06.07.sofa'
 condition = 'Earmolds Week 1'
 plot_bins = 2400  # number of bins also used to calculate vsi across bands (use 80 to minimize´frequency-resolution dependend vsi change)
 plot_ear = 'left' 
-hrtf = slab.HRTF(Path.cwd() / 'data' / 'experiment' / 'bracket_3' / subject_id / condition / filename)
+hrtf = slab.HRTF(Path.cwd() / 'final_data' / 'experiment' / 'bracket_3' / subject_id / condition / filename)
 
 
 sources = hrtf.cone_sources(0)
@@ -258,7 +258,7 @@ for i in range(len(vertical_dist)):
 from matplotlib import pyplot as plt
 
 fname='varvara_ears_free_23.09.sofa'
-hrtf=slab.HRTF(Path.cwd() / 'data' / 'hrtfs' / fname)
+hrtf=slab.HRTF(Path.cwd() / 'final_data' / 'hrtfs' / fname)
 src=hrtf.cone_sources(0)
 hrtf.plot_tf(src, n_bins=300)
 plt.title(fname)

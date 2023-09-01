@@ -8,7 +8,7 @@ bracket = 'bracket_1'
 
 conditions = ['Ears Free', 'Earmolds Week 1', 'Earmolds Week 2']
 
-path = Path.cwd() / 'data' / 'experiment' / bracket
+path = Path.cwd() / 'final_data' / 'experiment' / bracket
 loc_dict = localization.get_localization_data(path, conditions)
 subjects = list(loc_dict['Ears Free'].keys())
 
@@ -56,4 +56,4 @@ for idx, i in enumerate(numpy.linspace(0.87, 0.15, 7)):
     fig.text(0.03, i, f'{c[idx]}', size=13)
 
 # save as scalable vector graphics
-# fig.savefig(Path.cwd() / 'data' / 'experiment' / 'images' / 'bracket_1' / 'prelim_localization_accuracy.svg', format='svg')
+# fig.savefig(Path.cwd() / 'final_data' / 'experiment' / 'images' / 'bracket_1' / 'prelim_localization_accuracy.svg', format='svg')

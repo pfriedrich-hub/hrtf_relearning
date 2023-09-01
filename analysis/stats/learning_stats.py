@@ -1,5 +1,5 @@
 import analysis.localization_analysis as loc_analysis
-import analysis.localization_plot as loc_plot
+import analysis.plotting.localization_plot as loc_plot
 from pathlib import Path
 import scipy.stats
 import pandas
@@ -8,7 +8,7 @@ from matplotlib import pyplot as plt
 pandas.set_option('display.max_rows', None, 'display.max_columns', None, 'display.precision', 5,
                   'display.expand_frame_repr', False)
 
-path = Path.cwd() / 'data' / 'experiment' / 'master'
+path = Path.cwd() / 'final_data' / 'experiment' / 'master'
 loc_df = loc_analysis.get_localization_dataframe(path, w2_exclude=['cs', 'lm', 'lk'])
 
 ### ---- compare first to last day of molds ---- ###

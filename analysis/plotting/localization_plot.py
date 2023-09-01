@@ -6,7 +6,7 @@ from matplotlib import pyplot as plt
 from pathlib import Path
 
 ### ----- LOCALIZATION ----- ####
-def learning_plot(to_plot='average', path=Path.cwd() / 'data' / 'experiment' / 'master', w2_exclude = ['cs', 'lm', 'lk']):
+def learning_plot(to_plot='average', path=Path.cwd() / 'final_data' / 'experiment' / 'master', w2_exclude = ['cs', 'lm', 'lk']):
     """
     Plot m1 m2 adaptation curves throughout the experiment
     localization_dictionary (dict): dictionary of localization
@@ -22,9 +22,9 @@ def learning_plot(to_plot='average', path=Path.cwd() / 'data' / 'experiment' / '
     days = numpy.arange(1, 13)  # days of measurement
     days[-1] = 16
     # means ears free / mold1 / mold2
-    ef = numpy.nanmean(localization_dict['Ears Free']['data'], axis=0)
-    m1 = numpy.nanmean(localization_dict['Earmolds Week 1']['data'], axis=0)
-    m2 = numpy.nanmean(localization_dict['Earmolds Week 2']['data'], axis=0)
+    ef = numpy.nanmean(localization_dict['Ears Free']['final_data'], axis=0)
+    m1 = numpy.nanmean(localization_dict['Earmolds Week 1']['final_data'], axis=0)
+    m2 = numpy.nanmean(localization_dict['Earmolds Week 2']['final_data'], axis=0)
     # optionally delete nan for plt to interpolate points in learning curve
     if len(subjects) == 1:
         if numpy.isnan(ef).any():
@@ -86,9 +86,9 @@ def learning_plot(to_plot='average', path=Path.cwd() / 'data' / 'experiment' / '
     return axes
     #
     # # save as scalable vector graphics
-    # fig.savefig(Path.cwd() / 'data' / 'presentation' / 'learning_plot.svg', format='svg')
+    # fig.savefig(Path.cwd() / 'final_data' / 'presentation' / 'learning_plot.svg', format='svg')
 
-def localization_plot(to_plot='average', binned=True, path=Path.cwd() / 'data' / 'experiment' / 'master'):
+def localization_plot(to_plot='average', binned=True, path=Path.cwd() / 'final_data' / 'experiment' / 'master'):
     """ plot localization free, 1st vs last day of molds and persistence """
     loc_df = loc_analysis.get_localization_dataframe(path=path)
     # loc_df = deepcopy(loc_df)
@@ -106,7 +106,7 @@ def localization_plot(to_plot='average', binned=True, path=Path.cwd() / 'data' /
     # m2
     efd5, m2d0, m2d5, m2d10 = deepcopy(sequence), deepcopy(sequence), deepcopy(sequence), deepcopy(sequence)
     efd5.data, m2d0.data, m2d5.data, m2d10.data = [], [], [], []
-    # fetch cross subject localization data across subjects
+    # fetch cross subject localization final_data across subjects
     for subject in subjects:
         # ears free day 0
         efd0.data.extend(loc_df[loc_df['condition'] =='Ears Free'][loc_df['adaptation_day']
@@ -157,9 +157,9 @@ def localization_plot(to_plot='average', binned=True, path=Path.cwd() / 'data' /
 
     # # overall
     # fig, axes = plt.subplots(3, 1, sharex=True, sharey=True, figsize=[6, 8])
-    # efd0.data.extend(efd5.data)
-    # m1d0.data.extend(m2d0.data)
-    # m1d5.data.extend(m2d5.data)
+    # efd0.final_data.extend(efd5.final_data)
+    # m1d0.final_data.extend(m2d0.final_data)
+    # m1d5.final_data.extend(m2d5.final_data)
     # loc_analysis.localization_accuracy(efd0, True, 2, binned, axes[0], True)
     # loc_analysis.localization_accuracy(m1d0, True, 2, binned, axes[1], True)
     # loc_analysis.localization_accuracy(m1d5, True, 2, binned, axes[2], True)

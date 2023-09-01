@@ -10,7 +10,7 @@ fs = 48828
 slab.set_default_samplerate(fs)
 
 subject_id = 'mh'
-condition = 'Ears Free'
+condition = 'Earmolds Week 2'
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_4' / subject_id / condition
 
 repetitions = 3  # number of repetitions per speaker

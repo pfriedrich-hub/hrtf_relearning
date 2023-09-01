@@ -6,7 +6,7 @@ from pathlib import Path
 import time
 import analysis.localization_analysis as localization
 
-data_dir = Path.cwd() / 'data'
+data_dir = Path.cwd() / 'final_data'
 fs = 48828
 slab.set_default_samplerate(fs)
 
@@ -18,7 +18,7 @@ try:
     sequence = localization.load_latest(subject_dir)
     target_p = localization.get_target_proabilities(sequence, show=False)
 except:
-    print('Could not load localization data. Using equal target probabilities.')
+    print('Could not load localization final_data. Using equal target probabilities.')
     target_p = None
 
 # max_pulse_interval: maximal pulse interval in ms
@@ -39,7 +39,7 @@ def hrtf_training(max_pulse_interval=500, target_size=3, target_time=0.5, trial_
     # generate sounds, set experiment parameters
     stim = slab.Sound.pinknoise(duration=10.0)
     freefield.write(tag='playbuflen', value=stim.n_samples, processors=['RX81', 'RX82'])
-    freefield.write(tag='data', value=stim.data, processors=['RX81', 'RX82'])
+    freefield.write(tag='final_data', value=stim.data, processors=['RX81', 'RX82'])
     coin = slab.Sound(data=data_dir / 'sounds' / 'coin.wav')  # load goal sound to buffer
     coins = slab.Sound(data=data_dir / 'sounds' / 'coins.wav')  # load goal sound to buffer
     coin.level, coins.level = 70, 70
@@ -47,7 +47,7 @@ def hrtf_training(max_pulse_interval=500, target_size=3, target_time=0.5, trial_
     buzzer = slab.Sound(data_dir / 'sounds' / 'buzzer.wav')
     buzzer.level = 75
     # set variables to control pulse train and goal condition
-    table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')
+    table_file = freefield.DIR / 'final_data' / 'tables' / Path(f'speakertable_dome.txt')
     speakers = numpy.loadtxt(table_file, skiprows=1, usecols=(0, 3, 4), delimiter=",", dtype=float)
     speakers = numpy.delete(speakers, [19, 23, 27], axis=0)
     pulse_attr = {'max_distance': la.norm(numpy.min(speakers[:, 1:], axis=0) - [0, 0]),

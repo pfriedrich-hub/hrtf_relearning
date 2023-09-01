@@ -1,7 +1,7 @@
 import slab
 from pathlib import Path
 import matplotlib
-import analysis.hrtf_plot as hrtf_plot
+import analysis.plotting.hrtf_plot as hrtf_plot
 # matplotlib.use('TkAgg')
 from matplotlib import pyplot as plt
 import numpy
@@ -14,7 +14,7 @@ pandas.set_option('display.max_rows', 1000, 'display.max_columns', 1000, 'displa
 #  for example kemar vsi with 0.1s looks better than for 0.05 seconds (higher frequencies have to
 #  few samples here to be represented correctly in vsi) - temporary fix: increase samplerate to 96 kHz
 
-def get_hrtf_df(path=Path.cwd() / 'data' / 'experiment' / 'master', processed=True):
+def get_hrtf_df(path=Path.cwd() / 'final_data' / 'experiment' / 'master', processed=True):
     subject_paths = list(path.iterdir())
     hrtf_df = pandas.DataFrame({'subject': [], 'filename': [], 'condition': [], 'hrtf': []})
     conditions = ['Ears Free', 'Earmolds Week 1', 'Earmolds Week 2']
@@ -30,19 +30,21 @@ def get_hrtf_df(path=Path.cwd() / 'data' / 'experiment' / 'master', processed=Tr
                     hrtf = slab.HRTF(file_name)
                     new_row = [subject, file_name.name, condition, hrtf]
                     hrtf_df.loc[len(hrtf_df)] = new_row
-    # hrtf_df.to_csv('/Users/paulfriedrich/projects/hrtf_relearning/data/experiment/data.csv')
+    # hrtf_df.to_csv('/Users/paulfriedrich/projects/hrtf_relearning/final_data/experiment/final_data.csv')
     return hrtf_df
 
 # ----- HRTF processing ----- #
-def process_hrtfs(path=Path.cwd() / 'data' / 'experiment' / 'master'):
+def process_hrtfs(path=Path.cwd() / 'final_data' / 'experiment' / 'master', smoothe=True, baseline=True):
     hrtf_df = get_hrtf_df(path, processed=False)
     for index, row in hrtf_df.iterrows():
         processed_path = Path(path / row['subject'] / row['condition'] / 'processed_hrtf')
         if not processed_path.exists():
             processed_path.mkdir()
         hrtf = copy.deepcopy(row['hrtf'])
-        hrtf = smoothe_hrtf(hrtf, high_cutoff=1500)
-        hrtf = baseline_hrtf(hrtf, bandwidth=(4000, 16000))  # baseline should be done after smoothing / dfe
+        if smoothe:
+            hrtf = smoothe_hrtf(hrtf, high_cutoff=1500)
+        if baseline:
+            hrtf = baseline_hrtf(hrtf, bandwidth=(4000, 16000))  # baseline should be done after smoothing / dfe
         # hrtf.diffuse_field_equalization()  # dfe completely messes up vsi
         hrtf.write_sofa(filename=processed_path / str('proccessed_' + row['filename']))
 
@@ -53,14 +55,14 @@ def baseline_hrtf(hrtf, bandwidth=(4000, 16000)):
     frequencies = hrtf[0].frequencies
     tf_data = hrtf_out.tfs_from_sources(sources, n_bins=len(frequencies), ear='both')
     in_range = tf_data[:, numpy.logical_and(frequencies > bandwidth[0], frequencies < bandwidth[1])]
-    tf_data -= numpy.mean(numpy.mean(in_range, axis=1), axis=0)
+    tf_data -= numpy.mean(numpy.mean(in_range, axis=1), axis=0)  # subtract mean for left and right ear separately
     tf_data[:, numpy.logical_or(frequencies < bandwidth[0], frequencies > bandwidth[1])] = 0
     tf_data = 10 ** (tf_data / 20)
     for idx, source in enumerate(sources):
         hrtf_out[source].data = tf_data[idx]
     return hrtf_out
 
-def smoothe_hrtf(hrtf, high_cutoff=1500):
+def smoothe_hrtf(hrtf, high_cutoff=1500):  # maybe a bad idea
     hrtf_out = copy.deepcopy(hrtf)
     filt = slab.Filter.band(kind='lp', frequency=high_cutoff, samplerate=hrtf.samplerate,
                             length=hrtf[0].n_samples, fir=True)
@@ -100,11 +102,17 @@ def hrtf_difference(hrtf_1, hrtf_2):
 
 # ------ VSI and correlation ------ #
 
-def vsi_dissimilarity(hrtf_1, hrtf_2, bandwidth=(4000, 16000)):
+def vsi_dissimilarity(hrtf_1, hrtf_2, bandwidth=(4000, 16000), n_bins=None, equalize=False):
     """ compute dissimilarity between sets of DTFs"""
-    # get correlation matrices
-    correlation = hrtf_correlation(hrtf_1, hrtf_2, bandwidth=bandwidth)
-    autocorrelation = hrtf_correlation(hrtf_1, hrtf_1, bandwidth=bandwidth)
+    dtf1 = copy.deepcopy(hrtf_1)
+    dtf2 = copy.deepcopy(hrtf_2)
+    if n_bins is None:
+        n_bins = hrtf_1.data[0].n_frequencies
+    if equalize: # apply diffuse field equalization
+        dtf1 = dtf1.diffuse_field_equalization()
+        dtf2 = dtf2.diffuse_field_equalization()
+    correlation = hrtf_correlation(dtf1, dtf2, bandwidth, n_bins)
+    autocorrelation = hrtf_correlation(dtf1, dtf1, bandwidth, n_bins)
     # VSI dissimilarity: euclidean distance between the matrices
     vsi_dissimilarity = numpy.sqrt(numpy.mean((correlation - autocorrelation)**2))
     return vsi_dissimilarity
@@ -149,26 +157,34 @@ def vsi_across_bands(hrtf, bands=None, n_bins=None, equalize=False):
     dtfs = dtf.tfs_from_sources(sources, n_bins, ear='left')
     # extract vsi for each band
     for idx, bw in enumerate(bands):
-        dtf_band = dtfs[:, numpy.logical_and(frequencies >= bw[0], frequencies <= bw[1])]
+        freq_idx = numpy.logical_and(frequencies >= bw[0], frequencies <= bw[1])
+        dtf_band = dtfs[:, freq_idx]
+
+        plt.figure()
+        for band in dtf_band:
+            plt.plot(frequencies[freq_idx], band)
         sum_corr = 0
         n = 0
         for i in range(len(sources)):
             for j in range(i + 1, len(sources)):
                 sum_corr += numpy.corrcoef(dtf_band[i].flatten(), dtf_band[j].flatten())[1, 0]
                 n += 1
+
+        plt.title(sum_corr / n)
+
         vsi[idx] = 1 - sum_corr / n
     return vsi
 
-def mean_vsi_across_bands(hrtf_df, condition='Ears Free', bands=None, n_bins=None, equalize=False, show=False):
+def mean_vsi_across_bands(hrtf_dataframe, condition='Ears Free', bands=None, n_bins=None, equalize=False, show=False):
     vsis = []
-    for hrtf in list(hrtf_df[hrtf_df['condition'] == condition]['hrtf']):
+    for hrtf in list(hrtf_dataframe[hrtf_dataframe['condition'] == condition]['hrtf']):
         vsis.append(vsi_across_bands(hrtf, bands=bands, n_bins=n_bins, equalize=equalize))
     mean_vsi_across_bands = numpy.mean(vsis, axis=0)
     if show:
         hrtf_plot.plot_vsi_across_bands(mean_vsi_across_bands, bands)
     return mean_vsi_across_bands
 
-def hrtf_correlation(hrtf_1, hrtf_2, show=False, bandwidth=(4000, 16000), n_bins=300, axis=None, cbar=True):
+def hrtf_correlation(hrtf_1, hrtf_2, bandwidth=(4000, 16000), n_bins=None, show=False, axis=None, cbar=True):
     # get sources and dtfs
     sources = hrtf_1.cone_sources(0)
     dtf_1 = hrtf_1.tfs_from_sources(sources, n_bins)

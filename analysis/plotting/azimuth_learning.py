@@ -11,32 +11,32 @@ exclude = ['cs', 'lw']
 w2_exclude = []
 bracket = 'bracket_1'
 conditions = ['Ears Free', 'Earmolds Week 1', 'Earmolds Week 2']
-path = Path.cwd() / 'data' / 'experiment' / 'bracket_1'
+path = Path.cwd() / 'final_data' / 'experiment' / 'bracket_1'
 loc_dict = localization.get_localization_data(path, conditions)
 subjects = list(loc_dict['Ears Free'].keys())
 for ex in exclude: subjects.remove(ex)
 for condition in conditions:
     # subject x days x eg/ele_rmse/ele_sd/az_rmse/az_sd
-    loc_dict[condition]['data'] = numpy.zeros((len(subjects), 7, 5))
+    loc_dict[condition]['final_data'] = numpy.zeros((len(subjects), 7, 5))
     loc_dict[condition]['SE'] = numpy.zeros((7, 5))  # SE for each measure days x eg/rmse/sd
     for s, subject in enumerate(subjects):
         sequence_list = loc_dict[condition][subject]
         for idx, sequence in enumerate(sequence_list):
-            loc_dict[condition]['data'][s, idx] = localization.localization_accuracy(sequence, show=False)
+            loc_dict[condition]['final_data'][s, idx] = localization.localization_accuracy(sequence, show=False)
             if s+1 == len(subjects):
-                loc_dict[condition]['SE'][idx] = scipy.stats.sem(loc_dict[condition]['data'][:, idx], axis=0)
+                loc_dict[condition]['SE'][idx] = scipy.stats.sem(loc_dict[condition]['final_data'][:, idx], axis=0)
 
 
 ex_idx = [subjects.index(ex) for ex in w2_exclude]  # remove w2 excludes
-loc_dict['Earmolds Week 2']['data'] = numpy.delete(loc_dict['Earmolds Week 2']['data'], ex_idx, axis=0)
-loc_dict['Ears Free']['data'] = numpy.delete(loc_dict['Ears Free']['data'], ex_idx, axis=0)
+loc_dict['Earmolds Week 2']['final_data'] = numpy.delete(loc_dict['Earmolds Week 2']['final_data'], ex_idx, axis=0)
+loc_dict['Ears Free']['final_data'] = numpy.delete(loc_dict['Ears Free']['final_data'], ex_idx, axis=0)
 
 days = numpy.arange(1, 13)  # days of measurement
 days[-1] = 16
 # means ears free / mold1 / mold2
-ef = numpy.mean(loc_dict['Ears Free']['data'], axis=0)
-m1 = numpy.mean(loc_dict['Earmolds Week 1']['data'], axis=0)
-m2 = numpy.mean(loc_dict['Earmolds Week 2']['data'], axis=0)
+ef = numpy.mean(loc_dict['Ears Free']['final_data'], axis=0)
+m1 = numpy.mean(loc_dict['Earmolds Week 1']['final_data'], axis=0)
+m2 = numpy.mean(loc_dict['Earmolds Week 2']['final_data'], axis=0)
 
 labels = ['RMSE', 'SD']
 colors = ['k', '0.6']
@@ -85,4 +85,4 @@ plt.suptitle(f'w1: {w1}, w2: {w2}')
 plt.show()
 
 # save as scalable vector graphics
-# fig.savefig(Path.cwd() / 'data' / 'experiment' / 'images' / 'bracket_1' / 'hrtf_relearning.svg', format='svg')
+# fig.savefig(Path.cwd() / 'final_data' / 'experiment' / 'images' / 'bracket_1' / 'hrtf_relearning.svg', format='svg')

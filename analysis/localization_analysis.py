@@ -1,3 +1,5 @@
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning)
 import scipy
 import slab
 from pathlib import Path
@@ -6,11 +8,11 @@ import numpy
 import pandas
 pandas.set_option('display.max_rows', 1000, 'display.max_columns', 200, 'display.width', 99999)
 
-def get_localization_dictionary(path=Path.cwd() / 'data' / 'experiment' / 'master',
+def get_localization_dictionary(path=Path.cwd() / 'final_data' / 'experiment' / 'master',
                                 conditions=['Ears Free', 'Earmolds Week 1', 'Earmolds Week 2']):
     """
     fetch localization sequences and path names for all subjects into a dictionary
-    # todo add uso data
+    # todo add uso final_data
     """
     subject_dir_list = list(path.iterdir())
     localization_dict = {}
@@ -36,23 +38,23 @@ def get_localization_data(localization_dictionary, subjects, w2_exclude=['cs', '
     """
     for condition in localization_dictionary.keys():
         # subject x days x eg/ele_rmse/ele_sd/az_rmse/az_sd
-        localization_dictionary[condition]['data'] = numpy.zeros((len(subjects), 7, 5))
+        localization_dictionary[condition]['final_data'] = numpy.zeros((len(subjects), 7, 5))
         localization_dictionary[condition]['SE'] = numpy.zeros((7, 5))  # SE for each measure days x eg/ele_rmse/sd/ele_az_rmse/az_sd
         for s, subject in enumerate(subjects):
             for idx, sequence_name in enumerate(localization_dictionary[condition][subject].keys()):
                 if not 'uso' in sequence_name:  # exclude uso test for now
                     sequence = localization_dictionary[condition][subject][sequence_name]
-                    localization_dictionary[condition]['data'][s, idx] = localization_accuracy(sequence, show=False)
+                    localization_dictionary[condition]['final_data'][s, idx] = localization_accuracy(sequence, show=False)
                     if s+1 == len(subjects):
                         # standard mean error (sd / sqrt(n)): (sd = sqrt(var), var = mean squared distance from sample mean)
                         localization_dictionary[condition]['SE'][idx] = numpy.asarray(scipy.stats.sem(
-                            localization_dictionary[condition]['data'][:, idx], nan_policy='omit', axis=0))
+                            localization_dictionary[condition]['final_data'][:, idx], nan_policy='omit', axis=0))
     ex_idx = [subjects.index(ex) for ex in w2_exclude if ex in subjects]  # remove w2 excludes
-    localization_dictionary['Earmolds Week 2']['data'] = numpy.delete(localization_dictionary['Earmolds Week 2']['data'], ex_idx, axis=0)
-    # localization_dictionary['Ears Free']['data'] = numpy.delete(localization_dictionary['Ears Free']['data'], ex_idx, axis=0)
+    localization_dictionary['Earmolds Week 2']['final_data'] = numpy.delete(localization_dictionary['Earmolds Week 2']['final_data'], ex_idx, axis=0)
+    # localization_dictionary['Ears Free']['final_data'] = numpy.delete(localization_dictionary['Ears Free']['final_data'], ex_idx, axis=0)
     return localization_dictionary
 
-def get_localization_dataframe(path=Path.cwd() / 'data' / 'experiment' / 'master', w2_exclude=['cs', 'lm', 'lk']):
+def get_localization_dataframe(path=Path.cwd() / 'final_data' / 'experiment' / 'master', w2_exclude=['cs', 'lm', 'lk']):
     localization_dict = get_localization_dictionary(path=path)
     localization_data = pandas.DataFrame({'subject': [], 'filename': [], 'sequence': [], 'condition': [], 'day': [],
                                           'adaptation day': [], 'EG': [], 'RMSE ele': [], 'SD ele': [], 'RMSE az': [],
@@ -80,13 +82,13 @@ def get_localization_dataframe(path=Path.cwd() / 'data' / 'experiment' / 'master
                         new_row = [subject, file_name[0], sequence, 'USO ' + condition, total_days[idx], adaptation_days[idx]]
                         new_row.extend(list(localization_accuracy(sequence, show=False)))
                         localization_data.loc[len(localization_data)] = new_row
-    # localization_data.to_csv('/Users/paulfriedrich/projects/hrtf_relearning/data/experiment/data.csv')
+    # localization_data.to_csv('/Users/paulfriedrich/projects/hrtf_relearning/final_data/experiment/final_data.csv')
     return localization_data
 
 def localization_accuracy(sequence, show=True, plot_dim=1, binned=True, axis=None, show_single_responses=True):
     if sequence.this_n == -1 or sequence.n_remaining == 132 or not sequence.data:
         return None, None, None, None, None
-    # retrieve data
+    # retrieve final_data
     loc_data = numpy.asarray(sequence.data)
     loc_data = loc_data.reshape(loc_data.shape[0], 2, 2)
     targets = loc_data[:, 1]  # [az, ele]
@@ -222,7 +224,7 @@ def trial_to_trial_performance(subject_id, show=True):
 
 def get_target_proabilities(sequence, show=False, axis=None):
     # calculate target probabilities depending on localization error
-    # retrieve data
+    # retrieve final_data
     loc_data = numpy.asarray(sequence.data)
     loc_data = loc_data.reshape(loc_data.shape[0], 2, 2)
     responses = loc_data[:, 0]
@@ -311,14 +313,51 @@ def loc_hist(subj_id):
     axis.set_xlabel('Response Azimuth (degrees)')
     axis.set_ylabel('Response Elevation (degrees)')
 
-""" # ----------- plot and work on localization data ------------- #
+
+# common dataframe for behavior and hrtf final_data
+def localization_hrtf_df(localization_dataframe, hrtf_dataframe):
+    hrtf_stats = pandas.DataFrame({'subject': [],
+                                   'EF hrtf': [], 'EFD0': [], 'EFD5': [],
+                                   'M1 hrtf': [], 'M1D0': [], 'M1D5': [],
+                                   'M2 hrtf': [], 'M2D0': [], 'M2D5': []})
+    for subject in hrtf_dataframe['subject'].unique():
+        # subject final_data
+        subj_hrtfs = hrtf_dataframe[hrtf_dataframe['subject']==subject]
+        subj_loc = localization_dataframe[localization_dataframe['subject']==subject]
+        # ears free
+        ef = subj_hrtfs[subj_hrtfs['condition']=='Ears Free']['hrtf'].item()
+        efd0 = subj_loc[subj_loc['condition']=='Ears Free'][subj_loc['adaptation day']==0][subj_loc.columns[6:]]
+        efd5 = subj_loc[subj_loc['condition']=='Ears Free'][subj_loc['adaptation day']==1][subj_loc.columns[6:]]
+        # m1
+        try:
+            m1 = subj_hrtfs[hrtf_dataframe['condition']=='Earmolds Week 1']['hrtf'].item()
+            m1d0 = subj_loc[subj_loc['condition']=='Earmolds Week 1'][subj_loc['adaptation day']==0][subj_loc.columns[6:]]
+            m1d5 = subj_loc[subj_loc['condition']=='Earmolds Week 1'][subj_loc['adaptation day']==5][subj_loc.columns[6:]]
+        except ValueError:
+            m1, m1d0, m1d5 = None, None, None
+        # m2
+        try:
+            m2 = subj_hrtfs[hrtf_dataframe['condition']=='Earmolds Week 2']['hrtf'].item()
+            m2d0 = subj_loc[subj_loc['condition']=='Earmolds Week 2'][subj_loc['adaptation day']==0][subj_loc.columns[6:]]
+            m2d5 = subj_loc[subj_loc['condition']=='Earmolds Week 2'][subj_loc['adaptation day']==5][subj_loc.columns[6:]]
+        except ValueError:
+            m2, m2d0, m2d5 = None, None, None
+        new_row = [subject,
+                   ef, efd0, efd5,
+                   m1, m1d0, m1d5,
+                   m2, m2d0, m2d5]
+        # hrtf_stats.to_csv('/Users/paulfriedrich/Desktop/hrtf_relearning/final_data/hrtf_stats.csv')
+        hrtf_stats.loc[len(hrtf_stats)] = new_row
+    return hrtf_stats
+
+""" # ----------- plot and work on localization final_data ------------- #
 from pathlib import Path
 from copy import deepcopy
 import slab
 
 subject_id = 'tk'
 condition = 'Ears Free'
-data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_2' / subject_id / condition
+data_dir = Path.cwd() / 'final_data' / 'experiment' / 'bracket_2' / subject_id / condition
 
 file_name = 'localization_tk_Ears Free_26.01_1'
 sequence = slab.Trialsequence(conditions=45, n_reps=1)
@@ -337,12 +376,12 @@ sequence_1 = slab.Trialsequence(conditions=45, n_reps=1)
 sequence_2 = deepcopy(sequence_1)
 sequence_1.load_pickle(file_name=data_dir / filename_1)
 sequence_2.load_pickle(file_name=data_dir / filename_2)
-data_1 = sequence_1.data[:-sequence_1.n_remaining]
-data_2 = sequence_2.data[:-sequence_2.n_remaining]
-data = data_1 + data_2
+data_1 = sequence_1.final_data[:-sequence_1.n_remaining]
+data_2 = sequence_2.final_data[:-sequence_2.n_remaining]
+final_data = data_1 + data_2
 sequence = sequence_1
 file_name = filename_1
-sequence.data = data
+sequence.final_data = final_data
 
 #  save
 sequence.save_pickle(data_dir / file_name, clobber=True)
@@ -355,11 +394,11 @@ for path in Path.cwd().glob("**/*"+str(file_name)):
 sequence = slab.Trialsequence(conditions=45, n_reps=1)
 sequence.load_pickle(file_path)
 
-for i, entry in enumerate(sequence.data):
-    sequence.data[i][0][sequence.data[i][0] > 180] -= 360
+for i, entry in enumerate(sequence.final_data):
+    sequence.final_data[i][0][sequence.final_data[i][0] > 180] -= 360
     
-for i, entry in enumerate(sequence.data):
-    sequence.data[i][0][sequence.data[i][0] < -180] += 360
+for i, entry in enumerate(sequence.final_data):
+    sequence.final_data[i][0][sequence.final_data[i][0] < -180] += 360
     
 # -------------- save ------------------#
 

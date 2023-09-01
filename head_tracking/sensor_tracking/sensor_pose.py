@@ -1,14 +1,14 @@
 import freefield
 from pathlib import Path
 import numpy
-data_dir = Path.cwd() / 'data'
+data_dir = Path.cwd() / 'final_data'
 proc_list = [['RX81', 'RX8', data_dir / 'rcx' / 'play_buf_pulse.rcx'],
              ['RX82', 'RX8', data_dir / 'rcx' / 'play_buf_pulse.rcx'],
              ['RP2', 'RP2', data_dir / 'rcx' / 'arduino_analog.rcx']]
 # freefield.initialize('dome', zbus=True, device=proc_list)
 # freefield.set_logger('WARNING')
 
-# read arduino data
+# read arduino final_data
 def get_pose(report=False):
     az = freefield.read(tag='azimuth', processor='RP2', n_samples=1)
     ele = freefield.read(tag='elevation', processor='RP2', n_samples=1)
@@ -29,7 +29,7 @@ def calibrate_pose(limit=0.11, report=True):
             pose = get_pose()
             # print(pose)
             log = numpy.vstack((log, pose))
-            # check if orientation is stable for at least 30 data points
+            # check if orientation is stable for at least 30 final_data points
             if len(log) > 500:
                 diff = numpy.mean(numpy.abs(numpy.diff(log[-500:], axis=0)), axis=0).astype('float16')
                 if report:

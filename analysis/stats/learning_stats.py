@@ -8,8 +8,23 @@ from matplotlib import pyplot as plt
 pandas.set_option('display.max_rows', None, 'display.max_columns', None, 'display.precision', 5,
                   'display.expand_frame_repr', False)
 
-path = Path.cwd() / 'final_data' / 'experiment' / 'master'
-loc_df = loc_analysis.get_localization_dataframe(path, w2_exclude=['cs', 'lm', 'lk'])
+path = Path.cwd() / 'data' / 'experiment' / 'master'
+w2_exclude = ['cs', 'lm', 'lk']
+loc_df = loc_analysis.get_localization_dataframe(path, w2_exclude)
+
+### ---- compare persistence m1 / m2 ---- ###
+metric = 'EG'
+
+df = loc_df[~loc_df['subject'].isin(w2_exclude)]
+m1_d5 = df[df['condition'] == 'Earmolds Week 1'][df['adaptation day'] == 5][metric]
+m1_d10 = df[df['condition'] == 'Earmolds Week 1'][df['adaptation day'] == 6][metric]
+m1_persistence = numpy.asarray(m1_d5) - numpy.asarray(m1_d10)
+m2_d5 = df[df['condition'] == 'Earmolds Week 2'][df['adaptation day'] == 5][metric]
+m2_d10 = df[df['condition'] == 'Earmolds Week 2'][df['adaptation day'] == 6][metric]
+m2_persistence = numpy.asarray(m2_d5) - numpy.asarray(m2_d10)
+
+compare_persistence = scipy.stats.wilcoxon(m1_persistence, m2_persistence)  # no sign. diff
+
 
 ### ---- compare first to last day of molds ---- ###
 # return dictionary
@@ -32,8 +47,8 @@ for measurement in loc_df.columns[6:]:
     # overall_learning = scipy.stats.wilcoxon(d0[measurement], d5[measurement])
     # learning['overall'][measurement] = overall_learning
 
+
 ### ---- divide RMSE on day 0 vs day 5 by initial RMSE increase ---- ###
-w2_exclude = ['cs', 'lm']
 efd0 = numpy.asarray(loc_df[loc_df['condition'] == 'Ears Free'][loc_df['adaptation day'] == 0]['RMSE ele'])
 m1d0 = numpy.asarray(loc_df[loc_df['condition'] == 'Earmolds Week 1'][loc_df['adaptation day'] == 0]['RMSE ele'])
 m1d5 = numpy.asarray(loc_df[loc_df['condition'] == 'Earmolds Week 1'][loc_df['adaptation day'] == 5]['RMSE ele'])
@@ -43,17 +58,6 @@ reduction_decrease_ratio = m1_reduction / w1d0_increase
 
 w1d0_drop = loc_df[loc_df['condition'] == 'Earmolds Week 1'][loc_df['adaptation day'] == 0]['RMSE ele'] -\
             loc_df[loc_df['condition'] == 'Ears Free'][loc_df['adaptation day'] == 0]['RMSE ele']
-
-
-
-### ---- compare persistence m1 / m2 ---- ###
-metric = 'EG'
-m1_final = loc_df[loc_df['condition'] == 'Earmolds Week 1'][loc_df['adaptation day'] == 5][metric]
-m1_persistence = numpy.asarray(m1_final) - numpy.asarray(loc_df[loc_df['condition'] == 'Earmolds Week 1']
-                                                         [loc_df['adaptation day'] == 6][metric])
-m2_final = loc_df[loc_df['condition'] == 'Earmolds Week 2'][loc_df['adaptation day'] == 5][metric]
-m2_persistence = numpy.asarray(m2_final) - numpy.asarray(loc_df[loc_df['condition'] == 'Earmolds Week 2']
-                                                         [loc_df['adaptation day'] == 6][metric])
 
 
 ### ---- correlate uso vs noise EG / RMSE ---- ###

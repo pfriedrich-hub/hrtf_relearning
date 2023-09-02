@@ -27,7 +27,7 @@ hrtf_stats = loc_analysis.localization_hrtf_df(localization_dataframe, hrtf_data
 bands = [(4000, 5700), (5700, 8000), (8000, 11300), (11300, 16000)]  # to modify
 # bands = [(3500, 5000), (5000, 7200), (7200, 10400), (10400, 15000)]
 
-n_bins=None # no big difference on the average
+n_bins=None  # no big difference on the average
 equalize=False  # results in implausible vsi?
 condition = 'Earmolds Week 1'
 hrtf_plot.plot_hrtf_overview(hrtf_dataframe, condition, bands, n_bins, equalize)

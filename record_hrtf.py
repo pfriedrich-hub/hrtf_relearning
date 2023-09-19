@@ -37,7 +37,7 @@ signal = slab.Sound.ramp(signal, when='both', duration=ramp_duration)
 # todo replace signal with mean central arc recording?
 # signal = slab.Sound.read(Path.cwd() / 'final_data' / 'sounds' / 'mean_central_arc_rec.wav')
 
-# plotting options
+# plot options
 dfe = False  # whether to use diffuse field equalization to plot hrtf and compute vsi
 plot_bins = 2400  # number of bins also used to calculate vsi across bands (use 80 to minimize´frequency-resolution dependend vsi change)
 plot_ear = 'left'  # ear for which to plot HRTFs

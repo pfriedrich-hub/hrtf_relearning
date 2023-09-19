@@ -1,7 +1,7 @@
 import analysis.localization_analysis as loc_analysis
 import analysis.hrtf_analysis as hrtf_analysis
-import analysis.plotting.localization_plot as loc_plot
-import analysis.plotting.hrtf_plot as hrtf_plot
+import analysis.plot.localization_plot as loc_plot
+import analysis.plot.hrtf_plot as hrtf_plot
 from pathlib import Path
 import scipy.stats
 import pandas
@@ -10,7 +10,7 @@ from matplotlib import pyplot as plt
 pandas.set_option('display.max_rows', None, 'display.max_columns', None, 'display.precision', 5,
                   'display.expand_frame_repr', False)
 
-path = Path.cwd() / 'final_data' / 'experiment' / 'master'
+path = Path.cwd() / 'data' / 'experiment' / 'master'
 w2_exclude=['cs', 'lm', 'lk']
 localization_dataframe = loc_analysis.get_localization_dataframe(path, w2_exclude)
 hrtf_dataframe = hrtf_analysis.get_hrtf_df(path, processed=True)

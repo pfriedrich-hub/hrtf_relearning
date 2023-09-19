@@ -1,7 +1,7 @@
 import slab
 from pathlib import Path
 import matplotlib
-import analysis.plotting.hrtf_plot as hrtf_plot
+import analysis.plot.hrtf_plot as hrtf_plot
 # matplotlib.use('TkAgg')
 from matplotlib import pyplot as plt
 import numpy
@@ -14,7 +14,7 @@ pandas.set_option('display.max_rows', 1000, 'display.max_columns', 1000, 'displa
 #  for example kemar vsi with 0.1s looks better than for 0.05 seconds (higher frequencies have to
 #  few samples here to be represented correctly in vsi) - temporary fix: increase samplerate to 96 kHz
 
-def get_hrtf_df(path=Path.cwd() / 'final_data' / 'experiment' / 'master', processed=True):
+def get_hrtf_df(path=Path.cwd() / 'data' / 'experiment' / 'master', processed=True):
     subject_paths = list(path.iterdir())
     hrtf_df = pandas.DataFrame({'subject': [], 'filename': [], 'condition': [], 'hrtf': []})
     conditions = ['Ears Free', 'Earmolds Week 1', 'Earmolds Week 2']
@@ -30,25 +30,29 @@ def get_hrtf_df(path=Path.cwd() / 'final_data' / 'experiment' / 'master', proces
                     hrtf = slab.HRTF(file_name)
                     new_row = [subject, file_name.name, condition, hrtf]
                     hrtf_df.loc[len(hrtf_df)] = new_row
-    # hrtf_df.to_csv('/Users/paulfriedrich/projects/hrtf_relearning/final_data/experiment/final_data.csv')
+    # hrtf_df.to_csv('/Users/paulfriedrich/projects/hrtf_relearning/data/experiment/data.csv')
     return hrtf_df
 
 # ----- HRTF processing ----- #
-def process_hrtfs(path=Path.cwd() / 'final_data' / 'experiment' / 'master', smoothe=True, baseline=True):
+def process_hrtfs(path=Path.cwd() / 'data' / 'experiment' / 'master', filter='erb', baseline=True, dfe=True):
     hrtf_df = get_hrtf_df(path, processed=False)
     for index, row in hrtf_df.iterrows():
         processed_path = Path(path / row['subject'] / row['condition'] / 'processed_hrtf')
         if not processed_path.exists():
             processed_path.mkdir()
         hrtf = copy.deepcopy(row['hrtf'])
-        if smoothe:
-            hrtf = smoothe_hrtf(hrtf, high_cutoff=1500)
+        if filter == 'scepstral':
+            hrtf = scepstral_filter_hrtf(hrtf, high_cutoff=1000)
+        elif filter == 'erb':
+            hrtf = erb_filter_hrtf(hrtf, kind='cosine', low_cutoff=4000, high_cutoff=16000, bandwidth=0.0286,
+                                   pass_bands=True)
         if baseline:
             hrtf = baseline_hrtf(hrtf, bandwidth=(4000, 16000))  # baseline should be done after smoothing / dfe
-        # hrtf.diffuse_field_equalization()  # dfe completely messes up vsi
+        if dfe:
+            hrtf.diffuse_field_equalization()  # maybe
         hrtf.write_sofa(filename=processed_path / str('proccessed_' + row['filename']))
 
-def baseline_hrtf(hrtf, bandwidth=(4000, 16000)):
+def baseline_hrtf(hrtf, bandwidth=(4000, 16000)): #todo doesnt work yet (increases corrleation)
     "Center transfer functions around 0"
     hrtf_out = copy.deepcopy(hrtf)
     sources = hrtf_out.cone_sources(0)
@@ -62,7 +66,39 @@ def baseline_hrtf(hrtf, bandwidth=(4000, 16000)):
         hrtf_out[source].data = tf_data[idx]
     return hrtf_out
 
-def smoothe_hrtf(hrtf, high_cutoff=1500):  # maybe a bad idea
+def erb_filter_hrtf(hrtf, kind='cosine', low_cutoff=4000, high_cutoff=16000, bandwidth=0.0286, pass_bands=True):
+    """
+    smoothe a transfer function by applying an erb-spaced triangular filterbank:
+    compute a weighted sum of the energy in a range of FFT bins to get a number which can be interpreted
+    as the energy measured at the output of a band-pass filter of a given center frequency/width
+    """
+    hrtf_out = copy.deepcopy(hrtf)
+    hrtf_freqs = hrtf[0].frequencies
+    n_freqs = hrtf[0].n_frequencies
+    center_freqs_erb, oct_bandwidth, erb_spacing = slab.Filter._center_freqs(
+        low_cutoff=low_cutoff, high_cutoff=high_cutoff, bandwidth=bandwidth, pass_bands=pass_bands)
+    tf_freqs_erb = slab.Filter._freq2erb(hrtf_freqs)
+    center_freqs = slab.Filter._erb2freq(center_freqs_erb)
+    n_bins = len(center_freqs_erb)
+    windows = numpy.zeros((n_freqs, n_bins))
+    dtf_binned = numpy.zeros((n_bins))
+    for dtf_idx, dtf in enumerate(hrtf_out):
+        for chan_idx in range(dtf.n_channels):
+            for bin_id in range(n_bins):
+                l = center_freqs_erb[bin_id] - erb_spacing
+                h = center_freqs_erb[bin_id] + erb_spacing
+                window_size = ((tf_freqs_erb > l) & (tf_freqs_erb < h)).sum()  # width of the triangular window
+                if kind == 'triangular':
+                    window = scipy.signal.windows.triang(window_size, sym=True) #todo peak vals not always 1
+                elif kind == 'cosine':
+                    window = scipy.signal.windows.cosine(window_size, sym=True)
+                windows[(tf_freqs_erb > l) & (tf_freqs_erb < h), bin_id] = window
+                weighted_sum = numpy.sum(dtf.data[:, chan_idx] * windows[:, bin_id]) / window_size  # normalize by window size
+                dtf_binned[bin_id] = weighted_sum
+            hrtf_out[dtf_idx].data[:, chan_idx] = numpy.interp(hrtf_freqs, center_freqs, dtf_binned) # interpolate
+    return hrtf_out
+
+def scepstral_filter_hrtf(hrtf, high_cutoff=1500):
     hrtf_out = copy.deepcopy(hrtf)
     filt = slab.Filter.band(kind='lp', frequency=high_cutoff, samplerate=hrtf.samplerate,
                             length=hrtf[0].n_samples, fir=True)
@@ -159,10 +195,10 @@ def vsi_across_bands(hrtf, bands=None, n_bins=None, equalize=False):
     for idx, bw in enumerate(bands):
         freq_idx = numpy.logical_and(frequencies >= bw[0], frequencies <= bw[1])
         dtf_band = dtfs[:, freq_idx]
-
-        plt.figure()
-        for band in dtf_band:
-            plt.plot(frequencies[freq_idx], band)
+        #todo finish work here
+        # plt.figure()
+        # for band in dtf_band:
+        #     plt.plot(frequencies[freq_idx], band)
         sum_corr = 0
         n = 0
         for i in range(len(sources)):
@@ -170,18 +206,30 @@ def vsi_across_bands(hrtf, bands=None, n_bins=None, equalize=False):
                 sum_corr += numpy.corrcoef(dtf_band[i].flatten(), dtf_band[j].flatten())[1, 0]
                 n += 1
 
-        plt.title(sum_corr / n)
+        # plt.title(sum_corr / n)
 
         vsi[idx] = 1 - sum_corr / n
     return vsi
 
-def mean_vsi_across_bands(hrtf_dataframe, condition='Ears Free', bands=None, n_bins=None, equalize=False, show=False):
+def mean_vsi_across_bands(hrtf_dataframe, condition='Ears Free', bands=None, n_bins=None, dfe=False, show=False,
+                          axis=None):
     vsis = []
     for hrtf in list(hrtf_dataframe[hrtf_dataframe['condition'] == condition]['hrtf']):
-        vsis.append(vsi_across_bands(hrtf, bands=bands, n_bins=n_bins, equalize=equalize))
+        vsis.append(vsi_across_bands(hrtf, bands, n_bins, dfe))
     mean_vsi_across_bands = numpy.mean(vsis, axis=0)
+
     if show:
-        hrtf_plot.plot_vsi_across_bands(mean_vsi_across_bands, bands)
+        if not axis:
+            fig, axis = plt.subplots()
+        axis.plot(mean_vsi_across_bands, c='k')
+        axis.set_xticks(numpy.arange(len(bands)))
+        labels = [item.get_text() for item in axis.get_xticklabels()]
+        for idx, band in enumerate(numpy.asarray(bands) / 1000):
+            labels[idx] = '%.1f - %.1f' % (band[0], band[1])
+        axis.set_xticklabels(labels)
+        axis.set_yticks(numpy.arange(0.1, 1.2, 0.1))
+        axis.set_xlabel('Frequency bands (kHz)')
+        axis.set_ylabel('VSI')
     return mean_vsi_across_bands
 
 def hrtf_correlation(hrtf_1, hrtf_2, bandwidth=(4000, 16000), n_bins=None, show=False, axis=None, cbar=True):

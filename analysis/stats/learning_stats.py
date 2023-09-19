@@ -1,5 +1,5 @@
 import analysis.localization_analysis as loc_analysis
-import analysis.plotting.localization_plot as loc_plot
+import analysis.plot.localization_plot as loc_plot
 from pathlib import Path
 import scipy.stats
 import pandas

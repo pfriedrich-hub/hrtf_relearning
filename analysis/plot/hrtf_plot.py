@@ -4,11 +4,10 @@ import numpy
 from matplotlib import pyplot as plt
 import copy
 
-def plot_hrtf_diff(hrtf_df, to_plot='average', dfe=True, axis=None):
+def hrtf_overwiev(hrtf_df, to_plot='average', n_bins=None, dfe=True, axis=None):
     """
     to_plot: 'average' or subject id
     """
-    n_bins = 150
     bandwidth = (4000, 16000)
     hrtf_dict = dict()
     # get hrtfs
@@ -17,13 +16,13 @@ def plot_hrtf_diff(hrtf_df, to_plot='average', dfe=True, axis=None):
         hrtf_dict['hrtf_m1'] = hrtf_analysis.average_hrtf(list(hrtf_df[hrtf_df['condition'] == 'Earmolds Week 1']['hrtf']))
         hrtf_dict['hrtf_m2'] = hrtf_analysis.average_hrtf(list(hrtf_df[hrtf_df['condition'] == 'Earmolds Week 2']['hrtf']))
     else:
-        hrtf_dict['hrtf_ef'] = hrtf_df[hrtf_df['condition'] == 'Ears Free'][hrtf_df['subject'] == to_plot]['hrtf']
-        hrtf_dict['hrtf_m1'] = hrtf_df[hrtf_df['condition'] == 'Earmolds Week 1'][hrtf_df['subject'] == to_plot]['hrtf']
-        hrtf_dict['hrtf_m2'] = hrtf_df[hrtf_df['condition'] == 'Earmolds Week 2'][hrtf_df['subject'] == to_plot]['hrtf']
+        hrtf_dict['hrtf_ef'] = list(hrtf_df[hrtf_df['condition'] == 'Ears Free'][hrtf_df['subject'] == to_plot]['hrtf'])[0]
+        hrtf_dict['hrtf_m1'] = list(hrtf_df[hrtf_df['condition'] == 'Earmolds Week 1'][hrtf_df['subject'] == to_plot]['hrtf'])[0]
+        hrtf_dict['hrtf_m2'] = list(hrtf_df[hrtf_df['condition'] == 'Earmolds Week 2'][hrtf_df['subject'] == to_plot]['hrtf'])[0]
     # get difference DTFs
-    hrtf_dict['diff_ef_m1'] = hrtf_analysis.hrtf_difference(hrtf_ef, hrtf_m1)
-    hrtf_dict['diff_ef_m2'] = hrtf_analysis.hrtf_difference(hrtf_ef, hrtf_m2)
-    hrtf_dict['diff_m1_m2'] = hrtf_analysis.hrtf_difference(hrtf_m1, hrtf_m2)
+    hrtf_dict['diff_ef_m1'] = hrtf_analysis.hrtf_difference(hrtf_dict['hrtf_ef'], hrtf_dict['hrtf_m1'])
+    hrtf_dict['diff_ef_m2'] = hrtf_analysis.hrtf_difference(hrtf_dict['hrtf_ef'], hrtf_dict['hrtf_m2'])
+    hrtf_dict['diff_m1_m2'] = hrtf_analysis.hrtf_difference(hrtf_dict['hrtf_m1'], hrtf_dict['hrtf_m2'])
     # hrtf_dict['diff_diff_ef_m1_diff_ef_m2'] = hrtf_analysis.hrtf_difference(diff_ef_m1, diff_ef_m2)
 
     # apply diffuse field equalization
@@ -33,14 +32,14 @@ def plot_hrtf_diff(hrtf_df, to_plot='average', dfe=True, axis=None):
 
     # --- plot ---- #
     # get amplitude range across DTFs for common color bar
-    frequencies = diff_ef_m1[0].frequencies
+    frequencies = hrtf_dict['diff_ef_m1'][0].frequencies
     frequencies = numpy.linspace(0, frequencies[-1], n_bins)
     freqidx = numpy.logical_and(frequencies > bandwidth[0], frequencies < bandwidth[1])
     dtfs = []
     for hrtf in hrtf_dict.values():
-        dtfs.append(hrtf.tfs_from_sources(src_idx, n_bins)[:, freqidx])
+        sources = hrtf.cone_sources(0)
+        dtfs.append(hrtf.tfs_from_sources(sources, n_bins)[:, freqidx])
     z_min, z_max = numpy.floor(numpy.min(dtfs)), numpy.ceil(numpy.max(dtfs))
-
     if not axis:
         fig, axes = plt.subplots(2, 3, sharey=False, sharex=True, figsize=(13, 8))
     fig.subplots_adjust(left=None, bottom=None, right=None, top=None, wspace=0.05)
@@ -59,6 +58,11 @@ def plot_hrtf_diff(hrtf_df, to_plot='average', dfe=True, axis=None):
     hrtf_image(hrtf_dict['hrtf_m2'], bandwidth, n_bins, axes[1, 1], z_min=z_min, z_max=z_max, cbar=False)
     hrtf_image(hrtf_dict['diff_ef_m1'], bandwidth, n_bins, axes[0, 2], z_min=z_min, z_max=z_max, cbar=False)
     hrtf_image(hrtf_dict['diff_ef_m2'], bandwidth, n_bins, axes[1, 2], z_min=z_min, z_max=z_max, cbar=True)
+
+    # plot m1 m2 diff
+    fig1, axes1 = plt.subplots(1,1)
+    hrtf_image(hrtf_dict['diff_m1_m2'], bandwidth, n_bins, axis=axes1, z_min=z_min, z_max=z_max, cbar=True)
+    axes1.set_title('Difference M1 / M2')
 
     # remove tick labels in rows
     axes[0, 2].set_yticks([])
@@ -84,10 +88,12 @@ def plot_hrtf_diff(hrtf_df, to_plot='average', dfe=True, axis=None):
     return fig, axis
 
 
-def hrtf_image(hrtf, bandwidth=(4000, 16000), n_bins=300, axis=None, z_min=None, z_max=None, cbar=True):
+def hrtf_image(hrtf, bandwidth=(4000, 16000), n_bins=None, axis=None, z_min=None, z_max=None, cbar=True):
     src = hrtf.cone_sources(0)
     elevations = hrtf.sources.vertical_polar[src, 1]
     ticks = [str(x) for x in (numpy.arange(4000, 16000 + 1, 4000) / 1000).astype('int')]
+    if n_bins is None:
+        n_bins = hrtf.data[0].n_frequencies
     img = numpy.zeros((n_bins, len(src)))
     if not axis:
         fig, axis = plt.subplots()
@@ -114,8 +120,8 @@ def hrtf_image(hrtf, bandwidth=(4000, 16000), n_bins=300, axis=None, z_min=None,
     if cbar:
         cbar_ticks = numpy.arange(z_min, z_max, 4)
         cax_pos = list(axis.get_position().bounds)  # (x0, y0, width, height)
-        cax_pos[0] += 0.26  # x0
-        cax_pos[2] = 0.012  # width
+        cax_pos[0] = 0.92 # x0
+        cax_pos[2] = 0.015  # width
         cax = fig.add_axes(cax_pos)
         cbar = fig.colorbar(contour, cax, orientation="vertical", ticks=cbar_ticks)
         cax.tick_params(axis='both', direction="in", bottom=True, top=True, left=True, right=True,
@@ -124,7 +130,7 @@ def hrtf_image(hrtf, bandwidth=(4000, 16000), n_bins=300, axis=None, z_min=None,
     return axis
 
 
-def plot_hrtf_corr(hrtf_df, to_plot='average', dfe=True, axis=None):
+def hrtf_correlation(hrtf_df, to_plot='average', n_bins=None, dfe=True, axis=None):
     n_bins = 150
     bandwidth = (4000, 16000)
     hrtf_dict = dict()
@@ -163,20 +169,22 @@ def plot_hrtf_corr(hrtf_df, to_plot='average', dfe=True, axis=None):
     return fig, axis
 
 def plot_average(hrtf_df, condition='Ears Free', equalize=True, kind='image'):
+    """ plot average hrtf for each condition """
     df = copy.deepcopy(hrtf_df)
     hrtf_list = list(df[df['condition'] == condition]['hrtf'])
     mean_hrtf = hrtf_analysis.average_hrtf(hrtf_list)
     if equalize:
         mean_hrtf = mean_hrtf.diffuse_field_equalization()
-    if kind=='image':
-        axis = hrtf_image(mean_hrtf)
+    if kind == 'image':
+        axis = hrtf_image(mean_hrtf, bandwidth=(4000, 16000), n_bins=300)
         cbar = axis.get_figure().get_axes()[1]
         cbar_pos = cbar.get_position()  # (x0, y0, width, height)
         cbar_pos.x1 = 0.94
         cbar_pos.x0 = 0.92
         cbar.set_position(cbar_pos)
-    elif kind=='waterfall':
+    elif kind == 'waterfall':
         mean_hrtf.plot_tf(mean_hrtf.cone_sources())
+    return axis
 
 def plot_vsi_across_bands(hrtf, bands, n_bins=None, axis=None):
     vsi_across_bands = hrtf_analysis.vsi_across_bands(hrtf, bands, n_bins)
@@ -202,10 +210,12 @@ def plot_hrtfs(hrtf_df, condition='Ears Free'):
         plt.title(subject_id)
         plt.savefig(f'/Users/paulfriedrich/Desktop/hrtf_relearning/data/figures/hrtfs/{subject_id}')
 
-def plot_hrtf_overview(hrtf_df, to_plot='all', condition='Ears Free', bands=None, n_bins=None, equalize=True):
+def subj_hrtf_vsi(hrtf_df, to_plot='all', condition='Ears Free', bands=None):
     """
-    plot hrtfs and vsi across bands
+    plot hrtfs and vsi across bands for all subjects
     """
+    if not bands:
+        bands = [(4000, 5700), (5700, 8000), (8000, 11300), (11300, 16000)]  # to modify
     if to_plot != 'all':
         hrtf_df = hrtf_df[hrtf_df['subject'] == to_plot]
     for index, row in hrtf_df[hrtf_df['condition'] == condition].iterrows():

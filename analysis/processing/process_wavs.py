@@ -4,8 +4,8 @@ import pandas
 import slab
 import analysis.localization_analysis as loc_analysis
 import analysis.hrtf_analysis as hrtf_analysis
-import analysis.plotting.localization_plot as loc_plot
-import analysis.plotting.hrtf_plot as hrtf_plot
+import analysis.plot.localization_plot as loc_plot
+import analysis.plot.hrtf_plot as hrtf_plot
 wav_path = Path.cwd() / 'data' / 'experiment' / 'master'
 
 signal = helper.hrtf_signal()

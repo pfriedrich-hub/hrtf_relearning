@@ -1,6 +1,6 @@
 def non_overlapping_bands():
     bands = []
-    # --- 5 1/2 non-overlapping octave bands
+    # --- 5 non-overlapping 1/2 octave bands
     bands.append([(4000, 5700), (5700, 8000), (8000, 11300), (11300, 16000)])  # to modify
     # == numpy.logspace(1, 2, 5, base=4)
 

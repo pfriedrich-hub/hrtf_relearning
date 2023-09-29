@@ -66,25 +66,4 @@ for idx, band in enumerate(bands):
 
 # correlation of elevation RMSE / VSI in 5.7-8 kHz band: -0.5, p=0.067 #todo bonferroni
 
-# --- test correlation mold induced drop with VSI dissimilarity in 5.7-8 kHz band --- #
-measure = 'RMSE ele'
-bandwidth = (4000, 16000)
-n_bins=None # no big difference on the average
-equalize=False  # results in implausible vsi?
-loc_data = []
-vsi_dissimilarity = []
-exclude = ['svm', 'sm']
-for subject_data in hrtf_stats.iterrows():
-    if subject_data[1]['subject'] != 'svm':
-        [efd0] = list(subject_data[1]['EFD0'][measure])
-        [m1d0] = list(subject_data[1]['M1D0'][measure])
-        # drop = numpy.diff((efd0, m1d0))
-        drop = numpy.divide(efd0, m1d0)
-        loc_data.append(drop)
-        vsi_dis = hrtf_analysis.vsi_dissimilarity(subject_data[1]['EF hrtf'], subject_data[1]['M1 hrtf'], bandwidth,
-                                                  n_bins, equalize)
-        vsi_dissimilarity.append(vsi_dis)
-print(scipy.stats.spearmanr(vsi_dissimilarity, loc_data, axis=0, nan_policy='propagate', alternative='two-sided'))
-plt.scatter(vsi_dissimilarity, loc_data)
-
 

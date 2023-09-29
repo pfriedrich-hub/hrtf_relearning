@@ -1,7 +1,7 @@
 import slab
 from pathlib import Path
 import numpy
-data_dir = Path.cwd() / 'final_data'
+data_dir = Path.cwd() / 'data'
 
 def read_wav(path):
     recordings = []  # list to hold slab.Binaural objects
@@ -25,3 +25,14 @@ def read_source_txt(path):
     for file_path in path.rglob('*.txt'):
         sources = numpy.loadtxt(file_path)
     return sources
+
+
+"""
+# create hrtf by microphone origin transfer function measured from the dome central arc with an in-the-ear mic
+signal = slab.Sound.read(data_dir / 'sounds' / 'mean_central_arc_rec.wav')
+signal = slab.Sound(data=numpy.mean(signal.data, axis=1), samplerate=97656)
+hrtf = slab.HRTF.estimate_hrtf(recordings, signal, sources)
+
+result: increased artifacts (compared to clean chirp as reference signal)
+"""
+

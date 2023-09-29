@@ -44,7 +44,7 @@ for measurement in loc_df.columns[6:]:
     w2_learning = scipy.stats.wilcoxon(w2d0[measurement], w2d5[measurement])
     learning['week 2'][measurement] = w2_learning
     # # overall
-    # overall_learning = scipy.stats.wilcoxon(d0[measurement], d5[measurement])
+    # overall_learning = scipy.statistics.wilcoxon(d0[measurement], d5[measurement])
     # learning['overall'][measurement] = overall_learning
 
 

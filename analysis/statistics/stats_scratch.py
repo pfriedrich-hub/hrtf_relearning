@@ -1,3 +1,77 @@
+"""
+test hrtf surface variance
+"""
+
+import analysis.hrtf_analysis as hrtf_analysis
+import analysis.localization_analysis as loc_analysis
+import analysis.plot.localization_plot as loc_plot
+import analysis.plot.hrtf_plot as hrtf_plot
+from pathlib import Path
+import numpy
+from matplotlib import pyplot as plt
+data_path = path=Path.cwd() / 'data' / 'experiment' / 'master'
+w2_exclude=['cs', 'lm', 'lk']  # these subjects did not complete Week 2 of the experiment
+localization_dataframe = loc_analysis.get_localization_dataframe(path, w2_exclude)
+
+exclude = ['svm']
+hrtf_dataframe = hrtf_analysis.get_hrtf_df(path, processed=False, exclude=exclude)
+hrtf_dataframe = hrtf_analysis.process_hrtfs(hrtf_dataframe, filter=None, baseline=True, write=False)
+hrtf_stats = loc_analysis.localization_hrtf_df(localization_dataframe, hrtf_dataframe)
+
+for subject in hrtf_stats.subject:
+    subject_data = hrtf_stats[hrtf_stats['subject'] == subject]
+    hrtf_ef = hrtf_analysis.erb_filter_hrtf(subject_data['EF hrtf'].iloc[0], return_bins=True)[2]
+    hrtf_m1 = hrtf_analysis.erb_filter_hrtf(subject_data['M1 hrtf'].iloc[0], return_bins=True)[2]
+    hrtf_diff = hrtf_analysis.hrtf_difference(hrtf_ef, hrtf_m1)
+
+    hrtf_ef.plot_tf(hrtf_ef.cone_sources(0), kind='surface', n_bins=83, ear='left')
+    hrtf_m1.plot_tf(hrtf_ef.cone_sources(0), kind='surface', n_bins=83, ear='left')
+
+    fig, axes = plt.subplots(2, 2)
+    hrtf_diff.plot_tf(hrtf_ef.cone_sources(0), kind='waterfall', n_bins=83, ear='left', axis=axes[0])
+    hrtf_diff.plot_tf(hrtf_ef.cone_sources(0), kind='waterfall', n_bins=83, ear='right', axis=axes[1])
+    axes[0].set_title('left')
+    axes[1].set_title('right')
+    loc_plot.localization_plot(to_plot=subject, axes=)
+    fig.title('subject')
+
+    dtf_data = hrtf_diff.tfs_from_sources(sources=hrtf_diff.cone_sources(0), ear='both', n_bins=None)
+
+    plt.figure()
+    for i in range(6):
+        plt.plot(dtf_data[i])
+
+
+    numpy.var(dtf_data)
+
+    hrtf_analysis.spectral_difference(hrtf_ef, hrtf_m1, bandwidth=(4000, 16000))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 import analysis.localization_analysis as loc_analysis
 import analysis.hrtf_analysis as hrtf_analysis
 import analysis.plot.localization_plot as loc_plot

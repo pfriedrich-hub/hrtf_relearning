@@ -1,10 +1,7 @@
 from pathlib import Path
-import analysis.processing.helper_functions as helper
+import misc.helper_functions as helper
 import pandas
 import slab
-import analysis.localization_analysis as loc_analysis
-import analysis.hrtf_analysis as hrtf_analysis
-import analysis.plot.localization_plot as loc_plot
 import analysis.plot.hrtf_plot as hrtf_plot
 wav_path = Path.cwd() / 'data' / 'experiment' / 'master'
 

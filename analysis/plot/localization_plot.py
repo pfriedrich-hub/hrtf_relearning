@@ -187,7 +187,7 @@ def localization_plot(to_plot='average', binned=True, path=Path.cwd() / 'data' /
 # labels = [item.get_text() for item in axis.get_xticklabels()]
 # for idx, band in enumerate(bandwidths / 1000):
 #     labels[idx] = '%.1f - %.1f' % (band[0], band[1])
-# err = scipy.stats.sem(vsi_list, axis=0)
+# err = scipy.statistics.sem(vsi_list, axis=0)
 # axis.errorbar(axis.get_xticks(), numpy.mean(vsi_list, axis=0), capsize=3,
 #               yerr=err, fmt="o", c='0.6', elinewidth=0.5, markersize=3)
 # axis.set_xticklabels(labels)

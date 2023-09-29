@@ -85,7 +85,8 @@ def get_localization_dataframe(path=Path.cwd() / 'data' / 'experiment' / 'master
     # localization_data.to_csv('/Users/paulfriedrich/projects/hrtf_relearning/data/experiment/data.csv')
     return localization_data
 
-def localization_accuracy(sequence, show=True, plot_dim=1, binned=True, axis=None, show_single_responses=True):
+def localization_accuracy(sequence, show=True, plot_dim=2, binned=True, axis=None, show_single_responses=True,
+                          elevation='all', azimuth='all'):
     if sequence.this_n == -1 or sequence.n_remaining == 132 or not sequence.data:
         return None, None, None, None, None
     # retrieve data
@@ -326,21 +327,21 @@ def localization_hrtf_df(localization_dataframe, hrtf_dataframe):
         subj_loc = localization_dataframe[localization_dataframe['subject']==subject]
         # ears free
         ef = subj_hrtfs[subj_hrtfs['condition']=='Ears Free']['hrtf'].item()
-        efd0 = subj_loc[subj_loc['condition']=='Ears Free'][subj_loc['adaptation day']==0][subj_loc.columns[6:]]
-        efd5 = subj_loc[subj_loc['condition']=='Ears Free'][subj_loc['adaptation day']==1][subj_loc.columns[6:]]
+        efd0 = subj_loc[subj_loc['condition']=='Ears Free'][subj_loc['adaptation day']==0][subj_loc.columns[6:]].values[0]
+        efd5 = subj_loc[subj_loc['condition']=='Ears Free'][subj_loc['adaptation day']==1][subj_loc.columns[6:]].values[0]
         # m1
         try:
             m1 = subj_hrtfs[hrtf_dataframe['condition']=='Earmolds Week 1']['hrtf'].item()
-            m1d0 = subj_loc[subj_loc['condition']=='Earmolds Week 1'][subj_loc['adaptation day']==0][subj_loc.columns[6:]]
-            m1d5 = subj_loc[subj_loc['condition']=='Earmolds Week 1'][subj_loc['adaptation day']==5][subj_loc.columns[6:]]
-        except ValueError:
+            m1d0 = subj_loc[subj_loc['condition']=='Earmolds Week 1'][subj_loc['adaptation day']==0][subj_loc.columns[6:]].values[0]
+            m1d5 = subj_loc[subj_loc['condition']=='Earmolds Week 1'][subj_loc['adaptation day']==5][subj_loc.columns[6:]].values[0]
+        except (ValueError, IndexError):
             m1, m1d0, m1d5 = None, None, None
         # m2
         try:
             m2 = subj_hrtfs[hrtf_dataframe['condition']=='Earmolds Week 2']['hrtf'].item()
-            m2d0 = subj_loc[subj_loc['condition']=='Earmolds Week 2'][subj_loc['adaptation day']==0][subj_loc.columns[6:]]
-            m2d5 = subj_loc[subj_loc['condition']=='Earmolds Week 2'][subj_loc['adaptation day']==5][subj_loc.columns[6:]]
-        except ValueError:
+            m2d0 = subj_loc[subj_loc['condition']=='Earmolds Week 2'][subj_loc['adaptation day']==0][subj_loc.columns[6:]].values[0]
+            m2d5 = subj_loc[subj_loc['condition']=='Earmolds Week 2'][subj_loc['adaptation day']==5][subj_loc.columns[6:]].values[0]
+        except (ValueError, IndexError):
             m2, m2d0, m2d5 = None, None, None
         new_row = [subject,
                    ef, efd0, efd5,

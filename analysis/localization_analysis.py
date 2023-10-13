@@ -315,42 +315,6 @@ def loc_hist(subj_id):
     axis.set_ylabel('Response Elevation (degrees)')
 
 
-# common dataframe for behavior and hrtf data
-def localization_hrtf_df(localization_dataframe, hrtf_dataframe):
-    hrtf_stats = pandas.DataFrame({'subject': [],
-                                   'EF hrtf': [], 'EFD0': [], 'EFD5': [],
-                                   'M1 hrtf': [], 'M1D0': [], 'M1D5': [],
-                                   'M2 hrtf': [], 'M2D0': [], 'M2D5': []})
-    for subject in hrtf_dataframe['subject'].unique():
-        # subject data
-        subj_hrtfs = hrtf_dataframe[hrtf_dataframe['subject']==subject]
-        subj_loc = localization_dataframe[localization_dataframe['subject']==subject]
-        # ears free
-        ef = subj_hrtfs[subj_hrtfs['condition']=='Ears Free']['hrtf'].item()
-        efd0 = subj_loc[subj_loc['condition']=='Ears Free'][subj_loc['adaptation day']==0][subj_loc.columns[6:]].values[0]
-        efd5 = subj_loc[subj_loc['condition']=='Ears Free'][subj_loc['adaptation day']==1][subj_loc.columns[6:]].values[0]
-        # m1
-        try:
-            m1 = subj_hrtfs[hrtf_dataframe['condition']=='Earmolds Week 1']['hrtf'].item()
-            m1d0 = subj_loc[subj_loc['condition']=='Earmolds Week 1'][subj_loc['adaptation day']==0][subj_loc.columns[6:]].values[0]
-            m1d5 = subj_loc[subj_loc['condition']=='Earmolds Week 1'][subj_loc['adaptation day']==5][subj_loc.columns[6:]].values[0]
-        except (ValueError, IndexError):
-            m1, m1d0, m1d5 = None, None, None
-        # m2
-        try:
-            m2 = subj_hrtfs[hrtf_dataframe['condition']=='Earmolds Week 2']['hrtf'].item()
-            m2d0 = subj_loc[subj_loc['condition']=='Earmolds Week 2'][subj_loc['adaptation day']==0][subj_loc.columns[6:]].values[0]
-            m2d5 = subj_loc[subj_loc['condition']=='Earmolds Week 2'][subj_loc['adaptation day']==5][subj_loc.columns[6:]].values[0]
-        except (ValueError, IndexError):
-            m2, m2d0, m2d5 = None, None, None
-        new_row = [subject,
-                   ef, efd0, efd5,
-                   m1, m1d0, m1d5,
-                   m2, m2d0, m2d5]
-        # hrtf_stats.to_csv('/Users/paulfriedrich/Desktop/hrtf_relearning/data/hrtf_stats.csv')
-        hrtf_stats.loc[len(hrtf_stats)] = new_row
-    return hrtf_stats
-
 """ # ----------- plot and work on localization data ------------- #
 from pathlib import Path
 from copy import deepcopy

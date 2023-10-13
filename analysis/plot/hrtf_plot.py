@@ -1,6 +1,7 @@
 from pathlib import Path
 import analysis.hrtf_analysis as hrtf_analysis
 import numpy
+import matplotlib.colors as colors
 from matplotlib import pyplot as plt
 import copy
 
@@ -31,6 +32,8 @@ def hrtf_overwiev(hrtf_df, to_plot='average', n_bins=None, dfe=True, axis=None):
             hrtf_dict[key] = hrtf_dict[key].diffuse_field_equalization()
 
     # --- plot ---- #
+    if not n_bins:
+        n_bins = hrtf_dict['hrtf_ef'][0].n_frequencies
     # get amplitude range across DTFs for common color bar
     frequencies = hrtf_dict['diff_ef_m1'][0].frequencies
     frequencies = numpy.linspace(0, frequencies[-1], n_bins)
@@ -204,26 +207,29 @@ def subj_hrtf_vsi(hrtf_df, to_plot='all', condition='Ears Free', bands=None):
         hrtf.plot_tf(hrtf.cone_sources(0), axis=ax[0], xlim=(bands[0][0], bands[-1][1]))
         plot_vsi_across_bands(hrtf, bands, axis=ax[1])
 
-def plot_correlation_matrix(correlation_matrix, axis=None, c_bar=True):
+def plot_correlation_matrix(correlation_matrix, axis=None, c_bar=True, tiles=False):
     if axis is None:
-        fig, axes = plt.subplots()
+        fig, axis = plt.subplots()
     else:
         fig = axis.get_figure()
-    cbar_levels = numpy.linspace(-1, 1, 100)
-    contour = axes.contourf(numpy.arange(7),
-                            numpy.arange(6, -1, -1), correlation_matrix,
-                            cmap='viridis', levels=cbar_levels)
+    cbar_levels = numpy.linspace(-1, 1, 20)
+    if tiles:
+        contour = axis.imshow(correlation_matrix, cmap='viridis', vmin=cbar_levels.min(), vmax=cbar_levels.max())
+    else:
+        contour = axis.contourf(numpy.arange(7),
+                                numpy.arange(6, -1, -1), correlation_matrix,
+                                cmap='viridis', levels=cbar_levels)
     labels = ['-37.5', '-25.0', '-12.5', '0.0', '12.5', '25.0', '37.5']
-    axes.set_xticklabels(labels)
+    axis.set_xticklabels(labels)
     labels[0] = None
-    axes.set_yticklabels(labels)
-    axes.tick_params(axis='both', direction="in", bottom=True, top=True, left=True, right=True,
+    axis.set_yticklabels(labels)
+    axis.tick_params(axis='both', direction="in", bottom=True, top=True, left=True, right=True,
                      labelsize=13, width=1.5, length=2)
-    axes.set_ylabel('Elevation (degrees)')
-    axes.set_xlabel('Elevation (degrees)')
+    axis.set_ylabel('Elevation (degrees)')
+    axis.set_xlabel('Elevation (degrees)')
     if c_bar:
         cbar_ticks = numpy.linspace(-1, 1, 11)
-        cax_pos = list(axes.get_position().bounds)  # (x0, y0, width, height)
+        cax_pos = list(axis.get_position().bounds)  # (x0, y0, width, height)
         cax_pos[0] = 0.92  # x0
         cax_pos[2] = 0.015  # width
         cax = fig.add_axes(cax_pos)

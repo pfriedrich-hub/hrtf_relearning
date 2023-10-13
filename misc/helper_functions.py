@@ -1,7 +1,7 @@
 import slab
 from pathlib import Path
 import numpy
-data_dir = Path.cwd() / 'data'
+import analysis.hrtf_analysis
 
 def read_wav(path):
     recordings = []  # list to hold slab.Binaural objects
@@ -17,7 +17,7 @@ def hrtf_signal(level=80, duration=0.1, low_freq=1000, high_freq=17000, fs = 976
     ramp_duration = duration / 20
     slab.Signal.set_default_samplerate(fs)  # default samplerate for generating sounds, filters etc.
     signal = slab.Sound.chirp(duration=duration, level=level, from_frequency=low_freq, to_frequency=high_freq,
-                              kind='linear')
+                              kind='quadratic')
     signal = slab.Sound.ramp(signal, when='both', duration=ramp_duration)
     return signal
 
@@ -36,3 +36,16 @@ hrtf = slab.HRTF.estimate_hrtf(recordings, signal, sources)
 result: increased artifacts (compared to clean chirp as reference signal)
 """
 
+"""
+# test create hrtf by quadratic sweep signal instead of linear to detrend dtfs
+# result: doesnt do much to vsi / spectral strength
+subject = 'vk'
+condition = 'Ears Free'
+
+data_dir = Path.cwd() / 'data' / 'experiment' / 'master'/ subject / condition
+signal = hrtf_signal()
+recordings = read_wav(data_dir)[0]
+sources = read_source_txt(data_dir)
+hrtf = slab.HRTF.estimate_hrtf(recordings, signal, sources)
+
+"""

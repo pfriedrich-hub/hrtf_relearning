@@ -35,7 +35,7 @@ def get_hrtf_df(path=Path.cwd() / 'data' / 'experiment' / 'master', processed=Tr
     return hrtf_df
 
 # ----- HRTF processing ----- #
-def process_hrtfs(hrtf_dataframe, filter='erb', baseline=True, write=False):
+def process_hrtfs(hrtf_dataframe, filter='erb', baseline=True, dfe=False, write=False):
     path = Path.cwd() / 'data' / 'experiment' / 'master'
     for index, row in hrtf_dataframe.iterrows():
         if write:
@@ -48,8 +48,8 @@ def process_hrtfs(hrtf_dataframe, filter='erb', baseline=True, write=False):
         elif filter == 'erb':
             hrtf = erb_filter_hrtf(hrtf, kind='cosine', low_cutoff=4000, high_cutoff=16000, bandwidth=0.0286,
                                    pass_bands=True, return_bins=False)
-        # if dfe:
-        #     hrtf = hrtf.diffuse_field_equalization()  # not on the subject level
+        if dfe:
+            hrtf = hrtf.diffuse_field_equalization()  # not on the subject level
         if baseline:
             hrtf = baseline_hrtf(hrtf, bandwidth=(4000, 16000))  # baseline should be done after smoothing / dfe
         if write:
@@ -151,8 +151,8 @@ def hrtf_difference(hrtf_1, hrtf_2):
     return hrtf_diff
 
 # ----- VSI (trapeau und schönwiesner 2015) ---- #
-def vsi(hrtf, bandwidth=(4000, 16000)):
-    corr_mtx = hrtf_correlation(hrtf, hrtf, bandwidth, ear_idx=[0, 1], show=False)
+def vsi(hrtf, bandwidth=(4000, 16000), ear_idx=[0, 1]):
+    corr_mtx = hrtf_correlation(hrtf, hrtf, bandwidth, ear_idx, show=False)
     corr_mtx = mtx_remove_main_diag(corr_mtx)
     vsi = 1 - numpy.mean(corr_mtx)
     return vsi
@@ -170,33 +170,33 @@ def hrtf_correlation(hrtf_1, hrtf_2, bandwidth=(4000, 16000), ear_idx=[0, 1], sh
             for j, source_idx_j in enumerate(sources):  # increasing elevation
                 # print(f'write correlation coefficient of hrtf_1 at {hrtf_1.sources.vertical_polar[source_idx_i, 1]} and '
                 #       f'hrtf_2 at {hrtf_1.sources.vertical_polar[source_idx_j, 1]} to position {(i, j)}')
-                corr_mtx[ear_id, i, j] = numpy.corrcoef(dtfs_1[source_idx_i, :, ear_id],
+                corr_mtx[-ear_id, i, j] = numpy.corrcoef(dtfs_1[source_idx_i, :, ear_id],
                                                         dtfs_2[source_idx_j, :, ear_id])[1, 0]
     corr_mtx = numpy.mean(corr_mtx, axis=0)  # average left and right ear values if both ears are used
     if show:
+        if not axis:
+            fig, axis = plt.subplots()
         hrtf_plot.plot_correlation_matrix(corr_mtx, axis, c_bar)
     return corr_mtx
 
-def vsi_across_bands(hrtf, bands=None, show=False, axis=None):
+def vsi_across_bands(hrtf, bands=None, show=False, axis=None, ear_idx=[0,1]):
     if bands is None:  # calculate vsi across 5 octave frequency bands
         bands = [(4000, 8000), (4800, 9500), (5700, 11300), (6700, 13500), (8000, 16000)]
     vsis = numpy.zeros(len(bands))
     for i, bandwidth in enumerate(bands):
-        vsis[i] = vsi(hrtf, bandwidth)
+        vsis[i] = vsi(hrtf, bandwidth, ear_idx)
     if show:
         if not axis:
             fig, axis = plt.subplots()
         hrtf_plot.plot_vsi_across_bands(vsis, bands, axis=axis)
     return vsis
 
-def vsi_dissimilarity(hrtf_1, hrtf_2, bandwidth=(4000, 16000)):
+def vsi_dissimilarity(hrtf_1, hrtf_2, bandwidth=(4000, 16000), ear_idx=[0, 1]):
     """ compute dissimilarity between sets of DTFs"""
     dtf1 = copy.deepcopy(hrtf_1)
     dtf2 = copy.deepcopy(hrtf_2)
-    correlation_mtx = hrtf_correlation(dtf1, dtf2, bandwidth, ear_idx=[0, 1])
-    correlation_mtx = mtx_remove_main_diag(correlation_mtx)
-    autocorrelation_mtx = hrtf_correlation(dtf1, dtf1, bandwidth, ear_idx=[0, 1])
-    autocorrelation_mtx = mtx_remove_main_diag(autocorrelation_mtx)
+    correlation_mtx = hrtf_correlation(dtf1, dtf2, bandwidth, ear_idx)
+    autocorrelation_mtx = hrtf_correlation(dtf1, dtf1, bandwidth, ear_idx)
     # VSI dissimilarity: euclidean distance between the matrices
     vsi_dissimilarity = numpy.sqrt(numpy.mean((correlation_mtx - autocorrelation_mtx)**2))
     return vsi_dissimilarity
@@ -207,12 +207,12 @@ def mtx_remove_main_diag(corr_mtx):
     mask = numpy.flipud(mask)
     return corr_mtx[mask]
 
-def mean_vsi_across_bands(hrtf_dataframe, condition='Ears Free', bands=None, show=False, axis=None):
+def mean_vsi_across_bands(hrtf_dataframe, condition='Ears Free', bands=None, show=False, axis=None, ear_idx=[0,1]):
     if bands is None:  # calculate vsi across 5 octave frequency bands
         bands = [(4000, 8000), (4800, 9500), (5700, 11300), (6700, 13500), (8000, 16000)]
     vsis = []
     for hrtf in list(hrtf_dataframe[hrtf_dataframe['condition'] == condition]['hrtf']):
-        vsis.append(vsi_across_bands(hrtf, bands))
+        vsis.append(vsi_across_bands(hrtf, bands, ear_idx))
     mean_vsi_across_bands = numpy.mean(vsis, axis=0)
     if show:
         if not axis:
@@ -225,41 +225,41 @@ def mean_vsi_across_bands(hrtf_dataframe, condition='Ears Free', bands=None, sho
 
 
 # ----- spectral strength (middlebrooks 1999) ---- #
-def spectral_strength(hrtf, bandwidth=(3700, 12900)):
+def spectral_strength(hrtf, bandwidth=(3700, 12900), ear='both'):
     freqs = hrtf[0].frequencies
     freq_idx = numpy.logical_and(freqs >= bandwidth[0], freqs <= bandwidth[1])
-    dtfs = hrtf.tfs_from_sources(hrtf.cone_sources(0), n_bins=len(freqs), ear='both')[:, freq_idx]
+    dtfs = hrtf.tfs_from_sources(hrtf.cone_sources(0), n_bins=len(freqs), ear=ear)[:, freq_idx]
     dtf_variance = numpy.var(dtfs, axis=1)
     spectral_strength = numpy.mean(dtf_variance)
     return spectral_strength
 
-def spectral_difference(hrtf_1, hrtf_2, bandwidth=(4000, 16000)):
+def spectral_difference(hrtf_1, hrtf_2, bandwidth=(4000, 16000), ear='both'):
     freqs = hrtf_1[0].frequencies
     freq_idx = numpy.logical_and(freqs >= bandwidth[0], freqs <= bandwidth[1])
     hrtf_diff = hrtf_difference(hrtf_1, hrtf_2)
-    difference_spectrum = hrtf_diff.tfs_from_sources(hrtf_1.cone_sources(0), n_bins=len(freqs), ear='both')[:, freq_idx]
+    difference_spectrum = hrtf_diff.tfs_from_sources(hrtf_1.cone_sources(0), n_bins=len(freqs), ear=ear)[:, freq_idx]
     dtf_variance = numpy.var(difference_spectrum, axis=1)
     spectral_difference = numpy.mean(dtf_variance)
     return spectral_difference
 
-def spectral_strength_across_bands(hrtf, bands=None, show=False, axis=None):
+def spectral_strength_across_bands(hrtf, bands=None, show=False, axis=None, ear='both'):
     if bands is None:  # calculate vsi across 5 octave frequency bands
         bands = [(4000, 8000), (4800, 9500), (5700, 11300), (6700, 13500), (8000, 16000)]
     sp_str = numpy.zeros(len(bands))
     for i, bandwidth in enumerate(bands):
-        sp_str[i] = spectral_strength(hrtf, bandwidth)
+        sp_str[i] = spectral_strength(hrtf, bandwidth, ear)
     if show:
         if not axis:
             fig, axis = plt.subplots()
         hrtf_plot.plot_spectral_strength_across_bands(sp_str, bands, axis=axis)
     return sp_str
 
-def mean_spectral_strength_across_bands(hrtf_dataframe, condition='Ears Free', bands=None, show=False, axis=None):
+def mean_spectral_strength_across_bands(hrtf_dataframe, condition='Ears Free', bands=None, show=False, axis=None, ear='both'):
     if bands is None:  # calculate vsi across 5 octave frequency bands
         bands = [(4000, 8000), (4800, 9500), (5700, 11300), (6700, 13500), (8000, 16000)]
     sp_str = []
     for hrtf in list(hrtf_dataframe[hrtf_dataframe['condition'] == condition]['hrtf']):
-        sp_str.append(spectral_strength_across_bands(hrtf, bands))
+        sp_str.append(spectral_strength_across_bands(hrtf, bands, ear))
     mean_sp_str_across_bands = numpy.mean(sp_str, axis=0)
     if show:
         if not axis:
@@ -270,7 +270,13 @@ def mean_spectral_strength_across_bands(hrtf_dataframe, condition='Ears Free', b
                       yerr=err, fmt="o", c='k', elinewidth=0.5, markersize=3)
     return mean_sp_str_across_bands
 
-
+# ---- helper ----- #
+def load_hrtf(subject_id, condition='Ears Free', processed=False):
+    hrtf_df = get_hrtf_df(processed=processed)
+    # load hrtf
+    # subject = random.choice(hrtf_df['subject'].unique())
+    hrtf = hrtf_df[hrtf_df['subject'] == subject_id][hrtf_df['condition'] == condition]['hrtf'].values[0]
+    return hrtf
 
 # ---- deprecated ---- #
 

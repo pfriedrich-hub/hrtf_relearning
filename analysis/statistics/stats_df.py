@@ -1,77 +1,40 @@
-import analysis.localization_analysis as loc_analysis
 import analysis.hrtf_analysis as hrtf_analysis
-import pandas
+import analysis.processing.hrtf_processing as hrtf_processing
+import analysis.hrtf_analysis as hrtf_analysis
 import numpy
-from pathlib import Path
 
-def main_dataframe(path=Path.cwd() / 'data' / 'experiment' / 'master', processed_hrtf=True):
-    localization_dataframe = loc_analysis.get_localization_dataframe(path)
-    hrtf_dataframe = hrtf_analysis.get_hrtf_df(path, processed=processed_hrtf)
-    # get hrtfs and behavior data
-    # main_df = pandas.DataFrame({'subject': [],
-    #                                'EF hrtf': [], 'EFD0': [], 'EFD5': [],
-    #                                'M1 hrtf': [], 'M1D0': [], 'M1D5': [],
-    #                                'M1 drop': [], 'M1 gain': [],
-    #                                'M2 hrtf': [], 'M2D0': [], 'M2D5': [],
-    #                                'M2 drop': [], 'M2 gain': []})
-    main_df = pandas.DataFrame({'subject': [],
-                                   'EF hrtf': [], 'EFD0': [],
-                                   'M1 hrtf': [],
-                                   'M1 drop': [], 'M1 gain': [],
-                                   'M2 hrtf': [],
-                                   'M2 drop': [], 'M2 gain': []})
-    for subject in hrtf_dataframe['subject'].unique():
-        # subject data
-        subj_hrtfs = hrtf_dataframe[hrtf_dataframe['subject'] == subject]
-        subj_loc = localization_dataframe[localization_dataframe['subject'] == subject]
-        # ears free
-        ef = subj_hrtfs[subj_hrtfs['condition'] == 'Ears Free']['hrtf'].item()
-        efd0 = subj_loc[subj_loc['condition'] == 'Ears Free'][subj_loc['adaptation day'] == 0][
-            subj_loc.columns[6:]].values[0]
-        efd5 = subj_loc[subj_loc['condition'] == 'Ears Free'][subj_loc['adaptation day'] == 1][
-            subj_loc.columns[6:]].values[0]
-        # m1
-        try:
-            m1 = subj_hrtfs[hrtf_dataframe['condition'] == 'Earmolds Week 1']['hrtf'].item()
-        except (ValueError, IndexError):
-            m1 = None
-        try:
-            m1d0 = subj_loc[subj_loc['condition'] == 'Earmolds Week 1'][subj_loc['adaptation day'] == 0][
-                subj_loc.columns[6:]].values[0]
-            m1d5 = subj_loc[subj_loc['condition'] == 'Earmolds Week 1'][subj_loc['adaptation day'] == 5][
-                subj_loc.columns[6:]].values[0]
-            d0drop = m1d0 - efd0
-            d5gain = m1d5 - efd0
-        except (ValueError, IndexError):
-            m1d0 = m1d5 = d0drop = d5gain = [numpy.nan] * 5
-        # m2
-        try:
-            m2 = subj_hrtfs[hrtf_dataframe['condition'] == 'Earmolds Week 2']['hrtf'].item()
-        except (ValueError, IndexError):
-            m2 = None
-        try:
-            m2d0 = subj_loc[subj_loc['condition'] == 'Earmolds Week 2'][subj_loc['adaptation day'] == 0][
-                subj_loc.columns[6:]].values[0]
-            m2d5 = subj_loc[subj_loc['condition'] == 'Earmolds Week 2'][subj_loc['adaptation day'] == 5][
-                subj_loc.columns[6:]].values[0]
-            d5drop = m2d0 - efd5
-            d10gain = m2d5 - efd5
-        except (ValueError, IndexError):
-            m2d0 = m2d5 = d5drop = d10gain = [numpy.nan] * 5
-        # new_row = [subject,
-        #            ef, efd0, efd5,
-        #            m1, m1d0, m1d5,
-        #            d0drop, d5gain,
-        #            m2, m2d0, m2d5,
-        #            d5drop, d10gain]
-        new_row = [subject,
-                   ef, efd0,
-                   m1,
-                   d0drop, d5gain,
-                   m2,
-                   d5drop, d10gain]
-        # main_df.to_csv('/Users/paulfriedrich/Desktop/hrtf_relearning/data/main_df.csv')
-        main_df.loc[len(main_df)] = new_row
+def add_pca_coords(main_df, path, q=10, bandwidth=(4000, 16000), return_pca=False):
+    hrtf_df = hrtf_processing.get_hrtf_df(path, processed=False)
+    hrtf_df, pca = hrtf_analysis.hrtf_pca_space(hrtf_df, q, bandwidth)
+    main_df['EF W'] = ''
+    main_df['M1 W'] = ''
+    main_df['M2 W'] = ''
+    if return_pca:
+        main_df['EF binned'] = ''
+        main_df['M1 binned'] = ''
+        main_df['M2 binned'] = ''
+    for subject in main_df['subject']:
+        subject_data = hrtf_df[hrtf_df['subject']==subject]
+        if main_df[main_df['subject']==subject]['EF hrtf'].values:
+            main_df['EF W'][main_df['subject'] == subject]\
+                = subject_data[hrtf_df['condition']=='Ears Free']['pc weights'].values
+            if return_pca:
+                ef_binned = (subject_data[hrtf_df['condition'] == 'Ears Free']['hrtf binned'].values)
+                main_df['EF binned'][main_df['subject'] == subject] = ef_binned
+        if main_df[main_df['subject'] == subject]['M1 hrtf'].values:
+            main_df['M1 W'][main_df['subject'] == subject]\
+                = subject_data[hrtf_df['condition']=='Earmolds Week 1']['pc weights'].values
+            if return_pca:
+                m1_binned = subject_data[hrtf_df['condition'] == 'Earmolds Week 1']['hrtf binned'].values
+                main_df['M1 binned'][main_df['subject'] == subject] = m1_binned
+        if main_df[main_df['subject'] == subject]['M2 hrtf'].values:
+            main_df['M2 W'][main_df['subject'] == subject]\
+                = subject_data[hrtf_df['condition']=='Earmolds Week 2']['pc weights'].values
+            if return_pca:
+                m2_binned = subject_data[hrtf_df['condition'] == 'Earmolds Week 2']['hrtf binned'].values
+                main_df['M2 binned'][main_df['subject'] == subject] = m2_binned
+    if return_pca:
+        return main_df, pca
     return main_df
 
 def add_hrtf_stats(main_df, bandwidth):
@@ -166,3 +129,60 @@ def add_l_r_comparison(main_df, bandwidth):
             main_df.loc[subject_id]['M1 M2 spectral difference r'] = hrtf_analysis.spectral_difference(hrtf_m1, hrtf_m2, bandwidth, ear='right')
     main_df = main_df.replace(r'^\s*$', None, regex=True)
     return main_df
+
+def ef_vsi_dis_perm(main_df, bandwidth):
+    subj_ids = numpy.arange(0, len(main_df['subject']))
+    comparison_idx = [(a, b) for idx, a in enumerate(subj_ids) for b in subj_ids[idx + 1:]]
+    vsi_dis = []
+    for comparison_id in comparison_idx:
+        hrtf_ef_1 = main_df.iloc[comparison_id[0]]['EF hrtf']
+        hrtf_ef_2 = main_df.iloc[comparison_id[1]]['EF hrtf']
+        vsi_dis_l = hrtf_analysis.vsi_dissimilarity(hrtf_ef_1, hrtf_ef_2, bandwidth, ear_idx=[0])
+        vsi_dis_r = hrtf_analysis.vsi_dissimilarity(hrtf_ef_1, hrtf_ef_2, bandwidth, ear_idx=[1])
+        vsi_dis.append([vsi_dis_l, vsi_dis_r])
+    return numpy.array(vsi_dis)
+
+def ef_sp_dif_perm(main_df, bandwidth):
+    subj_ids = numpy.arange(0, len(main_df['subject']))
+    comparison_idx = [(a, b) for idx, a in enumerate(subj_ids) for b in subj_ids[idx + 1:]]
+    sp_dif = []
+    for comparison_id in comparison_idx:
+        hrtf_ef_1 = main_df.iloc[comparison_id[0]]['EF hrtf']
+        hrtf_ef_2 = main_df.iloc[comparison_id[1]]['EF hrtf']
+        vsi_dis_l = hrtf_analysis.spectral_difference(hrtf_ef_1, hrtf_ef_2, bandwidth, ear='left')
+        vsi_dis_r = hrtf_analysis.spectral_difference(hrtf_ef_1, hrtf_ef_2, bandwidth, ear='right')
+        sp_dif.append([vsi_dis_l, vsi_dis_r])
+    return numpy.array(sp_dif)
+
+def spectral_change_p(main_df, threshold=5):
+    spectral_changes_efm1 = []
+    spectral_changes_efm2 = []
+    spectral_changes_m1m2 = []
+    m1_sub = 0
+    m2_sub = 0
+    m1m2_sub = 0
+    for subject_id, row in main_df.iterrows():
+        # vsi / spectral strength left and right free and molds
+        hrtf_ef = main_df.iloc[subject_id]['EF hrtf']
+        hrtf_m1 = main_df.iloc[subject_id]['M1 hrtf']
+        hrtf_m2 = main_df.iloc[subject_id]['M2 hrtf']
+        if hrtf_m1:
+            m1_sub += 1
+            ef_m1_dif = hrtf_analysis.hrtf_difference(hrtf_ef, hrtf_m1)
+            data = ef_m1_dif.tfs_from_sources(ef_m1_dif.cone_sources(0), ear='both', n_bins=None)
+            spectral_changes_efm1.append(numpy.abs(data) > threshold)
+        if hrtf_m2:
+            m2_sub += 1
+            ef_m2_dif = hrtf_analysis.hrtf_difference(hrtf_ef, hrtf_m2)
+            data = ef_m2_dif.tfs_from_sources(ef_m2_dif.cone_sources(0), ear='both', n_bins=None)
+            spectral_changes_efm2.append(numpy.abs(data) > threshold)
+        if (hrtf_m1 and hrtf_m2):
+            m1m2_sub += 1
+            m1_m2_dif = hrtf_analysis.hrtf_difference(hrtf_m1, hrtf_m2)
+            data = m1_m2_dif.tfs_from_sources(m1_m2_dif.cone_sources(0), ear='both', n_bins=None)
+            spectral_changes_m1m2.append(numpy.abs(data) > threshold)
+    efm1_p = numpy.mean(numpy.sum(numpy.array(spectral_changes_efm1), axis=0) / m1_sub, axis=2)
+    efm2_p = numpy.mean(numpy.sum(spectral_changes_efm2, axis=0) / m2_sub, axis=2)
+    m1m2_p = numpy.mean(numpy.sum(spectral_changes_m1m2, axis=0) / m1m2_sub, axis=2)
+    return numpy.array((efm1_p, efm2_p, m1m2_p))
+

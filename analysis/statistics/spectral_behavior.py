@@ -1,12 +1,10 @@
-import analysis.create_dataframe as create_df
-import misc.octave_spacing
+import analysis.statistics.stats_df as stats_df
 from analysis.plot import stats_plot_collection as stats_plot
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 from pathlib import Path
 from matplotlib import pyplot as plt
-main_df = create_df.main_dataframe(Path.cwd() / 'data' / 'experiment' / 'master')
-
+main_df = stats_df.main_dataframe(Path.cwd() / 'data' / 'experiment' / 'master', processed_hrtf=True)
 
 # bandwidth = (5700, 8000)
 # bandwidth = (5700, 11300) # 2015, clearer relation between spectral features in this band and behavior
@@ -16,7 +14,7 @@ bandwidth = (3700, 12900) # 1999, 3700 may include spectral variance due to low 
 """  --- test spectral difference (Middlebrooks 1999) and VSI (Trapeau, Schönwiesner 2015)
                          correlation with behavior across bands ---  """
 
-main_df = create_df.add_hrtf_stats(main_df, bandwidth=bandwidth)
+main_df = stats_df.add_hrtf_stats(main_df, bandwidth=bandwidth)
 
 # ears free
 fig, axes = plt.subplots(2, 2, figsize=(12, 8))

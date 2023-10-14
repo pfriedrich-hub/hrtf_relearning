@@ -353,7 +353,7 @@ sequence.save_pickle(data_dir / file_name, clobber=True)
 
 # ----------- correct azimuth for >300° ---------- #
 
-file_name = 'localization_pp_Earmolds Week 1_1_23.05'
+file_name = 'localization_pp_Ears Free_3_02.06'
 for path in Path.cwd().glob("**/*"+str(file_name)):
     file_path = path
 sequence = slab.Trialsequence(conditions=45, n_reps=1)

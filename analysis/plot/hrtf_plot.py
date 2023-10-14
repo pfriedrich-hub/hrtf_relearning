@@ -1,5 +1,5 @@
-from pathlib import Path
 import analysis.hrtf_analysis as hrtf_analysis
+import analysis.statistics.stats_df as stats_df
 import numpy
 import matplotlib.colors as colors
 from matplotlib import pyplot as plt
@@ -237,8 +237,40 @@ def plot_correlation_matrix(correlation_matrix, axis=None, c_bar=True, tiles=Fal
         cax.tick_params(axis='both', direction="in", bottom=True, top=True, left=True, right=True,
                         labelsize=13, width=1.5, length=2)
 
+def plot_spectral_change_p(hrtf_df, condition, bandwidth=(4000, 16000), axis=None, cbar=True):
+    change_p = stats_df.spectral_change_p(hrtf_df)[condition]
+    src = hrtf_df['EF hrtf'][0].cone_sources(0)
+    elevations = hrtf_df['EF hrtf'][0].sources.vertical_polar[src, 1]
+    frequencies = hrtf_df['EF hrtf'][0][0].frequencies
+    ticks = [str(x) for x in (numpy.arange(4000, 16000 + 1, 4000) / 1000).astype('int')]
+    if not axis:
+        fig, axis = plt.subplots()
+    else:
+        fig = axis.get_figure()
+    freq_idx = numpy.logical_and(frequencies >= bandwidth[0], frequencies <= bandwidth[1])
+    cbar_levels = numpy.linspace(0, 1, 100)
+    contour = axis.contourf(frequencies[freq_idx], elevations, change_p[:, freq_idx],
+                        cmap='RdYlBu', origin='upper', levels=cbar_levels)
+    axis.set_yticks(numpy.linspace(-30, 30, 5))
+    axis.set_xticks(numpy.linspace(4000, 16000, 4))
+    axis.set_xticklabels(ticks)
+    axis.tick_params(axis='both', direction="in", bottom=True, top=True, left=True, right=True,
+                           labelsize=13, width=1.5, length=2)
+    if cbar:
+        cbar_ticks = numpy.arange(0, 1.1, .2)
+        cax_pos = list(axis.get_position().bounds)  # (x0, y0, width, height)
+        cax_pos[0] = 0.92 # x0
+        cax_pos[2] = 0.015  # width
+        cax = fig.add_axes(cax_pos)
+        cbar = fig.colorbar(contour, cax, orientation="vertical", ticks=cbar_ticks)
+        cax.tick_params(axis='both', direction="in", bottom=True, top=True, left=True, right=True,
+                               labelsize=13, width=1.5, length=2)
+        cax.set_title('')
+    return axis
 
 
+
+"""
 # ---- deprecated ---- #
 def plot_vsi_across_bands_old(hrtf, bands, n_bins, axis=None):
     vsi_across_bands = hrtf_analysis.vsi_across_bands_old(hrtf, bands, n_bins)
@@ -294,9 +326,9 @@ def hrtf_correlation(hrtf_df, to_plot='average', n_bins=None, dfe=True, axis=Non
         fig.suptitle(title)
     return fig, axis
 # def subj_hrtf_vsi_dis(hrtf_df, to_plot='all', conditions=('Ears Free', 'Earmolds Week 1'), bands=None)
-#     """
+#     
 #     plot hrtfs and vsi dissimilarity across bands for all subjects
-#     """
+#     
 #     if not bands:
 #         bands = [(4000, 5700), (5700, 8000), (8000, 11300), (11300, 16000)]  # to modify
 #     if to_plot != 'all':
@@ -311,3 +343,4 @@ def hrtf_correlation(hrtf_df, to_plot='average', n_bins=None, dfe=True, axis=Non
 #         hrtf.plot_tf(hrtf.cone_sources(0), axis=ax[0], xlim=(bands[0][0], bands[-1][1]))
 #         plot_vsi_across_bands(hrtf, bands, axis=ax[1])
 
+"""

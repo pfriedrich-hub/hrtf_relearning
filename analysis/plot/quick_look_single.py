@@ -29,7 +29,7 @@ hrtf = hrtf_an.baseline_hrtf(hrtf)
 # hrtf = hrtf.diffuse_field_equalization()
 
 # plot processed
-hrtf.plot_tf(hrtf.cone_sources(0))
+hrtf.plot_tf([0], xlim=(4000,16000))
 plt.title(subject)
 
 # vsi and specral strength across bands

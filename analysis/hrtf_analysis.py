@@ -139,46 +139,25 @@ def mean_spectral_strength_across_bands(hrtf_dataframe, condition='Ears Free', b
 # ------ SPCA ------ #
 def hrtf_pca_space(hrtf_df, q=10, bandwidth=(4000, 16000)):
     global pca
-    tf_data, hrtf_df = erb_binned_tf(hrtf_df, bandwidth)  # get binned DTFs for each subject HRTF
-    tf_data = tf_data - tf_data.mean(axis=0)  # subtract mean transfer function
-    pca = PCA(n_components=q)  # automated
-    tf_pca = pca.fit_transform(tf_data)  # fit model
-
-    hrtf_df = add_hrtf_pc_weights(hrtf_df, tf_pca) # add component weights to dataframe
+    tf_data, _ = erb_binned_tf(hrtf_df, bandwidth)  # get binned DTFs for each subject HRTF
+    # tf_data = tf_data - tf_data.mean(axis=0)  # subtract mean transfer function (don't)
+    # spatial PCA - manual
+    components, weights = spca(tf_data, q)  # works also for non-centered DTFs
+    # pca = PCA(n_components=q)  # automated, only works with centered DTFs
+    # weights = pca.fit_transform(tf_data)  # fit model
+    hrtf_df = add_hrtf_pc_weights(hrtf_df, weights) # add component weights to dataframe
     """
-    sanity check:
-    cc = []
-    for i in range(10):
-        cc.append(tf_pca[431, i] * pca.components_[i])  # matches tf_orig
-    cc = numpy.sum(cc, axis=0)
-    plt.figure()
-    plt.plot(cc)    
-    plt.plot(tf_data[431])
-    # tf_data(588, 83) matches tf_pca(588, 10) * components
-    
-    
     c = []
     for i in range(10):
-        c.append(hrtf_df.iloc[0]['pc weights'][0][0][i] * pca.components_[i])
+        c.append(hrtf_df.iloc[0]['pc weights'][0][0][i] * components[i])
     c = numpy.sum(c, axis=0)
-
-    
-    plt.figure()
-    plt.plot(c)    
     fig, axes = plt.subplots(2,1)
     hrtf_df.iloc[0]['hrtf'][0].channel(0).tf(axis=axes[0])
     axes[0].set_xlim(4000, 16000)
     axes[0].set_ylim(-60, -10)
     axes[1].plot(c)
-    
-    
-    tf_orig = PCA.inverse_transform(pca, X=tf_pca)
-    tf_orig.reshape(tf_data.shape[0], tf_data.shape[1], tf_data.shape[2])  # matches tf_data
-    # step by step PCA
-    # cov_mtx = covariance_mtx(tf_data)
-    # components = spca(cov_mtx, q)
     """
-    return hrtf_df, pca
+    return hrtf_df, components
 
 def erb_binned_tf(hrtf_df, bandwidth):
     hrtf_df['hrtf binned'] = ''
@@ -191,26 +170,63 @@ def erb_binned_tf(hrtf_df, bandwidth):
     tf_data = numpy.concatenate((tf_data[:, 0], tf_data[:, 1]))
     tf_data_c = tf_data.reshape(tf_data.shape[0] * tf_data.shape[1], tf_data.shape[2])
     # tf_data_c = tf_data_c.reshape(tf_data.shape[0], tf_data.shape[1], tf_data.shape[2])  # works reverse
-    # tf_data_c = 20 * numpy.log10(tf_data_c)
+    tf_data_c = 20 * numpy.log10(tf_data_c)
     return tf_data_c, hrtf_df
 
-def add_hrtf_pc_weights(hrtf_df, tf_pca):
-    tf_pca = tf_pca.reshape(int(tf_pca.shape[0] / 7), 7, tf_pca.shape[1])
-    tf_pca_left = tf_pca[:int(len(tf_pca) / 2)]
-    tf_pca_right = tf_pca[int(len(tf_pca) / 2):]
+def add_hrtf_pc_weights(hrtf_df, weights):
+    weights = numpy.transpose(weights, (1, 0))
+    weights = weights.reshape(int(weights.shape[0] / 7), 7, weights.shape[1])
+    weights_left = weights[:int(len(weights) / 2)]
+    weights_right = weights[int(len(weights) / 2):]
+    """
+    # reality check
+    subj_id = numpy.random.randint(0, 14)
+    c_l = []
+    c_r = []
+    left_id = subj_id
+    right_id = left_id + 43 + subj_id
+    ele = numpy.random.randint(0, 7)
+    for i in range(10):
+        c_l.append(weights_left[subj_id, ele, i] * components[i])
+        c_r.append(weights_right[subj_id, ele, i] * components[i])
+    c_l = numpy.sum(c_l, axis=0)
+    c_r = numpy.sum(c_r, axis=0)
+    orig_dtf_l = 20 * numpy.log10(hrtf_df.iloc[subj_id]['hrtf binned'][0][ele])
+    orig_dtf_r = 20 * numpy.log10(hrtf_df.iloc[subj_id]['hrtf binned'][1][ele])
+    fig, ax = plt.subplots(2, 1)
+    ax[0].plot(c_l)
+    ax[0].plot(orig_dtf_l)
+    ax[1].plot(c_r)
+    ax[1].plot(orig_dtf_r)
+    """
     hrtf_df['pc weights'] = ''
     for df_id, row in hrtf_df.iterrows():
-        hrtf_df.iloc[df_id]['pc weights'] = (tf_pca_left[df_id], tf_pca_right[df_id])
+        hrtf_df.iloc[df_id]['pc weights'] = (weights_left[df_id], weights_right[df_id])
     return hrtf_df
 
-def spca(cov_mtx, q=10):
+def spca(tf_data, q):
+    cov_mtx = numpy.cov(tf_data, rowvar=False)
     eig_vals, eig_vecs = numpy.linalg.eig(cov_mtx)  # eigenvalues and eigenvectors of covariance matrix
     eig_val_idx = numpy.argpartition(eig_vals, -q)[-q:]  # indices of q largest eigenvalues
     components = eig_vecs[:, eig_val_idx].T # corresponding eigenvectors = q basis functions / basis vectors
-    return components
+    weights = numpy.tensordot(components, tf_data, axes=([1],[1]))  # should be q x observations (individual dtfs / 588)
+    """
+        j = numpy.random.randint(0, len(tf_data))
+        j = 10
+        cc = []
+        weights = numpy.dot(components, tf_data[j])  # works
+        for i in range(10):
+            cc.append(weights[i] * components[i])
+        cc = numpy.sum(cc, axis=0)
+        plt.figure()
+        plt.plot(cc)
+        plt.plot(tf_data[j])
+        # tf_data(588, 83) matches tf_pca(588, 10) * components, only if tf_data is mean(tf_data) subtracted
+    """
+    return components, weights
 
-def covariance_mtx(dtf_list):
-    cov_mtx = numpy.cov(dtf_list, rowvar=False)  # S(ij) = (1/n) * sum[D(ki),D(kj)] for i,j = 1,2,...,n frequency bins
+def covariance_mtx(tf_data):
+    cov_mtx = numpy.cov(tf_data, rowvar=False)  # S(ij) = (1/n) * sum[D(ki),D(kj)] for i,j = 1,2,...,n frequency bins
     # # step by step takes much longer
     # n_observ = dtf_list.shape[0]
     # n_freqs = dtf_list.shape[1]
@@ -221,15 +237,6 @@ def covariance_mtx(dtf_list):
     #         [(dtf_list[z, i] -  dtf_list[:, i].mean()) * (dtf_list[z, j] -  dtf_list[:, j].mean()) for z in range(n_observ)])
     return cov_mtx
 
-def find_weights(basis_functions, dtf_list):
-    # fit basis functions by finding weights that minimize MSE for each DTF
-    weights = []
-    for dtf in dtf_list:
-        while mse > 100:
-            w = numpy.ones((basis_functions.shape[1]))
-            mse = numpy.mean(numpy.square((numpy.sum(numpy.sum((basis_vecs * w) + mean_dtf, axis=1), axis=1) / q) - dtf))
-            # solve eigenvalue problem
-        weights.append(w)
 
 # ---- helper ----- #
 def load_hrtf(subject_id, condition='Ears Free', processed=False):

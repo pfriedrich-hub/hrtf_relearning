@@ -3,13 +3,13 @@ import analysis.processing.hrtf_processing as hrtf_processing
 import analysis.hrtf_analysis as hrtf_analysis
 import numpy
 
-def add_pca_coords(main_df, path, q=10, bandwidth=(4000, 16000), return_pca=False):
+def add_pca_coords(main_df, path, q=10, bandwidth=(4000, 16000), return_components=False):
     hrtf_df = hrtf_processing.get_hrtf_df(path, processed=False)
-    hrtf_df, pca = hrtf_analysis.hrtf_pca_space(hrtf_df, q, bandwidth)
+    hrtf_df, components = hrtf_analysis.hrtf_pca_space(hrtf_df, q, bandwidth)
     main_df['EF W'] = ''
     main_df['M1 W'] = ''
     main_df['M2 W'] = ''
-    if return_pca:
+    if return_components:
         main_df['EF binned'] = ''
         main_df['M1 binned'] = ''
         main_df['M2 binned'] = ''
@@ -18,23 +18,23 @@ def add_pca_coords(main_df, path, q=10, bandwidth=(4000, 16000), return_pca=Fals
         if main_df[main_df['subject']==subject]['EF hrtf'].values:
             main_df['EF W'][main_df['subject'] == subject]\
                 = subject_data[hrtf_df['condition']=='Ears Free']['pc weights'].values
-            if return_pca:
+            if return_components:
                 ef_binned = (subject_data[hrtf_df['condition'] == 'Ears Free']['hrtf binned'].values)
                 main_df['EF binned'][main_df['subject'] == subject] = ef_binned
         if main_df[main_df['subject'] == subject]['M1 hrtf'].values:
             main_df['M1 W'][main_df['subject'] == subject]\
                 = subject_data[hrtf_df['condition']=='Earmolds Week 1']['pc weights'].values
-            if return_pca:
+            if return_components:
                 m1_binned = subject_data[hrtf_df['condition'] == 'Earmolds Week 1']['hrtf binned'].values
                 main_df['M1 binned'][main_df['subject'] == subject] = m1_binned
         if main_df[main_df['subject'] == subject]['M2 hrtf'].values:
             main_df['M2 W'][main_df['subject'] == subject]\
                 = subject_data[hrtf_df['condition']=='Earmolds Week 2']['pc weights'].values
-            if return_pca:
+            if return_components:
                 m2_binned = subject_data[hrtf_df['condition'] == 'Earmolds Week 2']['hrtf binned'].values
                 main_df['M2 binned'][main_df['subject'] == subject] = m2_binned
-    if return_pca:
-        return main_df, pca
+    if return_components:
+        return main_df, components
     return main_df
 
 def add_hrtf_stats(main_df, bandwidth):

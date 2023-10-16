@@ -1,19 +1,20 @@
 import analysis.statistics.stats_df as stats_df
 import analysis.plot.hrtf_plot as hrtf_plot
-from analysis.plot import stats_plot_collection as stats_plot
+import analysis.plot.stats_plot_collection as stats_plot
+import analysis.get_df as get_df
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 from pathlib import Path
 from matplotlib import pyplot as plt
-main_df = stats_df.main_dataframe(Path.cwd() / 'data' / 'experiment' / 'master')
-
-# bandwidth = (5700, 8000)
-# bandwidth = (5700, 11300)  # 2015 - strong differences in vsi and spectral str across conditions (shift of spectral features outside bandwidth?)
-# bandwidth = (3000, 15000) #
-bandwidth = (3700, 12900) # 1999, good option for vsi efm1m2 spectral strength - phys. plausable
 
 """  --- compare spectral features left and right ear across condtions ---  """
 
+# bandwidth = (5700, 8000)
+# bandwidth = (5700, 11300)  # 2015 - strong differences in vsi and spectral str across conditions (shift of spectral features outside bandwidth?)
+# bandwidth = (4000, 15000) #
+bandwidth = (3700, 12900)  # 1999, good option for vsi efm1m2 spectral strength - phys. plausable
+
+main_df = get_df.main_dataframe(Path.cwd() / 'data' / 'experiment' / 'master')
 main_df = stats_df.add_l_r_comparison(main_df, bandwidth)
 
 # VSI / spectral strength across conditions
@@ -37,7 +38,6 @@ fig, axes = plt.subplots(1, 2, figsize=(12, 6))
 stats_plot.scatter_perm_vsi_dis(main_df, bandwidth, axis=axes[0])
 stats_plot.scatter_perm_sp_dif(main_df, bandwidth, axis=axes[1])
 fig.suptitle("VSI dissimilarity / spectral difference between participants' free ears")
-
 
 # probability maps of spectral change induced by molds
 fig, axes = plt.subplots(1, 3, figsize=(14, 3.5))

@@ -99,7 +99,7 @@ def test_sensor(sensor, n_datapoints=100, timer=False):
     except KeyboardInterrupt:
         pass
     # disconnect(sensor)
-    # print('test completed')
+    # print('ole_test completed')
     return log
 
 def calibrate_pose(sensor, limit=0.2, report=False):
@@ -130,7 +130,7 @@ def calibrate_pose(sensor, limit=0.2, report=False):
 
 
 # def config_handler():
-#     print('test')
+#     print('ole_test')
 # wrapper = FnVoid_VoidP_VoidP_FnVoidVoidPtrInt(config_handler)
 # config = libmetawear.mbl_mw_sensor_fusion_read_config(sensor.device.board, None, FnVoid_VoidP_Int())
 

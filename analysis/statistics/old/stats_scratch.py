@@ -1,5 +1,5 @@
 """
-test hrtf surface variance
+ole_test hrtf surface variance
 """
 
 import analysis.hrtf_analysis as hrtf_analysis

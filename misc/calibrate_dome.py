@@ -151,7 +151,7 @@ transfer_function = filter_bank.tf(show=False)[1][0:900, :]
 if (transfer_function < -30).sum() > 0:
     print("Some of the equalization filters contain deep notches - try adjusting the parameters.")
 
-# step 3: test filter bank
+# step 3: ole_test filter bank
 recordings = []
 for idx, (speaker, level) in enumerate(zip(speakers, equalization_levels)):
     attenuated = deepcopy(signal)
@@ -193,7 +193,7 @@ dome_recs = slab.Sound(dome_rec)
 diff = freefield.spectral_range(dome_recs)
 
 
-# ------------------  test calibration  ---------------------#
+# ------------------  ole_test calibration  ---------------------#
 
 import freefield
 import slab
@@ -228,7 +228,7 @@ speaker_list = []
 for az in azimuthal_angles:
     speaker_list.append((speaker_table[speaker_table[:, 1] == az][:, 0]).astype('int'))
 speaker_list[3] = numpy.delete(speaker_list[3], [numpy.where(speaker_list[3] == 19), numpy.where(speaker_list[3] == 27)])
-# pick a column to test calibration for
+# pick a column to ole_test calibration for
 # signal parameters
 
 fs = 48828
@@ -334,7 +334,7 @@ recordings = slab.Sound(recordings)
 diff2 = freefield.spectral_range(recordings)
 
 
-# build in test function
+# build in ole_test function
 raw, level, spectrum = freefield.test_equalization()
 diff_raw = freefield.spectral_range(raw)
 diff_level = freefield.spectral_range(level)

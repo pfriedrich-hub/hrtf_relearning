@@ -20,7 +20,7 @@ hrtf = hrtf_an.load_hrtf(subject, condition, processed=False)
 hrtf.plot_tf(hrtf.cone_sources(0))
 plt.title(subject)
 
-# test processing
+# ole_test processing
 # filter
 hrtf = hrtf_an.erb_filter_hrtf(hrtf, kind='cosine', low_cutoff=4000, high_cutoff=16000, bandwidth=0.0286)
 # baseline
@@ -62,11 +62,11 @@ hrtf_an.vsi_across_bands(hrtf, bands, show=True)
 hrtf_pl.plot_spectral_strength_across_bands(hrtf, bands=octave_bands)
 
 
-# test vsi
+# ole_test vsi
 
 
 
-# test processing
+# ole_test processing
 # filter
 hrtf = hrtf_an.scepstral_filter_hrtf(hrtf, high_cutoff=1000)
 hrtf = hrtf_an.erb_filter_hrtf(hrtf, kind='cosine', low_cutoff=4000, high_cutoff=16000, bandwidth=0.0286)

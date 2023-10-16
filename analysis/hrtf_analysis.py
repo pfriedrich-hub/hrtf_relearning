@@ -139,13 +139,13 @@ def mean_spectral_strength_across_bands(hrtf_dataframe, condition='Ears Free', b
 # ------ SPCA ------ #
 def hrtf_pca_space(hrtf_df, q=10, bandwidth=(4000, 16000)):
     global pca
-    tf_data, _ = erb_binned_tf(hrtf_df, bandwidth)  # get binned DTFs for each subject HRTF
-    # tf_data = tf_data - tf_data.mean(axis=0)  # subtract mean transfer function (don't)
+    tf_data, hrtf_df = erb_binned_tf(hrtf_df, bandwidth)  # get binned DTFs for each subject HRTF
+    tf_data = tf_data - tf_data.mean(axis=0)  # subtract mean transfer function (don't)
     # spatial PCA - manual
     components, weights = spca(tf_data, q)  # works also for non-centered DTFs
-    # pca = PCA(n_components=q)  # automated, only works with centered DTFs
+    # pca = PCA(n_components=q)  # automated, centered DTFs
     # weights = pca.fit_transform(tf_data)  # fit model
-    hrtf_df = add_hrtf_pc_weights(hrtf_df, weights) # add component weights to dataframe
+    hrtf_df = add_hrtf_pc_weights(hrtf_df, weights)  # add component weights to dataframe
     """
     c = []
     for i in range(10):
@@ -170,7 +170,7 @@ def erb_binned_tf(hrtf_df, bandwidth):
     tf_data = numpy.concatenate((tf_data[:, 0], tf_data[:, 1]))
     tf_data_c = tf_data.reshape(tf_data.shape[0] * tf_data.shape[1], tf_data.shape[2])
     # tf_data_c = tf_data_c.reshape(tf_data.shape[0], tf_data.shape[1], tf_data.shape[2])  # works reverse
-    tf_data_c = 20 * numpy.log10(tf_data_c)
+    tf_data_c = 20 * numpy.log10(tf_data_c)  # decreased correlation with behavior
     return tf_data_c, hrtf_df
 
 def add_hrtf_pc_weights(hrtf_df, weights):
@@ -208,7 +208,7 @@ def spca(tf_data, q):
     cov_mtx = numpy.cov(tf_data, rowvar=False)
     eig_vals, eig_vecs = numpy.linalg.eig(cov_mtx)  # eigenvalues and eigenvectors of covariance matrix
     eig_val_idx = numpy.argpartition(eig_vals, -q)[-q:]  # indices of q largest eigenvalues
-    components = eig_vecs[:, eig_val_idx].T # corresponding eigenvectors = q basis functions / basis vectors
+    components = eig_vecs[:, eig_val_idx].T  # corresponding eigenvectors = q basis functions / basis vectors
     weights = numpy.tensordot(components, tf_data, axes=([1],[1]))  # should be q x observations (individual dtfs / 588)
     """
         j = numpy.random.randint(0, len(tf_data))
@@ -239,6 +239,20 @@ def covariance_mtx(tf_data):
 
 
 # ---- helper ----- #
+
+def hrtf_difference(hrtf_1, hrtf_2):
+    hrtf_1 = copy.deepcopy(hrtf_1)
+    hrtf_2 = copy.deepcopy(hrtf_2)
+    hrtf_diff = copy.deepcopy(hrtf_1)
+    if not hrtf_1.n_elevations == hrtf_2.n_elevations:
+        print('HRTFs must have same number of sources!')
+    for src_idx in range(hrtf_1.n_elevations):
+        hrtf_1_db = 20 * numpy.log10(hrtf_1[src_idx].data)
+        hrtf_2_db = 20 * numpy.log10(hrtf_2[src_idx].data)
+        hrtf_diff_db = numpy.subtract(hrtf_2_db, hrtf_1_db)
+        hrtf_diff[src_idx].data = 10 ** (hrtf_diff_db/20)
+    return hrtf_diff
+
 def load_hrtf(subject_id, condition='Ears Free', processed=False):
     hrtf_df = hrtf_processing.get_hrtf_df(processed=processed)
     # load hrtf

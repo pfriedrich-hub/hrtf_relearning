@@ -38,7 +38,7 @@ def front_back_test(sofa_file, sound, ff):
     for az in azs:
         src = hrtf.cone_sources(az, coords='interaural', full_cone=True)
         cone_src.append(sorted(src))
-    # play from random sources on a single random cone and test listeners front back discrimination
+    # play from random sources on a single random cone and ole_test listeners front back discrimination
     hits = []
     for c in range(4):
         cone = random.choice(cone_src)

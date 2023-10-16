@@ -29,7 +29,7 @@ def read_source_txt(path):
 
 """
 # create hrtf by microphone origin transfer function measured from the dome central arc with an in-the-ear mic
-signal = slab.Sound.read(data_dir / 'sounds' / 'mean_central_arc_rec.wav')
+signal = slab.Sound.read(Path.cwd() / 'data' / 'sounds' / 'mean_central_arc_rec.wav')
 signal = slab.Sound(data=numpy.mean(signal.data, axis=1), samplerate=97656)
 hrtf = slab.HRTF.estimate_hrtf(recordings, signal, sources)
 
@@ -37,7 +37,7 @@ result: increased artifacts (compared to clean chirp as reference signal)
 """
 
 """
-# test create hrtf by quadratic sweep signal instead of linear to detrend dtfs
+# ole_test create hrtf by quadratic sweep signal instead of linear to detrend dtfs
 # result: doesnt do much to vsi / spectral strength
 subject = 'vk'
 condition = 'Ears Free'

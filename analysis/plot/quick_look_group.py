@@ -1,25 +1,27 @@
+import analysis.processing.hrtf_processing as hrtf_processing
 import analysis.hrtf_analysis as hrtf_analysis
-import analysis.plot.hrtf_plot as hrtf_plot
 import analysis.localization_analysis as loc_analysis
-import analysis.statistics.stats_df as create_df
+import analysis.plot.hrtf_plot as hrtf_plot
+import analysis.get_df as get_df
+import analysis.statistics.stats_df as stats_df
 import misc.octave_spacing
 from pathlib import Path
 import numpy
 from matplotlib import pyplot as plt
-data_path = path=Path.cwd() / 'data' / 'experiment' / 'master'
+path = Path.cwd() / 'data' / 'experiment' / 'master'
 conditions = ['Ears Free', 'Earmolds Week 1', 'Earmolds Week 2']
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
-hrtf_df = hrtf_analysis.get_hrtf_df(path=data_path, processed=False)
 
 """ HRTF features """
-# raw HRTF
-hrtf_df = hrtf_analysis.get_hrtf_df(path=data_path, processed=False)
-hrtf_df = hrtf_analysis.process_hrtfs(hrtf_df, filter=None, baseline=True, dfe=False, write=False)  # baseline for hrtf image
-hrtf_plot.hrtf_overwiev(hrtf_df, to_plot='average', dfe=True, n_bins=None)
+# process HRTFs
+hrtf_df = hrtf_processing.get_hrtf_df(path, processed=False)
+hrtf_df = hrtf_processing.process_hrtfs(hrtf_df, filter='erb', baseline=False, dfe=True, write=False)  # baseline for hrtf image
+hrtf_plot.hrtf_overwiev(hrtf_df, to_plot='average', dfe=False, n_bins=None)
+
 # mean vsi / spectral str across bands
-condition = conditions[1]
+condition = conditions[0]
 bands = misc.octave_spacing.overlapping_bands()[0]
 hrtf_analysis.mean_vsi_across_bands(hrtf_df, condition=condition, bands=bands, show=True, ear_idx=[0])
 hrtf_analysis.mean_spectral_strength_across_bands(hrtf_df, condition, bands=bands, show=True, ear='left')
@@ -33,11 +35,11 @@ hrtf_analysis.mean_spectral_strength_across_bands(hrtf_df, condition, bands=band
 """ ---- plot hrtf image, spectral strength and vsi across bands ---- """
 # set conditions and bands
 condition = conditions[0]
-# bands = misc.octave_spacing.overlapping_bands()[0]
-bands = misc.octave_spacing.non_overlapping_bands()[0]
+bands = misc.octave_spacing.overlapping_bands()[0]
+# bands = misc.octave_spacing.non_overlapping_bands()[0]
 # bands = [(6000, 12000)]
-ear = 'right'
-ear_idx = [1]
+ear = 'left'
+ear_idx = [0]
 for subject in hrtf_df['subject'].unique():
     hrtf = hrtf_df[hrtf_df['subject'] == subject][hrtf_df['condition'] == condition]['hrtf'].values[0]
     fig, axis = plt.subplots(3, 1, figsize=(7,9))
@@ -59,8 +61,8 @@ for subject in hrtf_df['subject'].unique():
 # bandwidth = (3700, 12900) # (1999)
 bandwidth = (4000, 16000)
 loc_df = loc_analysis.get_localization_dataframe(path)
-main_df = create_df.main_dataframe(Path.cwd() / 'data' / 'experiment' / 'master')
-main_df = create_df.add_hrtf_stats(main_df, bandwidth=bandwidth)
+main_df = get_df.main_dataframe(Path.cwd() / 'data' / 'experiment' / 'master')
+main_df = stats_df.add_hrtf_stats(main_df, bandwidth=bandwidth)
 for subject in main_df['subject'].unique():
     hrtf_ef = main_df[main_df['subject'] == subject]['EF hrtf'].values[0]
     hrtf_m1 = main_df[main_df['subject'] == subject]['M1 hrtf'].values[0]
@@ -90,8 +92,8 @@ for subject in main_df['subject'].unique():
 # bandwidth = (3700, 12900) # (1999)
 bandwidth = (4000, 16000)
 loc_df = loc_analysis.get_localization_dataframe(path)
-main_df = create_df.main_dataframe(Path.cwd() / 'data' / 'experiment' / 'master')
-main_df = create_df.add_hrtf_stats(main_df, bandwidth=bandwidth)
+main_df = get_df.main_dataframe(Path.cwd() / 'data' / 'experiment' / 'master')
+main_df = stats_df.add_hrtf_stats(main_df, bandwidth=bandwidth)
 for subject in main_df['subject'].unique():
     try:
         hrtf_ef = main_df[main_df['subject'] == subject]['EF hrtf'].values[0]
@@ -119,9 +121,9 @@ for subject in main_df['subject'].unique():
 
 
 """ ---- plot subject hrtf images lef and right across conditions --- """
-hrtf_df = hrtf_analysis.get_hrtf_df(path=data_path, processed=True)
+hrtf_df = hrtf_processing.get_hrtf_df(path=path, processed=False)
+hrtf_df = hrtf_processing.process_hrtfs(hrtf_df, filter='erb', bandwidth=(4000, 16000), baseline=False, dfe=True, write=False)
 bands = misc.octave_spacing.non_overlapping_bands()[0]
-fig, axes = plt.subplots(3, 2, figsize=(12, 8))
 for subject in hrtf_df['subject'].unique():
     fig, axes = plt.subplots(3, 2, figsize=(12, 8), sharex=True)
     axes[0, 0].set_title('left')
@@ -145,8 +147,8 @@ for subject in hrtf_df['subject'].unique():
 
 
 """# process all"""
-# hrtf_df = hrtf_analysis.get_hrtf_df(path=data_path, processed=False)
-# hrtf_df = hrtf_analysis.process_hrtfs(hrtf_df, filter='erb', baseline=True, write=False)
+hrtf_df = hrtf_processing.get_hrtf_df(path=path, processed=False)
+hrtf_df = hrtf_processing.process_hrtfs(hrtf_df, filter='erb', baseline=False, dfe=True, write=True)
 # hrtf_df = hrtf_analysis.process_hrtfs(hrtf_df, filter='scepstral', baseline=True, write=True)
 
 # plot all subjects hrtf + vsi

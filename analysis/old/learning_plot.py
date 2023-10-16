@@ -29,7 +29,7 @@ def learning_plot(localization_dictionary, to_plot='average'):
         localization_dict[condition]['SE'] = numpy.zeros((7, 5))  # SE for each measure days x eg/ele_rmse/sd/ele_az_rmse/az_sd
         for s, subject in enumerate(subjects):
             for idx, sequence_name in enumerate(localization_dict[condition][subject].keys()):
-                if not 'uso' in sequence_name:  # exclude uso test for now
+                if not 'uso' in sequence_name:  # exclude uso ole_test for now
                     sequence = localization_dict[condition][subject][sequence_name]
                     localization_dict[condition]['final_data'][s, idx] = localization.localization_accuracy(sequence, show=False)
                     if s+1 == len(subjects):

@@ -23,42 +23,54 @@ def main_dataframe(path=Path.cwd() / 'data' / 'experiment' / 'master', processed
 def add_localization_data(main_df, path):
     localization_df = loc_analysis.get_localization_dataframe(path)
     main_df['EFD0'], main_df['M1D0'], main_df['M1D5'], main_df['M1 drop'], main_df['M1 gain'], \
-    main_df['EFD5'], main_df['M2D0'], main_df['M2D5'], main_df['M2 drop'], main_df['M2 gain'] \
-        = '', '', '', '', '', '', '', '', '', ''
-    for subject in main_df['subject']:
-        subj_loc = localization_df[localization_df['subject'] == subject]
-        efd0 = subj_loc[subj_loc['condition'] == 'Ears Free'][subj_loc['adaptation day'] == 0][
-            subj_loc.columns[6:]].values
-        efd5 = subj_loc[subj_loc['condition'] == 'Ears Free'][subj_loc['adaptation day'] == 1][
-            subj_loc.columns[6:]].values
-        main_df['EFD0'][main_df['subject'] == subject] = efd0
-        main_df['EFD5'][main_df['subject'] == subject] = efd5
+    main_df['EFD5'], main_df['M2D0'], main_df['M2D5'], main_df['M2 drop'], main_df['M2 gain'], \
+    main_df['M1M2 drop'], main_df['M1M2 gain'], main_df['EF avg'] = '', '', '', '', '', '', '', '', '', '', '', '', ''
+    for sub_id, row in main_df.iterrows():
+        subj_loc = localization_df[localization_df['subject'] == row['subject']]
+        efd0 = subj_loc[subj_loc['condition'] == 'Ears Free'][subj_loc['day'] == 0][
+            subj_loc.columns[6:]].values[0]
+        efd5 = subj_loc[subj_loc['condition'] == 'Ears Free'][subj_loc['day'] == 5][
+            subj_loc.columns[6:]].values[0]
+        efd10 = subj_loc[subj_loc['condition'] == 'Ears Free'][subj_loc['day'] == 10][
+            subj_loc.columns[6:]].values[0]
+        efavg = numpy.nanmean((efd0, efd5, efd10), axis=0)
+        row['EFD0'] = efd0
+        row['EFD5'] = efd5
+        # row['EFD10'] = efd10
+        row['EF avg'] = efavg
         try:
             m1d0 = subj_loc[subj_loc['condition'] == 'Earmolds Week 1'][subj_loc['adaptation day'] == 0][
-                subj_loc.columns[6:]].values
+                subj_loc.columns[6:]].values[0]
             m1d5 = subj_loc[subj_loc['condition'] == 'Earmolds Week 1'][subj_loc['adaptation day'] == 5][
-                subj_loc.columns[6:]].values
+                subj_loc.columns[6:]].values[0]
             d0drop = m1d0 - efd0
             d5gain = m1d5 - efd0
         except (ValueError, IndexError):
             m1d0 = m1d5 = d0drop = d5gain = [numpy.nan] * 5
-        main_df['M1D0'][main_df['subject'] == subject] = m1d0
-        main_df['M1D5'][main_df['subject'] == subject] = m1d5
-        main_df['M1 drop'][main_df['subject'] == subject] = d0drop
-        main_df['M1 gain'][main_df['subject'] == subject] = d5gain
+        row['M1D0'] = m1d0
+        row['M1D5'] = m1d5
+        row['M1 drop'] = d0drop
+        row['M1 gain'] = d5gain
         try:
             m2d0 = subj_loc[subj_loc['condition'] == 'Earmolds Week 2'][subj_loc['adaptation day'] == 0][
-                subj_loc.columns[6:]].values
+                subj_loc.columns[6:]].values[0]
             m2d5 = subj_loc[subj_loc['condition'] == 'Earmolds Week 2'][subj_loc['adaptation day'] == 5][
-                subj_loc.columns[6:]].values
+                subj_loc.columns[6:]].values[0]
             d5drop = m2d0 - efd5
             d10gain = m2d5 - efd5
         except (ValueError, IndexError):
             m2d0 = m2d5 = d5drop = d10gain = [numpy.nan] * 5
-        main_df['M2D0'][main_df['subject'] == subject] = m2d0
-        main_df['M2D5'][main_df['subject'] == subject] = m2d5
-        main_df['M2 drop'][main_df['subject'] == subject] = d5drop
-        main_df['M2 gain'][main_df['subject'] == subject] = d10gain
+        try:
+            d5m1m2drop = m2d0 - m1d5
+            d5m1m2gain = m2d5 - m1d5
+        except (ValueError, IndexError):
+            d5m1m2drop = d5m1m2gain = [numpy.nan] * 5
+        row['M2D0'] = m2d0
+        row['M2D5'] = m2d5
+        row['M2 drop'] = d5drop
+        row['M2 gain'] = d10gain
+        row['M1M2 drop'] = d5m1m2drop
+        row['M1M2 gain'] = d5m1m2gain
     return main_df
 
 def add_hrtf_data(main_df, processed, path):

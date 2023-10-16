@@ -69,7 +69,7 @@ def localization_test(subject_id, data_dir, condition, repetitions):
         trial_sequence.add_response(play_trial(sequence[index], progress))
         trial_sequence.save_pickle(data_dir / file_name, clobber=True)
     # freefield.halt()
-    print('localization test completed!')
+    print('localization ole_test completed!')
     return trial_sequence
 
 def play_trial(speaker_id, progress):

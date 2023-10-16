@@ -42,7 +42,7 @@ def get_localization_data(localization_dictionary, subjects, w2_exclude=['cs', '
         localization_dictionary[condition]['SE'] = numpy.zeros((7, 5))  # SE for each measure days x eg/ele_rmse/sd/ele_az_rmse/az_sd
         for s, subject in enumerate(subjects):
             for idx, sequence_name in enumerate(localization_dictionary[condition][subject].keys()):
-                if not 'uso' in sequence_name:  # exclude uso test for now
+                if not 'uso' in sequence_name:  # exclude uso ole_test for now
                     sequence = localization_dictionary[condition][subject][sequence_name]
                     localization_dictionary[condition]['data'][s, idx] = localization_accuracy(sequence, show=False)
                     if s+1 == len(subjects):
@@ -88,7 +88,7 @@ def get_localization_dataframe(path=Path.cwd() / 'data' / 'experiment' / 'master
 def localization_accuracy(sequence, show=True, plot_dim=2, binned=True, axis=None, show_single_responses=True,
                           elevation='all', azimuth='all'):
     if sequence.this_n == -1 or sequence.n_remaining == 132 or not sequence.data:
-        return None, None, None, None, None
+        return numpy.nan, numpy.nan, numpy.nan, numpy.nan, numpy.nan
     # retrieve data
     loc_data = numpy.asarray(sequence.data)
     loc_data = loc_data.reshape(loc_data.shape[0], 2, 2)

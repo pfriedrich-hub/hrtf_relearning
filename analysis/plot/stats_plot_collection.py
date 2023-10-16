@@ -9,6 +9,7 @@ def ef_vsi(main_df, measure, axis):
     if not axis:
         fig, axis = plt.subplots(1, 1)
     # ears free performance / vsi
+    x = numpy.array([item[measures.index(measure)] for item in main_df['EF avg']])
     x = numpy.array([item[measures.index(measure)] for item in main_df['EFD0']])
     y = main_df['EF VSI'].to_numpy(dtype='float16')
     p_val = scipy.stats.spearmanr(x, y, nan_policy='omit')[1]
@@ -57,7 +58,7 @@ def d0dr_vsi_dis(main_df, measure, axis):
     y = main_df['EF M1 VSI dissimilarity'].to_numpy(dtype='float16')
     p_val = scipy.stats.spearmanr(x, y, nan_policy='omit')[1]
     axis.scatter(x, y, marker='.', color='0')
-    axis.set_ylim(0.1, 1.2)
+    axis.set_ylim(0.1, 1)
     axis.annotate('p=%.4f' %(p_val), (.6, .6), xycoords='axes fraction')
     for i, s in enumerate(list(main_df['subject'].unique())):
         axis.annotate(s, (x[i], y[i]))
@@ -88,6 +89,27 @@ def d0dr_sp_dif(main_df, measure, axis):
     ys = slope * x_vals + intercept
     axis.plot(x_vals, ys, lw=0.4, c='0')
 
+def d0dr_pcw_dist(main_df, measure, axis):
+    if not axis:
+        fig, axis = plt.subplots(1, 1)
+        axis.set_ylabel('PCW distance')
+        axis.set_xlabel(measure)
+        axis.set_title('Ears free vs M1 d0')
+    # d1 drop / vsi dissimilarity
+    x = numpy.array([item[measures.index(measure)] for item in main_df['M1 drop']])
+    y = main_df['EF M1 PCW dist'].to_numpy(dtype='float16')
+    p_val = scipy.stats.spearmanr(x, y, nan_policy='omit')[1]
+    axis.scatter(x, y, marker='.', color='0')
+    axis.set_ylim(20, 100)
+    axis.annotate('p=%.4f' %(p_val), (.6, .6), xycoords='axes fraction')
+    for i, s in enumerate(list(main_df['subject'].unique())):
+        axis.annotate(s, (x[i], y[i]))
+    mask = ~numpy.isnan(x) & ~numpy.isnan(y)
+    slope, intercept = scipy.stats.linregress(x[mask], y[mask], alternative='two-sided')[:2]
+    x_vals = numpy.array(axis.get_xlim())
+    ys = slope * x_vals + intercept
+    axis.plot(x_vals, ys, lw=0.4, c='0')
+
 def d5ga_vsi_dis(main_df, measure, axis):
     if not axis:
         fig, axis = plt.subplots(1, 1)
@@ -99,7 +121,7 @@ def d5ga_vsi_dis(main_df, measure, axis):
     y = main_df['EF M1 VSI dissimilarity'].to_numpy(dtype='float16')
     p_val = scipy.stats.spearmanr(x, y, nan_policy='omit')[1]
     axis.scatter(x, y, marker='.', color='0')
-    axis.set_ylim(0.1, 1.2)
+    axis.set_ylim(0.1, 1)
     axis.annotate('p=%.4f' %(p_val), (.6, .6), xycoords='axes fraction')
     for i, s in enumerate(list(main_df['subject'].unique())):
         axis.annotate(s, (x[i], y[i]))
@@ -130,6 +152,27 @@ def d5ga_sp_dif(main_df, measure, axis):
     ys = slope * x_vals + intercept
     axis.plot(x_vals, ys, lw=0.4, c='0')
 
+def d5ga_pcw_dist(main_df, measure, axis):
+    if not axis:
+        fig, axis = plt.subplots(1, 1)
+        axis.set_ylabel('PCW distance')
+        axis.set_xlabel(measure)
+        axis.set_title('Ears free vs M1 d0')
+    # d1 drop / vsi dissimilarity
+    x = numpy.array([item[measures.index(measure)] for item in main_df['M1 gain']])
+    y = main_df['EF M1 PCW dist'].to_numpy(dtype='float16')
+    p_val = scipy.stats.spearmanr(x, y, nan_policy='omit')[1]
+    axis.scatter(x, y, marker='.', color='0')
+    axis.set_ylim(20, 100)
+    axis.annotate('p=%.4f' %(p_val), (.6, .6), xycoords='axes fraction')
+    for i, s in enumerate(list(main_df['subject'].unique())):
+        axis.annotate(s, (x[i], y[i]))
+    mask = ~numpy.isnan(x) & ~numpy.isnan(y)
+    slope, intercept = scipy.stats.linregress(x[mask], y[mask], alternative='two-sided')[:2]
+    x_vals = numpy.array(axis.get_xlim())
+    ys = slope * x_vals + intercept
+    axis.plot(x_vals, ys, lw=0.4, c='0')
+
 """ M2 effect """
 
 def d5dr_vsi_dis(main_df, measure, axis):
@@ -142,7 +185,7 @@ def d5dr_vsi_dis(main_df, measure, axis):
     y = main_df['EF M2 VSI dissimilarity'].to_numpy(dtype='float16')
     p_val = scipy.stats.spearmanr(x, y, nan_policy='omit')[1]
     axis.scatter(x, y, marker='.', color='0')
-    axis.set_ylim(0.1, 1.2)
+    axis.set_ylim(0.1, 1)
     axis.annotate('p=%.4f' %(p_val), (.6, .6), xycoords='axes fraction')
     for i, s in enumerate(list(main_df['subject'].unique())):
         axis.annotate(s, (x[i], y[i]))
@@ -172,6 +215,27 @@ def d5dr_sp_dif(main_df, measure, axis):
     ys = slope * x_vals + intercept
     axis.plot(x_vals, ys, lw=0.4, c='0')
 
+def d5dr_pcw_dist(main_df, measure, axis):
+    if not axis:
+        fig, axis = plt.subplots(1, 1)
+        axis.set_ylabel('PCW distance')
+        axis.set_xlabel(measure)
+        axis.set_title('Ears free vs M2 d0')
+    # d1 drop / vsi dissimilarity
+    x = numpy.array([item[measures.index(measure)] for item in main_df['M2 drop']])
+    y = main_df['EF M2 PCW dist'].to_numpy(dtype='float16')
+    p_val = scipy.stats.spearmanr(x, y, nan_policy='omit')[1]
+    axis.scatter(x, y, marker='.', color='0')
+    axis.set_ylim(20, 100)
+    axis.annotate('p=%.4f' %(p_val), (.6, .6), xycoords='axes fraction')
+    for i, s in enumerate(list(main_df['subject'].unique())):
+        axis.annotate(s, (x[i], y[i]))
+    mask = ~numpy.isnan(x) & ~numpy.isnan(y)
+    slope, intercept = scipy.stats.linregress(x[mask], y[mask], alternative='two-sided')[:2]
+    x_vals = numpy.array(axis.get_xlim())
+    ys = slope * x_vals + intercept
+    axis.plot(x_vals, ys, lw=0.4, c='0')
+
 def d10ga_vsi_dis(main_df, measure, axis):
     if not axis:
         fig, axis = plt.subplots(1, 1)
@@ -182,7 +246,7 @@ def d10ga_vsi_dis(main_df, measure, axis):
     y = main_df['EF M2 VSI dissimilarity'].to_numpy(dtype='float16')
     p_val = scipy.stats.spearmanr(x, y, nan_policy='omit')[1]
     axis.scatter(x, y, marker='.', color='0')
-    axis.set_ylim(0.1, 1.2)
+    axis.set_ylim(0.1, 1)
     axis.annotate('p=%.4f' %(p_val), (.6, .6), xycoords='axes fraction')
     for i, s in enumerate(list(main_df['subject'].unique())):
         axis.annotate(s, (x[i], y[i]))
@@ -212,20 +276,40 @@ def d10ga_sp_dif(main_df, measure, axis):
     ys = slope * x_vals + intercept
     axis.plot(x_vals, ys, lw=0.4, c='0')
 
+def d10ga_pcw_dist(main_df, measure, axis):
+    if not axis:
+        fig, axis = plt.subplots(1, 1)
+        axis.set_ylabel('PCW distance')
+        axis.set_xlabel(measure)
+        axis.set_title('Ears free vs M2 d5')
+    # d1 drop / vsi dissimilarity
+    x = numpy.array([item[measures.index(measure)] for item in main_df['M2 gain']])
+    y = main_df['EF M2 PCW dist'].to_numpy(dtype='float16')
+    p_val = scipy.stats.spearmanr(x, y, nan_policy='omit')[1]
+    axis.scatter(x, y, marker='.', color='0')
+    axis.set_ylim(20, 100)
+    axis.annotate('p=%.4f' %(p_val), (.6, .6), xycoords='axes fraction')
+    for i, s in enumerate(list(main_df['subject'].unique())):
+        axis.annotate(s, (x[i], y[i]))
+    mask = ~numpy.isnan(x) & ~numpy.isnan(y)
+    slope, intercept = scipy.stats.linregress(x[mask], y[mask], alternative='two-sided')[:2]
+    x_vals = numpy.array(axis.get_xlim())
+    ys = slope * x_vals + intercept
+    axis.plot(x_vals, ys, lw=0.4, c='0')
 
 # m1 vs m2
 def d5dr_vsi_dis_m1m2(main_df, measure, axis):
     if not axis:
         fig, axis = plt.subplots(1, 1)
         axis.set_ylabel('VSI dissimilarity')
-        axis.set_title('Ears free vs M1/M2 difference d0')
+        axis.set_title('M1/M2 drop vs M1/M2 difference')
         axis.set_xlabel(measure)
     # d1 drop / vsi dissimilarity
-    x = numpy.array([item[measures.index(measure)] for item in main_df['M2 drop']])
+    x = numpy.array([item[measures.index(measure)] for item in main_df['M1M2 drop']])
     y = main_df['M1 M2 VSI dissimilarity'].to_numpy(dtype='float16')
     p_val = scipy.stats.spearmanr(x, y, nan_policy='omit')[1]
     axis.scatter(x, y, marker='.', color='0')
-    axis.set_ylim(0.1, 1.2)
+    axis.set_ylim(0.1, 1)
     axis.annotate('p=%.4f' % (p_val), (.6, .6), xycoords='axes fraction')
     for i, s in enumerate(list(main_df['subject'].unique())):
         axis.annotate(s, (x[i], y[i]))
@@ -239,10 +323,10 @@ def d5dr_sp_dif_m1m2(main_df, measure, axis):
     if not axis:
         fig, axis = plt.subplots(1, 1)
         axis.set_ylabel('spectral difference')
-        axis.set_title('Ears free vs M1/M2 difference d0')
+        axis.set_title('M1/M2 drop vs M1/M2 difference')
         axis.set_xlabel(measure)
     # d1 drop / spectral difference
-    x = numpy.array([item[measures.index(measure)] for item in main_df['M2 drop']])
+    x = numpy.array([item[measures.index(measure)] for item in main_df['M1M2 drop']])
     y = main_df['M1 M2 spectral difference'].to_numpy(dtype='float16', na_value=numpy.NaN)
     p_val = scipy.stats.spearmanr(x, y, nan_policy='omit')[1]
     axis.scatter(x, y, marker='.', color='0')
@@ -256,18 +340,39 @@ def d5dr_sp_dif_m1m2(main_df, measure, axis):
     ys = slope * x_vals + intercept
     axis.plot(x_vals, ys, lw=0.4, c='0')
 
+def d5dr_pcw_dist_m1m2(main_df, measure, axis):
+    if not axis:
+        fig, axis = plt.subplots(1, 1)
+        axis.set_ylabel('PCW distance')
+        axis.set_xlabel(measure)
+        axis.set_title('M1/M2 drop vs M1/M2 difference')
+    # d1 drop / vsi dissimilarity
+    x = numpy.array([item[measures.index(measure)] for item in main_df['M1M2 drop']])
+    y = main_df['M1 M2 PCW dist'].to_numpy(dtype='float16')
+    p_val = scipy.stats.spearmanr(x, y, nan_policy='omit')[1]
+    axis.scatter(x, y, marker='.', color='0')
+    axis.set_ylim(20, 100)
+    axis.annotate('p=%.4f' %(p_val), (.6, .6), xycoords='axes fraction')
+    for i, s in enumerate(list(main_df['subject'].unique())):
+        axis.annotate(s, (x[i], y[i]))
+    mask = ~numpy.isnan(x) & ~numpy.isnan(y)
+    slope, intercept = scipy.stats.linregress(x[mask], y[mask], alternative='two-sided')[:2]
+    x_vals = numpy.array(axis.get_xlim())
+    ys = slope * x_vals + intercept
+    axis.plot(x_vals, ys, lw=0.4, c='0')
+
 def d10ga_vsi_dis_m1m2(main_df, measure, axis):
     if not axis:
         fig, axis = plt.subplots(1, 1)
         axis.set_ylabel('VSI dissimilarity')
-        axis.set_title('Ears free vs M1/M2 difference d5')
+        axis.set_title('M1/M2 gain vs M1/M2 difference')
         axis.set_xlabel(measure)
     # d1 drop / vsi dissimilarity
-    x = numpy.array([item[measures.index(measure)] for item in main_df['M2 gain']])
+    x = numpy.array([item[measures.index(measure)] for item in main_df['M1M2 gain']])
     y = main_df['M1 M2 VSI dissimilarity'].to_numpy(dtype='float16')
     p_val = scipy.stats.spearmanr(x, y, nan_policy='omit')[1]
     axis.scatter(x, y, marker='.', color='0')
-    axis.set_ylim(0.1, 1.2)
+    axis.set_ylim(0.1, 1)
     axis.annotate('p=%.4f' % (p_val), (.6, .6), xycoords='axes fraction')
     for i, s in enumerate(list(main_df['subject'].unique())):
         axis.annotate(s, (x[i], y[i]))
@@ -281,15 +386,36 @@ def d10ga_sp_dif_m1m2(main_df, measure, axis):
     if not axis:
         fig, axis = plt.subplots(1, 1)
         axis.set_ylabel('spectral difference')
-        axis.set_title('Ears free vs M1/M2 difference d5')
+        axis.set_title('M1/M2 gain vs M1/M2 difference')
         axis.set_xlabel(measure)
     # d1 drop / spectral difference
-    x = numpy.array([item[measures.index(measure)] for item in main_df['M2 gain']])
+    x = numpy.array([item[measures.index(measure)] for item in main_df['M1M2 gain']])
     y = main_df['M1 M2 spectral difference'].to_numpy(dtype='float16', na_value=numpy.NaN)
     p_val = scipy.stats.spearmanr(x, y, nan_policy='omit')[1]
     axis.scatter(x, y, marker='.', color='0')
     axis.set_ylim(0, 120)
     axis.annotate('p=%.4f' % (p_val), (.6, .6), xycoords='axes fraction')
+    for i, s in enumerate(list(main_df['subject'].unique())):
+        axis.annotate(s, (x[i], y[i]))
+    mask = ~numpy.isnan(x) & ~numpy.isnan(y)
+    slope, intercept = scipy.stats.linregress(x[mask], y[mask], alternative='two-sided')[:2]
+    x_vals = numpy.array(axis.get_xlim())
+    ys = slope * x_vals + intercept
+    axis.plot(x_vals, ys, lw=0.4, c='0')
+
+def d10ga_pcw_dist_m1m2(main_df, measure, axis):
+    if not axis:
+        fig, axis = plt.subplots(1, 1)
+        axis.set_ylabel('PCW distance')
+        axis.set_xlabel(measure)
+        axis.set_title('M1/M2 gain vs M1/M2 difference')
+    # d1 drop / vsi dissimilarity
+    x = numpy.array([item[measures.index(measure)] for item in main_df['M1M2 gain']])
+    y = main_df['M1 M2 PCW dist'].to_numpy(dtype='float16')
+    p_val = scipy.stats.spearmanr(x, y, nan_policy='omit')[1]
+    axis.scatter(x, y, marker='.', color='0')
+    axis.set_ylim(20, 100)
+    axis.annotate('p=%.4f' %(p_val), (.6, .6), xycoords='axes fraction')
     for i, s in enumerate(list(main_df['subject'].unique())):
         axis.annotate(s, (x[i], y[i]))
     mask = ~numpy.isnan(x) & ~numpy.isnan(y)
@@ -426,7 +552,7 @@ def boxplot_vsi_dis(main_df, axis):
     axis.boxplot(x[0][~numpy.isnan(x[0])], positions=[0], labels=['EF / M1'])
     axis.boxplot(x[1][~numpy.isnan(x[1])], positions=[1], labels=['EF / M2'])
     axis.boxplot(x[2][~numpy.isnan(x[2])], positions=[2], labels=['M1 / M2'])
-    # wilcoxon signed rank test - dependent non-parametric
+    # wilcoxon signed rank ole_test - dependent non-parametric
     scipy.stats.wilcoxon(x[0], x[1], nan_policy='omit')
     # mann-whitney U - independent non-parametric
     scipy.stats.mannwhitneyu(x[0], x[1], nan_policy='omit')
@@ -448,7 +574,7 @@ def boxplot_sp_dif(main_df, axis):
     axis.boxplot(x[0][~numpy.isnan(x[0])], positions=[0], labels=['EF / M1'])
     axis.boxplot(x[1][~numpy.isnan(x[1])], positions=[1], labels=['EF / M2'])
     axis.boxplot(x[2][~numpy.isnan(x[2])], positions=[2], labels=['M1 / M2'])
-    # wilcoxon signed rank test - dependent non-parametric
+    # wilcoxon signed rank ole_test - dependent non-parametric
     scipy.stats.wilcoxon(x[0], x[1], nan_policy='omit')
     # mann-whitney U - independent non-parametric
     scipy.stats.mannwhitneyu(x[0], x[1], nan_policy='omit')
@@ -543,7 +669,7 @@ def boxplot_vsi(main_df, axis):
     axis.boxplot(x[0][~numpy.isnan(x[0])], positions=[0], labels=['EF'])
     axis.boxplot(x[1][~numpy.isnan(x[1])], positions=[1], labels=['M1'])
     axis.boxplot(x[2][~numpy.isnan(x[2])], positions=[2], labels=['M2'])
-    # wilcoxon signed rank test - dependent non-parametric
+    # wilcoxon signed rank ole_test - dependent non-parametric
     scipy.stats.wilcoxon(x[0], x[1], nan_policy='omit')
     # mann-whitney U - independent non-parametric
     scipy.stats.mannwhitneyu(x[0], x[1], nan_policy='omit')
@@ -570,7 +696,7 @@ def boxplot_sp_str(main_df, axis):
     axis.boxplot(x[0][~numpy.isnan(x[0])], positions=[0], labels=['EF'])
     axis.boxplot(x[1][~numpy.isnan(x[1])], positions=[1], labels=['M1'])
     axis.boxplot(x[2][~numpy.isnan(x[2])], positions=[2], labels=['M2'])
-    # wilcoxon signed rank test - dependent non-parametric
+    # wilcoxon signed rank ole_test - dependent non-parametric
     scipy.stats.wilcoxon(x[0], x[1], nan_policy='omit')
     # mann-whitney U - independent non-parametric
     scipy.stats.mannwhitneyu(x[0], x[1], nan_policy='omit')

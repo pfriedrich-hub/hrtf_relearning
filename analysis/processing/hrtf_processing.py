@@ -39,13 +39,15 @@ def process_hrtfs(hrtf_dataframe, filter='erb', bandwidth=(4000, 16000), baselin
             if not processed_path.exists():
                 processed_path.mkdir()
         hrtf = copy.deepcopy(row['hrtf'])
+        if dfe:
+            # hrtf = hrtf.diffuse_field_equalization()  # not on the subject level
+            dfa = slab.Filter.load(Path.cwd() / 'data' / 'experiment' / 'average_TF.npy')
+            hrtf = hrtf.diffuse_field_equalization(dfa)  # divide by mean across all measured transfer functions (n=42)
         if filter == 'scepstral':
             hrtf = scepstral_filter_hrtf(hrtf, high_cutoff=1500)
         elif filter == 'erb':
             hrtf = erb_filter_hrtf(hrtf, kind='cosine', low_cutoff=bandwidth[0], high_cutoff=bandwidth[1], bandwidth=0.0286,
                                    pass_bands=True, return_bins=False)
-        if dfe:
-            hrtf = hrtf.diffuse_field_equalization()  # not on the subject level
         if baseline:
             hrtf = baseline_hrtf(hrtf, bandwidth=bandwidth)  # baseline should be done after smoothing / dfe
         if write:
@@ -130,15 +132,24 @@ def average_hrtf(hrtf_list):
         hrtf[src_idx].data = tf_data
     return hrtf
 
-def hrtf_difference(hrtf_1, hrtf_2):
-    hrtf_1 = copy.deepcopy(hrtf_1)
-    hrtf_2 = copy.deepcopy(hrtf_2)
-    hrtf_diff = copy.deepcopy(hrtf_1)
-    if not hrtf_1.n_elevations == hrtf_2.n_elevations:
-        print('HRTFs must have same number of sources!')
-    for src_idx in range(hrtf_1.n_elevations):
-        hrtf_1_db = 20 * numpy.log10(hrtf_1[src_idx].data)
-        hrtf_2_db = 20 * numpy.log10(hrtf_2[src_idx].data)
-        hrtf_diff_db = numpy.subtract(hrtf_2_db, hrtf_1_db)
-        hrtf_diff[src_idx].data = 10 ** (hrtf_diff_db/20)
-    return hrtf_diff
+def write_average_tf(hrtf_df, path=Path.cwd() / 'data' / 'experiment'):
+    hrtf_list = []
+    for df_id, row in hrtf_df.iterrows():
+        hrtf_list.append(copy.deepcopy(hrtf_df.iloc[df_id]['hrtf']))
+    tf_data = numpy.zeros((hrtf_list[0].n_sources, len(hrtf_list), hrtf_list[0][0].n_samples, 2))
+    for hrtf_idx, hrtf in enumerate(hrtf_list):
+        for src_idx, tf in enumerate(hrtf.data):
+            tf_data[src_idx, hrtf_idx] = tf.data
+    tf_data = numpy.mean(tf_data, axis=1)
+    # dtf = copy.deepcopy(hrtf)
+    for src_idx, tf_data in enumerate(tf_data):
+        hrtf[src_idx].data = tf_data
+    mean_tf = []
+    for tf in hrtf.data:
+        for chan_idx in range(tf.n_channels):
+            mean_tf.append(tf.data[:, chan_idx])
+    mean_tf = numpy.mean(mean_tf, axis=0)
+    mean_tf = slab.Filter(mean_tf, fir=False, samplerate=hrtf.samplerate)
+    mean_tf.save(path / 'average_TF.npy')
+
+

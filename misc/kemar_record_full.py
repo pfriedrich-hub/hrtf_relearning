@@ -12,23 +12,23 @@ fs = 97656  # 97656.25, 195312.5
 slab.set_default_samplerate(fs)
 
 # file settings
-subject_id = 'mh'
-condition = 'Earmolds Week 2'  # can be 'ears_free' or 'earmolds' - important for file naming!
-kemar = False  # requires no button press if true
+subject_id = 'kemar'
+condition = 'kemar_360'  # can be 'ears_free' or 'earmolds' - important for file naming!
+kemar = True  # requires no button press if true
 safe = 'both'  # decide if additionally save in-ear-recordings
-data_dir = Path.cwd() / 'final_data' / 'experiment' / 'bracket_4' / subject_id / condition
+data_dir = Path.cwd() / 'data' / 'experiment'
 
 # HRTF recording settings
-speakers = numpy.arange(20, 27).tolist()  # record HRTF from central cone, with top and bottom speaker removed
-# speakers = 'all'  # full dome
+# speakers = numpy.arange(20, 27).tolist()  # record HRTF from central cone, with top and bottom speaker removed
+speakers = 'all'  # full dome
 # speakers = numpy.arange(28, 35).tolist()  # 17.5 cone  # still to be calibrated
 # speakers = numpy.arange(12, 19).tolist()  # -17.5 cone
-n_directions = 1  # only from the front (1) or front-back recordings (2)
+n_directions = 4  # only from the front (1) or front-back recordings (2)
 level = 80  # minimize to reduce reverb ripple effect, apparently kemar recordings are not affected?
 duration = 0.1  # short chirps <0.05s introduce variability in low freq (4-5 kHz). improvement at 0.1s for kemar vsi
 low_freq = 1000
 high_freq = 17000  # window of interest is 4-16
-repetitions = 30  # 10 work for kemar, 30-50 for in ear mics
+repetitions = 10  # 10 work for kemar, 30-50 for in ear mics
 
 ramp_duration = duration/20
 slab.Signal.set_default_samplerate(fs)  # default samplerate for generating sounds, filters etc.

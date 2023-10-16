@@ -17,7 +17,7 @@ w2_exclude=['cs', 'lm', 'lk']  # these subjects did not complete Week 2 of the e
 localization_dataframe = loc_analysis.get_localization_dataframe(path, w2_exclude)
 
 
-""" test correlation mold induced drop day 0 with EF / M1 VSI dissimilarity """
+""" ole_test correlation mold induced drop day 0 with EF / M1 VSI dissimilarity """
 # I --- VSI dissimilarity (Trapeau & Schönwiesner 2015) --- #
 measure = 'RMSE ele'
 bandwidth = (4000, 16000)
@@ -44,7 +44,7 @@ for subject_data in hrtf_stats.iterrows():
 print(scipy.stats.spearmanr(vsi_dissimilarity, loc_data, axis=0, nan_policy='propagate', alternative='two-sided'))
 plt.scatter(vsi_dissimilarity, loc_data)
 
-# II --- test spectral difference across bands (Middlebrooks 1999)  --- #
+# II --- ole_test spectral difference across bands (Middlebrooks 1999)  --- #
 measure = 'EG'
 # bandwidth = (3700, 12900)
 bands = misc.octave_spacing.overlapping_bands()[0]
@@ -87,7 +87,7 @@ for bandwidth in bands:
 
 
 
-# test d1 drop and spectral difference
+# ole_test d1 drop and spectral difference
 import analysis.hrtf_analysis as hrtf_an
 import analysis.plot.hrtf_plot as hrtf_pl
 import analysis.localization_analysis as loc_an
@@ -127,7 +127,7 @@ for bandwidth in octave_bands:
         hrtf_pl.hrtf_image(hrtf_diff, axis=axes[0, 1], z_min=-20, z_max=20)
         if not show:
             plt.close()
-        # test params
+        # ole_test params
         d1_drop = numpy.abs(numpy.array(loc_ef[0:2]) - numpy.array(loc_m1[0:2]))
         spectral_str = hrtf_an.spectral_strength(hrtf_diff, bandwidth)
         # spectral_str = hrtf_an.spectral_difference(hrtf_ef, hrtf_m1, bandwidth)
@@ -142,7 +142,7 @@ for bandwidth in octave_bands:
     plt.suptitle(f'correlation {corr_stats[0]}  pval {corr_stats[1]}')
 
 
-# test ef performance and spectral strength
+# ole_test ef performance and spectral strength
 hrtf_df = hrtf_an.get_hrtf_df(path=data_path, processed=False)
 hrtf_df = hrtf_df[hrtf_df['subject'] != 'svm']  # remove svm since there is no hrtf_m1
 loc_df = loc_an.get_localization_dataframe()
@@ -161,7 +161,7 @@ for bandwidth in octave_bands:
             hrtf_ef = hrtf_df[hrtf_df['subject'] == subject][hrtf_df['condition'] == 'Ears Free']['hrtf'].values[0]
         except:
             continue
-        # test params
+        # ole_test params
         spectral_str = hrtf_an.spectral_strength(hrtf_ef, bandwidth=bandwidth)
         loc_ef = loc_an.localization_accuracy(efd0, show=False, binned=True)
         coords.append([spectral_str, loc_ef[1]])

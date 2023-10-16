@@ -17,7 +17,7 @@ hrtf_dataframe = hrtf_analysis.get_hrtf_df(path, processed=True)
 hrtf_stats = loc_analysis.localization_hrtf_df(localization_dataframe, hrtf_dataframe)
 
 # ----- VSI ------'
-# test parameters
+# ole_test parameters
 # plot vsi across overlapping octave bands
 # bands = [(3500, 7000), (4200, 8300), (4900, 9900), (5900, 11800), (7000, 14000)]
 # bands = [(3500, 7000), (4200, 8500), (5100, 10200), (6200, 12400), (7500, 15000)]
@@ -35,7 +35,7 @@ hrtf_analysis.mean_vsi_across_bands(hrtf_dataframe, condition, bands, n_bins, eq
 hrtf_plot.plot_average(hrtf_dataframe, condition=condition, equalize=True, kind='image')  #todo fix copy error
 
 subject = 'jl'
-# test Ears Free performance / Ears Free VSI correlation
+# ole_test Ears Free performance / Ears Free VSI correlation
 measure = 'RMSE ele'
 loc_data = []
 vsi_data = []
@@ -47,7 +47,7 @@ for subject in hrtf_stats.iterrows():
 print(scipy.stats.spearmanr(vsi_data, loc_data, axis=0, nan_policy='propagate', alternative='two-sided'))
 plt.scatter(vsi_data, loc_data)
 
-# test Ears Free performance / Ears Free VSI correlation across non-overlapping 1/2-octave bands
+# ole_test Ears Free performance / Ears Free VSI correlation across non-overlapping 1/2-octave bands
 bands = [(4000, 5700), (5700, 8000), (8000, 11300), (11300, 16000)]  # to modify
 n_bins=None # no big difference on the average
 equalize=False  # results in implausible vsi?

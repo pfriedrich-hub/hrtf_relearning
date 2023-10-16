@@ -1,4 +1,5 @@
 import analysis.hrtf_analysis as hrtf_analysis
+import analysis.processing.hrtf_processing as hrtf_processing
 import analysis.statistics.stats_df as stats_df
 import numpy
 import matplotlib.colors as colors
@@ -13,9 +14,9 @@ def hrtf_overwiev(hrtf_df, to_plot='average', n_bins=None, dfe=True, axis=None):
     hrtf_dict = dict()
     # get hrtfs
     if to_plot == 'average':
-        hrtf_dict['hrtf_ef'] = hrtf_analysis.average_hrtf(list(hrtf_df[hrtf_df['condition'] == 'Ears Free']['hrtf']))
-        hrtf_dict['hrtf_m1'] = hrtf_analysis.average_hrtf(list(hrtf_df[hrtf_df['condition'] == 'Earmolds Week 1']['hrtf']))
-        hrtf_dict['hrtf_m2'] = hrtf_analysis.average_hrtf(list(hrtf_df[hrtf_df['condition'] == 'Earmolds Week 2']['hrtf']))
+        hrtf_dict['hrtf_ef'] = hrtf_processing.average_hrtf(list(hrtf_df[hrtf_df['condition'] == 'Ears Free']['hrtf']))
+        hrtf_dict['hrtf_m1'] = hrtf_processing.average_hrtf(list(hrtf_df[hrtf_df['condition'] == 'Earmolds Week 1']['hrtf']))
+        hrtf_dict['hrtf_m2'] = hrtf_processing.average_hrtf(list(hrtf_df[hrtf_df['condition'] == 'Earmolds Week 2']['hrtf']))
     else:
         hrtf_dict['hrtf_ef'] = list(hrtf_df[hrtf_df['condition'] == 'Ears Free'][hrtf_df['subject'] == to_plot]['hrtf'])[0]
         hrtf_dict['hrtf_m1'] = list(hrtf_df[hrtf_df['condition'] == 'Earmolds Week 1'][hrtf_df['subject'] == to_plot]['hrtf'])[0]

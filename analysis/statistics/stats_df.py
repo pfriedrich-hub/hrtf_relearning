@@ -1,41 +1,8 @@
-import analysis.hrtf_analysis as hrtf_analysis
 import analysis.processing.hrtf_processing as hrtf_processing
 import analysis.hrtf_analysis as hrtf_analysis
 import numpy
-
-def add_pca_coords(main_df, path, q=10, bandwidth=(4000, 16000), return_components=False):
-    hrtf_df = hrtf_processing.get_hrtf_df(path, processed=False)
-    hrtf_df, components = hrtf_analysis.hrtf_pca_space(hrtf_df, q, bandwidth)
-    main_df['EF W'] = ''
-    main_df['M1 W'] = ''
-    main_df['M2 W'] = ''
-    if return_components:
-        main_df['EF binned'] = ''
-        main_df['M1 binned'] = ''
-        main_df['M2 binned'] = ''
-    for subject in main_df['subject']:
-        subject_data = hrtf_df[hrtf_df['subject']==subject]
-        if main_df[main_df['subject']==subject]['EF hrtf'].values:
-            main_df['EF W'][main_df['subject'] == subject]\
-                = subject_data[hrtf_df['condition']=='Ears Free']['pc weights'].values
-            if return_components:
-                ef_binned = (subject_data[hrtf_df['condition'] == 'Ears Free']['hrtf binned'].values)
-                main_df['EF binned'][main_df['subject'] == subject] = ef_binned
-        if main_df[main_df['subject'] == subject]['M1 hrtf'].values:
-            main_df['M1 W'][main_df['subject'] == subject]\
-                = subject_data[hrtf_df['condition']=='Earmolds Week 1']['pc weights'].values
-            if return_components:
-                m1_binned = subject_data[hrtf_df['condition'] == 'Earmolds Week 1']['hrtf binned'].values
-                main_df['M1 binned'][main_df['subject'] == subject] = m1_binned
-        if main_df[main_df['subject'] == subject]['M2 hrtf'].values:
-            main_df['M2 W'][main_df['subject'] == subject]\
-                = subject_data[hrtf_df['condition']=='Earmolds Week 2']['pc weights'].values
-            if return_components:
-                m2_binned = subject_data[hrtf_df['condition'] == 'Earmolds Week 2']['hrtf binned'].values
-                main_df['M2 binned'][main_df['subject'] == subject] = m2_binned
-    if return_components:
-        return main_df, components
-    return main_df
+from pathlib import Path
+path = Path.cwd() / 'data' / 'experiment' / 'master'
 
 def add_hrtf_stats(main_df, bandwidth):
     main_df['EF VSI'] = ''
@@ -63,6 +30,72 @@ def add_hrtf_stats(main_df, bandwidth):
             main_df.loc[subject_id]['M1 M2 VSI dissimilarity'] = hrtf_analysis.vsi_dissimilarity(hrtf_m1, hrtf_m2, bandwidth)
             main_df.loc[subject_id]['M1 M2 spectral difference'] = hrtf_analysis.spectral_difference(hrtf_m1, hrtf_m2, bandwidth)
     main_df = main_df.replace(r'^\s*$', None, regex=True)
+    return main_df
+
+def add_pca_coords(main_df, path, q=10, bandwidth=(4000, 16000), return_components=False):
+    hrtf_df = hrtf_processing.get_hrtf_df(path, processed=False)
+    hrtf_df, components = hrtf_analysis.hrtf_pca_space(hrtf_df, q, bandwidth)
+    main_df['EF PCW'] = ''
+    main_df['M1 PCW'] = ''
+    main_df['M2 PCW'] = ''
+    if return_components:
+        main_df['EF binned'] = ''
+        main_df['M1 binned'] = ''
+        main_df['M2 binned'] = ''
+    for subject in main_df['subject']:
+        subject_data = hrtf_df[hrtf_df['subject']==subject]
+        if main_df[main_df['subject']==subject]['EF hrtf'].values:
+            main_df['EF PCW'][main_df['subject'] == subject]\
+                = subject_data[hrtf_df['condition']=='Ears Free']['pc weights'].values
+            if return_components:
+                ef_binned = (subject_data[hrtf_df['condition'] == 'Ears Free']['hrtf binned'].values)
+                main_df['EF binned'][main_df['subject'] == subject] = ef_binned
+        if main_df[main_df['subject'] == subject]['M1 hrtf'].values:
+            main_df['M1 PCW'][main_df['subject'] == subject]\
+                = subject_data[hrtf_df['condition']=='Earmolds Week 1']['pc weights'].values
+            if return_components:
+                m1_binned = subject_data[hrtf_df['condition'] == 'Earmolds Week 1']['hrtf binned'].values
+                main_df['M1 binned'][main_df['subject'] == subject] = m1_binned
+        if main_df[main_df['subject'] == subject]['M2 hrtf'].values:
+            main_df['M2 PCW'][main_df['subject'] == subject]\
+                = subject_data[hrtf_df['condition']=='Earmolds Week 2']['pc weights'].values
+            if return_components:
+                m2_binned = subject_data[hrtf_df['condition'] == 'Earmolds Week 2']['hrtf binned'].values
+                main_df['M2 binned'][main_df['subject'] == subject] = m2_binned
+    if return_components:
+        return main_df, components
+    return main_df
+
+def add_pca_stats(main_df, path, q=10, bandwidth=(4000, 16000)):
+    main_df = add_pca_coords(main_df, path, q, bandwidth)
+    main_df['EF M1 PCW dist'] = ''
+    main_df['EF M2 PCW dist'] = ''
+    main_df['M1 M2 PCW dist'] = ''
+    for subject_id, row in main_df.iterrows():
+        ef_weights, m1_weights, m2_weights = row['EF PCW'], row['M1 PCW'], row['M2 PCW']
+        # try ear shape difference quantification by pca space distance
+        # idea I: difference quantified by mean euclidean distance between DTF pairs of same direction
+        try:
+            efm1_l_pcdist = numpy.mean([numpy.linalg.norm(ef_weights[0][dtf] - m1_weights[0][dtf]) for dtf in range(7)])
+            efm1_r_pcdist = numpy.mean([numpy.linalg.norm(ef_weights[1][dtf] - m1_weights[1][dtf]) for dtf in range(7)])
+            efm1_pcdist = (efm1_l_pcdist + efm1_r_pcdist) / 2
+        except IndexError:
+            efm1_pcdist = None
+        try:
+            efm2_l_pcdist = numpy.mean([numpy.linalg.norm(ef_weights[0][dtf] - m2_weights[0][dtf]) for dtf in range(7)])
+            efm2_r_pcdist = numpy.mean([numpy.linalg.norm(ef_weights[1][dtf] - m2_weights[1][dtf]) for dtf in range(7)])
+            efm2_pcdist = (efm2_l_pcdist + efm2_r_pcdist) / 2
+        except IndexError:
+            efm2_pcdist = None
+        try:
+            m1m2_l_pcdist = numpy.mean([numpy.linalg.norm(m1_weights[0][dtf] - m2_weights[0][dtf]) for dtf in range(7)])
+            m1m2_r_pcdist = numpy.mean([numpy.linalg.norm(m1_weights[1][dtf] - m2_weights[1][dtf]) for dtf in range(7)])
+            m1m2_pcdist = (m1m2_l_pcdist + m1m2_r_pcdist) / 2
+        except IndexError:
+            m1m2_pcdist = None
+        row['EF M1 PCW dist'] = efm1_pcdist
+        row['EF M2 PCW dist'] = efm2_pcdist
+        row['M1 M2 PCW dist'] = m1m2_pcdist
     return main_df
 
 def add_l_r_comparison(main_df, bandwidth):

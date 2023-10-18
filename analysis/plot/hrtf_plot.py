@@ -92,10 +92,11 @@ def hrtf_overwiev(hrtf_df, to_plot='average', n_bins=None, dfe=True, axis=None):
     return fig, axis
 
 
-def hrtf_image(hrtf, bandwidth=(4000, 16000), n_bins=None, axis=None, z_min=None, z_max=None, cbar=True):
+def hrtf_image(hrtf, bandwidth=(4000, 16000), n_bins=None, axis=None, chan=0, z_min=None, z_max=None, cbar=True):
     src = hrtf.cone_sources(0)
     elevations = hrtf.sources.vertical_polar[src, 1]
-    ticks = [str(x) for x in (numpy.arange(4000, 16000 + 1, 4000) / 1000).astype('int')]
+    x_tick_pos = [(x) for x in (numpy.arange(bandwidth[0], bandwidth[1] + 1, 4000)).astype('int')]
+    x_tick_labels = [str((x / 1000).astype('int')) for x in x_tick_pos]
     if n_bins is None:
         n_bins = hrtf.data[0].n_frequencies
     img = numpy.zeros((n_bins, len(src)))
@@ -105,7 +106,7 @@ def hrtf_image(hrtf, bandwidth=(4000, 16000), n_bins=None, axis=None, z_min=None
         fig = axis.get_figure()
     for idx, source in enumerate(src):
         filt = hrtf[source]
-        freqs, h = filt.tf(channels=0, n_bins=n_bins, show=False)
+        freqs, h = filt.tf(channels=chan, n_bins=n_bins, show=False)
         img[:, idx] = h.flatten()
     img[img < -40] = -40  # clip at -40 dB transfer
     freq_idx = numpy.logical_and(freqs >= bandwidth[0], freqs <= bandwidth[1])
@@ -117,8 +118,8 @@ def hrtf_image(hrtf, bandwidth=(4000, 16000), n_bins=None, axis=None, z_min=None
     contour = axis.contourf(freqs[freq_idx], elevations, img.T[:, freq_idx],
                         cmap='RdYlBu', origin='upper', levels=cbar_levels)
     axis.set_yticks(numpy.linspace(-30, 30, 5))
-    axis.set_xticks(numpy.linspace(4500, 15500, 4))
-    axis.set_xticklabels(ticks)
+    axis.set_xticks(x_tick_pos)
+    axis.set_xticklabels(x_tick_labels)
     axis.tick_params(axis='both', direction="in", bottom=True, top=True, left=True, right=True,
                            labelsize=13, width=1.5, length=2)
     if cbar:
@@ -131,6 +132,9 @@ def hrtf_image(hrtf, bandwidth=(4000, 16000), n_bins=None, axis=None, z_min=None
         cax.tick_params(axis='both', direction="in", bottom=True, top=True, left=True, right=True,
                                labelsize=13, width=1.5, length=2)
         cax.set_title('dB')
+    if not axis:
+        axis.set_xlabel('Frequency (kHz)')
+        axis.set_ylabel('Elevation (degrees)')
     return axis
 
 

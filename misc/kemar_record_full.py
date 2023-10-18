@@ -8,7 +8,7 @@ import analysis.hrtf_analysis as hrtf_analysis
 from matplotlib import pyplot as plt
 date = datetime.datetime.now()
 from copy import deepcopy
-fs = 97656  # 97656.25, 195312.5
+fs = 48828
 slab.set_default_samplerate(fs)
 
 #todo try dfe with kemars field average, recorded at 46 x 4 positions through the in the ear microphones
@@ -37,7 +37,7 @@ slab.Signal.set_default_samplerate(fs)  # default samplerate for generating soun
 signal = slab.Sound.chirp(duration=duration, level=level, from_frequency=low_freq, to_frequency=high_freq, kind='linear')
 signal = slab.Sound.ramp(signal, when='both', duration=ramp_duration)
 # todo replace signal with mean central arc recording?
-# signal = slab.Sound.read(Path.cwd() / 'final_data' / 'sounds' / 'mean_central_arc_rec.wav')
+# signal = slab.Sound.read(Path.cwd() / 'data' / 'sounds' / 'mean_central_arc_rec.wav')
 
 # plot options
 dfe = False  # whether to use diffuse field equalization to plot hrtf and compute vsi
@@ -50,14 +50,14 @@ def record_hrtf(subject_id, data_dir, condition, signal, repetitions, n_directio
     # filt = slab.Filter.band('bp', (low_freq, high_freq))
     filt = slab.Filter.band('hp', (200))  # makes no diff
     if not freefield.PROCESSORS.mode:
-        proc_list = [['RP2', 'RP2', Path.cwd() / 'final_data' / 'rcx' / 'bi_rec_buf.rcx'],
-                     ['RX81', 'RX8', Path.cwd() / 'final_data' / 'rcx' / 'play_buf.rcx'],
-                     ['RX82', 'RX8', Path.cwd() / 'final_data' / 'rcx' / 'play_buf.rcx']]
-        freefield.initialize('dome', device=proc_list)
-        freefield.PROCESSORS.mode = 'play_birec'
-        freefield.load_equalization(file=Path.cwd() / 'final_data' / 'calibration' / 'calibration_central_cone_100k')
+        # proc_list = [['RP2', 'RP2', Path.cwd() / 'data' / 'rcx' / 'bi_rec_buf.rcx'],
+        #              ['RX81', 'RX8', Path.cwd() / 'data' / 'rcx' / 'play_buf.rcx'],
+        #              ['RX82', 'RX8', Path.cwd() / 'data' / 'rcx' / 'play_buf.rcx']]
+        freefield.initialize('dome', default='play_birec')
+        # freefield.PROCESSORS.mode = 'play_birec'
+        freefield.load_equalization(file=Path.cwd() / 'data' / 'calibration' / 'calibration_dome_23.05')
     freefield.set_logger('warning')
-    table_file = freefield.DIR / 'final_data' / 'tables' / Path(f'speakertable_dome.txt')  # get speaker coordinates
+    table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')  # get speaker coordinates
     if isinstance(speakers, str) and speakers == 'all':
         source_locations = numpy.loadtxt(table_file, skiprows=1, usecols=(0, 3, 4),
                                          delimiter=",", dtype=float)
@@ -77,13 +77,18 @@ def record_hrtf(subject_id, data_dir, condition, signal, repetitions, n_directio
         print('Face fixpoint and press button to start recording.')
         freefield.wait_for_button()
     recordings = []
+    sources_temp = deepcopy(sources)
     for i in range(n_directions):  # record for n listener orientations, 2 = front + back
-        recordings = recordings + (dome_rec(signal, speaker_ids, sources, repetitions))
-        if i < n_directions-1:
-            sources[:, 1] += 360/n_directions
-            print('Rotate chair %i degrees clockwise and look at fixpoint. \nPress button to start recording.'
-                  % 360/n_directions)
-            freefield.wait_for_button()
+        recordings = recordings + (dome_rec(signal, speaker_ids, sources_temp, repetitions))
+        if i < n_directions:
+            sources_temp[:, 1] += 360/n_directions
+            sources = numpy.vstack((sources, sources_temp))
+            if kemar:
+                input('Rotate chair %i degrees clockwise and look at fixpoint. \nPress enter to continue recording.')
+            else:
+                print('Rotate chair %i degrees clockwise and look at fixpoint. \nPress button to continue recording.'
+                      % int(360/n_directions))
+                freefield.wait_for_button()
     for i in range(len(recordings)):  # highpass filter recordings 200
         recordings[i][2] = filt.apply(recordings[i][2])
     freefield.set_logger('INFO')
@@ -123,7 +128,7 @@ def dome_rec(signal, speaker_ids, sources, repetitions):
         # get avg of n recordings from each sound source location
         recs = []
         for r in range(repetitions):
-            recs.append(freefield.play_and_record(speaker, signal, equalize=True))
+            recs.append(freefield.play_and_record(speaker, signal, equalize=False))
         rec = slab.Binaural(numpy.mean(numpy.asarray(recs), axis=0))  # average
         rec.data -= numpy.mean(rec.data, axis=0)  # baseline
 
@@ -219,7 +224,7 @@ filename = 'test_1_Ears Free_06.07.sofa'
 condition = 'Earmolds Week 1'
 plot_bins = 2400  # number of bins also used to calculate vsi across bands (use 80 to minimize´frequency-resolution dependend vsi change)
 plot_ear = 'left' 
-hrtf = slab.HRTF(Path.cwd() / 'final_data' / 'experiment' / 'bracket_3' / subject_id / condition / filename)
+hrtf = slab.HRTF(Path.cwd() / 'data' / 'experiment' / 'bracket_3' / subject_id / condition / filename)
 
 
 sources = hrtf.cone_sources(0)
@@ -260,7 +265,7 @@ for i in range(len(vertical_dist)):
 from matplotlib import pyplot as plt
 
 fname='varvara_ears_free_23.09.sofa'
-hrtf=slab.HRTF(Path.cwd() / 'final_data' / 'hrtfs' / fname)
+hrtf=slab.HRTF(Path.cwd() / 'data' / 'hrtfs' / fname)
 src=hrtf.cone_sources(0)
 hrtf.plot_tf(src, n_bins=300)
 plt.title(fname)

@@ -12,11 +12,11 @@ fs = 97656  # 97656.25, 195312.5
 slab.set_default_samplerate(fs)
 
 # file settings
-subject_id = 'mh'
-condition = 'Earmolds Week 2'  # can be 'ears_free' or 'earmolds' - important for file naming!
-kemar = False  # requires no button press if true
+subject_id = 'kemar'
+condition = '1.4'  # can be 'ears_free' or 'earmolds' - important for file naming!
+kemar = True  # requires no button press if true
 safe = 'both'  # decide if additionally save in-ear-recordings
-data_dir = Path.cwd() / 'final_data' / 'experiment' / 'bracket_4' / subject_id / condition
+data_dir = Path.cwd() / 'data' / 'experiment' / 'ole_test' / subject_id / condition
 
 # HRTF recording settings
 speakers = numpy.arange(20, 27).tolist()  # record HRTF from central cone, with top and bottom speaker removed
@@ -35,7 +35,7 @@ slab.Signal.set_default_samplerate(fs)  # default samplerate for generating soun
 signal = slab.Sound.chirp(duration=duration, level=level, from_frequency=low_freq, to_frequency=high_freq, kind='linear')
 signal = slab.Sound.ramp(signal, when='both', duration=ramp_duration)
 # todo replace signal with mean central arc recording?
-# signal = slab.Sound.read(Path.cwd() / 'final_data' / 'sounds' / 'mean_central_arc_rec.wav')
+# signal = slab.Sound.read(Path.cwd() / 'data' / 'sounds' / 'mean_central_arc_rec.wav')
 
 # plot options
 dfe = False  # whether to use diffuse field equalization to plot hrtf and compute vsi
@@ -48,14 +48,14 @@ def record_hrtf(subject_id, data_dir, condition, signal, repetitions, n_directio
     # filt = slab.Filter.band('bp', (low_freq, high_freq))
     filt = slab.Filter.band('hp', (200))  # makes no diff
     if not freefield.PROCESSORS.mode:
-        proc_list = [['RP2', 'RP2', Path.cwd() / 'final_data' / 'rcx' / 'bi_rec_buf.rcx'],
-                     ['RX81', 'RX8', Path.cwd() / 'final_data' / 'rcx' / 'play_buf.rcx'],
-                     ['RX82', 'RX8', Path.cwd() / 'final_data' / 'rcx' / 'play_buf.rcx']]
+        proc_list = [['RP2', 'RP2', Path.cwd() / 'data' / 'rcx' / 'bi_rec_buf.rcx'],
+                     ['RX81', 'RX8', Path.cwd() / 'data' / 'rcx' / 'play_buf.rcx'],
+                     ['RX82', 'RX8', Path.cwd() / 'data' / 'rcx' / 'play_buf.rcx']]
         freefield.initialize('dome', device=proc_list)
         freefield.PROCESSORS.mode = 'play_birec'
-        freefield.load_equalization(file=Path.cwd() / 'final_data' / 'calibration' / 'calibration_central_cone_100k')
+        freefield.load_equalization(file=Path.cwd() / 'data' / 'calibration' / 'calibration_central_cone_100k')
     freefield.set_logger('warning')
-    table_file = freefield.DIR / 'final_data' / 'tables' / Path(f'speakertable_dome.txt')  # get speaker coordinates
+    table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')  # get speaker coordinates
     if isinstance(speakers, str) and speakers == 'all':
         source_locations = numpy.loadtxt(table_file, skiprows=1, usecols=(0, 3, 4),
                                          delimiter=",", dtype=float)
@@ -111,6 +111,7 @@ def record_hrtf(subject_id, data_dir, condition, signal, repetitions, n_directio
             filename = '%s_%s_%02d_az%i_el%i.wav' % (subject_id, condition, idx, bi_rec[0], bi_rec[1])
             bi_rec[2].write(wav_dir / filename)
         numpy.savetxt(wav_dir / ('sources_%s_%s.txt' % (subject_id, condition)), sources, fmt='%1.1f')
+
     return recordings, sources, recorded_hrtf
 
 def dome_rec(signal, speaker_ids, sources, repetitions):
@@ -124,7 +125,6 @@ def dome_rec(signal, speaker_ids, sources, repetitions):
             recs.append(freefield.play_and_record(speaker, signal, equalize=True))
         rec = slab.Binaural(numpy.mean(numpy.asarray(recs), axis=0))  # average
         rec.data -= numpy.mean(rec.data, axis=0)  # baseline
-
         rec = slab.Binaural.ramp(rec, when='both', duration=ramp_duration)
         azimuth = sources[numpy.where(sources[:, 0] == speaker_id)[0][0]][1]
         elevation = sources[numpy.where(sources[:, 0] == speaker_id)[0][0]][2]
@@ -217,7 +217,7 @@ filename = 'test_1_Ears Free_06.07.sofa'
 condition = 'Earmolds Week 1'
 plot_bins = 2400  # number of bins also used to calculate vsi across bands (use 80 to minimize´frequency-resolution dependend vsi change)
 plot_ear = 'left' 
-hrtf = slab.HRTF(Path.cwd() / 'final_data' / 'experiment' / 'bracket_3' / subject_id / condition / filename)
+hrtf = slab.HRTF(Path.cwd() / 'data' / 'experiment' / 'bracket_3' / subject_id / condition / filename)
 
 
 sources = hrtf.cone_sources(0)
@@ -258,7 +258,7 @@ for i in range(len(vertical_dist)):
 from matplotlib import pyplot as plt
 
 fname='varvara_ears_free_23.09.sofa'
-hrtf=slab.HRTF(Path.cwd() / 'final_data' / 'hrtfs' / fname)
+hrtf=slab.HRTF(Path.cwd() / 'data' / 'hrtfs' / fname)
 src=hrtf.cone_sources(0)
 hrtf.plot_tf(src, n_bins=300)
 plt.title(fname)

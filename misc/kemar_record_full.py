@@ -11,6 +11,8 @@ from copy import deepcopy
 fs = 97656  # 97656.25, 195312.5
 slab.set_default_samplerate(fs)
 
+#todo try dfe with kemars field average, recorded at 46 x 4 positions through the in the ear microphones
+
 # file settings
 subject_id = 'kemar'
 condition = 'kemar_360'  # can be 'ears_free' or 'earmolds' - important for file naming!

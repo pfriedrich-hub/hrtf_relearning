@@ -80,7 +80,11 @@ def record_hrtf(subject_id, data_dir, condition, signal, repetitions, n_directio
     sources_temp = deepcopy(sources)
     for i in range(n_directions):  # record for n listener orientations, 2 = front + back
         recordings = recordings + (dome_rec(signal, speaker_ids, sources_temp, repetitions))
-        if i < n_directions:
+        # # visual check
+        # for rec in recordings[-45:]:
+        #     rec[2].spectrum()
+        # plt.title('az: %.1f, ele %.1f' % (rec[0], rec[1]))
+        if i < n_directions - 1:
             sources_temp[:, 1] += 360/n_directions
             sources = numpy.vstack((sources, sources_temp))
             if kemar:
@@ -95,7 +99,6 @@ def record_hrtf(subject_id, data_dir, condition, signal, repetitions, n_directio
     if not kemar:
         freefield.write(tag='bitmask', value=0, processors=led_speaker.digital_proc)  # turn off LED
     sources = create_src_txt(recordings)  # create source coordinate array
-
     # save files
     data_dir.mkdir(parents=True, exist_ok=True)  # create condition directory if it doesnt exist
     if safe == 'sofa' or safe == 'both':  # compute HRTFs and write to sofa file

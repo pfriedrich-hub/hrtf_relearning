@@ -83,7 +83,7 @@ def record_hrtf(subject_id, data_dir, condition, signal, repetitions, n_directio
         # # visual check
         # for rec in recordings[-45:]:
         #     rec[2].spectrum()
-        # plt.title('az: %.1f, ele %.1f' % (rec[0], rec[1]))
+        #     plt.title('az: %.1f, ele %.1f' % (rec[0], rec[1]))
         if i < n_directions - 1:
             sources_temp[:, 1] += 360/n_directions
             sources = numpy.vstack((sources, sources_temp))

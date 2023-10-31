@@ -13,7 +13,7 @@ slab.set_default_samplerate(fs)
 
 # file settings
 subject_id = 'kemar'
-condition = '1.4'  # can be 'ears_free' or 'earmolds' - important for file naming!
+condition = 'free mic'  # can be 'ears_free' or 'earmolds' - important for file naming!
 kemar = True  # requires no button press if true
 safe = 'both'  # decide if additionally save in-ear-recordings
 data_dir = Path.cwd() / 'data' / 'experiment' / 'ole_test' / subject_id / condition
@@ -53,7 +53,7 @@ def record_hrtf(subject_id, data_dir, condition, signal, repetitions, n_directio
                      ['RX82', 'RX8', Path.cwd() / 'data' / 'rcx' / 'play_buf.rcx']]
         freefield.initialize('dome', device=proc_list)
         freefield.PROCESSORS.mode = 'play_birec'
-        freefield.load_equalization(file=Path.cwd() / 'data' / 'calibration' / 'calibration_central_cone_100k')
+        freefield.load_equalization(file=Path.cwd() / 'data' / 'calibration' / 'calibration_dome_100k_31.10')
     freefield.set_logger('warning')
     table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')  # get speaker coordinates
     if isinstance(speakers, str) and speakers == 'all':

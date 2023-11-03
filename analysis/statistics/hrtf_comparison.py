@@ -1,7 +1,7 @@
 import analysis.statistics.stats_df as stats_df
 import analysis.plot.hrtf_plot as hrtf_plot
-import analysis.plot.stats_plot_collection as stats_plot
-import analysis.get_df as get_df
+import analysis.plot.plot_spectral_behavior_stats as stats_plot
+import analysis.get_dataframe as get_df
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 from pathlib import Path
@@ -14,7 +14,7 @@ from matplotlib import pyplot as plt
 # bandwidth = (4000, 15000) #
 bandwidth = (3700, 12900)  # 1999, good option for vsi efm1m2 spectral strength - phys. plausable
 
-main_df = get_df.main_dataframe(Path.cwd() / 'data' / 'experiment' / 'master')
+main_df = get_df.main_dataframe(Path.cwd() / 'data' / 'experiment' / 'master', processed_hrtf=True)
 main_df = stats_df.add_l_r_comparison(main_df, bandwidth)
 
 # VSI / spectral strength across conditions

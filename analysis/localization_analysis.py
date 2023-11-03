@@ -29,7 +29,7 @@ def get_localization_dictionary(path=Path.cwd() / 'data' / 'experiment' / 'maste
                     localization_dict[condition][subject_path.name][file_name.name] = sequence
     return localization_dict
 
-def get_localization_data(localization_dictionary, subjects, w2_exclude=['cs', 'lm']):
+def get_localization_data(localization_dictionary, subjects, w2_exclude):
     """
     compute RMSE, EG and SD for each localization sequence path in the dictionary and
     SE across participants

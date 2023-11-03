@@ -1,8 +1,9 @@
 import analysis.processing.hrtf_processing as hrtf_processing
 import analysis.hrtf_analysis as hrtf_analysis
 import analysis.localization_analysis as loc_analysis
+import analysis.plot.localization_plot as loc_plot
 import analysis.plot.hrtf_plot as hrtf_plot
-import analysis.get_df as get_df
+import analysis.get_dataframe as get_df
 import analysis.statistics.stats_df as stats_df
 import misc.octave_spacing
 from pathlib import Path
@@ -16,9 +17,10 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 
 """ HRTF features """
 # process HRTFs
-hrtf_df = hrtf_processing.get_hrtf_df(path, processed=False)
-hrtf_df = hrtf_processing.process_hrtfs(hrtf_df, filter='erb', baseline=False, dfe=True, write=False)  # baseline for hrtf image
-hrtf_plot.hrtf_overwiev(hrtf_df, to_plot='average', dfe=False, n_bins=None)
+hrtf_df = hrtf_processing.get_hrtf_df(path, processed=True)
+# hrtf_df = hrtf_processing.process_hrtfs(hrtf_df, filter='erb', baseline=True, dfe=True, write=False)  # baseline for hrtf image
+hrtf_plot.hrtf_overwiev(hrtf_df, to_plot='average', dfe=True, n_bins=None)
+
 
 # mean vsi / spectral str across bands
 condition = conditions[0]
@@ -27,10 +29,8 @@ hrtf_analysis.mean_vsi_across_bands(hrtf_df, condition=condition, bands=bands, s
 hrtf_analysis.mean_spectral_strength_across_bands(hrtf_df, condition, bands=bands, show=True, ear='left')
 
 """ adaptation """
-# loc_plot.learning_plot(to_plot='average')
-# loc_plot.localization_plot(to_plot='average')
-
-
+axis = loc_plot.learning_plot(to_plot='average')
+loc_plot.localization_plot(to_plot='average')
 
 """ ---- plot hrtf image, spectral strength and vsi across bands ---- """
 # set conditions and bands
@@ -148,10 +148,11 @@ for subject in hrtf_df['subject'].unique():
 
 """# process all"""
 hrtf_df = hrtf_processing.get_hrtf_df(path=path, processed=False)
-hrtf_df = hrtf_processing.process_hrtfs(hrtf_df, filter='erb', baseline=False, dfe=True, write=True)
+hrtf_df = hrtf_processing.process_hrtfs(hrtf_df, filter='erb', baseline=True, dfe=True, write=True)
 # hrtf_df = hrtf_analysis.process_hrtfs(hrtf_df, filter='scepstral', baseline=True, write=True)
 
 # plot all subjects hrtf + vsi
 # hrtf_df = hrtf_analysis.get_hrtf_df(path=data_path, processed=False)
 # hrtf_pl.subj_hrtf_vsi(hrtf_df, to_plot='all', condition='Ears Free', bands=None)
 # hrtf_pl.subj_hrtf_vsi_dis(hrtf_df, to_plot='all', conditions=('Ears Free', 'Earmolds Week 1'), bands=None)
+

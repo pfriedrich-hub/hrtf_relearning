@@ -42,6 +42,7 @@ def process_hrtfs(hrtf_dataframe, filter='erb', bandwidth=(4000, 16000), baselin
         if dfe:
             # hrtf = hrtf.diffuse_field_equalization()  # not on the subject level
             dfa = slab.Filter.load(Path.cwd() / 'data' / 'experiment' / 'average_TF.npy')
+            # dfa = slab.Filter.load(Path.cwd() / 'data' / 'experiment' / 'kemar_dfa.npy')
             hrtf = hrtf.diffuse_field_equalization(dfa)  # divide by mean across all measured transfer functions (n=42)
         if filter == 'scepstral':
             hrtf = scepstral_filter_hrtf(hrtf, high_cutoff=1500)

@@ -118,7 +118,7 @@ import slab
 from pathlib import Path
 from analysis.localization_analysis import localization_accuracy
 
-file_name = 'localization_jh_Earmolds Week 1_7_10.08'
+file_name = 'localization_lw_ears_free_10.12'
 
 for path in Path.cwd().glob("**/"+str(file_name)):
     file_path = path

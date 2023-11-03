@@ -92,7 +92,8 @@ def hrtf_overwiev(hrtf_df, to_plot='average', n_bins=None, dfe=True, axis=None):
     return fig, axis
 
 
-def hrtf_image(hrtf, bandwidth=(4000, 16000), n_bins=None, axis=None, chan=0, z_min=None, z_max=None, cbar=True):
+def hrtf_image(hrtf, bandwidth=(4000, 16000), n_bins=None, axis=None, chan=0, z_min=None, z_max=None, cbar=True,
+               labels=False):
     src = hrtf.cone_sources(0)
     elevations = hrtf.sources.vertical_polar[src, 1]
     x_tick_pos = [(x) for x in (numpy.arange(bandwidth[0], bandwidth[1] + 1, 4000)).astype('int')]
@@ -132,9 +133,9 @@ def hrtf_image(hrtf, bandwidth=(4000, 16000), n_bins=None, axis=None, chan=0, z_
         cax.tick_params(axis='both', direction="in", bottom=True, top=True, left=True, right=True,
                                labelsize=13, width=1.5, length=2)
         cax.set_title('dB')
-    if not axis:
-        axis.set_xlabel('Frequency (kHz)')
-        axis.set_ylabel('Elevation (degrees)')
+    if labels:
+        axis.set_xlabel('Frequency (kHz)', size=13)
+        axis.set_ylabel('Elevation (degrees)', size=13)
     return axis
 
 

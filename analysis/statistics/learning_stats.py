@@ -5,15 +5,21 @@ import scipy.stats
 import pandas
 import numpy
 from matplotlib import pyplot as plt
+import analysis.get_dataframe as get_df
 pandas.set_option('display.max_rows', None, 'display.max_columns', None, 'display.precision', 5,
                   'display.expand_frame_repr', False)
 
-path = Path.cwd() / 'data' / 'experiment' / 'master'
-w2_exclude = ['cs', 'lm', 'lk']
-loc_df = loc_analysis.get_localization_dataframe(path, w2_exclude)
+# path = Path.cwd() / 'data' / 'experiment' / 'master'
+# w2_exclude = ['cs', 'lm', 'lk']
+# loc_df = loc_analysis.get_localization_dataframe(path, w2_exclude)
+main_df = get_df.main_dataframe(Path.cwd() / 'data' / 'experiment' / 'master', processed_hrtf=True)
+
+
 
 ### ---- compare persistence m1 / m2 ---- ###
 metric = 'EG'
+
+
 
 df = loc_df[~loc_df['subject'].isin(w2_exclude)]
 m1_d5 = df[df['condition'] == 'Earmolds Week 1'][df['adaptation day'] == 5][metric]

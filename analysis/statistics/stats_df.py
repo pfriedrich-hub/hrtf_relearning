@@ -199,6 +199,19 @@ def spectral_change_p(main_df, threshold=5):
         hrtf_ef = main_df.iloc[subject_id]['EF hrtf']
         hrtf_m1 = main_df.iloc[subject_id]['M1 hrtf']
         hrtf_m2 = main_df.iloc[subject_id]['M2 hrtf']
+        # get mean of RMS differences across all combinations of DTFs measured with free ears (Trapeau, Schönwiesner 2015)
+        n_sources = hrtf_ef.n_sources
+        diff = numpy.zeros((2, n_sources, n_sources))
+        for i in range(n_sources):  # decreasing elevation
+            for j in range(n_sources):  # increasing elevation
+                wi, hi = hrtf_ef[i].tf(show=False)
+                _, hj = hrtf_ef[j].tf(show=False)
+                hi = hi[numpy.logical_and(wi > 4000, wi < 16000)]
+                hj = hj[numpy.logical_and(wi > 4000, wi < 16000)]
+                hi = numpy.sqrt(numpy.mean(hi**2))
+                hj = numpy.sqrt(numpy.mean(hj**2))
+                diff[:, i, j] = numpy.abs(hi-hj)
+        threshold = numpy.mean(diff)
         if hrtf_m1:
             m1_sub += 1
             ef_m1_dif = hrtf_analysis.hrtf_difference(hrtf_ef, hrtf_m1)

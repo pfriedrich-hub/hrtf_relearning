@@ -57,7 +57,7 @@ def process_hrtfs(hrtf_dataframe, filter='erb', bandwidth=(4000, 16000), baselin
         hrtf_dataframe.hrtf[index] = hrtf
     return hrtf_dataframe
 
-def baseline_hrtf(hrtf, bandwidth=(3000, 16000)): #todo doesnt work yet (increases corrleation)
+def baseline_hrtf(hrtf, bandwidth=(4000, 16000)):
     "Center transfer functions around 0"
     hrtf_out = copy.deepcopy(hrtf)
     sources = hrtf_out.cone_sources(0)

@@ -40,6 +40,7 @@ stats_plot.scatter_perm_sp_dif(main_df, bandwidth, axis=axes[1])
 fig.suptitle("VSI dissimilarity / spectral difference between participants' free ears")
 
 # probability maps of spectral change induced by molds
+main_df = get_df.main_dataframe(Path.cwd() / 'data' / 'experiment' / 'master', processed_hrtf=False)
 fig, axes = plt.subplots(1, 3, figsize=(14, 3.5))
 hrtf_plot.plot_spectral_change_p(main_df, condition=0, bandwidth=(4000, 16000), axis=axes[0], cbar=False)
 hrtf_plot.plot_spectral_change_p(main_df, condition=1, bandwidth=(4000, 16000), axis=axes[1], cbar=False)

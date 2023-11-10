@@ -243,11 +243,11 @@ def plot_correlation_matrix(correlation_matrix, axis=None, c_bar=True, tiles=Fal
         cax.tick_params(axis='both', direction="in", bottom=True, top=True, left=True, right=True,
                         labelsize=13, width=1.5, length=2)
 
-def plot_spectral_change_p(hrtf_df, condition, bandwidth=(4000, 16000), axis=None, cbar=True):
-    change_p = stats_df.spectral_change_p(hrtf_df)[condition]
-    src = hrtf_df['EF hrtf'][0].cone_sources(0)
-    elevations = hrtf_df['EF hrtf'][0].sources.vertical_polar[src, 1]
-    frequencies = hrtf_df['EF hrtf'][0][0].frequencies
+def plot_spectral_change_p(main_df, condition, bandwidth=(4000, 16000), axis=None, cbar=True):
+    change_p = stats_df.spectral_change_p(main_df)[condition]
+    src = main_df['EF hrtf'][0].cone_sources(0)
+    elevations = main_df['EF hrtf'][0].sources.vertical_polar[src, 1]
+    frequencies = main_df['EF hrtf'][0][0].frequencies
     ticks = [str(x) for x in (numpy.arange(4000, 16000 + 1, 4000) / 1000).astype('int')]
     if not axis:
         fig, axis = plt.subplots()

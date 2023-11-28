@@ -54,37 +54,6 @@ def get_localization_data(localization_dictionary, subjects, w2_exclude):
     # localization_dictionary['Ears Free']['data'] = numpy.delete(localization_dictionary['Ears Free']['data'], ex_idx, axis=0)
     return localization_dictionary
 
-def get_localization_dataframe(path=Path.cwd() / 'data' / 'experiment' / 'master', w2_exclude=['cs', 'lm', 'lk']):
-    localization_dict = get_localization_dictionary(path=path)
-    localization_data = pandas.DataFrame({'subject': [], 'filename': [], 'sequence': [], 'condition': [], 'day': [],
-                                          'adaptation day': [], 'EG': [], 'RMSE ele': [], 'SD ele': [], 'RMSE az': [],
-                                          'SD az': []})
-    subjects = list(localization_dict['Ears Free'].keys())
-    test_order = ['Ears Free', 'Earmolds Week 1', 'Earmolds Week 1', 'Earmolds Week 1', 'Earmolds Week 1',
-                  'Earmolds Week 1', 'Earmolds Week 1', 'Ears Free', 'Earmolds Week 2', 'Earmolds Week 2',
-                  'Earmolds Week 2', 'Earmolds Week 2', 'Earmolds Week 2', 'Earmolds Week 2', 'Earmolds Week 1',
-                  'Ears Free',  'Earmolds Week 2']
-    total_days = [0, 0, 1, 2, 3, 4, 5, 5, 5, 6, 7, 8, 9, 10, 10, 10, 15]
-    adaptation_days = [0, 0, 1, 2, 3, 4, 5, 1, 0, 1, 2, 3, 4, 5, 6, 2, 6]
-    for subject in subjects:
-        for idx, condition in enumerate(test_order):
-            if not (subject in w2_exclude and condition) == 'Earmolds Week 2':
-                file_name = list(localization_dict[condition][subject].keys())[adaptation_days[idx]]
-                sequence = localization_dict[condition][subject][file_name]
-                new_row = [subject, file_name, sequence, condition, total_days[idx], adaptation_days[idx]]
-                new_row.extend(list(localization_accuracy(sequence, show=False)))
-                localization_data.loc[len(localization_data)] = new_row
-                if adaptation_days[idx] == 5 or (adaptation_days[idx] == 2 and condition == 'Ears Free'): # add uso
-                    file_name = [name for name in list(localization_dict[condition][subject].keys())
-                                 if name.startswith('uso')]
-                    if file_name:
-                        sequence = localization_dict[condition][subject][file_name[0]]
-                        new_row = [subject, file_name[0], sequence, 'USO ' + condition, total_days[idx], adaptation_days[idx]]
-                        new_row.extend(list(localization_accuracy(sequence, show=False)))
-                        localization_data.loc[len(localization_data)] = new_row
-    # localization_data.to_csv('/Users/paulfriedrich/projects/hrtf_relearning/data/experiment/data.csv')
-    return localization_data
-
 def localization_accuracy(sequence, show=True, plot_dim=2, binned=True, axis=None, show_single_responses=True,
                           elevation='all', azimuth='all'):
     if sequence.this_n == -1 or sequence.n_remaining == 132 or not sequence.data:
@@ -107,7 +76,7 @@ def localization_accuracy(sequence, show=True, plot_dim=2, binned=True, axis=Non
                     for target in numpy.unique(targets, axis=0)], axis=0)
 
     az_rmse, ele_rmse = rmse[0], rmse[1]
-    az_var, ele_var = variability[0], variability[1]
+    az_sd, ele_sd = variability[0], variability[1]
 
     # target ids
     right_ids = numpy.where(loc_data[:, 1, 0] > 0)
@@ -199,7 +168,7 @@ def localization_accuracy(sequence, show=True, plot_dim=2, binned=True, axis=Non
         axis.set_title('elevation gain: %.2f' % elevation_gain)
         plt.show()
     #  return EG, RMSE and Response Variability
-    return elevation_gain, ele_rmse, ele_var, az_rmse, az_var
+    return elevation_gain, ele_rmse, ele_sd, az_rmse, az_sd
 
 def trial_to_trial_performance(subject_id, show=True):
     sequence = slab.Trialsequence(conditions=47, n_reps=1)

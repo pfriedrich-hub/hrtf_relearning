@@ -86,8 +86,17 @@ def mean_vsi_across_bands(hrtf_dataframe, condition='Ears Free', bands=None, sho
         err = scipy.stats.sem(vsis, axis=0)
         axis.errorbar(axis.get_xticks(), numpy.mean(vsis, axis=0), capsize=3,
                        yerr=err, fmt="o", c='k', elinewidth=0.5, markersize=3)
+        fig.suptitle(condition)
     return mean_vsi_across_bands
 
+def mean_vsi(hrtf_dataframe, condition='Ears Free', bandwidth=None, ear_idx=[0, 1]):
+    if bandwidth is None:
+        bandwidth = (4000, 16000)
+    vsis = []
+    for hrtf in list(hrtf_dataframe[hrtf_dataframe['condition'] == condition]['hrtf']):
+        vsis.append(vsi(hrtf, bandwidth, ear_idx=ear_idx))
+    mean_vsi = numpy.mean(vsis, axis=0)
+    return mean_vsi
 
 # ----- spectral strength (middlebrooks 1999) ---- #
 def spectral_strength(hrtf, bandwidth=(3700, 12900), ear='both'):
@@ -134,6 +143,15 @@ def mean_spectral_strength_across_bands(hrtf_dataframe, condition='Ears Free', b
         axis.errorbar(axis.get_xticks(), numpy.mean(sp_str, axis=0), capsize=3,
                       yerr=err, fmt="o", c='k', elinewidth=0.5, markersize=3)
     return mean_sp_str_across_bands
+
+def mean_spectral_strength(hrtf_dataframe, condition='Ears Free', bandwidth=None, ear='both'):
+    if bandwidth is None:
+        bandwidth = (4000, 16000)
+    sp_str = []
+    for hrtf in list(hrtf_dataframe[hrtf_dataframe['condition'] == condition]['hrtf']):
+        sp_str.append(spectral_strength(hrtf, bandwidth, ear=ear))
+    mean_sp_str = numpy.mean(sp_str, axis=0)
+    return mean_sp_str
 
 
 # ------ SPCA ------ #

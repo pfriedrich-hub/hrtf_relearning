@@ -139,13 +139,13 @@ def hrtf_image(hrtf, bandwidth=(4000, 16000), n_bins=None, axis=None, chan=0, z_
     return axis
 
 
-def plot_average(hrtf_df, condition='Ears Free', equalize=True, kind='image'):
+def plot_average(hrtf_df, condition='Ears Free', kind='image'):
     """ plot average hrtf for each condition """
     df = copy.deepcopy(hrtf_df)
     hrtf_list = list(df[df['condition'] == condition]['hrtf'])
-    mean_hrtf = hrtf_analysis.average_hrtf(hrtf_list)
-    if equalize:
-        mean_hrtf = mean_hrtf.diffuse_field_equalization()
+    mean_hrtf = hrtf_processing.average_hrtf(hrtf_list)
+    # if equalize:
+    #     mean_hrtf = mean_hrtf.diffuse_field_equalization()
     if kind == 'image':
         axis = hrtf_image(mean_hrtf, bandwidth=(4000, 16000), n_bins=300)
         cbar = axis.get_figure().get_axes()[1]
@@ -243,8 +243,9 @@ def plot_correlation_matrix(correlation_matrix, axis=None, c_bar=True, tiles=Fal
         cax.tick_params(axis='both', direction="in", bottom=True, top=True, left=True, right=True,
                         labelsize=13, width=1.5, length=2)
 
-def plot_spectral_change_p(main_df, condition, bandwidth=(4000, 16000), axis=None, cbar=True):
-    change_p = stats_df.spectral_change_p(main_df)[condition]
+def plot_spectral_change_p(main_df, condition, threshold, bandwidth=(4000, 16000), axis=None, cbar=True):
+    change_p, _ = stats_df.spectral_change_p(main_df, threshold)
+    change_p = change_p[condition]
     src = main_df['EF hrtf'][0].cone_sources(0)
     elevations = main_df['EF hrtf'][0].sources.vertical_polar[src, 1]
     frequencies = main_df['EF hrtf'][0][0].frequencies

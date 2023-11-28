@@ -187,10 +187,11 @@ def ef_sp_dif_perm(main_df, bandwidth):
         sp_dif.append([vsi_dis_l, vsi_dis_r])
     return numpy.array(sp_dif)
 
-def spectral_change_p(main_df, threshold=5):
+def spectral_change_p(main_df, threshold=None, bandwidth=(4000,16000)):
     spectral_changes_efm1 = []
     spectral_changes_efm2 = []
     spectral_changes_m1m2 = []
+    thresholds = []
     m1_sub = 0
     m2_sub = 0
     m1m2_sub = 0
@@ -199,36 +200,47 @@ def spectral_change_p(main_df, threshold=5):
         hrtf_ef = main_df.iloc[subject_id]['EF hrtf']
         hrtf_m1 = main_df.iloc[subject_id]['M1 hrtf']
         hrtf_m2 = main_df.iloc[subject_id]['M2 hrtf']
-        # get mean of RMS differences across all combinations of DTFs measured with free ears (Trapeau, Schönwiesner 2015)
-        n_sources = hrtf_ef.n_sources
-        diff = numpy.zeros((2, n_sources, n_sources))
-        for i in range(n_sources):  # decreasing elevation
-            for j in range(n_sources):  # increasing elevation
-                wi, hi = hrtf_ef[i].tf(show=False)
-                _, hj = hrtf_ef[j].tf(show=False)
-                hi = hi[numpy.logical_and(wi > 4000, wi < 16000)]
-                hj = hj[numpy.logical_and(wi > 4000, wi < 16000)]
-                hi = numpy.sqrt(numpy.mean(hi**2))
-                hj = numpy.sqrt(numpy.mean(hj**2))
-                diff[:, i, j] = numpy.abs(hi-hj)
-        threshold = numpy.mean(diff)
+        if not threshold:
+            # get mean of RMS differences across all combinations of DTFs measured with free ears (Trapeau, Schönwiesner 2015)
+            n_sources = hrtf_ef.n_sources
+            diff = numpy.zeros((2, n_sources, n_sources))
+            for i in range(n_sources):  # decreasing elevation
+                for j in range(n_sources):  # increasing elevation
+                    wi, hi = hrtf_ef[i].tf(show=False)
+                    _, hj = hrtf_ef[j].tf(show=False)
+                    hi = hi[numpy.logical_and(wi > bandwidth[0], wi < bandwidth[1])]
+                    hj = hj[numpy.logical_and(wi > bandwidth[0], wi < bandwidth[1])]
+                    diff[:, i, j] = numpy.sqrt(numpy.mean((hi - hj) ** 2))
+                    # hi = numpy.sqrt(numpy.mean(hi**2))
+                    # hj = numpy.sqrt(numpy.mean(hj**2))
+                    # diff[:, i, j] = numpy.abs(hi-hj)
+            # diff = numpy.mean(diff, axis=0)
+            # mask = numpy.ones(diff.shape, dtype=bool)  # remove main diagonal - doesnt help much
+            # mask[numpy.diag_indices(7)] = False
+            # diff = diff[mask]
+            thresh = numpy.mean(diff)
+            thresholds.append(thresh)
+        else:
+            thresh = threshold
         if hrtf_m1:
             m1_sub += 1
             ef_m1_dif = hrtf_analysis.hrtf_difference(hrtf_ef, hrtf_m1)
             data = ef_m1_dif.tfs_from_sources(ef_m1_dif.cone_sources(0), ear='both', n_bins=None)
-            spectral_changes_efm1.append(numpy.abs(data) > threshold)
+            spectral_changes_efm1.append(numpy.abs(data) > thresh)
         if hrtf_m2:
             m2_sub += 1
             ef_m2_dif = hrtf_analysis.hrtf_difference(hrtf_ef, hrtf_m2)
             data = ef_m2_dif.tfs_from_sources(ef_m2_dif.cone_sources(0), ear='both', n_bins=None)
-            spectral_changes_efm2.append(numpy.abs(data) > threshold)
+            spectral_changes_efm2.append(numpy.abs(data) > thresh)
         if (hrtf_m1 and hrtf_m2):
             m1m2_sub += 1
             m1_m2_dif = hrtf_analysis.hrtf_difference(hrtf_m1, hrtf_m2)
             data = m1_m2_dif.tfs_from_sources(m1_m2_dif.cone_sources(0), ear='both', n_bins=None)
-            spectral_changes_m1m2.append(numpy.abs(data) > threshold)
+            spectral_changes_m1m2.append(numpy.abs(data) > thresh)
     efm1_p = numpy.mean(numpy.sum(numpy.array(spectral_changes_efm1), axis=0) / m1_sub, axis=2)
     efm2_p = numpy.mean(numpy.sum(spectral_changes_efm2, axis=0) / m2_sub, axis=2)
     m1m2_p = numpy.mean(numpy.sum(spectral_changes_m1m2, axis=0) / m1m2_sub, axis=2)
-    return numpy.array((efm1_p, efm2_p, m1m2_p))
-
+    if not threshold:
+        return numpy.array((efm1_p, efm2_p, m1m2_p)), thresholds
+    else:
+        return numpy.array((efm1_p, efm2_p, m1m2_p)), None

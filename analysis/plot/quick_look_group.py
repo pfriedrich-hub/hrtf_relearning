@@ -3,8 +3,9 @@ import analysis.hrtf_analysis as hrtf_analysis
 import analysis.localization_analysis as loc_analysis
 import analysis.plot.localization_plot as loc_plot
 import analysis.plot.hrtf_plot as hrtf_plot
-import analysis.get_dataframe as get_df
+import analysis.build_dataframe as get_df
 import analysis.statistics.stats_df as stats_df
+import analysis.build_dataframe as build_df
 import misc.octave_spacing
 from pathlib import Path
 import numpy
@@ -17,7 +18,7 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 
 """ HRTF features """
 # process HRTFs
-hrtf_df = hrtf_processing.get_hrtf_df(path, processed=True)
+hrtf_df = build_df.get_hrtf_df(path, processed=True)
 # hrtf_df = hrtf_processing.process_hrtfs(hrtf_df, filter='erb', baseline=True, dfe=True, write=False)  # baseline for hrtf image
 hrtf_plot.hrtf_overwiev(hrtf_df, to_plot='average', dfe=True, n_bins=None)
 

@@ -5,7 +5,8 @@ conditions = ['Ears Free', 'Earmolds Week 1', 'Earmolds Week 2']
 
 # process all hrtfs with specified parameters
 hrtf_df = hrtf_processing.get_hrtf_df(path=data_path / 'master', processed=False)
-hrtf_df = hrtf_processing.process_hrtfs(hrtf_df, filter='scepstral', baseline=True, write=True)
+hrtf_df = hrtf_processing.process_hrtfs(hrtf_df, filter='erb', bandwidth=(4000, 16000),
+                                        baseline=False, dfe=True, write=True)
 
 
 # create average across DTFs

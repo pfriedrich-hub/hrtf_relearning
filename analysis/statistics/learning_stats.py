@@ -5,7 +5,7 @@ import scipy.stats
 import pandas
 import numpy
 from matplotlib import pyplot as plt
-import analysis.get_dataframe as get_df
+import analysis.build_dataframe as get_df
 pandas.set_option('display.max_rows', None, 'display.max_columns', None, 'display.precision', 5,
                   'display.expand_frame_repr', False)
 
@@ -13,6 +13,26 @@ pandas.set_option('display.max_rows', None, 'display.max_columns', None, 'displa
 # w2_exclude = ['cs', 'lm', 'lk']
 # loc_df = loc_analysis.get_localization_dataframe(path, w2_exclude)
 main_df = get_df.main_dataframe(Path.cwd() / 'data' / 'experiment' / 'master', processed_hrtf=True)
+
+""" initial mold effect on localization performance - one sided wilcoxon signed rank test """
+ef = numpy.stack(pandas.concat((main_df['EFD0'], main_df['EFD5'])).to_numpy())  # ears free
+md0 = numpy.stack(pandas.concat((main_df['M1D0'], main_df['M2D0'])).to_numpy())  # molds 1 and 2 on day 0
+
+results = {}
+results['EF mean'] = numpy.round(numpy.nanmean(ef, axis=0), 2)
+results['EF SE'] = numpy.round(scipy.stats.sem(ef, nan_policy='omit', axis=0), 2)
+results['M12 mean'] = numpy.round(numpy.nanmean(md0, axis=0), 2)
+results['M12 SE'] = numpy.round(scipy.stats.sem(md0, nan_policy='omit', axis=0), 2)
+results['RMSE ele p'] = scipy.stats.wilcoxon(ef[:, 1], md0[:, 1], alternative='less', nan_policy='omit')[1]
+results['SD ele p'] = scipy.stats.wilcoxon(ef[:, 2], md0[:, 2], alternative='less', nan_policy='omit')[1]
+results['EG p'] = scipy.stats.wilcoxon(ef[:, 0], md0[:, 0], alternative='greater', nan_policy='omit')[1]
+results['RMSE az p'] = scipy.stats.wilcoxon(ef[:, 3], md0[:, 3], alternative='less', nan_policy='omit')[1]
+results['SD az p'] = scipy.stats.wilcoxon(ef[:, 4], md0[:, 4], alternative='less', nan_policy='omit')[1]
+
+
+
+
+
 
 
 

@@ -10,26 +10,6 @@ pandas.set_option('display.max_rows', 1000, 'display.max_columns', 1000, 'displa
 #  for example kemar vsi with 0.1s looks better than for 0.05 seconds (higher frequencies have to
 #  few samples here to be represented correctly in vsi) - temporary fix: increase samplerate to 96 kHz
 
-def get_hrtf_df(path=Path.cwd() / 'data' / 'experiment' / 'master', processed=True, exclude=[]):
-    subject_paths = list(path.iterdir())
-    hrtf_df = pandas.DataFrame({'subject': [], 'filename': [], 'condition': [], 'hrtf': []})
-    conditions = ['Ears Free', 'Earmolds Week 1', 'Earmolds Week 2']
-    for subject_path in subject_paths:
-        subject = subject_path.name
-        if subject not in exclude:
-            for condition in conditions:
-                if processed:
-                    condition_path = subject_path / condition / 'processed_hrtf'
-                else:
-                    condition_path = subject_path / condition
-                for file_name in sorted(list(condition_path.iterdir())):
-                    if file_name.is_file() and file_name.suffix == '.sofa':
-                        hrtf = slab.HRTF(file_name)
-                        new_row = [subject, file_name.name, condition, hrtf]
-                        hrtf_df.loc[len(hrtf_df)] = new_row
-    # hrtf_df.to_csv('/Users/paulfriedrich/projects/hrtf_relearning/data/experiment/data.csv')
-    return hrtf_df
-
 # ----- HRTF processing ----- #
 def process_hrtfs(hrtf_dataframe, filter='erb', bandwidth=(4000, 16000), baseline=True, dfe=False, write=False):
     path = Path.cwd() / 'data' / 'experiment' / 'master'

@@ -170,6 +170,8 @@ def localization_accuracy(sequence, show=True, plot_dim=2, binned=True, axis=Non
     #  return EG, RMSE and Response Variability
     return elevation_gain, ele_rmse, ele_sd, az_rmse, az_sd
 
+
+
 def trial_to_trial_performance(subject_id, show=True):
     sequence = slab.Trialsequence(conditions=47, n_reps=1)
     sequence.load_pickle(file_name=data_dir / subject_id)

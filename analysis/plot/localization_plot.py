@@ -1,14 +1,14 @@
 import analysis.localization_analysis as loc_analysis
+import analysis.build_dataframe as build_df
 import numpy
 import slab
 from copy import deepcopy
 from matplotlib import pyplot as plt
 from pathlib import Path
+from misc.unit_conversion import cm2in
 
-def localization_plot(to_plot='average', binned=True, path=Path.cwd() / 'data' / 'experiment' / 'master'):
+def response_evolution(loc_df, to_plot='average', axis=None, width=14, height=8):
     """ plot localization free, 1st vs last day of molds and persistence """
-    loc_df = loc_analysis.get_localization_dataframe(path=path)
-    # loc_df = deepcopy(loc_df)
     w2_exclude = ['cs', 'lm', 'lk']
     # cs and lm did not go into w2, lk did not learn in w2
     if not to_plot == 'average':
@@ -23,6 +23,9 @@ def localization_plot(to_plot='average', binned=True, path=Path.cwd() / 'data' /
     # m2
     efd5, m2d0, m2d5, m2d10 = deepcopy(sequence), deepcopy(sequence), deepcopy(sequence), deepcopy(sequence)
     efd5.data, m2d0.data, m2d5.data, m2d10.data = [], [], [], []
+    # ef
+    efd10 = deepcopy(sequence)
+    efd10.data = []
     # fetch cross subject localization data across subjects
     for subject in subjects:
         # ears free day 0
@@ -52,25 +55,128 @@ def localization_plot(to_plot='average', binned=True, path=Path.cwd() / 'data' /
             # m2 day 10
             m2d10.data.extend(loc_df[loc_df['condition'] =='Earmolds Week 2'][loc_df['adaptation day']
                                                     == 6][loc_df['subject']==subject]['sequence'].values[0].data)
+            if loc_df[loc_df['condition'] =='Ears Free'][loc_df['adaptation day']
+                                        == 2][loc_df['subject']==subject]['sequence'].values[0].n_remaining != 132:
+                efd10.data.extend(loc_df[loc_df['condition'] =='Ears Free'][loc_df['adaptation day']
+                                                    == 2][loc_df['subject']==subject]['sequence'].values[0].data)
+
     # plot:
-    fig, axes = plt.subplots(3, 2, sharex=True, sharey=True, figsize=[8, 8])
+    in_width = cm2in(width)
+    in_height = cm2in(height)
+    if not axis:
+        fig, axes = plt.subplots(2, 4, sharex=True, sharey=True, figsize=(in_width, in_height), subplot_kw=dict(box_aspect=1))
+        fig.subplots_adjust(left=None, bottom=None, right=None, top=None, hspace=0.05, wspace=0.05)
+    # add a big axis, hide frame
+    fig.add_subplot(111, frameon=False)
+    plt.tick_params(labelcolor='none', which='both', top=False, bottom=False, left=False, right=False)
+    plt.xlabel("Response azimuth (degrees)", size=10)
+    plt.ylabel("Response elevation (degrees)", size=10)
     # M1
-    loc_analysis.localization_accuracy(efd0, True, 2, binned, axes[0, 0], False)
-    loc_analysis.localization_accuracy(m1d0, True, 2, binned, axes[1, 0], False)
-    loc_analysis.localization_accuracy(m1d5, True, 2, binned, axes[2, 0], False)
-    # loc_analysis.localization_accuracy(m1d10, True, 2, binned, axes[3, 0], False)
+    plot_response_pattern(efd0, axes[0,0], show_single_responses=False, labels=False)
+    plot_response_pattern(m1d0, axes[0,1], show_single_responses=False, labels=False)
+    plot_response_pattern(m1d5, axes[0,2], show_single_responses=False, labels=False)
+    plot_response_pattern(m1d10, axes[0,3], show_single_responses=False, labels=False)
     # M2
-    loc_analysis.localization_accuracy(efd5, True, 2, binned, axes[0, 1], False)
-    loc_analysis.localization_accuracy(m2d0, True, 2, binned, axes[1, 1], False)
-    loc_analysis.localization_accuracy(m2d5, True, 2, binned, axes[2, 1], False)
-    # loc_analysis.localization_accuracy(m2d10, True, 2, binned, axes[3, 1], False)
-    fig.text(0.29, 0.95, 'Mold 1', size=13)
-    fig.text(0.71, 0.95, 'Mold 2', size=13)
-    fig.text(0.03, 0.75, 'Day 0 Ears Free', size=13, rotation=90)
-    fig.text(0.03, 0.45, 'Day 0', size=13, rotation=90)
-    fig.text(0.03, 0.18, 'Day 5', size=13, rotation=90)
-    # fig.text(0.03, 0.18, 'Day 10', size=13, rotation=90)
-    fig.suptitle(to_plot)
+    plot_response_pattern(efd5, axes[1,0], show_single_responses=False, labels=False)
+    plot_response_pattern(m2d0, axes[1,1], show_single_responses=False, labels=False)
+    plot_response_pattern(m2d5, axes[1,2], show_single_responses=False, labels=False)
+    plot_response_pattern(m2d10, axes[1,3], show_single_responses=False, labels=False)
+    # plot_response_pattern(efd10, axes[2,2], show_single_responses=False, labels=False)
+
+    axes[0,0].set_title('Free ears', size=10)
+    axes[0,1].set_title('Molds day 0', size=10)
+    axes[0,2].set_title('Molds day 5', size=10)
+    axes[0,3].set_title('Molds day 10', size=10)
+
+    axes[0,3].set_ylabel('Earmolds 1', size=10)
+    axes[0,3].yaxis.set_label_position("right")
+    axes[1,3].set_ylabel('Earmolds 2', size=10)
+    axes[1,3].yaxis.set_label_position("right")
+    return fig, axis
+
+def plot_response_pattern(sequence, axis=None, show_single_responses=True, labels=True):
+    # retrieve data
+    loc_data = numpy.asarray(sequence.data)
+    loc_data = loc_data.reshape(loc_data.shape[0], 2, 2)
+    targets = loc_data[:, 1]  # [az, ele]
+    responses = loc_data[:, 0]
+    elevations = numpy.unique(loc_data[:, 1, 1])
+    azimuths = numpy.unique(loc_data[:, 1, 0])
+    targets[:, 1] = loc_data[:, 1, 1]  # target elevations
+    responses[:, 1] = loc_data[:, 0, 1]  # percieved elevations
+    targets[:, 0] = loc_data[:, 1, 0]
+    responses[:, 0] = loc_data[:, 0, 0]
+    # mean perceived location for each target speaker
+    i = 0
+    mean_loc = numpy.zeros((45, 2, 2))
+    for az_id, azimuth in enumerate(numpy.unique(targets[:, 0])):
+        for ele_id, elevation in enumerate(numpy.unique(targets[:, 1])):
+            [perceived_targets] = loc_data[numpy.where(numpy.logical_and(loc_data[:, 1, 1] == elevation,
+                                                                         loc_data[:, 1, 0] == azimuth)), 0]
+            if perceived_targets.size != 0:
+                mean_perceived = numpy.mean(perceived_targets, axis=0)
+                mean_loc[i] = numpy.array(((azimuth, mean_perceived[0]), (elevation, mean_perceived[1])))
+                i += 1
+    # divide target space in 16 half overlapping sectors and get mean response for each sector
+    mean_loc_binned = numpy.empty((0, 2, 2))
+    for a in range(6):
+        for e in range(6):
+            tar_bin = loc_data[numpy.logical_or(loc_data[:, 1, 0] == azimuths[a],
+                                                loc_data[:, 1, 0] == azimuths[a + 1])]
+            tar_bin = tar_bin[numpy.logical_or(tar_bin[:, 1, 1] == elevations[e],
+                                               tar_bin[:, 1, 1] == elevations[e + 1])]
+            tar_bin[:, 1] = numpy.array((numpy.mean([azimuths[a], azimuths[a + 1]]),
+                                         numpy.mean([elevations[e], elevations[e + 1]])))
+            mean_tar_bin = numpy.mean(tar_bin, axis=0).T
+            mean_tar_bin[:, [0, 1]] = mean_tar_bin[:, [1, 0]]
+            mean_loc_binned = numpy.concatenate((mean_loc_binned, [mean_tar_bin]))
+    azimuths = numpy.unique(mean_loc_binned[:, 0, 0])
+    elevations = numpy.unique(mean_loc_binned[:, 1, 0])
+    mean_loc = mean_loc_binned
+    # plot
+    if not axis:
+        fig, axis = plt.subplots(1, 1)
+    else:
+        fig = axis.get_figure()
+    axis.tick_params(axis='both', direction="in", bottom=False, top=False, left=False, right=False, reset=False,
+                     labelsize=10, width=1.5, length=2)
+    if show_single_responses:
+        axis.scatter(responses[:, 0], responses[:, 1], s=8, edgecolor='grey', facecolor='none')
+    axis.scatter(mean_loc[:, 0, 1], mean_loc[:, 1, 1], color='black', s=3)
+    for az in azimuths:  # plot hlines between target locations
+        [x] = mean_loc[numpy.where(mean_loc[:, 0, 0] == az), 0, 0]
+        [y] = mean_loc[numpy.where(mean_loc[:, 0, 0] == az), 1, 0]
+        axis.plot(x, y, color='0.6', linewidth=0.3)
+    for ele in elevations: # plot vlines
+        [x] = mean_loc[numpy.where(mean_loc[:, 1, 0] == ele), 0, 0]
+        [y] = mean_loc[numpy.where(mean_loc[:, 1, 0] == ele), 1, 0]
+        axis.plot(x, y, color='0.6', linewidth=0.3)
+    for az in azimuths:  # plot lines between mean perceived locations for each target
+        [x] = mean_loc[numpy.where(mean_loc[:, 0, 0] == az), 0, 1]
+        [y] = mean_loc[numpy.where(mean_loc[:, 0, 0] == az), 1, 1]
+        axis.plot(x, y, color='black', linewidth=0.6)
+    for ele in elevations:
+        [x] = mean_loc[numpy.where(mean_loc[:, 1, 0] == ele), 0, 1]
+        [y] = mean_loc[numpy.where(mean_loc[:, 1, 0] == ele), 1, 1]
+        axis.plot(x, y, color='black', linewidth=0.6)
+    x_ticks = numpy.linspace(-45, 45, 3).astype('int')
+    y_ticks = numpy.linspace(-30, 30, 3).astype('int')
+    axis.set_xticks(x_ticks)
+    axis.set_yticks(y_ticks)
+    axis.set_ylim(-35, 35)
+    axis.set_xlim(-50, 50)
+    axis.set_xticklabels(x_ticks, size=10)
+    axis.set_yticklabels(y_ticks, size=10)
+    try:
+        axis.get_xticklabels()[0].set_horizontalalignment('left')
+        axis.get_xticklabels()[-1].set_horizontalalignment('right')
+    except IndexError:
+        pass
+    if labels:
+        axis.set_ylabel('Response azimuth (degrees)', size=10)
+        axis.set_xlabel('Response elevation (degrees)', size=10)
+    plt.show()
+    return fig, axis
 
     # # overall
     # fig, axes = plt.subplots(3, 1, sharex=True, sharey=True, figsize=[6, 8])
@@ -94,6 +200,7 @@ def localization_plot(to_plot='average', binned=True, path=Path.cwd() / 'data' /
     #      'Mold 2\nDay 6', 'Mold 1\nDay 11', 'Mold 2\nDay 16']
     # for idx, i in enumerate(numpy.linspace(0.87, 0.15, 7)):
     #     fig.text(0.03, i, f'{c[idx]}', size=13)
+
 
 # """ Plot mean VSI across bands """
 # vsi_list = numpy.asarray(vsi_list)

@@ -1,5 +1,6 @@
 import analysis.statistics.stats_df as stats_df
 import analysis.build_dataframe as get_df
+import misc.octave_spacing
 from analysis.plot import plot_spectral_behavior_stats as stats_plot
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -7,14 +8,12 @@ from pathlib import Path
 from matplotlib import pyplot as plt
 
 
-
-
 """  --- test spectral difference (Middlebrooks 1999) and VSI (Trapeau, Schönwiesner 2015)
                          correlation with behavior across bands ---  """
 # bandwidth = (5700, 8000)
 # bandwidth = (5700, 11300)  # 2015, clearer relation between spectral features in this band and behavior
 bandwidth = (3700, 12900)  # 1999, 3700 may include spectral variance due to low freq artifacts
-
+# bandwidth = (4000, 16000)
 main_df = get_df.main_dataframe(Path.cwd() / 'data' / 'experiment' / 'master', processed_hrtf=True)
 main_df = stats_df.add_hrtf_stats(main_df, bandwidth=bandwidth)
 
@@ -22,11 +21,14 @@ main_df = stats_df.add_hrtf_stats(main_df, bandwidth=bandwidth)
 fig, axes = plt.subplots(2, 2, figsize=(12, 8))
 stats_plot.ef_vsi(main_df, 'RMSE ele', axis=axes[0, 0])
 stats_plot.ef_vsi(main_df, 'EG', axis=axes[0, 1])
+# stats_plot.ef_vsi(main_df, 'SD ele', axis=axes[0, 1])
 stats_plot.ef_spstr(main_df, 'RMSE ele', axis=axes[1, 0])
 stats_plot.ef_spstr(main_df, 'EG', axis=axes[1, 1])
 fig.suptitle('Ears free baseline')
+fig.suptitle(bandwidth)
 
-# m1 / ears free vsi dissimilarity, d0 drop
+
+# # m1 / ears free vsi dissimilarity, d0 drop
 fig, axes = plt.subplots(2, 4, figsize=(12, 8))
 stats_plot.d0dr_vsi_dis(main_df, 'RMSE ele', axis=axes[0, 0])
 stats_plot.d0dr_vsi_dis(main_df, 'EG', axis=axes[0, 1])
@@ -36,14 +38,20 @@ stats_plot.d0dr_sp_dif(main_df, 'RMSE ele', axis=axes[1, 0])
 stats_plot.d0dr_sp_dif(main_df, 'EG', axis=axes[1, 1])
 stats_plot.d5ga_sp_dif(main_df, 'RMSE ele', axis=axes[1, 2])
 stats_plot.d5ga_sp_dif(main_df, 'EG', axis=axes[1, 3])
+# stats_plot.d0dr_w_vsi_dis(main_df, 'RMSE ele', axis=axes[1, 0])
+# stats_plot.d0dr_w_vsi_dis(main_df, 'EG', axis=axes[1, 1])
+# stats_plot.d5ga_w_vsi_dis(main_df, 'RMSE ele', axis=axes[1, 2])
+# stats_plot.d5ga_w_vsi_dis(main_df, 'EG', axis=axes[1, 3])
 axes[1, 0].set_xlabel('RMSE')
 axes[1, 1].set_xlabel('Elevation Gain')
 axes[1, 2].set_xlabel('RMSE')
 axes[1, 3].set_xlabel('Elevation Gain')
 axes[0, 0].set_ylabel('VSI dissimilarity')
 axes[1, 0].set_ylabel('spectral difference')
+# axes[1, 0].set_ylabel('weighted VSI dissimilarity')
 fig.text(.22, .92, 'Ears Free / M1 difference day 0', fontsize=12)
 fig.text(.61, .92, 'Ears Free / M1 difference day 5', fontsize=12)
+fig.suptitle(bandwidth)
 
 # m2 / ears free vsi dissimilarity d5 drop
 fig, axes = plt.subplots(2, 4, figsize=(12, 8))
@@ -63,6 +71,7 @@ axes[0, 0].set_ylabel('VSI dissimilarity')
 axes[1, 0].set_ylabel('spectral difference')
 fig.text(.22, .92, 'Ears Free / M2 difference day 0', fontsize=12)
 fig.text(.61, .92, 'Ears Free / M2 difference day 5', fontsize=12)
+fig.suptitle(bandwidth)
 
 # m1 / m2 vsi dissimilarity d5 drop
 fig, axes = plt.subplots(2, 4, figsize=(12, 8))
@@ -82,6 +91,7 @@ axes[0, 0].set_ylabel('VSI dissimilarity')
 axes[1, 0].set_ylabel('spectral difference')
 fig.text(.22, .92, 'M1/M2 drop vs M1/M2 difference', fontsize=12)
 fig.text(.61, .92, 'M1/M2 gain vs M1/M2 difference', fontsize=12)
+fig.suptitle(bandwidth)
 
 
 """

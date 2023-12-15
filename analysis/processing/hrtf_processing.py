@@ -101,16 +101,20 @@ def scepstral_filter_hrtf(hrtf, high_cutoff=1500):
         tf.data = tf_data
     return hrtf_out
 
-def average_hrtf(hrtf_list):
-    list = copy.deepcopy(hrtf_list)
-    tf_data = numpy.zeros((hrtf_list[0].n_sources, len(hrtf_list), hrtf_list[0][0].n_samples, 2))
-    for hrtf_idx, hrtf in enumerate(hrtf_list):
+def average_hrtf(hrtf_list, average_ears=False):
+    input = copy.deepcopy(hrtf_list)
+    dtf_data = numpy.zeros((hrtf_list[0].n_sources, len(hrtf_list), hrtf_list[0][0].n_samples, 2))
+    for hrtf_idx, hrtf in enumerate(input):
         for src_idx, tf in enumerate(hrtf.data):
-            tf_data[src_idx, hrtf_idx] = tf.data
-    tf_data = numpy.mean(tf_data, axis=1)
-    # dtf = copy.deepcopy(hrtf)
-    for src_idx, tf_data in enumerate(tf_data):
-        hrtf[src_idx].data = tf_data
+            dtf_data[src_idx, hrtf_idx] = tf.data
+    if average_ears:
+        dtf_data = dtf_data.mean(axis=(1,3))
+        for src_idx, tf_data in enumerate(dtf_data):
+            hrtf[src_idx] = slab.Filter(data=tf_data, samplerate=hrtf_list[0].samplerate, fir=False)
+    else:
+        dtf_data = numpy.mean(dtf_data, axis=1)
+        for src_idx, tf_data in enumerate(dtf_data):
+            hrtf[src_idx].data = tf_data
     return hrtf
 
 def write_average_tf(hrtf_df, path=Path.cwd() / 'data' / 'experiment'):

@@ -4,14 +4,21 @@ import numpy
 from pathlib import Path
 path = Path.cwd() / 'data' / 'experiment' / 'master'
 
-def add_hrtf_stats(main_df, bandwidth):
+def add_hrtf_stats(main_df, bandwidth):  # , bands=None):
     main_df['EF VSI'] = ''
     main_df['EF spectral strength'] = ''
+    main_df['M1 VSI'] = ''
+    main_df['M1 spectral strength'] = ''
     main_df['EF M1 VSI dissimilarity'] = ''
+    main_df['EF M1 weighted VSI dissimilarity'] = ''
     main_df['EF M1 spectral difference'] = ''
+    main_df['M2 VSI'] = ''
+    main_df['M2 spectral strength'] = ''
     main_df['EF M2 VSI dissimilarity'] = ''
+    main_df['EF M2 weighted VSI dissimilarity'] = ''
     main_df['EF M2 spectral difference'] = ''
     main_df['M1 M2 VSI dissimilarity'] = ''
+    main_df['M1 M2 weighted VSI dissimilarity'] = ''
     main_df['M1 M2 spectral difference'] = ''
     for subject_id, row in main_df.iterrows():
         # hrtf_stats.loc[subject_id]['EFD0'] = hrtf_stats.loc[subject_id]['EFD0'][measure_idx]
@@ -23,12 +30,22 @@ def add_hrtf_stats(main_df, bandwidth):
         if hrtf_m1:
             main_df.loc[subject_id]['EF M1 VSI dissimilarity'] = hrtf_analysis.vsi_dissimilarity(hrtf_ef, hrtf_m1, bandwidth)
             main_df.loc[subject_id]['EF M1 spectral difference'] = hrtf_analysis.spectral_difference(hrtf_ef, hrtf_m1, bandwidth)
+            # main_df.loc[subject_id]['EF M1 weighted VSI dissimilarity'] = \
+            #     hrtf_analysis.weighted_vsi_dissimilarity(hrtf_ef, hrtf_m1, bands)
+            main_df.loc[subject_id]['M1 VSI'] = hrtf_analysis.vsi(hrtf_m1, bandwidth)
+            main_df.loc[subject_id]['M1 spectral strength'] = hrtf_analysis.spectral_strength(hrtf_m1, bandwidth)
         if hrtf_m2:
             main_df.loc[subject_id]['EF M2 VSI dissimilarity'] = hrtf_analysis.vsi_dissimilarity(hrtf_ef, hrtf_m2, bandwidth)
             main_df.loc[subject_id]['EF M2 spectral difference'] = hrtf_analysis.spectral_difference(hrtf_ef, hrtf_m2, bandwidth)
+            # main_df.loc[subject_id]['EF M2 weighted VSI dissimilarity'] = \
+            #     hrtf_analysis.weighted_vsi_dissimilarity(hrtf_ef, hrtf_m2, bands)
+            main_df.loc[subject_id]['EF VSI'] = hrtf_analysis.vsi(hrtf_m2, bandwidth)
+            main_df.loc[subject_id]['EF spectral strength'] = hrtf_analysis.spectral_strength(hrtf_m2, bandwidth)
         if (hrtf_m2 and hrtf_m1):
             main_df.loc[subject_id]['M1 M2 VSI dissimilarity'] = hrtf_analysis.vsi_dissimilarity(hrtf_m1, hrtf_m2, bandwidth)
             main_df.loc[subject_id]['M1 M2 spectral difference'] = hrtf_analysis.spectral_difference(hrtf_m1, hrtf_m2, bandwidth)
+            # main_df.loc[subject_id]['M1 M2 weighted VSI dissimilarity'] = \
+            #     hrtf_analysis.weighted_vsi_dissimilarity(hrtf_m1, hrtf_m2, bands)
     main_df = main_df.replace(r'^\s*$', None, regex=True)
     return main_df
 

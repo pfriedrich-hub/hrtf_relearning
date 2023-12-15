@@ -37,8 +37,8 @@ def get_subject_df(path):
 def add_localization_data(main_df, localization_df):
     main_df['EFD0'], main_df['M1D0'], main_df['M1D5'], main_df['M1 drop'], main_df['M1 gain'], \
     main_df['EFD5'], main_df['M2D0'], main_df['M2D5'], main_df['M2 drop'], main_df['M2 gain'], \
-    main_df['M1M2 drop'], main_df['M1M2 gain'], main_df['EF avg'], main_df['EF USO dif'], main_df['M1 USO dif'],\
-    main_df['M2 USO dif'] = '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''
+    main_df['M1M2 drop'], main_df['M1M2 gain'], main_df['EF avg'], main_df['EF USO'], main_df['M1 USO'],\
+    main_df['M2 USO'], main_df['EFD10'] = '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''
     for sub_id, row in main_df.iterrows():
         subj_loc = localization_df[localization_df['subject'] == row['subject']]
         efd0 = subj_loc[subj_loc['condition'] == 'Ears Free'][subj_loc['day'] == 0][
@@ -48,17 +48,16 @@ def add_localization_data(main_df, localization_df):
         efd10 = subj_loc[subj_loc['condition'] == 'Ears Free'][subj_loc['day'] == 10][
             subj_loc.columns[6:]].values[0]
         try:
-            efd10uso = subj_loc[subj_loc['condition'] == 'USO Ears Free'][subj_loc['day'] == 10][
+            efuso = subj_loc[subj_loc['condition'] == 'USO Ears Free'][subj_loc['day'] == 10][
                 subj_loc.columns[6:]].values[0]
-            efusodif = efd10uso - efd10
         except (ValueError, IndexError):
-            efusodif = numpy.array([numpy.nan] * 5)
+            efuso = numpy.array([numpy.nan] * 5)
         efavg = numpy.nanmean((efd0, efd5, efd10), axis=0)
         row['EFD0'] = efd0
         row['EFD5'] = efd5
-        # row['EFD10'] = efd10
+        row['EFD10'] = efd10
         row['EF avg'] = efavg
-        row['EF USO dif'] = efusodif
+        row['EF USO'] = efuso
         try:
             m1d0 = subj_loc[subj_loc['condition'] == 'Earmolds Week 1'][subj_loc['adaptation day'] == 0][
                 subj_loc.columns[6:]].values[0]
@@ -67,18 +66,17 @@ def add_localization_data(main_df, localization_df):
             d0drop = m1d0 - efd0
             d5gain = m1d5 - efd0
         except (ValueError, IndexError):
-            m1d0 = m1d5 = d0drop = d5gain = m1d5uso = numpy.array([numpy.nan] * 5)
+            m1d0 = m1d5 = d0drop = d5gain = numpy.array([numpy.nan] * 5)
         try:
-            m1d5uso = subj_loc[subj_loc['condition'] == 'USO Earmolds Week 1'][subj_loc['adaptation day'] == 5][
+            m1uso = subj_loc[subj_loc['condition'] == 'USO Earmolds Week 1'][subj_loc['adaptation day'] == 5][
                 subj_loc.columns[6:]].values[0]
-            m1usodif = m1d5uso - m1d5
         except (ValueError, IndexError):
-            m1usodif = numpy.array([numpy.nan] * 5)
+            m1uso = numpy.array([numpy.nan] * 5)
         row['M1D0'] = m1d0
         row['M1D5'] = m1d5
         row['M1 drop'] = d0drop
         row['M1 gain'] = d5gain
-        row['M1 USO dif'] = m1usodif
+        row['M1 USO'] = m1uso
         try:
             m2d0 = subj_loc[subj_loc['condition'] == 'Earmolds Week 2'][subj_loc['adaptation day'] == 0][
                 subj_loc.columns[6:]].values[0]
@@ -89,11 +87,10 @@ def add_localization_data(main_df, localization_df):
         except (ValueError, IndexError):
             m2d0 = m2d5 = d5drop = d10gain = numpy.array([numpy.nan] * 5)
         try:
-            m2d5uso = subj_loc[subj_loc['condition'] == 'USO Earmolds Week 2'][subj_loc['adaptation day'] == 5][
+            m2uso = subj_loc[subj_loc['condition'] == 'USO Earmolds Week 2'][subj_loc['adaptation day'] == 5][
                 subj_loc.columns[6:]].values[0]
-            m2usodif = m2d5uso - m2d5
         except (ValueError, IndexError):
-            m2usodif = numpy.array([numpy.nan] * 5)
+            m2uso = numpy.array([numpy.nan] * 5)
         try:
             d5m1m2drop = m2d0 - m1d5
             d5m1m2gain = m2d5 - m1d5
@@ -105,7 +102,7 @@ def add_localization_data(main_df, localization_df):
         row['M2 gain'] = d10gain
         row['M1M2 drop'] = d5m1m2drop
         row['M1M2 gain'] = d5m1m2gain
-        row['M2 USO dif'] = m2usodif
+        row['M2 USO'] = m2uso
     return main_df
 
 def add_hrtf_data(main_df, hrtf_df):

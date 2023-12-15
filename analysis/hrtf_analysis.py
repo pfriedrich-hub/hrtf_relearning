@@ -16,13 +16,14 @@ pandas.set_option('display.max_rows', 1000, 'display.max_columns', 1000, 'displa
 # ------ HRTF analysis ------ #
 
 # ----- VSI (trapeau und schönwiesner 2015) ---- #
-def vsi(hrtf, bandwidth=(4000, 16000), ear_idx=[0, 1]):
-    corr_mtx = hrtf_correlation(hrtf, hrtf, bandwidth, ear_idx, show=False)
+def vsi(hrtf, bandwidth=(4000, 16000), ear_idx=[0, 1], average=True):
+    corr_mtx = hrtf_correlation(hrtf, hrtf, bandwidth, ear_idx, show=False, average=average)
     corr_mtx = mtx_remove_main_diag(corr_mtx)
     vsi = 1 - numpy.mean(corr_mtx)
     return vsi
 
-def hrtf_correlation(hrtf_1, hrtf_2, bandwidth=(4000, 16000), ear_idx=[0, 1], show=False, axis=None, c_bar=True):
+def hrtf_correlation(hrtf_1, hrtf_2, bandwidth=(4000, 16000), ear_idx=[0, 1], show=False, axis=None, c_bar=True,
+                     average=True):
     # ear_idx: [0, 1] == both ears, [0] == left ear, [1] == right ear
     freqs = hrtf_1[0].frequencies
     freq_idx = numpy.logical_and(freqs >= bandwidth[0], freqs <= bandwidth[1])
@@ -37,11 +38,12 @@ def hrtf_correlation(hrtf_1, hrtf_2, bandwidth=(4000, 16000), ear_idx=[0, 1], sh
                 #       f'hrtf_2 at {hrtf_1.sources.vertical_polar[source_idx_j, 1]} to position {(i, j)}')
                 corr_mtx[-ear_id, i, j] = numpy.corrcoef(dtfs_1[source_idx_i, :, ear_id],
                                                         dtfs_2[source_idx_j, :, ear_id])[1, 0]
-    corr_mtx = numpy.mean(corr_mtx, axis=0)  # average left and right ear values if both ears are used
-    if show:
-        if not axis:
-            fig, axis = plt.subplots()
-        hrtf_plot.plot_correlation_matrix(corr_mtx, axis, c_bar)
+    if average:
+        corr_mtx = numpy.mean(corr_mtx, axis=0)  # average left and right ear values if both ears are used
+        if show:
+            if not axis:
+                fig, axis = plt.subplots()
+            hrtf_plot.plot_correlation_matrix(corr_mtx, axis, c_bar)
     return corr_mtx
 
 def vsi_across_bands(hrtf, bands=None, show=False, axis=None, ear_idx=[0,1]):
@@ -55,22 +57,6 @@ def vsi_across_bands(hrtf, bands=None, show=False, axis=None, ear_idx=[0,1]):
             fig, axis = plt.subplots()
         hrtf_plot.plot_vsi_across_bands(vsis, bands, axis=axis)
     return vsis
-
-def vsi_dissimilarity(hrtf_1, hrtf_2, bandwidth=(4000, 16000), ear_idx=[0, 1]):
-    """ compute dissimilarity between sets of DTFs"""
-    dtf1 = copy.deepcopy(hrtf_1)
-    dtf2 = copy.deepcopy(hrtf_2)
-    correlation_mtx = hrtf_correlation(dtf1, dtf2, bandwidth, ear_idx)
-    autocorrelation_mtx = hrtf_correlation(dtf1, dtf1, bandwidth, ear_idx)
-    # VSI dissimilarity: euclidean distance between the matrices
-    vsi_dissimilarity = numpy.sqrt(numpy.mean((correlation_mtx - autocorrelation_mtx)**2))
-    return vsi_dissimilarity
-
-def mtx_remove_main_diag(corr_mtx):
-    mask = numpy.ones(corr_mtx.shape, dtype=bool)
-    mask[numpy.diag_indices(7)] = False
-    mask = numpy.flipud(mask)
-    return corr_mtx[mask]
 
 def mean_vsi_across_bands(hrtf_dataframe, condition='Ears Free', bands=None, show=False, axis=None, ear_idx=[0,1]):
     if bands is None:  # calculate vsi across 5 octave frequency bands
@@ -88,6 +74,75 @@ def mean_vsi_across_bands(hrtf_dataframe, condition='Ears Free', bands=None, sho
                        yerr=err, fmt="o", c='k', elinewidth=0.5, markersize=3)
         fig.suptitle(condition)
     return mean_vsi_across_bands
+
+def vsi_dissimilarity(hrtf_1, hrtf_2, bandwidth=(4000, 16000), ear_idx=[0, 1]):
+    """ compute dissimilarity between sets of DTFs"""
+    dtf1 = copy.deepcopy(hrtf_1)
+    dtf2 = copy.deepcopy(hrtf_2)
+    correlation_mtx = hrtf_correlation(dtf1, dtf2, bandwidth, ear_idx)
+    autocorrelation_mtx = hrtf_correlation(dtf1, dtf1, bandwidth, ear_idx)
+    # VSI dissimilarity: euclidean distance between the matrices
+    vsi_dissimilarity = numpy.sqrt(numpy.mean((correlation_mtx - autocorrelation_mtx)**2))
+    return vsi_dissimilarity
+
+def vsi_dissimilarity_across_bands(hrtf_1, hrtf_2, bands, ear_idx=[0, 1], show=False, axis=None):
+    if bands is None:  # calculate vsi across 5 octave frequency bands
+        bands = [(4000, 8000), (4800, 9500), (5700, 11300), (6700, 13500), (8000, 16000)]
+    vsi_dissimilarities = numpy.zeros(len(bands))
+    for i, bandwidth in enumerate(bands):
+        vsi_dissimilarities[i] = vsi_dissimilarity(hrtf_1, hrtf_2, bandwidth, ear_idx)
+    if show:
+        if not axis:
+            fig, axis = plt.subplots()
+        hrtf_plot.plot_vsi_dissimilarity_across_bands(vsi_dissimilarities, bands, axis=axis)
+    return vsi_dissimilarities
+
+def weighted_vsi_dissimilarity(hrtf_1, hrtf_2, bands, ear_idx=[0,1], show=False, axis=None):
+    """
+    Return mean vsi dissimilarity across bands weighted by vsi across bands
+    """
+    if bands is None:  # calculate vsi across 5 octave frequency bands
+        bands = [(4000, 8000), (4800, 9500), (5700, 11300), (6700, 13500), (8000, 16000)]
+    vsi_bands = vsi_across_bands(hrtf_1, bands=bands, show=False, axis=None, ear_idx=ear_idx)
+    vsi_dis_bands = vsi_dissimilarity_across_bands(hrtf_1, hrtf_2, bands, ear_idx, show=False, axis=None)
+    weighted_dissimilarity = numpy.mean(vsi_dis_bands * vsi_bands)
+    return weighted_dissimilarity
+
+def mean_vsi_dissimilarity_across_bands(hrtf_dataframe, conditions=('Ears Free', 'Earmolds Week 1'),
+                                        bands=None, show=False, axis=None, ear_idx=[0,1]):
+    if bands is None:  # calculate vsi across 5 octave frequency bands
+        bands = [(4000, 8000), (4800, 9500), (5700, 11300), (6700, 13500), (8000, 16000)]
+    vsi_dissimilarities = []
+    for subject in hrtf_dataframe['subject'].unique():
+        try:
+            hrtf_1 = hrtf_dataframe[hrtf_dataframe['subject']==subject][hrtf_dataframe['condition'] == conditions[0]]['hrtf'].values[0]
+            hrtf_2 = hrtf_dataframe[hrtf_dataframe['subject']==subject][hrtf_dataframe['condition'] == conditions[1]]['hrtf'].values[0]
+            vsi_dissimilarities.append(vsi_dissimilarity_across_bands(hrtf_1, hrtf_2, bands, show=False, ear_idx=ear_idx))
+        except IndexError:
+            continue
+    mean_vsi_across_bands = numpy.mean(vsi_dissimilarities, axis=0)
+    if show:
+        if not axis:
+            fig, axis = plt.subplots()
+        hrtf_plot.plot_vsi_across_bands(mean_vsi_across_bands, bands, axis=axis)
+        axis.set_ylabel('VSI dissimilarity')
+        err = scipy.stats.sem(vsi_dissimilarities, axis=0)
+        axis.errorbar(axis.get_xticks(), numpy.mean(vsi_dissimilarities, axis=0), capsize=3,
+                       yerr=err, fmt="o", c='k', elinewidth=0.5, markersize=3)
+        fig.suptitle(conditions)
+    return mean_vsi_across_bands
+
+def mtx_remove_main_diag(corr_mtx):
+    mask = numpy.ones(corr_mtx.shape[-2:], dtype=bool)
+    mask[numpy.diag_indices(7)] = False
+    mask = numpy.flipud(mask)
+    if corr_mtx.shape == (7, 7):
+        corr_mtx = corr_mtx[mask]
+    elif corr_mtx.shape == (2, 7, 7):
+        corr_mtx = corr_mtx[:, mask]
+    return corr_mtx
+
+
 
 def mean_vsi(hrtf_dataframe, condition='Ears Free', bandwidth=None, ear_idx=[0, 1]):
     if bandwidth is None:
@@ -198,6 +253,26 @@ def add_hrtf_pc_weights(hrtf_df, weights):
     weights_right = weights[int(len(weights) / 2):]
     """
     # reality check
+    
+    # plot vsi dis across bands for all participants
+    for subject in hrtf_dataframe['subject'].unique():
+    try:
+        hrtf_1 = hrtf_dataframe[hrtf_dataframe['subject'] == subject][hrtf_dataframe['condition'] == conditions[0]][
+            'hrtf'].values[0]
+        hrtf_2 = hrtf_dataframe[hrtf_dataframe['subject'] == subject][hrtf_dataframe['condition'] == conditions[1]][
+            'hrtf'].values[0]
+        fig, axes = plt.subplots(2, 2, figsize=(10,8))
+        hrtf_dif = hrtf_analysis.hrtf_difference(hrtf_1, hrtf_2)
+        hrtf_plot.hrtf_image(hrtf_1, axis=axes[0, 0])
+        hrtf_plot.hrtf_image(hrtf_2, axis=axes[0, 1])
+        hrtf_plot.hrtf_image(hrtf_dif, axis=axes[1, 0])
+        vsi_dissimilarity_across_bands(hrtf_1, hrtf_2, bands, show=True, ear_idx=[0], axis=axes[1, 1])
+        plt.suptitle(subject)
+    except IndexError:
+        print(subject + 'missing hrtf')
+        
+        
+        
     subj_id = numpy.random.randint(0, 14)
     c_l = []
     c_r = []

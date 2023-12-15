@@ -5,7 +5,7 @@ import analysis.statistics.stats_df as stats_df
 measures = ['EG', 'RMSE ele', 'SD ele', 'RMSE az', 'SD az']
 
 """ Ears Free baseline """
-def ef_vsi(main_df, measure, axis):
+def ef_vsi(main_df, measure, axis=None):
     if not axis:
         fig, axis = plt.subplots(1, 1)
     # ears free performance / vsi
@@ -26,7 +26,7 @@ def ef_vsi(main_df, measure, axis):
     axis.plot(x_vals, ys, lw=0.4, c='0')
     axis.annotate('p=%.4f' %(p_val), (.4, .9), xycoords='axes fraction')
 
-def ef_spstr(main_df, measure, axis):
+def ef_spstr(main_df, measure, axis=None):
     if not axis:
         fig, axis = plt.subplots(1, 1)
     # ears free performance / spectral strength
@@ -48,7 +48,7 @@ def ef_spstr(main_df, measure, axis):
     axis.plot(x_vals, ys, lw=0.4, c='0')
 
 """ M1 effect """
-def d0dr_vsi_dis(main_df, measure, axis):
+def d0dr_vsi_dis(main_df, measure, axis=None):
     if not axis:
         fig, axis = plt.subplots(1, 1)
         axis.set_ylabel('VSI dissimilarity')
@@ -69,7 +69,28 @@ def d0dr_vsi_dis(main_df, measure, axis):
     ys = slope * x_vals + intercept
     axis.plot(x_vals, ys, lw=0.4, c='0')
 
-def d0dr_sp_dif(main_df, measure, axis):
+def d0dr_w_vsi_dis(main_df, measure, axis=None):
+    if not axis:
+        fig, axis = plt.subplots(1, 1)
+        axis.set_ylabel('weighted VSI dissimilarity')
+        axis.set_xlabel(measure)
+        axis.set_title('Ears free vs M1 d0')
+    # d1 drop / vsi dissimilarity
+    x = numpy.array([item[measures.index(measure)] for item in main_df['M1 drop']])
+    y = main_df['EF M1 weighted VSI dissimilarity'].to_numpy(dtype='float16')
+    p_val = scipy.stats.spearmanr(x, y, nan_policy='omit')[1]
+    axis.scatter(x, y, marker='.', color='0')
+    axis.set_ylim(0.1, 1.2)
+    axis.annotate('p=%.4f' %(p_val), (.4, .9), xycoords='axes fraction')
+    for i, s in enumerate(list(main_df['subject'].unique())):
+        axis.annotate(s, (x[i], y[i]))
+    mask = ~numpy.isnan(x) & ~numpy.isnan(y)
+    slope, intercept = scipy.stats.linregress(x[mask], y[mask], alternative='two-sided')[:2]
+    x_vals = numpy.array(axis.get_xlim())
+    ys = slope * x_vals + intercept
+    axis.plot(x_vals, ys, lw=0.4, c='0')
+
+def d0dr_sp_dif(main_df, measure, axis=None):
     if not axis:
         fig, axis = plt.subplots(1, 1)
         axis.set_ylabel('spectral difference')
@@ -90,7 +111,7 @@ def d0dr_sp_dif(main_df, measure, axis):
     ys = slope * x_vals + intercept
     axis.plot(x_vals, ys, lw=0.4, c='0')
 
-def d0dr_pcw_dist(main_df, measure, axis):
+def d0dr_pcw_dist(main_df, measure, axis=None):
     if not axis:
         fig, axis = plt.subplots(1, 1)
         axis.set_ylabel('PCW distance')
@@ -111,7 +132,7 @@ def d0dr_pcw_dist(main_df, measure, axis):
     ys = slope * x_vals + intercept
     axis.plot(x_vals, ys, lw=0.4, c='0')
 
-def d5ga_vsi_dis(main_df, measure, axis):
+def d5ga_vsi_dis(main_df, measure, axis=None):
     if not axis:
         fig, axis = plt.subplots(1, 1)
         axis.set_ylabel('VSI dissimilarity')
@@ -132,7 +153,29 @@ def d5ga_vsi_dis(main_df, measure, axis):
     ys = slope * x_vals + intercept
     axis.plot(x_vals, ys, lw=0.4, c='0')
 
-def d5ga_sp_dif(main_df, measure, axis):
+def d5ga_w_vsi_dis(main_df, measure, axis=None):
+    if not axis:
+        fig, axis = plt.subplots(1, 1)
+        axis.set_ylabel('weighted VSI dissimilarity')
+        axis.set_title('ears free vs M1 d5')
+        axis.set_xlabel(measure)
+    # d1 drop / vsi dissimilarity
+    x = numpy.array([item[measures.index(measure)] for item in main_df['M1 gain']])
+    y = main_df['EF M1 weighted VSI dissimilarity'].to_numpy(dtype='float16')
+    p_val = scipy.stats.spearmanr(x, y, nan_policy='omit')[1]
+    axis.scatter(x, y, marker='.', color='0')
+    axis.set_ylim(0.1, 1.2)
+    axis.annotate('p=%.4f' %(p_val), (.4, .9), xycoords='axes fraction')
+    for i, s in enumerate(list(main_df['subject'].unique())):
+        axis.annotate(s, (x[i], y[i]))
+    mask = ~numpy.isnan(x) & ~numpy.isnan(y)
+    slope, intercept = scipy.stats.linregress(x[mask], y[mask], alternative='two-sided')[:2]
+    x_vals = numpy.array(axis.get_xlim())
+    ys = slope * x_vals + intercept
+    axis.plot(x_vals, ys, lw=0.4, c='0')
+
+
+def d5ga_sp_dif(main_df, measure, axis=None):
     if not axis:
         fig, axis = plt.subplots(1, 1)
         axis.set_ylabel('spectral difference')
@@ -153,7 +196,7 @@ def d5ga_sp_dif(main_df, measure, axis):
     ys = slope * x_vals + intercept
     axis.plot(x_vals, ys, lw=0.4, c='0')
 
-def d5ga_pcw_dist(main_df, measure, axis):
+def d5ga_pcw_dist(main_df, measure, axis=None):
     if not axis:
         fig, axis = plt.subplots(1, 1)
         axis.set_ylabel('PCW distance')
@@ -176,7 +219,7 @@ def d5ga_pcw_dist(main_df, measure, axis):
 
 """ M2 effect """
 
-def d5dr_vsi_dis(main_df, measure, axis):
+def d5dr_vsi_dis(main_df, measure, axis=None):
     if not axis:
         fig, axis = plt.subplots(1, 1)
         axis.set_ylabel('VSI dissimilarity')
@@ -196,7 +239,7 @@ def d5dr_vsi_dis(main_df, measure, axis):
     ys = slope * x_vals + intercept
     axis.plot(x_vals, ys, lw=0.4, c='0')
 
-def d5dr_sp_dif(main_df, measure, axis):
+def d5dr_sp_dif(main_df, measure, axis=None):
     if not axis:
         fig, axis = plt.subplots(1, 1)
         axis.set_ylabel('spectral difference')
@@ -216,7 +259,7 @@ def d5dr_sp_dif(main_df, measure, axis):
     ys = slope * x_vals + intercept
     axis.plot(x_vals, ys, lw=0.4, c='0')
 
-def d5dr_pcw_dist(main_df, measure, axis):
+def d5dr_pcw_dist(main_df, measure, axis=None):
     if not axis:
         fig, axis = plt.subplots(1, 1)
         axis.set_ylabel('PCW distance')
@@ -237,7 +280,7 @@ def d5dr_pcw_dist(main_df, measure, axis):
     ys = slope * x_vals + intercept
     axis.plot(x_vals, ys, lw=0.4, c='0')
 
-def d10ga_vsi_dis(main_df, measure, axis):
+def d10ga_vsi_dis(main_df, measure, axis=None):
     if not axis:
         fig, axis = plt.subplots(1, 1)
         axis.set_ylabel('VSI dissimilarity')
@@ -257,7 +300,7 @@ def d10ga_vsi_dis(main_df, measure, axis):
     ys = slope * x_vals + intercept
     axis.plot(x_vals, ys, lw=0.4, c='0')
 
-def d10ga_sp_dif(main_df, measure, axis):
+def d10ga_sp_dif(main_df, measure, axis=None):
     if not axis:
         fig, axis = plt.subplots(1, 1)
         axis.set_ylabel('spectral difference')
@@ -277,7 +320,7 @@ def d10ga_sp_dif(main_df, measure, axis):
     ys = slope * x_vals + intercept
     axis.plot(x_vals, ys, lw=0.4, c='0')
 
-def d10ga_pcw_dist(main_df, measure, axis):
+def d10ga_pcw_dist(main_df, measure, axis=None):
     if not axis:
         fig, axis = plt.subplots(1, 1)
         axis.set_ylabel('PCW distance')
@@ -299,7 +342,7 @@ def d10ga_pcw_dist(main_df, measure, axis):
     axis.plot(x_vals, ys, lw=0.4, c='0')
 
 # m1 vs m2
-def d5dr_vsi_dis_m1m2(main_df, measure, axis):
+def d5dr_vsi_dis_m1m2(main_df, measure, axis=None):
     if not axis:
         fig, axis = plt.subplots(1, 1)
         axis.set_ylabel('VSI dissimilarity')
@@ -320,7 +363,7 @@ def d5dr_vsi_dis_m1m2(main_df, measure, axis):
     ys = slope * x_vals + intercept
     axis.plot(x_vals, ys, lw=0.4, c='0')
 
-def d5dr_sp_dif_m1m2(main_df, measure, axis):
+def d5dr_sp_dif_m1m2(main_df, measure, axis=None):
     if not axis:
         fig, axis = plt.subplots(1, 1)
         axis.set_ylabel('spectral difference')
@@ -341,7 +384,7 @@ def d5dr_sp_dif_m1m2(main_df, measure, axis):
     ys = slope * x_vals + intercept
     axis.plot(x_vals, ys, lw=0.4, c='0')
 
-def d5dr_pcw_dist_m1m2(main_df, measure, axis):
+def d5dr_pcw_dist_m1m2(main_df, measure, axis=None):
     if not axis:
         fig, axis = plt.subplots(1, 1)
         axis.set_ylabel('PCW distance')
@@ -362,7 +405,7 @@ def d5dr_pcw_dist_m1m2(main_df, measure, axis):
     ys = slope * x_vals + intercept
     axis.plot(x_vals, ys, lw=0.4, c='0')
 
-def d10ga_vsi_dis_m1m2(main_df, measure, axis):
+def d10ga_vsi_dis_m1m2(main_df, measure, axis=None):
     if not axis:
         fig, axis = plt.subplots(1, 1)
         axis.set_ylabel('VSI dissimilarity')
@@ -383,7 +426,7 @@ def d10ga_vsi_dis_m1m2(main_df, measure, axis):
     ys = slope * x_vals + intercept
     axis.plot(x_vals, ys, lw=0.4, c='0')
 
-def d10ga_sp_dif_m1m2(main_df, measure, axis):
+def d10ga_sp_dif_m1m2(main_df, measure, axis=None):
     if not axis:
         fig, axis = plt.subplots(1, 1)
         axis.set_ylabel('spectral difference')
@@ -404,7 +447,7 @@ def d10ga_sp_dif_m1m2(main_df, measure, axis):
     ys = slope * x_vals + intercept
     axis.plot(x_vals, ys, lw=0.4, c='0')
 
-def d10ga_pcw_dist_m1m2(main_df, measure, axis):
+def d10ga_pcw_dist_m1m2(main_df, measure, axis=None):
     if not axis:
         fig, axis = plt.subplots(1, 1)
         axis.set_ylabel('PCW distance')
@@ -427,13 +470,7 @@ def d10ga_pcw_dist_m1m2(main_df, measure, axis):
 
 
 """# ----  compare spectral features between ears ----- #"""
-def vsi_l_r(main_df, axis):
-    if not axis:
-        fig, axis = plt.subplots(1, 1)
-        axis.set_title('VSI')
-    axis.set_xlabel('Left Ear VSI')
-    axis.set_ylabel('Right Ear VSI')
-    c_list = ['#2668B3', '#F7D724', '#CF1F48']  # triadic color scheme
+def vsi_l_r(main_df, axis=None, show=True):
     x, y = numpy.zeros((3, len(main_df['subject']))), numpy.zeros((3, len(main_df['subject'])))
     x[0] = main_df['EF VSI l'].to_numpy(dtype='float16', na_value=numpy.NaN)
     x[1] = main_df['M1 VSI l'].to_numpy(dtype='float16', na_value=numpy.NaN)
@@ -441,20 +478,30 @@ def vsi_l_r(main_df, axis):
     y[0] = main_df['EF VSI r'].to_numpy(dtype='float16', na_value=numpy.NaN)
     y[1] = main_df['M1 VSI r'].to_numpy(dtype='float16', na_value=numpy.NaN)
     y[2] = main_df['M2 VSI r'].to_numpy(dtype='float16', na_value=numpy.NaN)
-    axis.scatter(x[0], y[0], marker='.', c=c_list[0], label='Ears Free')
-    axis.scatter(x[1], y[1], marker='.', c=c_list[1], label='M1')
-    axis.scatter(x[2], y[2], marker='.', c=c_list[2], label='M2')
-    axis.legend()
-    axis.set_ylim(0, 1.2)
-    axis.set_xlim(0, 1.2)
-    mask = ~numpy.isnan(x) & ~numpy.isnan(y)
-    for i in range(3):
-        slope, intercept = scipy.stats.linregress(x[i][mask[i]], y[i][mask[i]], alternative='two-sided')[:2]
-        x_vals = numpy.array(axis.get_xlim())
-        ys = slope * x_vals + intercept
-        axis.plot(x_vals, ys, lw=0.4, c=c_list[i])
+    if show:
+        if not axis:
+            fig, axis = plt.subplots(1, 1)
+            axis.set_title('VSI')
+        axis.set_xlabel('Left Ear VSI')
+        axis.set_ylabel('Right Ear VSI')
+        c_list = ['#2668B3', '#F7D724', '#CF1F48']  # triadic color scheme
+        axis.scatter(x[0], y[0], marker='.', c=c_list[0], label='Ears Free')
+        axis.scatter(x[1], y[1], marker='.', c=c_list[1], label='M1')
+        axis.scatter(x[2], y[2], marker='.', c=c_list[2], label='M2')
+        axis.legend()
+        axis.set_ylim(0, 1.2)
+        axis.set_xlim(0, 1.2)
+        mask = ~numpy.isnan(x) & ~numpy.isnan(y)
+        for i in range(3):
+            slope, intercept = scipy.stats.linregress(x[i][mask[i]], y[i][mask[i]], alternative='two-sided')[:2]
+            x_vals = numpy.array(axis.get_xlim())
+            ys = slope * x_vals + intercept
+            axis.plot(x_vals, ys, lw=0.4, c=c_list[i])
+    vsi_l = x
+    vsi_r = y
+    return vsi_l, vsi_r
 
-def sp_str_l_r(main_df, axis):
+def sp_str_l_r(main_df, axis=None):
     x, y = numpy.zeros((3, len(main_df['subject']))), numpy.zeros((3, len(main_df['subject'])))
     x[0] = main_df['EF spectral strength l'].to_numpy(dtype='float16', na_value=numpy.NaN)
     x[1] = main_df['M1 spectral strength l'].to_numpy(dtype='float16', na_value=numpy.NaN)
@@ -481,7 +528,7 @@ def sp_str_l_r(main_df, axis):
         ys = slope * x_vals + intercept
         axis.plot(x_vals, ys, lw=0.4, c=c_list[i])
 
-def scatter_vsi_dis_l_r(main_df, axis):
+def scatter_vsi_dis_l_r(main_df, axis=None):
     x, y = numpy.zeros((3, len(main_df['subject']))), numpy.zeros((3, len(main_df['subject'])))
     x[0] = main_df['EF M1 VSI dissimilarity l'].to_numpy(dtype='float16', na_value=numpy.NaN)
     x[1] = main_df['EF M2 VSI dissimilarity l'].to_numpy(dtype='float16', na_value=numpy.NaN)
@@ -508,7 +555,7 @@ def scatter_vsi_dis_l_r(main_df, axis):
         ys = slope * x_vals + intercept
         axis.plot(x_vals, ys, lw=0.4, c=c_list[i])
 
-def scatter_sp_dif_l_r(main_df, axis):
+def scatter_sp_dif_l_r(main_df, axis=None):
     x, y = numpy.zeros((3, len(main_df['subject']))), numpy.zeros((3, len(main_df['subject'])))
     x[0] = main_df['EF M1 spectral difference l'].to_numpy(dtype='float16', na_value=numpy.NaN)
     x[1] = main_df['EF M2 spectral difference l'].to_numpy(dtype='float16', na_value=numpy.NaN)
@@ -535,7 +582,7 @@ def scatter_sp_dif_l_r(main_df, axis):
         ys = slope * x_vals + intercept
         axis.plot(x_vals, ys, lw=0.4, c=c_list[i])
 
-def boxplot_vsi_dis(main_df, axis):
+def boxplot_vsi_dis(main_df, axis=None):
     x = numpy.zeros((3, len(main_df['subject'])*2))
     efm1_l = main_df['EF M1 VSI dissimilarity l'].to_numpy(dtype='float16', na_value=numpy.NaN)
     efm1_r = main_df['EF M1 VSI dissimilarity r'].to_numpy(dtype='float16', na_value=numpy.NaN)
@@ -558,7 +605,7 @@ def boxplot_vsi_dis(main_df, axis):
     # mann-whitney U - independent non-parametric
     scipy.stats.mannwhitneyu(x[0], x[1], nan_policy='omit')
 
-def boxplot_sp_dif(main_df, axis):
+def boxplot_sp_dif(main_df, axis=None):
     x = numpy.zeros((3, len(main_df['subject'])*2))
     efm1_l = main_df['EF M1 spectral difference l'].to_numpy(dtype='float16', na_value=numpy.NaN)
     efm1_r = main_df['EF M1 spectral difference r'].to_numpy(dtype='float16', na_value=numpy.NaN)
@@ -580,7 +627,7 @@ def boxplot_sp_dif(main_df, axis):
     # mann-whitney U - independent non-parametric
     scipy.stats.mannwhitneyu(x[0], x[1], nan_policy='omit')
 
-def scatter_perm_vsi_dis(main_df, bandwidth, axis):
+def scatter_perm_vsi_dis(main_df, bandwidth, axis=None):
     """
     compute VSI dissimilarity between every possible pair of participants
     and compare it with the VSI dissimilarities / spectral difference between free and M1 / M2 DTFs
@@ -614,7 +661,7 @@ def scatter_perm_vsi_dis(main_df, bandwidth, axis):
     #     ys = slope * x_vals + intercept
     #     axis.plot(x_vals, ys, lw=0.4, c=c_list[i])
 
-def scatter_perm_sp_dif(main_df, bandwidth, axis):
+def scatter_perm_sp_dif(main_df, bandwidth, axis=None):
     """
     compute spectral difference between every possible pair of participants
     and compare it with the VSI dissimilarities / spectral difference between free and M1 / M2 DTFs
@@ -648,7 +695,7 @@ def scatter_perm_sp_dif(main_df, bandwidth, axis):
     #     ys = slope * x_vals + intercept
     #     axis.plot(x_vals, ys, lw=0.4, c=c_list[i])
 
-def boxplot_vsi(main_df, axis):
+def boxplot_vsi(main_df, axis=None):
     """
     VSI across conditions
     """
@@ -674,7 +721,7 @@ def boxplot_vsi(main_df, axis):
     # mann-whitney U - independent non-parametric
     scipy.stats.mannwhitneyu(x[0], x[1], nan_policy='omit')
 
-def boxplot_sp_str(main_df, axis):
+def boxplot_sp_str(main_df, axis=None):
     """
     spectral strength across conditions
     """

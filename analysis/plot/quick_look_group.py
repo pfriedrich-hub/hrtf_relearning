@@ -20,14 +20,18 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 # process HRTFs
 hrtf_df = build_df.get_hrtf_df(path, processed=True)
 # hrtf_df = hrtf_processing.process_hrtfs(hrtf_df, filter='erb', baseline=True, dfe=True, write=False)  # baseline for hrtf image
-hrtf_plot.hrtf_overwiev(hrtf_df, to_plot='average', dfe=True, n_bins=None)
 
+# plot overview
+hrtf_plot.hrtf_overwiev(hrtf_df, to_plot='average', dfe=False, n_bins=None)
 
 # mean vsi / spectral str across bands
-condition = conditions[0]
 bands = misc.octave_spacing.overlapping_bands()[0]
+bands = misc.octave_spacing.non_overlapping_bands()[0]
+condition = conditions[1]
 hrtf_analysis.mean_vsi_across_bands(hrtf_df, condition=condition, bands=bands, show=True, ear_idx=[0])
 hrtf_analysis.mean_spectral_strength_across_bands(hrtf_df, condition, bands=bands, show=True, ear='left')
+hrtf_analysis.mean_vsi_dissimilarity_across_bands(hrtf_df, conditions=('Ears Free', 'Earmolds Week 1'), ear_idx=[0,1],
+                                                  bands=bands, show=True)
 
 """ adaptation """
 axis = loc_plot.learning_plot(to_plot='average')

@@ -6,9 +6,63 @@ import numpy
 import matplotlib.colors as colors
 from matplotlib import pyplot as plt
 import copy
+import scipy
 import cmasher as cmr
 from misc.unit_conversion import cm2in
 
+params = {
+    'axes.labelsize': 8,
+    'axes.titlesize':6,
+    'xtick.labelsize':8,
+    'ytick.labelsize':8,
+    'axes.titlepad': 1,
+    'axes.labelpad': 1,
+    'font.size': 8,
+    'lines.linewidth': 0.5
+}
+plt.rcParams.update(params)
+
+
+def plot_mean_vsi_across_bands(hrtf_df, condition='Ears Free', bands=None, axis=None, ear_idx=[0], figsize=(9, 9)):
+    if bands is None:  # calculate vsi across 5 octave frequency bands
+        bands = [(4000, 8000), (4800, 9500), (5700, 11300), (6700, 13500), (8000, 16000)]
+    vsis = []
+    for hrtf in list(hrtf_df[hrtf_df['condition'] == condition]['hrtf']):
+        vsis.append(hrtf_analysis.vsi_across_bands(hrtf, bands, show=False, ear_idx=ear_idx))
+    mean_vsi_across_bands = numpy.mean(vsis, axis=0)
+    width = cm2in(figsize[0])
+    height = cm2in(figsize[1])
+    if not axis:
+        fig, axis = plt.subplots(figsize=(height, width))
+        axis.tick_params(axis='both', direction="in", bottom=True, top=False, left=True, right=False,
+                         width=0.5, length=2)
+    axis.plot(mean_vsi_across_bands, c='k')
+    # xticks
+    axis.set_xticks(numpy.arange(len(bands)))
+    xlabels = [item.get_text() for item in axis.get_xticklabels()]
+    for idx, band in enumerate(numpy.asarray(bands) / 1000):
+        if idx in [0, 4]:
+            xlabels[idx] = '%.0f - %.0f' % (band[0], band[1])
+        else:
+            xlabels[idx] = '%.1f - %.1f' % (band[0], band[1])
+    axis.set_xticklabels(xlabels)
+    # disable spines
+    axis.spines['top'].set_visible(False)
+    axis.spines['right'].set_visible(False)
+    # set plot spines lw
+    for loc, spine in axis.spines.items():
+        spine.set_lw(0.5)
+    # error bars
+    err = scipy.stats.sem(vsis, axis=0)
+    axis.errorbar(axis.get_xticks(), numpy.mean(vsis, axis=0), capsize=3,
+                  yerr=err, c='k', fmt="o", elinewidth=0.5, markersize=4, fillstyle='full',
+                  markerfacecolor='white', markeredgewidth=.5)
+    # yticks
+    axis.set_yticks([0.4, 0.5, 0.6, 0.7])
+    axis.set_yticklabels([0.4, 0.5, 0.6, 0.7])
+    axis.set_xlabel('Frequency bands (kHz)')
+    axis.set_ylabel('Mean VSI, ears free')
+    return fig, axis
 
 def compare_spectral_change_p(main_df, axis=None, bandwidth=(4000, 16000), width=18, height=6):
     width = cm2in(width)
@@ -31,10 +85,11 @@ def compare_spectral_change_p(main_df, axis=None, bandwidth=(4000, 16000), width
     axes[1].set_title('Free ears vs Molds 2', size=labelsize)
     axes[2].set_title('Molds 1 vs Molds 2', size=labelsize)
 
+    # subplot numbering
     subpl_labels = ['A', 'B', 'C']
     for ax_id, ax in enumerate(axes):
-        label_x = axes[ax_id].get_position().x0 + 0.005
-        label_y = axes[ax_id].get_position().y1 - 0.07  # todo should be dynamic
+        label_x = axes[ax_id].get_position().x0 + 0.01 # left
+        label_y = axes[ax_id].get_position().y1 - 0.1  # down # todo should be dynamic
         fig.text(x=label_x, y=label_y, s=subpl_labels[ax_id], size=labelsize+6, c='w', weight='bold')
 
     return fig, axis
@@ -109,11 +164,13 @@ def hrtf_compare(hrtf_df, axis=None, average_ears=True, hrtf_diff=False, zlim=(-
         axes[1].set_title('Difference Ears Free / Earmolds 2', size=labelsize)
         axes[2].set_title('Difference Earmolds 1 / Earmolds 2', size=labelsize)
 
+    # subplot numbering
     subpl_labels = ['A', 'B', 'C']
     for ax_id, ax in enumerate(axes):
         label_x = axes[ax_id].get_position().x0 + 0.01 # left
         label_y = axes[ax_id].get_position().y1 - 0.1  # down # todo should be dynamic
         fig.text(x=label_x, y=label_y, s=subpl_labels[ax_id], size=labelsize+6, c='w', weight='bold')
+
     plt.show()
     return fig, axes
 
@@ -253,19 +310,22 @@ def plot_average(hrtf_df, condition='Ears Free', kind='image'):
 
 
 def plot_vsi_across_bands(vsi_across_bands, bands, axis=None):
+    labelsize = 8
     if not bands:
         bands = [(4000, 5700), (5700, 8000), (8000, 11300), (11300, 16000)]
     if not axis:
         fig, axis = plt.subplots()
     axis.plot(vsi_across_bands, c='k', lw=0.5)
-    axis.set_xticks(numpy.arange(len(bands)))
-    labels = [item.get_text() for item in axis.get_xticklabels()]
+    xlabels = [item.get_text() for item in axis.get_xticklabels()]
     for idx, band in enumerate(numpy.asarray(bands) / 1000):
-        labels[idx] = '%.1f - %.1f' % (band[0], band[1])
-    axis.set_xticklabels(labels)
-    axis.set_yticks(numpy.arange(0.1, 1.2, 0.1))
-    axis.set_xlabel('Frequency bands (kHz)')
-    axis.set_ylabel('VSI')
+        xlabels[idx] = '%.1f - %.1f' % (band[0], band[1])
+    axis.set_xticks(numpy.arange(len(bands)))
+    axis.set_xticklabels(xlabels, size=labelsize)
+    axis.set_ylim(0.2, 0.8)
+    axis.set_yticks(numpy.arange(0.4, 0.8, 0.2))
+    axis.set_yticklabels(numpy.arange(0.1, 1.2, 0.1), size=labelsize)
+    axis.set_xlabel('Frequency bands (kHz)', size=labelsize)
+    axis.set_ylabel('VSI', size=labelsize)
 
 def plot_vsi_dissimilarity_across_bands(vsi_dissimilarity_across_bands, bands, axis=None):
     if not bands:

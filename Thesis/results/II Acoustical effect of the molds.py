@@ -28,17 +28,16 @@ vsi_bandwidth = (5700, 11300)
 
 
 
+""" Fig 3 - spectral change probability """
+fig, axes = hrtf_plot.compare_spectral_change_p(main_df, axis=None, bandwidth=(4000, 16000),  width=14, height=5.2)
+plt.savefig(plot_path / 'spectral_change_p/spectral_change_p.svg', format='svg', bbox_inches='tight')
+
+
 """ figure 2 - acoustic effect of the earmolds """
 # hrtf_plot.hrtf_overwiev(hrtf_df, to_plot='average', dfe=False, n_bins=None)
 fig, axes = hrtf_plot.hrtf_compare(hrtf_df, axis=None, average_ears=True, hrtf_diff=False, zlim=(-12,8),
                                    width=14, height=5.2)
 plt.savefig(plot_path / 'hrtf_compare/hrtf_compare.svg', format='svg', bbox_inches='tight')
-
-
-""" Fig 3 - spectral change probability """
-fig, axes = hrtf_plot.compare_spectral_change_p(main_df, axis=None, bandwidth=(4000, 16000),  width=21, height=8)
-plt.savefig(plot_path / 'spectral_change_p/spectral_change_p.svg', format='svg', bbox_inches='tight')
-
 
 
 # todo maybe only plot 3 conditons here w/out difference spectra
@@ -82,4 +81,3 @@ stats_plot.vsi_l_r(main_df, show=True)
 main_df = stats_df.add_l_r_comparison(main_df, vsi_bandwidth)
 stats_plot.scatter_perm_vsi_dis(main_df, vsi_bandwidth)
 
-""" Fig VSI across bands """

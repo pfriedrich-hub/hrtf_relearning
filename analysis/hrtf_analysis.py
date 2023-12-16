@@ -19,8 +19,21 @@ pandas.set_option('display.max_rows', 1000, 'display.max_columns', 1000, 'displa
 def vsi(hrtf, bandwidth=(4000, 16000), ear_idx=[0, 1], average=True):
     corr_mtx = hrtf_correlation(hrtf, hrtf, bandwidth, ear_idx, show=False, average=average)
     corr_mtx = mtx_remove_main_diag(corr_mtx)
-    vsi = 1 - numpy.mean(corr_mtx)
+    if not average and len(ear_idx)==2:
+        vsi = 1 - numpy.mean(corr_mtx, axis=1)
+    else:
+        vsi = 1 - numpy.mean(corr_mtx)
     return vsi
+
+def mtx_remove_main_diag(corr_mtx):
+    mask = numpy.ones(corr_mtx.shape[-2:], dtype=bool)
+    mask[numpy.diag_indices(7)] = False
+    mask = numpy.flipud(mask)
+    if corr_mtx.shape == (7, 7):
+        corr_mtx = corr_mtx[mask]
+    elif corr_mtx.shape == (2, 7, 7) or corr_mtx.shape == (1, 7, 7):
+        corr_mtx = corr_mtx[:, mask]
+    return corr_mtx
 
 def hrtf_correlation(hrtf_1, hrtf_2, bandwidth=(4000, 16000), ear_idx=[0, 1], show=False, axis=None, c_bar=True,
                      average=True):
@@ -58,22 +71,15 @@ def vsi_across_bands(hrtf, bands=None, show=False, axis=None, ear_idx=[0,1]):
         hrtf_plot.plot_vsi_across_bands(vsis, bands, axis=axis)
     return vsis
 
-def mean_vsi_across_bands(hrtf_dataframe, condition='Ears Free', bands=None, show=False, axis=None, ear_idx=[0,1]):
+def mean_vsi_across_bands(hrtf_dataframe, condition='Ears Free', bands=None, ear_idx=[0,1]):
     if bands is None:  # calculate vsi across 5 octave frequency bands
         bands = [(4000, 8000), (4800, 9500), (5700, 11300), (6700, 13500), (8000, 16000)]
     vsis = []
     for hrtf in list(hrtf_dataframe[hrtf_dataframe['condition'] == condition]['hrtf']):
         vsis.append(vsi_across_bands(hrtf, bands, show=False, ear_idx=ear_idx))
     mean_vsi_across_bands = numpy.mean(vsis, axis=0)
-    if show:
-        if not axis:
-            fig, axis = plt.subplots()
-        hrtf_plot.plot_vsi_across_bands(mean_vsi_across_bands, bands, axis=axis)
-        err = scipy.stats.sem(vsis, axis=0)
-        axis.errorbar(axis.get_xticks(), numpy.mean(vsis, axis=0), capsize=3,
-                       yerr=err, fmt="o", c='k', elinewidth=0.5, markersize=3)
-        fig.suptitle(condition)
     return mean_vsi_across_bands
+
 
 def vsi_dissimilarity(hrtf_1, hrtf_2, bandwidth=(4000, 16000), ear_idx=[0, 1]):
     """ compute dissimilarity between sets of DTFs"""
@@ -131,16 +137,6 @@ def mean_vsi_dissimilarity_across_bands(hrtf_dataframe, conditions=('Ears Free',
                        yerr=err, fmt="o", c='k', elinewidth=0.5, markersize=3)
         fig.suptitle(conditions)
     return mean_vsi_across_bands
-
-def mtx_remove_main_diag(corr_mtx):
-    mask = numpy.ones(corr_mtx.shape[-2:], dtype=bool)
-    mask[numpy.diag_indices(7)] = False
-    mask = numpy.flipud(mask)
-    if corr_mtx.shape == (7, 7):
-        corr_mtx = corr_mtx[mask]
-    elif corr_mtx.shape == (2, 7, 7):
-        corr_mtx = corr_mtx[:, mask]
-    return corr_mtx
 
 
 

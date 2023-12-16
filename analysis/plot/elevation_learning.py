@@ -97,8 +97,8 @@ def learning_plot(to_plot='average', path=Path.cwd() / 'data' / 'experiment' / '
                               markerfacecolor='w', markersize=3),
                        Line2D([0], [0], marker='o', color='black', label='With molds',
                               markerfacecolor='black', markersize=3)]
-    axes[0].legend(handles=legend_elements_1, loc='best', frameon=False, handlelength=0)
-    axes[1].legend(loc='center right', frameon=False)
+    axes[0].legend(handles=legend_elements_1, loc='best', frameon=False, handlelength=0, fontsize=str(labelsize))
+    axes[1].legend(loc='center right', frameon=False, fontsize=str(labelsize))
 
     # axes frames
     axes[0].spines['top'].set_visible(False)

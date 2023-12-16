@@ -47,11 +47,12 @@ stats_plot.ef_spstr(main_df, 'RMSE ele', axis=None)
 main_df = stats_df.add_hrtf_stats(main_df, bandwidth=(3700, 12900))
 x = numpy.array([item[0] for item in main_df['EFD0']])  # EG
 x = numpy.array([item[1] for item in main_df['EFD0']])  # RMSE ele
-x = numpy.array([item[2] for item in main_df['EFD0']])  # SD ele - only correlation
+x = numpy.array([item[2] for item in main_df['EFD0']])
 y = main_df['EF VSI'].to_numpy(dtype='float16')
 R, p_val = scipy.stats.spearmanr(x, y, nan_policy='omit')  # VSI
 y1 = main_df['EF spectral strength'].to_numpy(dtype='float16')
 R, p_val = scipy.stats.spearmanr(x, y1, nan_policy='omit')  # spectral strength
+
 
 """ difference in vsi dissimilarity  free ears / M1 / M2"""
 main_df = stats_df.add_hrtf_stats(main_df, bandwidth=(3700, 12900))

@@ -43,11 +43,14 @@ condition = conditions[0]
 bands = misc.octave_spacing.overlapping_bands()[0]
 # bands = misc.octave_spacing.non_overlapping_bands()[0]
 # bands = [(6000, 12000)]
-ear = 'left'
+ear = 'right'
 ear_idx = [0]
 for subject in hrtf_df['subject'].unique():
     hrtf = hrtf_df[hrtf_df['subject'] == subject][hrtf_df['condition'] == condition]['hrtf'].values[0]
-    fig, axis = plt.subplots(3, 1, figsize=(7,9))
+    axis = hrtf_plot.hrtf_image(hrtf, chan=1)
+    axis.set_title(subject)
+
+    axis = plt.subplots(3, 1, figsize=(7,9))
     # image
     # hrtf_pl.hrtf_image(hrtf, bandwidth=(numpy.min(bands), numpy.max(bands)), n_bins=None, axis=axis[0], z_min=-30, z_max=30, cbar=True)
     # axis[0].vlines(numpy.asarray(bands).flatten()[1:-1], ymin=-37.5, ymax=37.5, color='black')
@@ -126,8 +129,8 @@ for subject in main_df['subject'].unique():
 
 
 """ ---- plot subject hrtf images lef and right across conditions --- """
-hrtf_df = hrtf_processing.get_hrtf_df(path=path, processed=False)
-hrtf_df = hrtf_processing.process_hrtfs(hrtf_df, filter='erb', bandwidth=(4000, 16000), baseline=False, dfe=True, write=False)
+hrtf_df = hrtf_processing.get_hrtf_df(path=path, processed=True)
+# hrtf_df = hrtf_processing.process_hrtfs(hrtf_df, filter='erb', bandwidth=(4000, 16000), baseline=False, dfe=True, write=False)
 bands = misc.octave_spacing.non_overlapping_bands()[0]
 for subject in hrtf_df['subject'].unique():
     fig, axes = plt.subplots(3, 2, figsize=(12, 8), sharex=True)

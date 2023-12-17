@@ -1,7 +1,7 @@
 import analysis.statistics.stats_df as stats_df
 import analysis.build_dataframe as get_df
 import misc.octave_spacing
-from analysis.plot import plot_spectral_behavior_stats as stats_plot
+from analysis.plot import spectral_behavior_collection as stats_plot
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 from pathlib import Path
@@ -19,10 +19,10 @@ main_df = stats_df.add_hrtf_stats(main_df, bandwidth=bandwidth)
 
 # ears free vsi d0
 fig, axes = plt.subplots(2, 2, figsize=(12, 8))
-stats_plot.ef_vsi(main_df, 'RMSE ele', axis=axes[0, 0])
+stats_plot.ef_vsi(main_df, 'vertical RMSE', axis=axes[0, 0])
 stats_plot.ef_vsi(main_df, 'EG', axis=axes[0, 1])
-# stats_plot.ef_vsi(main_df, 'SD ele', axis=axes[0, 1])
-stats_plot.ef_spstr(main_df, 'RMSE ele', axis=axes[1, 0])
+# stats_plot.ef_vsi(main_df, 'vertical SD', axis=axes[0, 1])
+stats_plot.ef_spstr(main_df, 'vertical RMSE', axis=axes[1, 0])
 stats_plot.ef_spstr(main_df, 'EG', axis=axes[1, 1])
 fig.suptitle('Ears free baseline')
 fig.suptitle(bandwidth)
@@ -30,17 +30,17 @@ fig.suptitle(bandwidth)
 
 # # m1 / ears free vsi dissimilarity, d0 drop
 fig, axes = plt.subplots(2, 4, figsize=(12, 8))
-stats_plot.d0dr_vsi_dis(main_df, 'RMSE ele', axis=axes[0, 0])
+stats_plot.d0dr_vsi_dis(main_df, 'vertical RMSE', axis=axes[0, 0])
 stats_plot.d0dr_vsi_dis(main_df, 'EG', axis=axes[0, 1])
-stats_plot.d5ga_vsi_dis(main_df, 'RMSE ele', axis=axes[0, 2])
+stats_plot.d5ga_vsi_dis(main_df, 'vertical RMSE', axis=axes[0, 2])
 stats_plot.d5ga_vsi_dis(main_df, 'EG', axis=axes[0, 3])
-stats_plot.d0dr_sp_dif(main_df, 'RMSE ele', axis=axes[1, 0])
+stats_plot.d0dr_sp_dif(main_df, 'vertical RMSE', axis=axes[1, 0])
 stats_plot.d0dr_sp_dif(main_df, 'EG', axis=axes[1, 1])
-stats_plot.d5ga_sp_dif(main_df, 'RMSE ele', axis=axes[1, 2])
+stats_plot.d5ga_sp_dif(main_df, 'vertical RMSE', axis=axes[1, 2])
 stats_plot.d5ga_sp_dif(main_df, 'EG', axis=axes[1, 3])
-# stats_plot.d0dr_w_vsi_dis(main_df, 'RMSE ele', axis=axes[1, 0])
+# stats_plot.d0dr_w_vsi_dis(main_df, 'vertical RMSE', axis=axes[1, 0])
 # stats_plot.d0dr_w_vsi_dis(main_df, 'EG', axis=axes[1, 1])
-# stats_plot.d5ga_w_vsi_dis(main_df, 'RMSE ele', axis=axes[1, 2])
+# stats_plot.d5ga_w_vsi_dis(main_df, 'vertical RMSE', axis=axes[1, 2])
 # stats_plot.d5ga_w_vsi_dis(main_df, 'EG', axis=axes[1, 3])
 axes[1, 0].set_xlabel('RMSE')
 axes[1, 1].set_xlabel('Elevation Gain')
@@ -55,13 +55,13 @@ fig.suptitle(bandwidth)
 
 # m2 / ears free vsi dissimilarity d5 drop
 fig, axes = plt.subplots(2, 4, figsize=(12, 8))
-stats_plot.d5dr_vsi_dis(main_df, 'RMSE ele', axis=axes[0, 0])
+stats_plot.d5dr_vsi_dis(main_df, 'vertical RMSE', axis=axes[0, 0])
 stats_plot.d5dr_vsi_dis(main_df, 'EG', axis=axes[0, 1])
-stats_plot.d10ga_vsi_dis(main_df, 'RMSE ele', axis=axes[0, 2])
+stats_plot.d10ga_vsi_dis(main_df, 'vertical RMSE', axis=axes[0, 2])
 stats_plot.d10ga_vsi_dis(main_df, 'EG', axis=axes[0, 3])
-stats_plot.d5dr_sp_dif(main_df, 'RMSE ele', axis=axes[1, 0])
+stats_plot.d5dr_sp_dif(main_df, 'vertical RMSE', axis=axes[1, 0])
 stats_plot.d5dr_sp_dif(main_df, 'EG', axis=axes[1, 1])
-stats_plot.d10ga_sp_dif(main_df, 'RMSE ele', axis=axes[1, 2])
+stats_plot.d10ga_sp_dif(main_df, 'vertical RMSE', axis=axes[1, 2])
 stats_plot.d10ga_sp_dif(main_df, 'EG', axis=axes[1, 3])
 axes[1, 0].set_xlabel('RMSE')
 axes[1, 1].set_xlabel('Elevation Gain')
@@ -75,13 +75,13 @@ fig.suptitle(bandwidth)
 
 # m1 / m2 vsi dissimilarity d5 drop
 fig, axes = plt.subplots(2, 4, figsize=(12, 8))
-stats_plot.d5dr_vsi_dis_m1m2(main_df, 'RMSE ele', axis=axes[0, 0])
+stats_plot.d5dr_vsi_dis_m1m2(main_df, 'vertical RMSE', axis=axes[0, 0])
 stats_plot.d5dr_vsi_dis_m1m2(main_df, 'EG', axis=axes[0, 1])
-stats_plot.d10ga_vsi_dis_m1m2(main_df, 'RMSE ele', axis=axes[0, 2])
+stats_plot.d10ga_vsi_dis_m1m2(main_df, 'vertical RMSE', axis=axes[0, 2])
 stats_plot.d10ga_vsi_dis_m1m2(main_df, 'EG', axis=axes[0, 3])
-stats_plot.d5dr_sp_dif_m1m2(main_df, 'RMSE ele', axis=axes[1, 0])
+stats_plot.d5dr_sp_dif_m1m2(main_df, 'vertical RMSE', axis=axes[1, 0])
 stats_plot.d5dr_sp_dif_m1m2(main_df, 'EG', axis=axes[1, 1])
-stats_plot.d10ga_sp_dif_m1m2(main_df, 'RMSE ele', axis=axes[1, 2])
+stats_plot.d10ga_sp_dif_m1m2(main_df, 'vertical RMSE', axis=axes[1, 2])
 stats_plot.d10ga_sp_dif_m1m2(main_df, 'EG', axis=axes[1, 3])
 axes[1, 0].set_xlabel('RMSE')
 axes[1, 1].set_xlabel('Elevation Gain')
@@ -96,7 +96,7 @@ fig.suptitle(bandwidth)
 
 """
 # setting
-measure = 'RMSE ele'
+measure = 'vertical RMSE'
 # measure = 'EG'
 # bands = misc.octave_spacing.non_overlapping_bands()[0] # (2015)
 # bands = misc.octave_spacing.overlapping_bands()[0]
@@ -104,7 +104,7 @@ measure = 'RMSE ele'
 bands = [(3700, 12900)] # (1999) - seems like a solid choice
 
 path = Path.cwd() / 'data' / 'experiment' / 'master'
-measures = ['EG', 'RMSE ele', 'SD ele', 'RMSE az', 'SD az']
+measures = ['EG', 'vertical RMSE', 'vertical SD', 'RMSE az', 'SD az']
 measure_idx = measures.index(measure)
 # w2_exclude=['cs', 'lm', 'lk']  # these subjects did not complete Week 2 of the experiment
 localization_dataframe = loc_analysis.get_localization_dataframe(path)

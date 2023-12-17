@@ -1,4 +1,4 @@
-from analysis.plot import plot_spectral_behavior_stats as stats_plot
+from analysis.plot import spectral_behavior_collection as stats_plot
 import analysis.statistics.stats_df as stats_df
 import analysis.build_dataframe as get_df
 from matplotlib import pyplot as plt

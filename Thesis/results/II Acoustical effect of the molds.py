@@ -1,6 +1,6 @@
 import analysis.hrtf_analysis as hrtf_analysis
 import analysis.statistics.stats_df as stats_df
-import analysis.plot.plot_spectral_behavior_stats as stats_plot
+import analysis.plot.spectral_behavior_collection as stats_plot
 import analysis.plot.hrtf_plot as hrtf_plot
 import analysis.build_dataframe as build_df
 import misc.octave_spacing

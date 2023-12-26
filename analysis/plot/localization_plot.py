@@ -7,9 +7,10 @@ from matplotlib import pyplot as plt
 from pathlib import Path
 from misc.unit_conversion import cm2in
 
-def response_evolution(loc_df, to_plot='average', axis=None, width=14, height=8):
+def response_evolution(to_plot='average', axis=None, figsize=(14,8), path=Path.cwd() / 'data' / 'experiment' / 'master'):
     """ plot localization free, 1st vs last day of molds and persistence """
     w2_exclude = ['cs', 'lm', 'lk']
+    loc_df = build_df.get_localization_dataframe(path)
     # cs and lm did not go into w2, lk did not learn in w2
     if not to_plot == 'average':
         subjects = [to_plot]
@@ -61,16 +62,14 @@ def response_evolution(loc_df, to_plot='average', axis=None, width=14, height=8)
                                                     == 2][loc_df['subject']==subject]['sequence'].values[0].data)
 
     # plot:
-    in_width = cm2in(width)
-    in_height = cm2in(height)
+    in_width = cm2in(figsize[0])
+    in_height = cm2in(figsize[1])
     if not axis:
-        fig, axes = plt.subplots(2, 4, sharex=True, sharey=True, figsize=(in_width, in_height), subplot_kw=dict(box_aspect=1))
+        fig, axes = plt.subplots(2, 4, sharex=True, sharey=True, figsize=(in_width, in_height),
+                                 subplot_kw=dict(box_aspect=1), layout='constrained')
         fig.subplots_adjust(left=None, bottom=None, right=None, top=None, hspace=0.05, wspace=0.05)
-    # add a big axis, hide frame
-    fig.add_subplot(111, frameon=False)
-    plt.tick_params(labelcolor='none', which='both', top=False, bottom=False, left=False, right=False)
-    plt.xlabel("Response azimuth (degrees)", size=10)
-    plt.ylabel("Response elevation (degrees)", size=10)
+    fig.supxlabel("Response azimuth (degrees)", size=10)
+    fig.supylabel("Response elevation (degrees)", size=10)
     # M1
     plot_response_pattern(efd0, axes[0,0], show_single_responses=False, labels=False)
     plot_response_pattern(m1d0, axes[0,1], show_single_responses=False, labels=False)
@@ -83,14 +82,16 @@ def response_evolution(loc_df, to_plot='average', axis=None, width=14, height=8)
     plot_response_pattern(m2d10, axes[1,3], show_single_responses=False, labels=False)
     # plot_response_pattern(efd10, axes[2,2], show_single_responses=False, labels=False)
 
-    axes[0,0].set_title('Free ears', size=10)
-    axes[0,1].set_title('Molds day 0', size=10)
-    axes[0,2].set_title('Molds day 5', size=10)
-    axes[0,3].set_title('Molds day 10', size=10)
-
-    axes[0,3].set_ylabel('Earmolds 1', size=10)
+    axes[0,0].set_title('Free ears')
+    # axes[0,1].set_title('Mold insertion (day 0)')
+    axes[0,1].set_title('Mold insertion')
+    axes[0,2].set_title('Adaptation')
+    # axes[0,2].set_title('Adaptation (day 5)')
+    axes[0,3].set_title('Persistence')
+    # axes[0,3].set_title('Adaptation persistence')
+    axes[0,3].set_ylabel('Earmolds 1')
     axes[0,3].yaxis.set_label_position("right")
-    axes[1,3].set_ylabel('Earmolds 2', size=10)
+    axes[1,3].set_ylabel('Earmolds 2')
     axes[1,3].yaxis.set_label_position("right")
     return fig, axis
 
@@ -138,8 +139,6 @@ def plot_response_pattern(sequence, axis=None, show_single_responses=True, label
         fig, axis = plt.subplots(1, 1)
     else:
         fig = axis.get_figure()
-    axis.tick_params(axis='both', direction="in", bottom=False, top=False, left=False, right=False, reset=False,
-                     labelsize=10, width=1.5, length=2)
     if show_single_responses:
         axis.scatter(responses[:, 0], responses[:, 1], s=8, edgecolor='grey', facecolor='none')
     axis.scatter(mean_loc[:, 0, 1], mean_loc[:, 1, 1], color='black', s=3)
@@ -159,22 +158,24 @@ def plot_response_pattern(sequence, axis=None, show_single_responses=True, label
         [x] = mean_loc[numpy.where(mean_loc[:, 1, 0] == ele), 0, 1]
         [y] = mean_loc[numpy.where(mean_loc[:, 1, 0] == ele), 1, 1]
         axis.plot(x, y, color='black', linewidth=0.6)
+    axis.tick_params(axis='both', direction="in", bottom=True, top=True, left=True, right=True, reset=False,
+                     width=1, length=1)
     x_ticks = numpy.linspace(-45, 45, 3).astype('int')
     y_ticks = numpy.linspace(-30, 30, 3).astype('int')
     axis.set_xticks(x_ticks)
     axis.set_yticks(y_ticks)
     axis.set_ylim(-35, 35)
     axis.set_xlim(-50, 50)
-    axis.set_xticklabels(x_ticks, size=10)
-    axis.set_yticklabels(y_ticks, size=10)
+    axis.set_xticklabels(x_ticks)
+    axis.set_yticklabels(y_ticks)
     try:
         axis.get_xticklabels()[0].set_horizontalalignment('left')
         axis.get_xticklabels()[-1].set_horizontalalignment('right')
     except IndexError:
         pass
     if labels:
-        axis.set_ylabel('Response azimuth (degrees)', size=10)
-        axis.set_xlabel('Response elevation (degrees)', size=10)
+        axis.set_ylabel('Response azimuth (degrees)')
+        axis.set_xlabel('Response elevation (degrees)')
     plt.show()
     return fig, axis
 

@@ -39,18 +39,19 @@ def learning_plot(to_plot='average', path=Path.cwd() / 'data' / 'experiment' / '
             m2 = numpy.delete(m2, numpy.where(numpy.isnan(m2))[0][0] ,numpy.where(numpy.isnan(m2))[1][0])
     # ----- plot ----- #
     labels = ['RMSE', 'SD']
-    colors = [0.15, 0.65] # deviation in color of SD adaptation
-    w2_dev = 0.15  # deviation in color of w2 adaptation
+    colors = [0.2, 0.65] # deviation in color of SD adaptation
+    w2_deviation = [0.2, 0.1]  # deviation in color of w2 adaptation
     color = colors[0] # EG color and label
+    w2_dev = w2_deviation[0]
     label = None
-    fig, axes = plt.subplots(2, 1, figsize=(width, height))
-    fig.subplots_adjust(left=None, bottom=None, right=None, top=None, hspace=0.05)
+    fig, axes = plt.subplots(2, 1, figsize=(width, height), layout='constrained')
+    # fig.subplots_adjust(left=None, bottom=None, right=None, top=None, hspace=0.05)
 
     for i, ax_id in enumerate([0, 1, 1]):
-        if i >= 1:  # RMSE color and label
+        if i >= 1:  # RMSE and SD colors and labels
             label = labels[i-1]
             color = colors[i-1]
-
+            w2_dev = w2_deviation[i-1]
         # week 1
         axes[ax_id].plot([0, .05], [ef[0, i], m1[0, i]], c=str(color-w2_dev), ls=(0, (5, 10)), lw=0.8)  # day one mold insertion
         axes[ax_id].plot([.05, 1, 2, 3, 4, 4.95], m1[:6, i], c=str(color-w2_dev), label=label, lw=1)  # week 1 learning curve
@@ -90,14 +91,21 @@ def learning_plot(to_plot='average', path=Path.cwd() / 'data' / 'experiment' / '
     axes[1].set_xlabel('Days')
     axes[1].set_ylabel('Elevation (degrees)')
 
-    # legend
+    # axis 1 legend
     legend_elements_1 = [Line2D([0], [0], marker='o', color='black', label='Free ears',
                               markerfacecolor='w', markersize=3, markeredgewidth=.5),
-                       Line2D([0], [0], marker='o', color='black', label='With molds',
-                              markerfacecolor='black', markersize=3, markeredgewidth=.5)]
-    axes[0].legend(handles=legend_elements_1, loc='best', frameon=False, handlelength=0, fontsize=plt.rcParams.get('axes.labelsize'))
-    axes[1].legend(loc='center right', frameon=False, fontsize=plt.rcParams.get('axes.labelsize'))
-
+                       Line2D([0], [0], marker='o', color=str(colors[0] - w2_deviation[0]), label='Molds 1',
+                              markerfacecolor=str(colors[0] - w2_deviation[0]), markersize=3, markeredgewidth=.5),
+                         Line2D([0], [0], marker='o', color=str(colors[0] + w2_deviation[0]), label='Molds 2',
+                                markerfacecolor=str(colors[0] + w2_deviation[0]), markersize=3, markeredgewidth=.5)]
+    l1 = axes[0].legend(handles=legend_elements_1, loc='best', frameon=False, handlelength=0, fontsize=plt.rcParams.get('axes.labelsize'))
+    c_list = ['black', str(colors[0] - w2_deviation[0]), str(colors[0] + w2_deviation[0])]
+    for i, text in enumerate(l1.get_texts()):
+        text.set_color(c_list[i])
+    # axis 2 legend
+    l2 = axes[1].legend(loc='center right', frameon=False, fontsize=plt.rcParams.get('axes.labelsize'))
+    for i, text in enumerate(l2.get_texts()):
+        text.set_color(c_list[i+1])
     # axis parameters
     axes[1].set_ylim(2.5, 26)
     ticklabels = [item.get_text() for item in axes[0].get_yticklabels()]

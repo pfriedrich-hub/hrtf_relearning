@@ -12,7 +12,6 @@ import analysis.build_dataframe as get_df
 pandas.set_option('display.max_rows', None, 'display.max_columns', None, 'display.precision', 5,
                   'display.expand_frame_repr', False)
 path = Path.cwd() / 'data' / 'experiment' / 'master'
-
 conditions = ['Ears Free', 'Earmolds Week 1', 'Earmolds Week 2']
 # from methods: filter='erb', bandwidth=(500, 16000), baseline=False, dfe=True
 hrtf_df = build_df.get_hrtf_df(path, processed=True)
@@ -28,8 +27,20 @@ for hrtf in list(hrtf_df[hrtf_df['condition'] == condition]['hrtf']):
 vsis = numpy.asarray(vsis)
 statistic, pval = scipy.stats.kruskal(vsis[:, 0], vsis[:, 1], vsis[:, 2], vsis[:, 3], vsis[:, 4])
 
+""" spectral strength across non overlapping 1/2 octave bands """
+bands = misc.octave_spacing.overlapping_bands()[0]
+condition = 'Ears Free'
+sp_st = []
+for hrtf in list(hrtf_df[hrtf_df['condition'] == condition]['hrtf']):
+    sp_st.append(hrtf_analysis.spectral_strength_across_bands(hrtf, bands, show=False, ear='left'))  # left and right separately
+    sp_st.append(hrtf_analysis.spectral_strength_across_bands(hrtf, bands, show=False, ear='right'))  # left and right separately
+sp_st = numpy.asarray(sp_st)
+statistic, pval = scipy.stats.kruskal(sp_st[:, 0], sp_st[:, 1], sp_st[:, 2], sp_st[:, 3], sp_st[:, 4])
+
+
 """ relation free ears VSI and vertical localization performance in the 5.7 - 11.3 kHz band """
 main_df = stats_df.add_hrtf_stats(main_df, bandwidth=(5700, 11300))
+main_df = stats_df.add_hrtf_stats(main_df, bandwidth=(5700, 13700))
 x = numpy.array([item[0] for item in main_df['EFD0']])  # EG
 x = numpy.array([item[1] for item in main_df['EFD0']])  # RMSE ele
 x = numpy.array([item[2] for item in main_df['EFD0']])  # SD ele - only correlation
@@ -66,17 +77,32 @@ efm2_sem = numpy.round(scipy.stats.sem(y, nan_policy='omit', axis=0), 2)
 plt.boxplot()
 
 
-""" relation between behavioral and acoustic effect of the first molds """
+""" relation between behavioral and acoustic effect of earmolds """
 main_df = stats_df.add_hrtf_stats(main_df, bandwidth=(3700, 12900))
-# day 0
+# EF vs Mold 1 day 0
 x = numpy.array([item[0] for item in main_df['M1 drop']])  # EG
 x = numpy.array([item[1] for item in main_df['M1 drop']])  # RMSE ele
 x = numpy.array([item[2] for item in main_df['M1 drop']])  # SD ele
 y = main_df['EF M1 VSI dissimilarity'].to_numpy(dtype='float16')
 R, p_val = scipy.stats.spearmanr(x, y, nan_policy='omit')  # VSI dissimilarity
-y1 = main_df['EF M1 spectral difference'].to_numpy(dtype='float16')
-R, p_val = scipy.stats.spearmanr(x, y1, nan_policy='omit')  # spectral difference
+
+# EF vs Mold 2 day 5
+x = numpy.array([item[0] for item in main_df['M2 drop']])  # EG
+x = numpy.array([item[1] for item in main_df['M2 drop']])  # RMSE ele
+x = numpy.array([item[2] for item in main_df['M2 drop']])  # SD ele
+y = main_df['EF M2 VSI dissimilarity'].to_numpy(dtype='float16')
+R, p_val = scipy.stats.spearmanr(x, y, nan_policy='omit')  # VSI dissimilarity
+
+# Mold 1 vs Mold 2 day 5
+x = numpy.array([item[0] for item in main_df['M1M2 drop']])  # EG
+x = numpy.array([item[1] for item in main_df['M1M2 drop']])  # RMSE ele
+x = numpy.array([item[2] for item in main_df['M1M2 drop']])  # SD ele
+y = main_df['M1 M2 VSI dissimilarity'].to_numpy(dtype='float16')
+R, p_val = scipy.stats.spearmanr(x, y, nan_policy='omit')  # VSI dissimilarity
+
+
 # day 5
+
 x = numpy.array([item[0] for item in main_df['M1 gain']])  # EG
 x = numpy.array([item[1] for item in main_df['M1 gain']])  # RMSE ele
 x = numpy.array([item[2] for item in main_df['M1 gain']])  # SD ele

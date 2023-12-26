@@ -10,7 +10,7 @@ from matplotlib import pyplot as plt
 """  --- compare spectral features left and right ear across condtions ---  """
 
 # bandwidth = (5700, 8000)
-bandwidth = (5300, 11700)  # 2015 - strong differences in vsi and spectral str across conditions (shift of spectral features outside bandwidth?)
+bandwidth = (5700, 11300)  # 2015 - strong differences in vsi and spectral str across conditions (shift of spectral features outside bandwidth?)
 # bandwidth = (4000, 15000) #
 # bandwidth = (3700, 12900)  # 1999, good option for vsi efm1m2 spectral strength - phys. plausable
 

@@ -11,11 +11,20 @@ from matplotlib import pyplot as plt
 """  --- test spectral difference (Middlebrooks 1999) and VSI (Trapeau, Schönwiesner 2015)
                          correlation with behavior across bands ---  """
 # bandwidth = (5700, 8000)
-# bandwidth = (5700, 11300)  # 2015, clearer relation between spectral features in this band and behavior
-bandwidth = (3700, 12900)  # 1999, 3700 may include spectral variance due to low freq artifacts
+vsi_bandwidth = (5700, 11300)  # 2015, clearer relation between spectral features in this band and behavior
+# bandwidth = (3700, 12900)  # 1999, 3700 may include spectral variance due to low freq artifacts
 # bandwidth = (4000, 16000)
+
+# bands = misc.octave_spacing.overlapping_bands()[0]
+# # bands = misc.octave_spacing.non_overlapping_bands()[0]
+# bandwidth = (bands[2][0], bands[3][1])
+# # bandwidth = (4800, 13500)
+vsi_dis_bandwidth = (5700, 13500)
+# bandwidth = (6700, 13500)
+
+
 main_df = get_df.main_dataframe(Path.cwd() / 'data' / 'experiment' / 'master', processed_hrtf=True)
-main_df = stats_df.add_hrtf_stats(main_df, bandwidth=bandwidth)
+main_df = stats_df.add_hrtf_stats(main_df, bandwidth=vsi_bandwidth, vsi_dis_bw=vsi_dis_bandwidth)
 
 # ears free vsi d0
 fig, axes = plt.subplots(2, 2, figsize=(12, 8))
@@ -25,8 +34,7 @@ stats_plot.ef_vsi(main_df, 'EG', axis=axes[0, 1])
 stats_plot.ef_spstr(main_df, 'vertical RMSE', axis=axes[1, 0])
 stats_plot.ef_spstr(main_df, 'EG', axis=axes[1, 1])
 fig.suptitle('Ears free baseline')
-fig.suptitle(bandwidth)
-
+fig.suptitle(vsi_bandwidth)
 
 # # m1 / ears free vsi dissimilarity, d0 drop
 fig, axes = plt.subplots(2, 4, figsize=(12, 8))
@@ -51,7 +59,7 @@ axes[1, 0].set_ylabel('spectral difference')
 # axes[1, 0].set_ylabel('weighted VSI dissimilarity')
 fig.text(.22, .92, 'Ears Free / M1 difference day 0', fontsize=12)
 fig.text(.61, .92, 'Ears Free / M1 difference day 5', fontsize=12)
-fig.suptitle(bandwidth)
+fig.suptitle(vsi_dis_bandwidth)
 
 # m2 / ears free vsi dissimilarity d5 drop
 fig, axes = plt.subplots(2, 4, figsize=(12, 8))

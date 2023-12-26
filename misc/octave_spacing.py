@@ -3,9 +3,11 @@ def non_overlapping_bands():
     # --- 5 non-overlapping 1/2 octave bands
     bands.append([(4000, 5700), (5700, 8000), (8000, 11300), (11300, 16000)])  # to modify
     # == numpy.logspace(1, 2, 5, base=4)
+    # == numpy.logspace(1, 2, 4, base=4)
 
     bands.append([(3500, 5000), (5000, 7200), (7200, 10400), (10400, 15000)])
     # == numpy.logspace(1, numpy.emath.logn(3.5, 15), 5, base=3.5)
+
 
     return bands
 
@@ -25,6 +27,10 @@ def overlapping_bands():
     bands.append([(3500, 7000), (4200, 8300), (4900, 9900), (5900, 11800), (7000, 14000)])
     # == numpy.logspace(1, numpy.emath.logn(3.5, 7), 5, base=3.5)
     # == numpy.logspace(1, numpy.emath.logn(7, 14), 5, base=7)
+
+
+    # == numpy.logspace(1, 1.5, 7, base=3.5)
+    # == numpy.logspace(1, numpy.emath.logn(7, 14), 7, base=7)
 
 
     return bands

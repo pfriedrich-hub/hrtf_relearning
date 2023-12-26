@@ -1,8 +1,8 @@
 from matplotlib import pyplot as plt
 
 def set_rcParams():
-    params = {'axes.spines.right': True, 'axes.spines.top': True, 'axes.titlesize': 8,
-              'xtick.labelsize': 8, 'ytick.labelsize': 8, 'axes.labelsize': 8,
+    params = {'axes.spines.right': True, 'axes.spines.top': True, 'axes.titlesize': 10,
+              'xtick.labelsize': 10, 'ytick.labelsize': 10, 'axes.labelsize': 10,
               'boxplot.boxprops.linewidth': 0.5, 'boxplot.meanprops.color': 'k',
               'boxplot.meanprops.linewidth': 0.5, 'boxplot.whiskerprops.linewidth': 0.5,
               'boxplot.capprops.linewidth': 0.5, 'lines.linewidth': .5,

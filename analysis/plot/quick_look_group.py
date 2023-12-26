@@ -19,7 +19,7 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 """ HRTF features """
 # process HRTFs
 hrtf_df = build_df.get_hrtf_df(path, processed=True)
-# hrtf_df = hrtf_processing.process_hrtfs(hrtf_df, filter='erb', baseline=True, dfe=True, write=False)  # baseline for hrtf image
+hrtf_df = hrtf_processing.process_hrtfs(hrtf_df, filter=None, baseline=True, dfe=True, write=False)  # baseline for hrtf image
 
 # plot overview
 hrtf_plot.hrtf_overwiev(hrtf_df, to_plot='average', dfe=False, n_bins=None)
@@ -27,9 +27,13 @@ hrtf_plot.hrtf_overwiev(hrtf_df, to_plot='average', dfe=False, n_bins=None)
 # mean vsi / spectral str across bands
 bands = misc.octave_spacing.overlapping_bands()[0]
 bands = misc.octave_spacing.non_overlapping_bands()[0]
-condition = conditions[1]
-hrtf_analysis.mean_vsi_across_bands(hrtf_df, condition=condition, bands=bands, show=True, ear_idx=[0])
-hrtf_analysis.mean_spectral_strength_across_bands(hrtf_df, condition, bands=bands, show=True, ear='left')
+lb = numpy.arange(4000,18000,2000)
+bands = [(lb[i], lb[i+1]) for i in range(len(lb)-1)]
+bands = misc.octave_spacing.overlapping_bands()[-1]
+
+condition = conditions[0]
+hrtf_plot.plot_mean_vsi_across_bands(hrtf_df, condition=condition, bands=bands, ear_idx=[0, 1])
+hrtf_analysis.mean_spectral_strength_across_bands(hrtf_df, condition, bands=bands, show=True, ear='both')
 hrtf_analysis.mean_vsi_dissimilarity_across_bands(hrtf_df, conditions=('Ears Free', 'Earmolds Week 1'), ear_idx=[0,1],
                                                   bands=bands, show=True)
 
@@ -43,14 +47,14 @@ condition = conditions[0]
 bands = misc.octave_spacing.overlapping_bands()[0]
 # bands = misc.octave_spacing.non_overlapping_bands()[0]
 # bands = [(6000, 12000)]
-ear = 'right'
+ear = 'left'
 ear_idx = [0]
 for subject in hrtf_df['subject'].unique():
     hrtf = hrtf_df[hrtf_df['subject'] == subject][hrtf_df['condition'] == condition]['hrtf'].values[0]
-    axis = hrtf_plot.hrtf_image(hrtf, chan=1)
-    axis.set_title(subject)
+    # axis = hrtf_plot.hrtf_image(hrtf, chan=1)
+    # axis.set_title(subject)
 
-    axis = plt.subplots(3, 1, figsize=(7,9))
+    fig, axis = plt.subplots(3, 1, figsize=(7,9))
     # image
     # hrtf_pl.hrtf_image(hrtf, bandwidth=(numpy.min(bands), numpy.max(bands)), n_bins=None, axis=axis[0], z_min=-30, z_max=30, cbar=True)
     # axis[0].vlines(numpy.asarray(bands).flatten()[1:-1], ymin=-37.5, ymax=37.5, color='black')

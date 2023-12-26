@@ -6,188 +6,65 @@ from misc.unit_conversion import cm2in
 
 measures = ['EG', 'vertical RMSE', 'vertical SD', 'horizontal RMSE', 'horizontal SD']
 
-
-def th_boxplot_vsi(main_df, axis=None):
+""" thesis: VSI dissimilarity EF / M1M2 vs EF / EF """
+def th_scatter_perm_vsi_dis(main_df, bandwidth, axis=None):
     """
-    VSI across conditions
+    compute VSI dissimilarity between every possible pair of participants
+    and compare it with the VSI dissimilarities / spectral difference between free and M1 / M2 DTFs
+    of each participant.
     """
-    x = numpy.zeros((3, len(main_df['subject']) * 2))
-    ef_l = main_df['EF VSI l'].to_numpy(dtype='float16', na_value=numpy.NaN)
-    ef_r = main_df['EF VSI r'].to_numpy(dtype='float16', na_value=numpy.NaN)
-    x[0] = numpy.hstack((ef_l, ef_r))
-    m1_l = main_df['M1 VSI l'].to_numpy(dtype='float16', na_value=numpy.NaN)
-    m1_r = main_df['M1 VSI r'].to_numpy(dtype='float16', na_value=numpy.NaN)
-    x[1] = numpy.hstack((m1_l, m1_r))
-    m2_l = main_df['M2 VSI l'].to_numpy(dtype='float16', na_value=numpy.NaN)
-    m2_r = main_df['M2 VSI r'].to_numpy(dtype='float16', na_value=numpy.NaN)
-    x[2] = numpy.hstack((m2_l, m2_r))
+    vsi_dis = stats_df.ef_vsi_dis_perm(main_df, bandwidth)
+    x, y = numpy.zeros((3, len(main_df['subject']))), numpy.zeros((3, len(main_df['subject'])))
+    x[0] = main_df['EF M1 VSI dissimilarity l'].to_numpy(dtype='float16', na_value=numpy.NaN)
+    x[1] = main_df['EF M2 VSI dissimilarity l'].to_numpy(dtype='float16', na_value=numpy.NaN)
+    x[2] = main_df['M1 M2 VSI dissimilarity l'].to_numpy(dtype='float16', na_value=numpy.NaN)
+    y[0] = main_df['EF M1 VSI dissimilarity r'].to_numpy(dtype='float16', na_value=numpy.NaN)
+    y[1] = main_df['EF M2 VSI dissimilarity r'].to_numpy(dtype='float16', na_value=numpy.NaN)
+    y[2] = main_df['M1 M2 VSI dissimilarity r'].to_numpy(dtype='float16', na_value=numpy.NaN)
     if not axis:
         fig, axis = plt.subplots(1, 1)
-        axis.set_title('VSI')
-    axis.set_ylabel('VSI')
-    axis.boxplot(x[0][~numpy.isnan(x[0])], positions=[0], labels=['EF'])
-    axis.boxplot(x[1][~numpy.isnan(x[1])], positions=[1], labels=['M1'])
-    axis.boxplot(x[2][~numpy.isnan(x[2])], positions=[2], labels=['M2'])
-    # spines
-    for loc, spine in axis.spines.items():
-        spine.set_lw(0.5)
-
-
-def th_boxplot_vsi_dis(main_df, axis=None):
-    x = numpy.zeros((3, len(main_df['subject']) * 2))
-    efm1_l = main_df['EF M1 VSI dissimilarity l'].to_numpy(dtype='float16', na_value=numpy.NaN)
-    efm1_r = main_df['EF M1 VSI dissimilarity r'].to_numpy(dtype='float16', na_value=numpy.NaN)
-    x[0] = numpy.hstack((efm1_l, efm1_r))
-    efm2_l = main_df['EF M2 VSI dissimilarity l'].to_numpy(dtype='float16', na_value=numpy.NaN)
-    efm2_r = main_df['EF M2 VSI dissimilarity r'].to_numpy(dtype='float16', na_value=numpy.NaN)
-    x[1] = numpy.hstack((efm2_l, efm2_r))
-    m1m2_l = main_df['M1 M2 VSI dissimilarity l'].to_numpy(dtype='float16', na_value=numpy.NaN)
-    m1m2_r = main_df['M1 M2 VSI dissimilarity r'].to_numpy(dtype='float16', na_value=numpy.NaN)
-    x[2] = numpy.hstack((m1m2_l, m1m2_r))
-    if not axis:
-        fig, axis = plt.subplots(1, 1)
-        axis.set_title('VSI Dissimilarity')
-    axis.set_ylabel('VSI Dissimilarity')
-    axis.boxplot(x[0][~numpy.isnan(x[0])], positions=[0], labels=['EF / M1'])
-    axis.boxplot(x[1][~numpy.isnan(x[1])], positions=[1], labels=['EF / M2'])
-    axis.boxplot(x[2][~numpy.isnan(x[2])], positions=[2], labels=['M1 / M2'])
-    # spines
-    for loc, spine in axis.spines.items():
-        spine.set_lw(0.5)
-
-
-def th_d5dr_vsi_dis_m1m2(main_df, axis=None, measure='vertical RMSE', figsize=(10, 7)):
-    x = numpy.array([item[measures.index(measure)] for item in main_df['M1M2 drop']])
-    y = main_df['M1 M2 VSI dissimilarity'].to_numpy(dtype='float16')
-    width = cm2in(figsize[0])
-    height = cm2in(figsize[1])
-    if not axis:
-        fig, axis = plt.subplots(figsize=(width, height))
-        axis.tick_params(axis='both', direction="in", bottom=True, top=False, left=True, right=False,
-                         width=0.5, length=2)
-    fig = axis.get_figure()
-    axis.scatter(x, y, marker='.', color='grey')
-    axis.set_ylabel('VSI dissimilarity')
-    axis.set_xlabel(measure)
-    # d1 drop / vsi dissimilarity
-    mask = ~numpy.isnan(x) & ~numpy.isnan(y)
-    slope, intercept = scipy.stats.linregress(x[mask], y[mask], alternative='two-sided')[:2]
-    x_vals = numpy.array(axis.get_xlim())
-    ys = slope * x_vals + intercept
-    axis.plot(x_vals, ys, lw=0.7, c='0')
-    axis.set_xlim(x_vals[0], x_vals[1])
-    # disable spines
-    axis.spines['top'].set_visible(False)
-    axis.spines['right'].set_visible(False)
-    for loc, spine in axis.spines.items():
-        spine.set_lw(0.5)
-    # set plot spines lw
-    for loc, spine in axis.spines.items():
-        spine.set_lw(0.5)
-    axis.set_title('Mold 1 vs Mold 2')
-    return fig, axis
-
-
-def th_d5dr_vsi_dis(main_df, axis=None, measure='vertical RMSE', figsize=(10, 7)):
-    x = numpy.array([item[measures.index(measure)] for item in main_df['M2 drop']])
-    y = main_df['EF M2 VSI dissimilarity'].to_numpy(dtype='float16')
-    width = cm2in(figsize[0])
-    height = cm2in(figsize[1])
-    if not axis:
-        fig, axis = plt.subplots(figsize=(width, height))
-        axis.tick_params(axis='both', direction="in", bottom=True, top=False, left=True, right=False,
-                         width=0.5, length=2)
-    fig = axis.get_figure()
-    axis.scatter(x, y, marker='.', color='grey')
-    axis.set_ylabel('VSI dissimilarity')
-    axis.set_xlabel(measure)
-    # d1 drop / vsi dissimilarity
-    mask = ~numpy.isnan(x) & ~numpy.isnan(y)
-    slope, intercept = scipy.stats.linregress(x[mask], y[mask], alternative='two-sided')[:2]
-    x_vals = numpy.array(axis.get_xlim())
-    ys = slope * x_vals + intercept
-    axis.plot(x_vals, ys, lw=0.7, c='0')
-    axis.set_xlim(x_vals[0], x_vals[1])
-    # disable spines
-    axis.spines['top'].set_visible(False)
-    axis.spines['right'].set_visible(False)
-    for loc, spine in axis.spines.items():
-        spine.set_lw(0.5)
-    # set plot spines lw
-    for loc, spine in axis.spines.items():
-        spine.set_lw(0.5)
-    axis.set_title('Ears free vs Mold 2')
-    return fig, axis
-
-
-def th_d0dr_vsi_dis(main_df, axis=None, measure='vertical RMSE', figsize=(10, 7)):
-    x = numpy.array([item[measures.index(measure)] for item in main_df['M1 drop']])
-    y = main_df['EF M1 VSI dissimilarity'].to_numpy(dtype='float16')
-    width = cm2in(figsize[0])
-    height = cm2in(figsize[1])
-    if not axis:
-        fig, axis = plt.subplots(figsize=(width, height))
-        axis.tick_params(axis='both', direction="in", bottom=True, top=False, left=True, right=False,
-                         width=0.5, length=2)
-    fig = axis.get_figure()
-    axis.scatter(x, y, marker='.', color='grey')
-    axis.set_ylabel('VSI dissimilarity')
-    axis.set_xlabel(measure)
-    # d1 drop / vsi dissimilarity
-    mask = ~numpy.isnan(x) & ~numpy.isnan(y)
-    slope, intercept = scipy.stats.linregress(x[mask], y[mask], alternative='two-sided')[:2]
-    x_vals = numpy.array(axis.get_xlim())
-    ys = slope * x_vals + intercept
-    axis.plot(x_vals, ys, lw=0.7, c='0')
-    axis.set_xlim(x_vals[0], x_vals[1])
-    # disable spines
-    axis.spines['top'].set_visible(False)
-    axis.spines['right'].set_visible(False)
-
-    # set plot spines lw
-    for loc, spine in axis.spines.items():
-        spine.set_lw(0.5)
-    axis.set_title('Ears free vs Mold 1')
-    return fig, axis
-
-
-""" thesis: ears free vs vertical rmse """
-def ef_vsi_th(main_df, axis=None, measure='RMSE ele', figsize=(10, 7)):
-    width = cm2in(figsize[0])
-    height = cm2in(figsize[1])
-    if not axis:
-        fig, axis = plt.subplots(figsize=(width, height))
-        axis.tick_params(axis='both', direction="in", bottom=True, top=False, left=True, right=False,
-                         width=0.5, length=2)
-    fig = axis.get_figure()
-    x = numpy.array([item[measures.index(measure)] for item in main_df['EFD0'].drop(1)])  # remove outlier
-    y = main_df['EF VSI'].drop(1).to_numpy(dtype='float16')
-    axis.scatter(x, y, marker='.', color='grey', s=15)
-    axis.set_ylabel('VSI')
-    axis.set_xlabel(measure)
-    x = numpy.array([item[measures.index(measure)] for item in main_df['EFD0']])  # remove outlier
-    y = main_df['EF VSI'].to_numpy(dtype='float16')
-    slope, intercept = scipy.stats.linregress(x, y, alternative='two-sided')[:2]
-    x_vals = numpy.array(axis.get_xlim())
-    ys = slope * x_vals + intercept
-    axis.plot(x_vals, ys, lw=0.7, c='0')
-    axis.set_xlim(x_vals[0], x_vals[1])
-    # disable spines
-    axis.spines['top'].set_visible(False)
-    axis.spines['right'].set_visible(False)
-    # set plot spines lw
-    for loc, spine in axis.spines.items():
-        spine.set_lw(0.5)
-    return fig, axis
-
+    axis.set_xlabel('Left Ear VSI Dissimilarity')
+    axis.set_ylabel('Right Ear VSI Dissimilarity')
+    c_list = ['0.8', '#2668B3', '#CF1F48', '#F7D724']  # triadic color scheme
+    axis.scatter(vsi_dis[:, 0], vsi_dis[:, 1], marker='.', color=c_list[0], label='Free vs. Free', s=15)
+    axis.scatter(x[0], y[0], marker='.', c=c_list[1], label='Free vs. Molds1', s=15)
+    axis.scatter(x[1], y[1], marker='.', c=c_list[2], label='Free vs. Molds2', s=15)
+    axis.scatter(x[2], y[2], marker='.', c=c_list[3], label='Molds1 vs. Molds2', s=15)
+    axis.set_ylim(0, 1.2)
+    axis.set_xlim(0, 1.2)
+    # legend
+    l = axis.legend(frameon=False, loc='lower left', markerscale=0, labelspacing=0,
+                    fontsize=8, bbox_to_anchor=(-0.2, 0.8), alignment='left')
+    for i, text in enumerate(l.get_texts()):
+        text.set_color(c_list[i])
+    # axes and ticks
+    ticks = numpy.arange(0, 1.3, 0.4)
+    x_ticks = axis.set_xticks(ticks)
+    y_ticks = axis.set_yticks(ticks)
+    ticklabels = ['0', '0.4', '0.8', '1.2']
+    axis.set_xticklabels(ticklabels)
+    axis.set_yticklabels(ticklabels)
+    axis.set_yticks(axis.get_yticks()[1:])
+    # yticklabels = [item.get_text() for item in axis.get_yticklabels()]
+    # xticklabels = [item.get_text() for item in axis.get_xticklabels()]
+    # xticklabels[0] = '0'
+    # xticklabels[-2] = '1'
+    # yticklabels[-2] = '1'
+    # y_ticks = axis.set_yticks(axis.get_yticks())
+    # x_ticks = axis.set_xticks(axis.get_xticks())
+    x_ticks[0]._apply_params(width=0)
+    y_ticks[0]._apply_params(width=0)
+    axis.set_aspect('equal')
 
 """ thesis: vsi overview """
 def th_vsi_m_l_r(main_df, axis=None, figsize=(12, 8)):
-    x, y = numpy.zeros((2, len(main_df['subject']))), numpy.zeros((2, len(main_df['subject'])))
-    x[0] = main_df['M1 VSI l'].to_numpy(dtype='float16', na_value=numpy.NaN)
-    x[1] = main_df['M2 VSI l'].to_numpy(dtype='float16', na_value=numpy.NaN)
-    y[0] = main_df['M1 VSI r'].to_numpy(dtype='float16', na_value=numpy.NaN)
-    y[1] = main_df['M2 VSI r'].to_numpy(dtype='float16', na_value=numpy.NaN)
+    x, y = numpy.zeros((3, len(main_df['subject']))), numpy.zeros((3, len(main_df['subject'])))
+    x[0] = main_df['EF VSI l'].to_numpy(dtype='float16', na_value=numpy.NaN)
+    x[1] = main_df['M1 VSI l'].to_numpy(dtype='float16', na_value=numpy.NaN)
+    x[2] = main_df['M2 VSI l'].to_numpy(dtype='float16', na_value=numpy.NaN)
+    y[0] = main_df['EF VSI r'].to_numpy(dtype='float16', na_value=numpy.NaN)
+    y[1] = main_df['M1 VSI r'].to_numpy(dtype='float16', na_value=numpy.NaN)
+    y[2] = main_df['M2 VSI r'].to_numpy(dtype='float16', na_value=numpy.NaN)
     # plot
     width = cm2in(figsize[0])
     height = cm2in(figsize[1])
@@ -197,17 +74,25 @@ def th_vsi_m_l_r(main_df, axis=None, figsize=(12, 8)):
                          width=0.5, length=2)
     fig = axis.get_figure()
     # plot data
-    c_list = ['#2668B3', '#CF1F48']  # triadic color scheme
-    axis.scatter(x[0], y[0], marker='.', c=c_list[0], label='Molds 1')
-    axis.scatter(x[1], y[1], marker='.', c=c_list[1], label='Molds 2')
+    c_list = ['0.8', '#2668B3', '#CF1F48']  # triadic color scheme
+    axis.scatter(x[0], y[0], marker='.', c=c_list[0], label='Free ears', s=15)
+    axis.scatter(x[1], y[1], marker='.', c=c_list[1], label='Molds 1', s=15)
+    axis.scatter(x[2], y[2], marker='.', c=c_list[2], label='Molds 2', s=15)
     # axes ticks and limits
     ticks = numpy.arange(0, 1.1, 0.2)
     x_ticks = axis.set_xticks(ticks)
-    x_ticks[0]._apply_params(width=0)
+    x_ticks[0]._apply_params(width=0)  # doesnt work
     axis.set_yticks(ticks)
-    axis.set_yticks(axis.get_yticks()[1:])
     axis.set_xlim(0, 1)
-    axis.set_ylim(0, 0.8)
+    axis.set_ylim(0, 1)
+    # string format
+    ticklabels = [item.get_text() for item in axis.get_xticklabels()]
+    ticklabels[0] = '0'
+    ticklabels[-1] = '1'
+    axis.set_xticklabels(ticklabels)
+    axis.set_yticklabels(ticklabels)
+    axis.set_yticks(axis.get_yticks()[1:])
+
     # string format
     ticklabels = [item.get_text() for item in axis.get_xticklabels()]
     ticklabels[0] = '0'
@@ -230,12 +115,11 @@ def th_vsi_m_l_r(main_df, axis=None, figsize=(12, 8)):
     for loc, spine in axis.spines.items():
         spine.set_lw(0.5)
     # legend
-    l = axis.legend(frameon=False, loc='upper right', markerscale=0, labelspacing=0,
-                    fontsize=plt.rcParams.get('axes.labelsize'))
+    l = axis.legend(frameon=False, loc='lower left', markerscale=0, labelspacing=0, alignment='left',
+                    fontsize=8, bbox_to_anchor=((-0.2, 0.8)))
     for i, text in enumerate(l.get_texts()):
         text.set_color(c_list[i])
-
-    # axis.set_aspect('equal')
+    axis.set_aspect('equal')
     return fig, axis
 
 def th_vsi_ef_l_r(main_df, axis=None, figsize=(12, 8)):
@@ -249,26 +133,28 @@ def th_vsi_ef_l_r(main_df, axis=None, figsize=(12, 8)):
                          width=0.5, length=2)
     fig = axis.get_figure()
     # plot data
-    axis.scatter(x, y, marker='.', c='grey', label='Ears Free', s=15)
+    axis.scatter(x, y, marker='.', c='grey', label='Free ears', s=15)
     # axes ticks and limits
     ticks = numpy.arange(0, 1.1, 0.2)
     x_ticks = axis.set_xticks(ticks)
     x_ticks[0]._apply_params(width=0) # doesnt work
     axis.set_yticks(ticks)
-    axis.set_yticks(axis.get_yticks()[1:])
     axis.set_xlim(0, 1)
-    axis.set_ylim(0, 0.8)
+    axis.set_ylim(0, 1)
     # string format
     ticklabels = [item.get_text() for item in axis.get_xticklabels()]
     ticklabels[0] = '0'
     ticklabels[-1] = '1'
     axis.set_xticklabels(ticklabels)
+    axis.set_yticklabels(ticklabels)
+    axis.set_yticks(axis.get_yticks()[1:])
+
     # plot line
     mask = ~numpy.isnan(x) & ~numpy.isnan(y)
     slope, intercept = scipy.stats.linregress(x[mask], y[mask], alternative='two-sided')[:2]
     x_vals = numpy.array((axis.get_xlim()))
     ys = slope * x_vals + intercept
-    axis.plot(x_vals, ys, lw=0.7, c='k')
+    axis.plot(x_vals, ys, lw=0.7, c='0.8')
     # axis labels
     axis.set_xlabel('Left Ear VSI')
     axis.set_ylabel('Right Ear VSI')
@@ -278,8 +164,218 @@ def th_vsi_ef_l_r(main_df, axis=None, figsize=(12, 8)):
     # set plot spines lw
     for loc, spine in axis.spines.items():
         spine.set_lw(0.5)
+    axis.set_aspect('equal')
     return fig, axis
 
+def th_boxplot_vsi(main_df, axis=None):
+    """
+    VSI across conditions
+    """
+    x = numpy.zeros((3, len(main_df['subject']) * 2))
+    ef_l = main_df['EF VSI l'].to_numpy(dtype='float16', na_value=numpy.NaN)
+    ef_r = main_df['EF VSI r'].to_numpy(dtype='float16', na_value=numpy.NaN)
+    x[0] = numpy.hstack((ef_l, ef_r))
+    m1_l = main_df['M1 VSI l'].to_numpy(dtype='float16', na_value=numpy.NaN)
+    m1_r = main_df['M1 VSI r'].to_numpy(dtype='float16', na_value=numpy.NaN)
+    x[1] = numpy.hstack((m1_l, m1_r))
+    m2_l = main_df['M2 VSI l'].to_numpy(dtype='float16', na_value=numpy.NaN)
+    m2_r = main_df['M2 VSI r'].to_numpy(dtype='float16', na_value=numpy.NaN)
+    x[2] = numpy.hstack((m2_l, m2_r))
+    if not axis:
+        fig, axis = plt.subplots(1, 1)
+        axis.set_title('VSI')
+    axis.set_ylabel('VSI')
+    axis.boxplot(x[0][~numpy.isnan(x[0])], positions=[0], labels=['Free\nears'])
+    axis.boxplot(x[1][~numpy.isnan(x[1])], positions=[1], labels=['Molds 1'])
+    axis.boxplot(x[2][~numpy.isnan(x[2])], positions=[2], labels=['Molds 2'])
+    # spines
+    for loc, spine in axis.spines.items():
+        spine.set_lw(0.5)
+    # axes
+    axis.set_ylim(0, 1)
+    ticks = numpy.arange(0, 1.1, 0.2)
+    y_ticks = axis.set_yticks(ticks)
+    y_ticks[0]._apply_params(width=0)  # doesnt work
+    ticklabels = [item.get_text() for item in axis.get_yticklabels()]
+    ticklabels[0] = '0'
+    ticklabels[-1] = '1'
+    axis.set_yticklabels(ticklabels)
+    xticklabels = [item.get_text() for item in axis.get_xticklabels()]
+    axis.set_xticklabels(xticklabels, size=8)
+
+def th_boxplot_vsi_dis(main_df, axis=None):
+    x = numpy.zeros((3, len(main_df['subject']) * 2))
+    efm1_l = main_df['EF M1 VSI dissimilarity l'].to_numpy(dtype='float16', na_value=numpy.NaN)
+    efm1_r = main_df['EF M1 VSI dissimilarity r'].to_numpy(dtype='float16', na_value=numpy.NaN)
+    x[0] = numpy.hstack((efm1_l, efm1_r))
+    efm2_l = main_df['EF M2 VSI dissimilarity l'].to_numpy(dtype='float16', na_value=numpy.NaN)
+    efm2_r = main_df['EF M2 VSI dissimilarity r'].to_numpy(dtype='float16', na_value=numpy.NaN)
+    x[1] = numpy.hstack((efm2_l, efm2_r))
+    m1m2_l = main_df['M1 M2 VSI dissimilarity l'].to_numpy(dtype='float16', na_value=numpy.NaN)
+    m1m2_r = main_df['M1 M2 VSI dissimilarity r'].to_numpy(dtype='float16', na_value=numpy.NaN)
+    x[2] = numpy.hstack((m1m2_l, m1m2_r))
+    if not axis:
+        fig, axis = plt.subplots(1, 1)
+        axis.set_title('VSI Dissimilarity')
+    axis.set_ylabel('VSI Dissimilarity')
+    axis.boxplot(x[0][~numpy.isnan(x[0])], positions=[0], labels=['Free vs\nMolds1'])
+    axis.boxplot(x[1][~numpy.isnan(x[1])], positions=[2], labels=['Free vs\nMolds2'])
+    axis.boxplot(x[2][~numpy.isnan(x[2])], positions=[1], labels=['Molds1 vs\nMolds2'])
+    # spines
+    for loc, spine in axis.spines.items():
+        spine.set_lw(0.5)
+    # axes
+    axis.set_yticks(numpy.arange(0.2, 1.5, 0.4))
+    yticklabels = [item.get_text() for item in axis.get_yticklabels()]
+    yticklabels[2] = '1'
+    axis.set_yticklabels(yticklabels)
+    xticklabels = [item.get_text() for item in axis.get_xticklabels()]
+    axis.set_xticklabels(xticklabels, size=8)
+
+
+def th_d5dr_vsi_dis_m1m2(main_df, axis=None, measure='vertical RMSE', figsize=(10, 7)):
+    x = numpy.array([item[measures.index(measure)] for item in main_df['M1M2 drop']])
+    y = main_df['M1 M2 VSI dissimilarity'].to_numpy(dtype='float16')
+    width = cm2in(figsize[0])
+    height = cm2in(figsize[1])
+    if not axis:
+        fig, axis = plt.subplots(figsize=(width, height))
+        axis.tick_params(axis='both', direction="in", bottom=True, top=False, left=True, right=False,
+                         width=0.5, length=2)
+    fig = axis.get_figure()
+    axis.scatter(x, y, marker='.', color='grey', s=15)
+    axis.set_ylabel('VSI dissimilarity')
+    axis.set_xlabel(measure)
+    # d1 drop / vsi dissimilarity
+    mask = ~numpy.isnan(x) & ~numpy.isnan(y)
+    slope, intercept = scipy.stats.linregress(x[mask], y[mask], alternative='two-sided')[:2]
+    x_vals = numpy.array(axis.get_xlim())
+    ys = slope * x_vals + intercept
+    axis.plot(x_vals, ys, lw=0.7, c='0.8')
+    axis.set_xlim(x_vals[0], x_vals[1])
+    # disable spines
+    axis.spines['top'].set_visible(False)
+    axis.spines['right'].set_visible(False)
+    for loc, spine in axis.spines.items():
+        spine.set_lw(0.5)
+    # set plot spines lw
+    for loc, spine in axis.spines.items():
+        spine.set_lw(0.5)
+    axis.set_title('Mold 1 vs Mold 2')
+    # axes and ticks
+    xticks = numpy.arange(0,21,5)
+    x_ticks = axis.set_xticks(xticks)
+    yticks = numpy.arange(0, 1.3, 0.4)
+    y_ticks = axis.set_yticks(yticks)
+    ticklabels = ['0', '0.4', '0.8', '1.2']
+    axis.set_yticklabels(ticklabels)
+    axis.set_yticks(axis.get_yticks()[1:])
+    # y_ticks[0]._apply_params(width=0)
+    return fig, axis
+
+
+def th_d5dr_vsi_dis(main_df, axis=None, measure='vertical RMSE', figsize=(10, 7)):
+    x = numpy.array([item[measures.index(measure)] for item in main_df['M2 drop']])
+    y = main_df['EF M2 VSI dissimilarity'].to_numpy(dtype='float16')
+    width = cm2in(figsize[0])
+    height = cm2in(figsize[1])
+    if not axis:
+        fig, axis = plt.subplots(figsize=(width, height))
+        axis.tick_params(axis='both', direction="in", bottom=True, top=False, left=True, right=False,
+                         width=0.5, length=2)
+    fig = axis.get_figure()
+    axis.scatter(x, y, marker='.', color='grey', s=15)
+    axis.set_ylabel('VSI dissimilarity')
+    axis.set_xlabel(measure)
+    # d1 drop / vsi dissimilarity
+    mask = ~numpy.isnan(x) & ~numpy.isnan(y)
+    slope, intercept = scipy.stats.linregress(x[mask], y[mask], alternative='two-sided')[:2]
+    x_vals = numpy.array(axis.get_xlim())
+    ys = slope * x_vals + intercept
+    axis.plot(x_vals, ys, lw=0.7, c='0.8')
+    axis.set_xlim(x_vals[0], x_vals[1])
+    # disable spines
+    axis.spines['top'].set_visible(False)
+    axis.spines['right'].set_visible(False)
+    for loc, spine in axis.spines.items():
+        spine.set_lw(0.5)
+    # set plot spines lw
+    for loc, spine in axis.spines.items():
+        spine.set_lw(0.5)
+    axis.set_title('Free vs Mold 2')
+    xticks = numpy.arange(10,26,5)
+    x_ticks = axis.set_xticks(xticks)
+    return fig, axis
+
+def th_d0dr_vsi_dis(main_df, axis=None, measure='vertical RMSE', figsize=(10, 7)):
+    x = numpy.array([item[measures.index(measure)] for item in main_df['M1 drop']])
+    y = main_df['EF M1 VSI dissimilarity'].to_numpy(dtype='float16')
+    width = cm2in(figsize[0])
+    height = cm2in(figsize[1])
+    if not axis:
+        fig, axis = plt.subplots(figsize=(width, height))
+        axis.tick_params(axis='both', direction="in", bottom=True, top=False, left=True, right=False,
+                         width=0.5, length=2)
+    fig = axis.get_figure()
+    axis.scatter(x, y, marker='.', color='grey', s=15)
+    axis.set_ylabel('VSI dissimilarity')
+    axis.set_xlabel(measure)
+    # d1 drop / vsi dissimilarity
+    mask = ~numpy.isnan(x) & ~numpy.isnan(y)
+    slope, intercept = scipy.stats.linregress(x[mask], y[mask], alternative='two-sided')[:2]
+    x_vals = numpy.array(axis.get_xlim())
+    ys = slope * x_vals + intercept
+    axis.plot(x_vals, ys, lw=0.7, c='0.8')
+    axis.set_xlim(x_vals[0], x_vals[1])
+    # disable spines
+    axis.spines['top'].set_visible(False)
+    axis.spines['right'].set_visible(False)
+    # set plot spines lw
+    for loc, spine in axis.spines.items():
+        spine.set_lw(0.5)
+    axis.set_title('Free vs Mold 1')
+    xticks = numpy.arange(10,26,5)
+    x_ticks = axis.set_xticks(xticks)
+    return fig, axis
+
+""" thesis: ears free vs vertical rmse """
+def ef_vsi_th(main_df, axis=None, measure='vertical RMSE', figsize=(9, 7)):
+    width = cm2in(figsize[0])
+    height = cm2in(figsize[1])
+    if not axis:
+        fig, axis = plt.subplots(figsize=(width, height))
+        axis.tick_params(axis='both', direction="in", bottom=True, top=False, left=True, right=False,
+                         width=0.5, length=2)
+    fig = axis.get_figure()
+    x = numpy.array([item[measures.index(measure)] for item in main_df['EFD0'].drop(1)])  # remove outlier
+    y = main_df['EF VSI'].drop(1).to_numpy(dtype='float16')
+    axis.scatter(x, y, marker='.', color='grey', s=15)
+    axis.set_ylabel('VSI')
+    axis.set_xlabel(measure)
+
+    # axes ticks and limits Y
+    yticks = numpy.arange(0.2, 1.1, 0.2)
+    axis.set_yticks(yticks)
+    axis.set_ylim(0.1, 1)
+    yticklabels = [item.get_text() for item in axis.get_yticklabels()]
+    yticklabels[-1] = '1'
+    axis.set_yticklabels(yticklabels)
+    # axes ticks and limits X
+    axis.set_xlim(5.5, 11)
+    # disable spines
+    axis.spines['top'].set_visible(False)
+    axis.spines['right'].set_visible(False)
+    # set plot spines lw
+    for loc, spine in axis.spines.items():
+        spine.set_lw(0.5)
+    # plot regression line
+    x = numpy.array([item[measures.index(measure)] for item in main_df['EFD0']])  # dont remove outlier
+    y = main_df['EF VSI'].to_numpy(dtype='float16')
+    slope, intercept = scipy.stats.linregress(x, y, alternative='two-sided')[:2]
+    x_vals = numpy.array(axis.get_xlim())
+    ys = slope * x_vals + intercept
+    axis.plot(x_vals, ys, lw=0.7, c='0.8')
+    return fig, axis
 
 def th_vsi_l_r(main_df, axis=None, figsize=(12, 10)):
     x, y = numpy.zeros((3, len(main_df['subject']))), numpy.zeros((3, len(main_df['subject'])))
@@ -299,7 +395,7 @@ def th_vsi_l_r(main_df, axis=None, figsize=(12, 10)):
     fig = axis.get_figure()
     # plot data
     c_list = ['#2668B3', '#F7D724', '#CF1F48']  # triadic color scheme
-    axis.scatter(x[0], y[0], marker='.', c=c_list[0], label='Ears Free')
+    axis.scatter(x[0], y[0], marker='.', c=c_list[0], label='Free ears')
     axis.scatter(x[1], y[1], marker='.', c=c_list[1], label='Molds 1')
     axis.scatter(x[2], y[2], marker='.', c=c_list[2], label='Molds 2')
     # axes ticks and limits
@@ -861,7 +957,7 @@ def vsi_l_r(main_df, axis=None, show=True):
     return vsi_l, vsi_r
 
 
-def sp_str_l_r(main_df, axis=None):
+def sp_str_l_r(main_df, axis=None, show=True):
     x, y = numpy.zeros((3, len(main_df['subject']))), numpy.zeros((3, len(main_df['subject'])))
     x[0] = main_df['EF spectral strength l'].to_numpy(dtype='float16', na_value=numpy.NaN)
     x[1] = main_df['M1 spectral strength l'].to_numpy(dtype='float16', na_value=numpy.NaN)
@@ -869,24 +965,28 @@ def sp_str_l_r(main_df, axis=None):
     y[0] = main_df['EF spectral strength r'].to_numpy(dtype='float16', na_value=numpy.NaN)
     y[1] = main_df['M1 spectral strength r'].to_numpy(dtype='float16', na_value=numpy.NaN)
     y[2] = main_df['M2 spectral strength r'].to_numpy(dtype='float16', na_value=numpy.NaN)
-    if not axis:
-        fig, axis = plt.subplots(1, 1)
-        axis.set_title('spectral strength')
-    axis.set_xlabel('Left Ear spectral strength')
-    axis.set_ylabel('Right Ear spectral strength')
-    c_list = ['#2668B3', '#F7D724', '#CF1F48']  # triadic color scheme
-    axis.scatter(x[0], y[0], marker='.', c=c_list[0], label='Ears Free')
-    axis.scatter(x[1], y[1], marker='.', c=c_list[1], label='M1')
-    axis.scatter(x[2], y[2], marker='.', c=c_list[2], label='M2')
-    axis.legend()
-    axis.set_ylim(0, 150)
-    axis.set_xlim(0, 150)
-    mask = ~numpy.isnan(x) & ~numpy.isnan(y)
-    for i in range(3):
-        slope, intercept = scipy.stats.linregress(x[i][mask[i]], y[i][mask[i]], alternative='two-sided')[:2]
-        x_vals = numpy.array(axis.get_xlim())
-        ys = slope * x_vals + intercept
-        axis.plot(x_vals, ys, lw=0.4, c=c_list[i])
+    if show:
+        if not axis:
+            fig, axis = plt.subplots(1, 1)
+            axis.set_title('spectral strength')
+        axis.set_xlabel('Left Ear spectral strength')
+        axis.set_ylabel('Right Ear spectral strength')
+        c_list = ['#2668B3', '#F7D724', '#CF1F48']  # triadic color scheme
+        axis.scatter(x[0], y[0], marker='.', c=c_list[0], label='Ears Free')
+        axis.scatter(x[1], y[1], marker='.', c=c_list[1], label='M1')
+        axis.scatter(x[2], y[2], marker='.', c=c_list[2], label='M2')
+        axis.legend()
+        axis.set_ylim(0, 150)
+        axis.set_xlim(0, 150)
+        mask = ~numpy.isnan(x) & ~numpy.isnan(y)
+        for i in range(3):
+            slope, intercept = scipy.stats.linregress(x[i][mask[i]], y[i][mask[i]], alternative='two-sided')[:2]
+            x_vals = numpy.array(axis.get_xlim())
+            ys = slope * x_vals + intercept
+            axis.plot(x_vals, ys, lw=0.4, c=c_list[i])
+    sp_st_l = x
+    sp_st_r = y
+    return sp_st_l, sp_st_r
 
 
 def scatter_vsi_dis_l_r(main_df, axis=None):

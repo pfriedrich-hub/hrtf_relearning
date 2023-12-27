@@ -64,7 +64,7 @@ def add_localization_data(main_df, localization_df):
             m1d5 = subj_loc[subj_loc['condition'] == 'Earmolds Week 1'][subj_loc['adaptation day'] == 5][
                 subj_loc.columns[6:]].values[0]
             d0drop = m1d0 - efd0
-            d5gain = m1d5 - efd0
+            d5gain = m1d5 - m1d0
         except (ValueError, IndexError):
             m1d0 = m1d5 = d0drop = d5gain = numpy.array([numpy.nan] * 5)
         try:
@@ -83,7 +83,7 @@ def add_localization_data(main_df, localization_df):
             m2d5 = subj_loc[subj_loc['condition'] == 'Earmolds Week 2'][subj_loc['adaptation day'] == 5][
                 subj_loc.columns[6:]].values[0]
             d5drop = m2d0 - efd5
-            d10gain = m2d5 - efd5
+            d10gain = m2d5 - m2d0
         except (ValueError, IndexError):
             m2d0 = m2d5 = d5drop = d10gain = numpy.array([numpy.nan] * 5)
         try:

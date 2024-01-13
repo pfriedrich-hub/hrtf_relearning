@@ -1,6 +1,7 @@
 import analysis.plot.hrtf_plot as hrtf_plot
 import analysis.processing.hrtf_processing as hrtf_processing
 import warnings
+import analysis.build_dataframe as build_df
 warnings.simplefilter(action='ignore', category=FutureWarning)
 # matplotlib.use('TkAgg')
 from sklearn.decomposition import PCA
@@ -343,7 +344,7 @@ def hrtf_difference(hrtf_1, hrtf_2):
     return hrtf_diff
 
 def load_hrtf(subject_id, condition='Ears Free', processed=False):
-    hrtf_df = hrtf_processing.get_hrtf_df(processed=processed)
+    hrtf_df = build_df.get_hrtf_df(processed=processed)
     # load hrtf
     # subject = random.choice(hrtf_df['subject'].unique())
     hrtf = hrtf_df[hrtf_df['subject'] == subject_id][hrtf_df['condition'] == condition]['hrtf'].values[0]

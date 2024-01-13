@@ -38,7 +38,8 @@ def add_localization_data(main_df, localization_df):
     main_df['EFD0'], main_df['M1D0'], main_df['M1D5'], main_df['M1 drop'], main_df['M1 gain'], \
     main_df['EFD5'], main_df['M2D0'], main_df['M2D5'], main_df['M2 drop'], main_df['M2 gain'], \
     main_df['M1M2 drop'], main_df['M1M2 gain'], main_df['EF avg'], main_df['EF USO'], main_df['M1 USO'],\
-    main_df['M2 USO'], main_df['EFD10'] = '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''
+    main_df['M2 USO'], main_df['EFD10'], main_df['M1D10'], main_df['M2D10'] = \
+        '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''
     for sub_id, row in main_df.iterrows():
         subj_loc = localization_df[localization_df['subject'] == row['subject']]
         efd0 = subj_loc[subj_loc['condition'] == 'Ears Free'][subj_loc['day'] == 0][
@@ -63,10 +64,12 @@ def add_localization_data(main_df, localization_df):
                 subj_loc.columns[6:]].values[0]
             m1d5 = subj_loc[subj_loc['condition'] == 'Earmolds Week 1'][subj_loc['adaptation day'] == 5][
                 subj_loc.columns[6:]].values[0]
+            m1d10 = subj_loc[subj_loc['condition'] == 'Earmolds Week 1'][subj_loc['adaptation day'] == 6][
+                subj_loc.columns[6:]].values[0]
             d0drop = m1d0 - efd0
             d5gain = m1d5 - m1d0
         except (ValueError, IndexError):
-            m1d0 = m1d5 = d0drop = d5gain = numpy.array([numpy.nan] * 5)
+            m1d0 = m1d5 = m1d10 = d0drop = d5gain = numpy.array([numpy.nan] * 5)
         try:
             m1uso = subj_loc[subj_loc['condition'] == 'USO Earmolds Week 1'][subj_loc['adaptation day'] == 5][
                 subj_loc.columns[6:]].values[0]
@@ -74,6 +77,7 @@ def add_localization_data(main_df, localization_df):
             m1uso = numpy.array([numpy.nan] * 5)
         row['M1D0'] = m1d0
         row['M1D5'] = m1d5
+        row['M1D10'] = m1d10
         row['M1 drop'] = d0drop
         row['M1 gain'] = d5gain
         row['M1 USO'] = m1uso
@@ -82,10 +86,12 @@ def add_localization_data(main_df, localization_df):
                 subj_loc.columns[6:]].values[0]
             m2d5 = subj_loc[subj_loc['condition'] == 'Earmolds Week 2'][subj_loc['adaptation day'] == 5][
                 subj_loc.columns[6:]].values[0]
+            m2d10 = subj_loc[subj_loc['condition'] == 'Earmolds Week 2'][subj_loc['adaptation day'] == 6][
+                subj_loc.columns[6:]].values[0]
             d5drop = m2d0 - efd5
             d10gain = m2d5 - m2d0
         except (ValueError, IndexError):
-            m2d0 = m2d5 = d5drop = d10gain = numpy.array([numpy.nan] * 5)
+            m2d0 = m2d5 = m2d10 = d5drop = d10gain = numpy.array([numpy.nan] * 5)
         try:
             m2uso = subj_loc[subj_loc['condition'] == 'USO Earmolds Week 2'][subj_loc['adaptation day'] == 5][
                 subj_loc.columns[6:]].values[0]
@@ -98,6 +104,7 @@ def add_localization_data(main_df, localization_df):
             d5m1m2drop = d5m1m2gain = numpy.array(numpy.array([numpy.nan] * 5))
         row['M2D0'] = m2d0
         row['M2D5'] = m2d5
+        row['M2D10'] = m2d10
         row['M2 drop'] = d5drop
         row['M2 gain'] = d10gain
         row['M1M2 drop'] = d5m1m2drop

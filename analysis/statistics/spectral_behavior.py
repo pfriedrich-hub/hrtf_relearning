@@ -22,7 +22,6 @@ vsi_bandwidth = (5700, 11300)  # 2015, clearer relation between spectral feature
 vsi_dis_bandwidth = (5700, 13500)
 # bandwidth = (6700, 13500)
 
-
 main_df = get_df.main_dataframe(Path.cwd() / 'data' / 'experiment' / 'master', processed_hrtf=True)
 main_df = stats_df.add_hrtf_stats(main_df, bandwidth=vsi_bandwidth, vsi_dis_bw=vsi_dis_bandwidth)
 
@@ -79,7 +78,7 @@ axes[0, 0].set_ylabel('VSI dissimilarity')
 axes[1, 0].set_ylabel('spectral difference')
 fig.text(.22, .92, 'Ears Free / M2 difference day 0', fontsize=12)
 fig.text(.61, .92, 'Ears Free / M2 difference day 5', fontsize=12)
-fig.suptitle(bandwidth)
+fig.suptitle(vsi_dis_bandwidth)
 
 # m1 / m2 vsi dissimilarity d5 drop
 fig, axes = plt.subplots(2, 4, figsize=(12, 8))
@@ -99,7 +98,7 @@ axes[0, 0].set_ylabel('VSI dissimilarity')
 axes[1, 0].set_ylabel('spectral difference')
 fig.text(.22, .92, 'M1/M2 drop vs M1/M2 difference', fontsize=12)
 fig.text(.61, .92, 'M1/M2 gain vs M1/M2 difference', fontsize=12)
-fig.suptitle(bandwidth)
+fig.suptitle(vsi_dis_bandwidth)
 
 
 """

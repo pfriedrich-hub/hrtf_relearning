@@ -1,9 +1,4 @@
-import analysis.build_dataframe as build_df
-import analysis.plot.localization_plot as loc_plot
 import analysis.statistics.stats_df as stats_df
-import analysis.plot.learning as learn
-import analysis.plot.elevation_learning as ele_learn
-import analysis.plot.azimuth_learning as az_learn
 from pathlib import Path
 import scipy.stats
 import pandas
@@ -14,19 +9,11 @@ pandas.set_option('display.max_rows', None, 'display.max_columns', None, 'displa
                   'display.expand_frame_repr', False)
 path = Path.cwd() / 'data' / 'experiment' / 'master'
 plot_path = Path('/Users/paulfriedrich/Desktop/HRTF relearning/Thesis/Results/figures')
-
-# from methods: filter='erb', bandwidth=(500, 16000), baseline=False, dfe=True
-loc_df = get_df.get_localization_dataframe()
+conditions = ['Ears Free', 'Earmolds Week 1', 'Earmolds Week 2']
+measures = ['EG', 'RMSE ele', 'SD ele', 'RMSE az', 'SD az']
 main_df = get_df.main_dataframe(path, processed_hrtf=True)
 
-
-""" fig plot evolution of response pattern across the experiment """
-loc_plot.response_evolution(loc_df, to_plot='average', axis=None, width=14, height=8)
-plt.savefig(plot_path / 'response_pattern/response_pattern.svg', format='svg', bbox_inches='tight')
-
-
 """ adaptation comparing first vs last test with molds - one tailed wilcoxon signed rank test"""
-measures = ['EG', 'RMSE ele', 'SD ele', 'RMSE az', 'SD az']
 efd0 = numpy.stack((main_df['EFD0']).to_numpy())  # ears free day 0
 efd5 = numpy.stack((main_df['EFD5']).to_numpy())  # ears free day 5
 m1d0 = numpy.stack((main_df['M1D0']).to_numpy())  # molds 1 day 0
@@ -35,9 +22,9 @@ m2d0 = numpy.stack((main_df['M2D0']).to_numpy())  # molds 2 day 0
 m2d5 = numpy.stack((main_df['M2D5']).to_numpy())  # molds 2 day 5
 m1_results = {}
 for m_idx, measure in enumerate(measures):
-    if m_idx == 1 or m_idx == 3:
-        alternative = 'greater'
-    else: alternative = 'less'
+    if m_idx == 0: # EG
+        alternative = 'less' # test for EG increase
+    else: alternative = 'greater'  # test for RMSE SD decrease
     m1_results[measure] = dict()
     m1_results[measure]['D0 mean'] = numpy.round(numpy.nanmean(m1d0[:, m_idx], axis=0), 2)
     m1_results[measure]['D0 SE'] = numpy.round(scipy.stats.sem(m1d0[:, m_idx], nan_policy='omit', axis=0), 2)
@@ -59,53 +46,26 @@ for m_idx, measure in enumerate(measures):
                                                     alternative=alternative, nan_policy='omit')[1]
 
 """ compare individual rate of adaptation: d5 gain m1 vs m2 normalized by initial disruption (d0 drop) """
-
 m1drop = numpy.stack((main_df['M1 drop']).to_numpy())
 m1gain = numpy.stack((main_df['M1 gain']).to_numpy())
 m2drop = numpy.stack((main_df['M2 drop']).to_numpy())
 m2gain = numpy.stack((main_df['M2 gain']).to_numpy())
-# check: test relation between initial drop and gain  - smaller disruption -> smaller gain
-x = m1drop[:, 1]
-y = m1gain[:, 1]
-R, p_val = scipy.stats.spearmanr(x, y, nan_policy='omit')
-plt.scatter(x, y)
 # normalize gain in elevation performance
-m1gain_normalized = m1gain[:, 1] / m1drop[:, 1]
-m2gain_normalized = m2gain[:, 1] / m2drop[:, 1]
-
-# distribution of individual adaptation rates
-m1gain_mean = numpy.round(numpy.mean(m1gain_normalized, axis=0), 2)
-m1gain_se = numpy.round(scipy.stats.sem(m1gain_normalized, nan_policy='omit', axis=0), 2)
-m2gain_mean = numpy.round(numpy.nanmean(m2gain_normalized, axis=0), 2)
-m2gain_se = numpy.round(scipy.stats.sem(m2gain_normalized, nan_policy='omit', axis=0), 2)
-# differences in individual adaptation rates m1 vs m2
-x = m1gain_normalized
-y = m2gain_normalized
-statistic, p_val = scipy.stats.wilcoxon(x, y, alternative='two-sided', nan_policy='omit')
-# relation individual adaptation rates m1 m2
-x = m1gain_normalized
-y = m2gain_normalized
-R, p_val = scipy.stats.spearmanr(x, y, nan_policy='omit')
-plt.scatter(x, y)
-
-""" VSI and learning rate """
-# ---- M1 ---- #
-main_df = get_df.main_dataframe(path, processed_hrtf=True)
-main_df = stats_df.add_hrtf_stats(main_df, bandwidth=(3700, 12900))
-m1drop = numpy.stack((main_df['M1 drop']).to_numpy())
-m1gain = numpy.stack((main_df['M1 gain']).to_numpy())
-m1_vsi = numpy.stack((main_df['M1 VSI']).to_numpy())
-efm1_vsi_dissimilarity = numpy.stack((main_df['EF M1 VSI dissimilarity']).to_numpy())
-m1_spectral_strength = numpy.stack((main_df['M1 spectral strength']).to_numpy())
-m1gain_normalized = m1gain[:, 1] / m1drop[:, 1]
-plt.scatter(m1gain[:, 1], m1_vsi)
-R, p_val = scipy.stats.spearmanr(m1gain[:, 1], m1_vsi, nan_policy='omit')
-plt.scatter()
-
+m1gain_normalized = m1gain / m1drop
+m2gain_normalized = m2gain / m2drop
+adaptation_rate = {}
+for m_idx, measure in enumerate(measures):
+    adaptation_rate[measure] = dict()
+    adaptation_rate[measure]['M1 mean'] = numpy.round(numpy.nanmean(m1gain_normalized[:, m_idx], axis=0), 2)
+    adaptation_rate[measure]['M1 SD'] = numpy.round(scipy.stats.sem(m1gain_normalized[:, m_idx], nan_policy='omit', axis=0), 2)
+    adaptation_rate[measure]['M2 mean'] = numpy.round(numpy.nanmean(m2gain_normalized[:, m_idx], axis=0), 2)
+    adaptation_rate[measure]['M2 SD'] = numpy.round(scipy.stats.sem(m2gain_normalized[:, m_idx], nan_policy='omit', axis=0), 2)
+    adaptation_rate[measure]['difference p'] = scipy.stats.wilcoxon(m1gain_normalized[:, m_idx], m2gain_normalized[:, m_idx],
+                                                    alternative='less', nan_policy='omit')[1]
+    adaptation_rate[measure]['correlation R'], adaptation_rate[measure]['correlation p']  = \
+    scipy.stats.spearmanr(m1gain_normalized[:, m_idx], m2gain_normalized[:, m_idx], nan_policy='omit')
 
 """ difference USO vs pink noise test: difference between conditions? """
-measures = ['EG', 'RMSE ele', 'SD ele', 'RMSE az', 'SD az']
-main_df = get_df.main_dataframe(path, processed_hrtf=True)
 ef = numpy.stack((main_df['EFD10']).to_numpy())  # ears free day 10
 efuso = numpy.stack((main_df['EF USO']).to_numpy())
 m1 = numpy.stack((main_df['M1D5']).to_numpy())
@@ -134,7 +94,6 @@ measures = ['EG', 'RMSE ele', 'SD ele', 'RMSE az', 'SD az']
 ef0 = numpy.stack((main_df['EFD0']).to_numpy())
 ef1 = numpy.stack((main_df['EFD5']).to_numpy())
 ef2 = numpy.stack((main_df['EFD10']).to_numpy())  # ears free day 10
-
 results = dict()
 for m_idx, measure in enumerate(measures):
     if m_idx == 0: alternative = 'less'
@@ -151,6 +110,8 @@ for m_idx, measure in enumerate(measures):
     results[measure]['wilcox p efm2'] = scipy.stats.wilcoxon(ef0[:, m_idx], ef2[:, m_idx], alternative=alternative, nan_policy='omit')
     results[measure]['wilcox p m1m2'] = scipy.stats.wilcoxon(ef1[:, m_idx], ef2[:, m_idx], alternative=alternative, nan_policy='omit')
 
+
+""" misc """
 """ compare VSI dissimilarity to increase in free ears vertical RMSE -- no relation """
 main_df = get_df.main_dataframe(path, processed_hrtf=True)
 main_df = stats_df.add_hrtf_stats(main_df, bandwidth=(5700, 11300))
@@ -161,3 +122,30 @@ ef1rmse = numpy.stack((main_df['EFD5']).to_numpy())[:, 1]
 ef2rmse = numpy.stack((main_df['EFD10']).to_numpy())[:, 1] # ears free day 10
 ef01diff = ef1rmse - ef0rmse
 ef02diff = ef2rmse - ef0rmse
+plt.figure()
+plt.scatter(ef01diff, efm1_vsi_dissimilarity)
+R, p_val = scipy.stats.spearmanr(ef01diff, efm1_vsi_dissimilarity, nan_policy='omit')
+
+""" VSI / VSI dissimilarity and learning rate """
+main_df = get_df.main_dataframe(path, processed_hrtf=True)
+main_df = stats_df.add_hrtf_stats(main_df, bandwidth=(5700, 13500), vsi_dis_bw=(5700, 13500))
+m1drop = numpy.stack((main_df['M1 drop']).to_numpy())
+m1gain = numpy.stack((main_df['M1 gain']).to_numpy())
+m2drop = numpy.stack((main_df['M2 drop']).to_numpy())
+m2gain = numpy.stack((main_df['M2 gain']).to_numpy())
+m1gain_normalized = m1gain / m1drop
+m2gain_normalized = m2gain / m2drop
+m1_vsi = numpy.stack((main_df['M1 VSI']).to_numpy())
+m2_vsi = numpy.stack((main_df['M2 VSI']).to_numpy())
+# efm1_vsi_dissimilarity = numpy.stack((main_df['EF M1 VSI dissimilarity']).to_numpy())
+# efm2_vsi_dissimilarity = numpy.stack((main_df['EF M2 VSI dissimilarity']).to_numpy())
+# m1m2_vsi_dissimilarity = numpy.stack((main_df['M1 M2 VSI dissimilarity']).to_numpy())
+# ---- M1 ---- #
+plt.figure()
+plt.scatter(m1gain_normalized[:, 1], m1_vsi)
+R, p_val = scipy.stats.spearmanr(m1gain_normalized[:, 1], m1_vsi, nan_policy='omit')
+# ---- M2 ---- #
+plt.figure()
+plt.scatter(m2gain_normalized[:, 0], m2_vsi)
+R, p_val = scipy.stats.spearmanr(m2gain_normalized[:, 0], m2_vsi, nan_policy='omit')
+

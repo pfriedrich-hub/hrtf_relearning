@@ -114,9 +114,9 @@ def learning_plot(to_plot='average', path=Path.cwd() / 'data' / 'experiment' / '
 
     # horizontal lines
     for y1 in numpy.linspace(.1, 1, 10):
-        axes[0].axhline(y=y1, xmin=0, xmax=20, color='0.7', linewidth=.1)
+        axes[0].axhline(y=y1, xmin=0, xmax=20, color='0.7', linewidth=.1, zorder=-1)
     for y2 in numpy.linspace(5, 22.5, 8):
-        axes[1].axhline(y=y2, xmin=0, xmax=20, color='0.7', linewidth=.1)
+        axes[1].axhline(y=y2, xmin=0, xmax=20, color='0.7', linewidth=.1, zorder=-1)
 
     # spines
     for axis in axes:

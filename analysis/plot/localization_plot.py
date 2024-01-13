@@ -145,11 +145,11 @@ def plot_response_pattern(sequence, axis=None, show_single_responses=True, label
     for az in azimuths:  # plot hlines between target locations
         [x] = mean_loc[numpy.where(mean_loc[:, 0, 0] == az), 0, 0]
         [y] = mean_loc[numpy.where(mean_loc[:, 0, 0] == az), 1, 0]
-        axis.plot(x, y, color='0.6', linewidth=0.3)
+        axis.plot(x, y, color='0.6', linewidth=0.3, zorder=-1)
     for ele in elevations: # plot vlines
         [x] = mean_loc[numpy.where(mean_loc[:, 1, 0] == ele), 0, 0]
         [y] = mean_loc[numpy.where(mean_loc[:, 1, 0] == ele), 1, 0]
-        axis.plot(x, y, color='0.6', linewidth=0.3)
+        axis.plot(x, y, color='0.6', linewidth=0.3, zorder=-1)
     for az in azimuths:  # plot lines between mean perceived locations for each target
         [x] = mean_loc[numpy.where(mean_loc[:, 0, 0] == az), 0, 1]
         [y] = mean_loc[numpy.where(mean_loc[:, 0, 0] == az), 1, 1]

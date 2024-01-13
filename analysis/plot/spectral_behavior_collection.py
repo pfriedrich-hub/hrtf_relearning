@@ -104,7 +104,7 @@ def th_vsi_m_l_r(main_df, axis=None, figsize=(12, 8)):
         slope, intercept = scipy.stats.linregress(x[i][mask[i]], y[i][mask[i]], alternative='two-sided')[:2]
         x_vals = numpy.array((axis.get_xlim()))
         ys = slope * x_vals + intercept
-        axis.plot(x_vals, ys, lw=0.5, c=c_list[i])
+        axis.plot(x_vals, ys, lw=0.5, c=c_list[i], zorder=-1)
     # axis labels
     axis.set_xlabel('Left Ear VSI')
     axis.set_ylabel('Right Ear VSI')
@@ -154,7 +154,7 @@ def th_vsi_ef_l_r(main_df, axis=None, figsize=(12, 8)):
     slope, intercept = scipy.stats.linregress(x[mask], y[mask], alternative='two-sided')[:2]
     x_vals = numpy.array((axis.get_xlim()))
     ys = slope * x_vals + intercept
-    axis.plot(x_vals, ys, lw=0.7, c='0.8')
+    axis.plot(x_vals, ys, lw=0.7, c='0.8', zorder=-1)
     # axis labels
     axis.set_xlabel('Left Ear VSI')
     axis.set_ylabel('Right Ear VSI')
@@ -251,7 +251,7 @@ def th_d5dr_vsi_dis_m1m2(main_df, axis=None, measure='vertical RMSE', figsize=(1
     slope, intercept = scipy.stats.linregress(x[mask], y[mask], alternative='two-sided')[:2]
     x_vals = numpy.array(axis.get_xlim())
     ys = slope * x_vals + intercept
-    axis.plot(x_vals, ys, lw=0.7, c='0.8')
+    axis.plot(x_vals, ys, lw=0.7, c='0.8', zorder=-1)
     axis.set_xlim(x_vals[0], x_vals[1])
     # disable spines
     axis.spines['top'].set_visible(False)
@@ -292,7 +292,7 @@ def th_d5dr_vsi_dis(main_df, axis=None, measure='vertical RMSE', figsize=(10, 7)
     slope, intercept = scipy.stats.linregress(x[mask], y[mask], alternative='two-sided')[:2]
     x_vals = numpy.array(axis.get_xlim())
     ys = slope * x_vals + intercept
-    axis.plot(x_vals, ys, lw=0.7, c='0.8')
+    axis.plot(x_vals, ys, lw=0.7, c='0.8', zorder=-1)
     axis.set_xlim(x_vals[0], x_vals[1])
     # disable spines
     axis.spines['top'].set_visible(False)
@@ -325,7 +325,7 @@ def th_d0dr_vsi_dis(main_df, axis=None, measure='vertical RMSE', figsize=(10, 7)
     slope, intercept = scipy.stats.linregress(x[mask], y[mask], alternative='two-sided')[:2]
     x_vals = numpy.array(axis.get_xlim())
     ys = slope * x_vals + intercept
-    axis.plot(x_vals, ys, lw=0.7, c='0.8')
+    axis.plot(x_vals, ys, lw=0.7, c='0.8', zorder=-1)
     axis.set_xlim(x_vals[0], x_vals[1])
     # disable spines
     axis.spines['top'].set_visible(False)
@@ -374,7 +374,7 @@ def ef_vsi_th(main_df, axis=None, measure='vertical RMSE', figsize=(9, 7)):
     slope, intercept = scipy.stats.linregress(x, y, alternative='two-sided')[:2]
     x_vals = numpy.array(axis.get_xlim())
     ys = slope * x_vals + intercept
-    axis.plot(x_vals, ys, lw=0.7, c='0.8')
+    axis.plot(x_vals, ys, lw=0.7, c='0.8', zorder=-1)
     return fig, axis
 
 def th_vsi_l_r(main_df, axis=None, figsize=(12, 10)):
@@ -416,7 +416,7 @@ def th_vsi_l_r(main_df, axis=None, figsize=(12, 10)):
         slope, intercept = scipy.stats.linregress(x[i][mask[i]], y[i][mask[i]], alternative='two-sided')[:2]
         x_vals = numpy.array((axis.get_xlim()))
         ys = slope * x_vals + intercept
-        axis.plot(x_vals, ys, lw=0.5, c=c_list[i])
+        axis.plot(x_vals, ys, lw=0.5, c=c_list[i], zorder=-1)
     # axis labels
     axis.set_xlabel('Left Ear VSI')
     axis.set_ylabel('Right Ear VSI')

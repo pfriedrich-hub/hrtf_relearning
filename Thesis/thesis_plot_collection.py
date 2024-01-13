@@ -24,7 +24,7 @@ main_df = stats_df.add_hrtf_stats(main_df, bandwidth=(5700, 11300), vsi_dis_bw=(
 
 # --- free ears --- #
 # sample images 'lm' left and right - figure box
-figsize = [12, 6]
+figsize = [10, 5]
 figsize[0], figsize[1] = cm2in(figsize[0]), cm2in(figsize[1])
 fig, axes = plt.subplots(1,3, figsize=(figsize[0], figsize[1]), gridspec_kw={'width_ratios': [14, 14, 1]}
     ,constrained_layout=True)
@@ -103,7 +103,7 @@ axes[0].set_xlabel('')
 axes[2].set_xlabel('')
 plt.savefig(plot_path / 'fig6' / 'fig6.svg', format='svg')
 
-# evolution of responses
+# evolution of response pattern
 plt.rcParams.update({'axes.spines.right': True, 'axes.spines.top': True})
 fig, axis = loc_plot.response_evolution(to_plot='average', figsize=(14,7.5))
 plt.savefig(plot_path / 'fig7' / 'fig7.svg', format='svg')

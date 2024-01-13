@@ -21,6 +21,7 @@ def process_hrtfs(hrtf_dataframe, filter='erb', bandwidth=(4000, 16000), baselin
         hrtf = copy.deepcopy(row['hrtf'])
         if dfe:
             # hrtf = hrtf.diffuse_field_equalization()  # not on the subject level
+            # use mean dtf across all participants, molds, directions and ears  (15 x 3 x 7 x 2) for dfe:
             dfa = slab.Filter.load(Path.cwd() / 'data' / 'experiment' / 'average_TF.npy')
             # dfa = slab.Filter.load(Path.cwd() / 'data' / 'experiment' / 'kemar_dfa.npy')
             hrtf = hrtf.diffuse_field_equalization(dfa)  # divide by mean across all measured transfer functions (n=42)
@@ -117,7 +118,7 @@ def average_hrtf(hrtf_list, average_ears=False):
             hrtf[src_idx].data = tf_data
     return hrtf
 
-def write_average_tf(hrtf_df, path=Path.cwd() / 'data' / 'experiment'):
+def participants_average_tf(hrtf_df, path=Path.cwd() / 'data' / 'experiment'):
     hrtf_list = []
     for df_id, row in hrtf_df.iterrows():
         hrtf_list.append(copy.deepcopy(hrtf_df.iloc[df_id]['hrtf']))

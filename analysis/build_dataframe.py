@@ -144,11 +144,12 @@ def get_hrtf_df(path=Path.cwd() / 'data' / 'experiment' / 'master', processed=Tr
                     condition_path = subject_path / condition / 'processed_hrtf'
                 else:
                     condition_path = subject_path / condition
-                for file_name in sorted(list(condition_path.iterdir())):
-                    if file_name.is_file() and file_name.suffix == '.sofa':
-                        hrtf = slab.HRTF(file_name)
-                        new_row = [subject, file_name.name, condition, hrtf]
-                        hrtf_df.loc[len(hrtf_df)] = new_row
+                if condition_path.exists():
+                    for file_name in sorted(list(condition_path.iterdir())):
+                        if file_name.is_file() and file_name.suffix == '.sofa':
+                            hrtf = slab.HRTF(file_name)
+                            new_row = [subject, file_name.name, condition, hrtf]
+                            hrtf_df.loc[len(hrtf_df)] = new_row
     # hrtf_df.to_csv('/Users/paulfriedrich/projects/hrtf_relearning/data/experiment/data.csv')
     return hrtf_df
 

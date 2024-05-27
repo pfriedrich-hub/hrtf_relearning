@@ -69,6 +69,7 @@ def localization_accuracy(sequence, show=True, plot_dim=2, binned=True, axis=Non
     responses[:, 1] = loc_data[:, 0, 1]  # percieved elevations
     targets[:, 0] = loc_data[:, 1, 0]
     responses[:, 0] = loc_data[:, 0, 0]
+
     #  elevation gain, rmse, response variability
     elevation_gain, n = scipy.stats.linregress(targets[:, 1], responses[:, 1])[:2]
     rmse = numpy.sqrt(numpy.mean(numpy.square(targets - responses), axis=0))
@@ -77,6 +78,7 @@ def localization_accuracy(sequence, show=True, plot_dim=2, binned=True, axis=Non
 
     az_rmse, ele_rmse = rmse[0], rmse[1]
     az_sd, ele_sd = variability[0], variability[1]
+    az_var, ele_var = az_sd ** 2, ele_sd ** 2
 
     # target ids
     right_ids = numpy.where(loc_data[:, 1, 0] > 0)
@@ -167,8 +169,19 @@ def localization_accuracy(sequence, show=True, plot_dim=2, binned=True, axis=Non
         axis.set_xlim(numpy.min(azimuth_ticks) - 15, numpy.max(azimuth_ticks) + 15)
         axis.set_title('elevation gain: %.2f' % elevation_gain)
         plt.show()
-    #  return EG, RMSE and Response Variability
+
+    # #  return EG, RMSE and Response Variability
     return elevation_gain, ele_rmse, ele_sd, az_rmse, az_sd
+
+    # optionally,  return EG, accuracy and precision
+    # ele_accuracy = 1 / ele_rmse
+    # # ele_precision = 1 / ele_var
+    # ele_precision = 1 / ele_sd
+    #
+    # az_accuracy = 1 / az_rmse
+    # # az_precision = 1 / az_var
+    # az_precision = 1 / az_sd
+    # return elevation_gain, ele_accuracy, ele_precision, az_accuracy, az_precision
 
 
 

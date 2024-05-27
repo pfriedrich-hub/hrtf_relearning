@@ -2,6 +2,7 @@ import analysis.processing.hrtf_processing as hrtf_processing
 import analysis.hrtf_analysis as hrtf_analysis
 import analysis.localization_analysis as loc_analysis
 import analysis.plot.localization_plot as loc_plot
+import analysis.plot.elevation_gain_learning as ele_learning
 import analysis.plot.hrtf_plot as hrtf_plot
 import analysis.build_dataframe as get_df
 import analysis.statistics.stats_df as stats_df
@@ -24,6 +25,9 @@ hrtf_df = hrtf_processing.process_hrtfs(hrtf_df, filter=None, baseline=True, dfe
 # plot overview
 hrtf_plot.hrtf_overwiev(hrtf_df, to_plot='average', dfe=False, n_bins=None)
 
+# get average hrtf
+
+
 # mean vsi / spectral str across bands
 bands = misc.octave_spacing.overlapping_bands()[0]
 bands = misc.octave_spacing.non_overlapping_bands()[0]
@@ -38,12 +42,15 @@ hrtf_analysis.mean_vsi_dissimilarity_across_bands(hrtf_df, conditions=('Ears Fre
                                                   bands=bands, show=True)
 
 """ adaptation """
-axis = loc_plot.learning_plot(to_plot='average')
-loc_plot.localization_plot(to_plot='average')
+for subject in hrtf_df['subject'].unique():
+    if subject not in ['cs', 'lm', 'lk', 'lw']:
+        # fig = loc_plot.response_evolution(to_plot=subject)[0]
+        fig, axis = ele_learning.learning_plot(to_plot=subject)
+        fig.suptitle(subject)
 
 """ ---- plot hrtf image, spectral strength and vsi across bands ---- """
 # set conditions and bands
-condition = conditions[0]
+condition = conditions[1]
 bands = misc.octave_spacing.overlapping_bands()[0]
 # bands = misc.octave_spacing.non_overlapping_bands()[0]
 # bands = [(6000, 12000)]
@@ -51,8 +58,8 @@ ear = 'left'
 ear_idx = [0]
 for subject in hrtf_df['subject'].unique():
     hrtf = hrtf_df[hrtf_df['subject'] == subject][hrtf_df['condition'] == condition]['hrtf'].values[0]
-    # axis = hrtf_plot.hrtf_image(hrtf, chan=1)
-    # axis.set_title(subject)
+    fig, axis = hrtf_plot.hrtf_image(hrtf, chan=0)
+    axis.set_title(subject)
 
     fig, axis = plt.subplots(3, 1, figsize=(7,9))
     # image
@@ -133,9 +140,11 @@ for subject in main_df['subject'].unique():
 
 
 """ ---- plot subject hrtf images lef and right across conditions --- """
-hrtf_df = hrtf_processing.get_hrtf_df(path=path, processed=True)
+# hrtf_df = hrtf_processing.get_hrtf_df(path=path, processed=True)
+hrtf_df = build_df.get_hrtf_df(path, processed=True)
 # hrtf_df = hrtf_processing.process_hrtfs(hrtf_df, filter='erb', bandwidth=(4000, 16000), baseline=False, dfe=True, write=False)
 bands = misc.octave_spacing.non_overlapping_bands()[0]
+from analysis.plot.hrtf_plot import l_r_image as lrimage
 for subject in hrtf_df['subject'].unique():
     fig, axes = plt.subplots(3, 2, figsize=(12, 8), sharex=True)
     axes[0, 0].set_title('left')
@@ -143,18 +152,21 @@ for subject in hrtf_df['subject'].unique():
     fig.suptitle(subject)
     try:
         hrtf_ef = hrtf_df[hrtf_df['subject'] == subject][hrtf_df['condition'] == 'Ears Free']['hrtf'].values[0]
-        hrtf_ef.plot_tf(hrtf_ef.cone_sources(0), axis=axes[0, 0], xlim=(numpy.min(bands), numpy.max(bands)), ear='left')
-        hrtf_ef.plot_tf(hrtf_ef.cone_sources(0), axis=axes[0, 1], xlim=(numpy.min(bands), numpy.max(bands)), ear='right')
+        lrimage(hrtf_ef, figsize=(15, 7), axes=[axes[0, 0], axes[0, 1]])
+        # hrtf_ef.plot_tf(hrtf_ef.cone_sources(0), axis=axes[0, 0], xlim=(numpy.min(bands), numpy.max(bands)), ear='left')
+        # hrtf_ef.plot_tf(hrtf_ef.cone_sources(0), axis=axes[0, 1], xlim=(numpy.min(bands), numpy.max(bands)), ear='right')
     except: continue
     try:
         hrtf_m1 = hrtf_df[hrtf_df['subject'] == subject][hrtf_df['condition'] == 'Earmolds Week 1']['hrtf'].values[0]
-        hrtf_m1.plot_tf(hrtf_m1.cone_sources(0), axis=axes[1, 0], xlim=(numpy.min(bands), numpy.max(bands)), ear='left')
-        hrtf_m1.plot_tf(hrtf_m1.cone_sources(0), axis=axes[1, 1], xlim=(numpy.min(bands), numpy.max(bands)), ear='right')
+        lrimage(hrtf_m1, figsize=(15, 7), axes=[axes[1, 0], axes[1, 1]])
+        # hrtf_m1.plot_tf(hrtf_m1.cone_sources(0), axis=axes[1, 0], xlim=(numpy.min(bands), numpy.max(bands)), ear='left')
+        # hrtf_m1.plot_tf(hrtf_m1.cone_sources(0), axis=axes[1, 1], xlim=(numpy.min(bands), numpy.max(bands)), ear='right')
     except: continue
     try:
         hrtf_m2 = hrtf_df[hrtf_df['subject'] == subject][hrtf_df['condition'] == 'Earmolds Week 2']['hrtf'].values[0]
-        hrtf_m2.plot_tf(hrtf_m2.cone_sources(0), axis=axes[2, 0], xlim=(numpy.min(bands), numpy.max(bands)), ear='left')
-        hrtf_m2.plot_tf(hrtf_m2.cone_sources(0), axis=axes[2, 1], xlim=(numpy.min(bands), numpy.max(bands)), ear='right')
+        lrimage(hrtf_m2, figsize=(15, 7), axes=[axes[2, 0], axes[2, 1]])
+        # hrtf_m2.plot_tf(hrtf_m2.cone_sources(0), axis=axes[2, 0], xlim=(numpy.min(bands), numpy.max(bands)), ear='left')
+        # hrtf_m2.plot_tf(hrtf_m2.cone_sources(0), axis=axes[2, 1], xlim=(numpy.min(bands), numpy.max(bands)), ear='right')
     except: continue
 
 

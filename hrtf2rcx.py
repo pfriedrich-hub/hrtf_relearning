@@ -59,7 +59,7 @@ with open(data_path / 'kemar_FIRcoefs.f32', 'wb') as output_file:
 output_file.close()
 
 
-
+"""
 file = open(data_path / 'kemar_FIRcoefs.f32', "rb")
 data = file.read()
 
@@ -92,3 +92,4 @@ data = numpy.fromfile(data_path / 'Jac2_32.f32', dtype=float, count=-1, sep='', 
 
 
 
+"""

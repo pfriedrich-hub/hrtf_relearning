@@ -80,6 +80,7 @@ with open(binary_path / f'{filename}.f32', 'wb') as output_file:
 output_file.close()
 
 
+
 """
 file = open(data_path / 'hrtf_FIRcoefs.f32', "rb")
 data = file.read()

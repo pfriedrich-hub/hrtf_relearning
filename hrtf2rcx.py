@@ -65,11 +65,11 @@ with open(binary_path / f'{filename}.f32', 'wb') as output_file:
     array('i', [header[10].astype('int32')]).tofile(output_file)
     array('f', [header[11].astype('float32')]).tofile(output_file)
     # Filter Coefficients
-    elevations[::-1].sort() # sort elevations in Descending Order
+    elevations[::-1].sort()  # sort elevations in Descending Order
     for elevation in elevations:
         ele_sources = sources[numpy.where(sources[:, 1] == elevation)[0]]  # get sources at each elevation
         azimuths = ele_sources[:, 0]
-        azimuths.sort()  # sort azimuths in ascending order
+        azimuths[::-1].sort()  # sort azimuths in descending order
         for azimuth in azimuths:
             source_idx, = numpy.where(numpy.logical_and(sources[:, 0] == azimuth, sources[:, 1] == elevation))
             fir_coefs = hrtf[source_idx[0]].data

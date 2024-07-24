@@ -1,3 +1,4 @@
+from matplotlib import pyplot as plt
 import struct
 from pathlib import Path
 import numpy
@@ -14,7 +15,9 @@ hrtf = slab.HRTF(sofa_path / f'{filename}.sofa')
 sources = hrtf.sources.vertical_polar
 elevations = numpy.asarray(sorted(list(set(sources[:, 1]))))
 azimuths = numpy.asarray(sorted(list(set(sources[:, 0]))))
-n_bins = 72
+n_bins = None  # todo doesnt work yet
+if n_bins == None:
+    n_bins = hrtf[0].n_taps
 
 # ascertain equal resolution in each axis
 if not numpy.all(numpy.isclose(numpy.diff(azimuths), numpy.diff(azimuths[0:2]))):
@@ -37,10 +40,11 @@ for az in azimuths:
     if not n_ele == n_ele_ref:
         print('warning: varying number of elevation sources across azimuths')
 
+# create header array
 header = numpy.zeros(12)
 header[0] = int(hrtf.n_sources + 1)  # I Number of filter positions in RAM buffer. (number of Azimuths * Number of elevations)+1.
-header[1] = int((hrtf[0].n_taps * 2) + 2)  # II Number of taps (coefficients) including Interaural delay (ITD) delay (x2) per filter. e.g. 31 tap filter =31 x 2 + 2 (delay values)=64
-header[2] = int(hrtf[0].n_taps + 1)  # III Number of taps including the delay. e.g. 31 tap filter= 31 taps + delay value
+header[1] = int((n_bins * 2) + 2)  # II Number of taps (coefficients) including Interaural delay (ITD) delay (x2) per filter. e.g. 31 tap filter =31 x 2 + 2 (delay values)=64
+header[2] = int(n_bins + 1)  # III Number of taps including the delay. e.g. 31 tap filter= 31 taps + delay value
 header[3] = min(azimuths)  # IV Minimum Azimuth value in degrees (e.g. -165)
 header[4] = max(azimuths)  # V Maximum Azimuth value in degrees (e.g. 180)
 header[5] = az_res  # VI Inverse of the Position separation of Az in degrees, defined as 1.0/(AZ separation) e.g. 15 degrees between channel would =0.066666.
@@ -51,9 +55,8 @@ header[9] = ele_res  # X Inverse of the Position separation of Elevation in degr
 header[10] = n_ele  # XI Number of elevation positions for each Azimuth+1. The additional value is for the filter at 90 degrees. In cases where there will be no filter at 90 degrees elevation it is still necessary to include a dummy filter.
 header[11] = 1e6 / hrtf[0].samplerate  # XII Filter sampling period in microseconds. Calculated as the inverse of the sampling rate * 1,000,000.
 
-# writing the header(see RPvdsEx help)
+# write header and filter coefficients to binary file (see RPvdsEx help)
 with open(binary_path / f'{filename}.f32', 'wb') as output_file:
-
     # header
     array('i', header[0:3].astype('int32')).tofile(output_file)
     array('f', header[3:6].astype('float32')).tofile(output_file)
@@ -61,7 +64,6 @@ with open(binary_path / f'{filename}.f32', 'wb') as output_file:
     array('f', header[7:10].astype('float32')).tofile(output_file)
     array('i', [header[10].astype('int32')]).tofile(output_file)
     array('f', [header[11].astype('float32')]).tofile(output_file)
-
     # Filter Coefficients
     elevations[::-1].sort() # sort elevations in Descending Order
     for elevation in elevations:
@@ -69,11 +71,11 @@ with open(binary_path / f'{filename}.f32', 'wb') as output_file:
         azimuths = ele_sources[:, 0]
         azimuths.sort()  # sort azimuths in ascending order
         for azimuth in azimuths:
-            source_idx = numpy.where(numpy.logical_and(sources[:, 0] == azimuth, sources[:, 1] == elevation))[0]
-            dtfs = hrtf.tfs_from_sources(source_idx, ear='both', n_bins=None)[0]  # extract transfer functions
-            dtfs = numpy.vstack((dtfs, numpy.zeros(2)))  # add group delays
-            array('f', dtfs[:, 0].astype('float32')).tofile(output_file)  # write left ear filter
-            array('f', dtfs[:, 1].astype('float32')).tofile(output_file)  # write right ear filter
+            source_idx, = numpy.where(numpy.logical_and(sources[:, 0] == azimuth, sources[:, 1] == elevation))
+            fir_coefs = hrtf[source_idx[0]].data
+            fir_coefs = numpy.vstack((fir_coefs, numpy.zeros(2)))  # add group delays
+            array('f', fir_coefs[:, 0].astype('float32')).tofile(output_file)  # write left ear filter
+            array('f', fir_coefs[:, 1].astype('float32')).tofile(output_file)  # write right ear filter
 
 output_file.close()
 

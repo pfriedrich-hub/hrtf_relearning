@@ -14,6 +14,7 @@ hrtf = slab.HRTF(sofa_path / f'{filename}.sofa')
 sources = hrtf.sources.vertical_polar
 elevations = numpy.asarray(sorted(list(set(sources[:, 1]))))
 azimuths = numpy.asarray(sorted(list(set(sources[:, 0]))))
+n_bins = 72
 
 # ascertain equal resolution in each axis
 if not numpy.all(numpy.isclose(numpy.diff(azimuths), numpy.diff(azimuths[0:2]))):

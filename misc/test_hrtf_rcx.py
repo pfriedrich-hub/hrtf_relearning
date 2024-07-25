@@ -2,7 +2,7 @@ import matplotlib
 matplotlib.use('TkAgg')
 from matplotlib import pyplot as plt
 from win32com.client import Dispatch
-from hrtf2rcx import hrtf2binary
+from misc.hrtf2rcx import hrtf2binary
 from pathlib import Path
 import numpy
 import slab
@@ -35,7 +35,7 @@ if not all(init):
 
 def test_hrtf2rcx(hrtf):
     # create binary from sofa
-    # hrtf2binary(hrtf, filename, n_bins=n_bins)
+    hrtf2binary(hrtf, filename, n_bins=n_bins)
     # select random spatial filter location to test
     sources = hrtf.sources.vertical_polar
     az = random.choice(numpy.unique(sources[:, 0]))

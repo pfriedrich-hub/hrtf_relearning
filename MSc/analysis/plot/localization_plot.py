@@ -5,9 +5,24 @@ from copy import deepcopy
 from matplotlib import pyplot as plt
 from pathlib import Path
 from MSc.misc.unit_conversion import cm2in
+from matplotlib import font_manager
 
-def response_evolution(to_plot='average', axis=None, figsize=(14,8), path=Path.cwd() / 'data' / 'experiment' / 'master'):
+def response_evolution(to_plot='average', axis=None, figsize=(14,8), path=Path.cwd() / 'MSc' / 'data' / 'experiment' / 'master'):
     """ plot localization free, 1st vs last day of molds and persistence """
+
+    in_width = cm2in(figsize[0])
+    in_height = cm2in(figsize[1])
+    dpi = 264
+
+    fs = 8  # label fontsize
+    lw = .5
+    params = {'font.family':'Helvetica', 'xtick.labelsize': fs, 'ytick.labelsize': fs, 'axes.labelsize': fs,
+              'boxplot.capprops.linewidth': lw, 'lines.linewidth': lw,
+              'ytick.direction': 'in', 'xtick.direction': 'in', 'ytick.major.size': 2,
+              'xtick.major.size': 2, 'axes.linewidth': lw, 'axes.titlesize': fs, 'axes.spines.right': True,
+              'axes.spines.top': True}
+    plt.rcParams.update(params)
+
     w2_exclude = ['cs', 'lm', 'lk']
     loc_df = build_df.get_localization_dataframe(path)
     # cs and lm did not go into w2, lk did not learn in w2
@@ -61,14 +76,12 @@ def response_evolution(to_plot='average', axis=None, figsize=(14,8), path=Path.c
                                                     == 2][loc_df['subject']==subject]['sequence'].values[0].data)
 
     # plot:
-    in_width = cm2in(figsize[0])
-    in_height = cm2in(figsize[1])
     if not axis:
         fig, axes = plt.subplots(2, 4, sharex=True, sharey=True, figsize=(in_width, in_height),
-                                 subplot_kw=dict(box_aspect=1), layout='constrained')
+                                 subplot_kw=dict(box_aspect=1), layout='constrained', dpi=dpi)
         fig.subplots_adjust(left=None, bottom=None, right=None, top=None, hspace=0.05, wspace=0.05)
-    fig.supxlabel("Response azimuth (degrees)", size=10)
-    fig.supylabel("Response elevation (degrees)", size=10)
+    fig.supxlabel("Response azimuth (degrees)", size=fs)
+    fig.supylabel("Response elevation (degrees)", size=fs)
     # M1
     plot_response_pattern(efd0, axes[0,0], show_single_responses=False, labels=False)
     plot_response_pattern(m1d0, axes[0,1], show_single_responses=False, labels=False)
@@ -81,6 +94,11 @@ def response_evolution(to_plot='average', axis=None, figsize=(14,8), path=Path.c
     plot_response_pattern(m2d10, axes[1,3], show_single_responses=False, labels=False)
     # plot_response_pattern(efd10, axes[2,2], show_single_responses=False, labels=False)
 
+    # ticks_font = font_manager.FontProperties(family='Helvetica', style='normal',size=8, weight='normal', stretch='normal')
+    # for axis in axes:
+    #     for label in axis.get_yticklabels():
+    #         label.set_fontproperties(ticks_font)
+
     axes[0,0].set_title('Free ears')
     # axes[0,1].set_title('Mold insertion (day 0)')
     axes[0,1].set_title('Mold insertion')
@@ -92,6 +110,10 @@ def response_evolution(to_plot='average', axis=None, figsize=(14,8), path=Path.c
     axes[0,3].yaxis.set_label_position("right")
     axes[1,3].set_ylabel('Earmolds 2')
     axes[1,3].yaxis.set_label_position("right")
+    for row in axes:  # remove ticks
+        for ax in row:
+            ax.xaxis.set_tick_params(width=0)
+            ax.yaxis.set_tick_params(width=0)
     return fig, axis
 
 def plot_response_pattern(sequence, axis=None, show_single_responses=True, labels=True):

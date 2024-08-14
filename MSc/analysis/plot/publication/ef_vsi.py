@@ -5,7 +5,8 @@ import MSc.analysis.plot.spectral_behavior_collection as sp_beh_plot
 import MSc.analysis.statistics.stats_df as stats_df
 
 def ef_vsi(hrtf_df, main_df, figsize):
-    plt.rcParams.update({'axes.spines.right': False, 'axes.spines.top': False, 'axes.labelsize': '8'})
+    plt.rcParams.update({'font.family':'Helvetica',
+                         'axes.spines.right': False, 'axes.spines.top': False, 'axes.labelsize': '8'})
     dpi = 264
     fig_widht, fig_height = cm2in(figsize[0]), cm2in(figsize[1])
     fig = plt.figure(figsize=(fig_widht, fig_height), constrained_layout=True, dpi=dpi)
@@ -22,6 +23,6 @@ def ef_vsi(hrtf_df, main_df, figsize):
     main_df = stats_df.add_hrtf_stats(main_df, bandwidth=(5700, 13500))  # edit analysis bw for next line
     sp_beh_plot.ef_vsi_pub(main_df, measure='vertical RMSE', axis=ax3)
     ax1.annotate('A', (-.2, 1.005), c='k', weight='bold', xycoords='axes fraction')
-    ax2.annotate('B', (-.37, 1.005), c='k', weight='bold', xycoords='axes fraction')
-    ax3.annotate('C', (-.37, 1.005), c='k', weight='bold', xycoords='axes fraction')
+    ax2.annotate('B', (-.55, 1.01), c='k', weight='bold', xycoords='axes fraction')
+    ax3.annotate('C', (-.55, 1.01), c='k', weight='bold', xycoords='axes fraction')
     # plt.tight_layout(pad=.5, h_pad=None, w_pad=None, rect=None)

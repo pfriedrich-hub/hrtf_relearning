@@ -7,7 +7,7 @@ from MSc.misc.rcparams import set_rcParams
 
 def mold_vsi(main_df, figsize):
     set_rcParams()
-    plt.rcParams.update({'axes.spines.right': False, 'axes.spines.top': False, 'axes.labelsize': '8',
+    plt.rcParams.update({'font.family':'Helvetica', 'axes.spines.right': False, 'axes.spines.top': False, 'axes.labelsize': '8',
                          'ytick.labelsize': '8', 'xtick.labelsize': '8', 'boxplot.medianprops.color': 'black',
                          'boxplot.medianprops.linewidth': .5})
     dpi = 264

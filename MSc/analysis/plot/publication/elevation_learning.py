@@ -19,6 +19,15 @@ def learning_plot(to_plot='average', path=Path.cwd() / 'data' / 'experiment' / '
     fig_width = cm2in(figsize[0])
     fig_height = cm2in(figsize[1])
     dpi = 264
+    fs = 8  # label fontsize
+    markersize = 2
+    lw = .7
+    params = {'font.family':'Helvetica', 'xtick.labelsize': fs, 'ytick.labelsize': fs, 'axes.labelsize': fs,
+              'boxplot.capprops.linewidth': lw, 'lines.linewidth': lw,
+              'ytick.direction': 'in', 'xtick.direction': 'in', 'ytick.major.size': 2,
+              'xtick.major.size': 2, 'axes.linewidth': lw}
+    plt.rcParams.update(params)
+
     localization_dict = loc_analysis.get_localization_dictionary(path=path)
     # localization_dict = deepcopy(localization_dictionary)
     if not to_plot == 'average':
@@ -44,7 +53,7 @@ def learning_plot(to_plot='average', path=Path.cwd() / 'data' / 'experiment' / '
     labels = ['Elevation Gain', 'RMSE (°)', 'SD (°)']
     w1_color = 0 # EG color and label
     w2_color = 0.5  # deviation in color of w2 adaptation
-    markersize = 3
+
     label = None
     fig, axes = plt.subplots(figsize=(fig_width, fig_height), constrained_layout=True, dpi=dpi)
     ax0 = plt.subplot2grid(shape=(2, 3), loc=(0, 0), colspan=2, rowspan=2)
@@ -54,17 +63,17 @@ def learning_plot(to_plot='average', path=Path.cwd() / 'data' / 'experiment' / '
     axes = fig.get_axes()
     for i, axis in enumerate(axes):
         # week 1
-        axis.plot([0, .05], [ef[0, i], m1[0, i]], c=str(w1_color), ls=(0, (5, 10)), lw=0.8)  # day one mold insertion
-        axis.plot([.05, 1, 2, 3, 4, 4.95], m1[:6, i], c=str(w1_color), label=label, lw=1)  # week 1 learning curve
-        axis.plot([4.95, 5], [m1[5, i], ef[1, i]], c=str(w1_color), ls=(0, (5, 10)), lw=0.8)  # week 1 mold removal
+        axis.plot([0, .05], [ef[0, i], m1[0, i]], c=str(w1_color), ls=(0, (5, 10)), lw=lw-.2)  # day one mold insertion
+        axis.plot([.05, 1, 2, 3, 4, 4.95], m1[:6, i], c=str(w1_color), label=label, lw=lw)  # week 1 learning curve
+        axis.plot([4.95, 5], [m1[5, i], ef[1, i]], c=str(w1_color), ls=(0, (5, 10)), lw=lw-.2)  # week 1 mold removal
         # week 2
         # axis.plot([5, 5.05], [ef[1, i], m2[0, i]], c=str(w2_color), ls=(0, (5, 10)), lw=0.8)  # week 2 mold insertion
-        axis.plot([5.05,  6,  7,  8, 9, 9.95], m2[:6, i], c=str(w2_color), lw=1)  # week 2 learning curve
-        axis.plot([9.95, 10], [m2[5, i], ef[2, i]], c=str(w2_color), ls=(0, (5, 10)), lw=0.8)  # week 2 mold removal
+        axis.plot([5.05,  6,  7,  8, 9, 9.95], m2[:6, i], c=str(w2_color), lw=lw)  # week 2 learning curve
+        axis.plot([9.95, 10], [m2[5, i], ef[2, i]], c=str(w2_color), ls=(0, (5, 10)), lw=lw-.2)  # week 2 mold removal
         # mold 1 adaptation persistence
-        axis.plot([4.95, 10.05], m1[-2:, i], c=str(w1_color), ls=(0, (5, 10)), lw=1)
+        axis.plot([4.95, 10.05], m1[-2:, i], c=str(w1_color), ls=(0, (5, 10)), lw=lw)
         # mold 2 adaptation persistence
-        axis.plot([9.95, 15], m2[-2:, i], c=str(w2_color), ls=(0, (5, 10)), lw=1)#
+        axis.plot([9.95, 15], m2[-2:, i], c=str(w2_color), ls=(0, (5, 10)), lw=lw)#
 
         # error bars
         axis.errorbar([0, 5, 10], ef[:3, i], capsize=3, yerr=localization_dict['Ears Free']['SE'][:3, i],
@@ -99,29 +108,29 @@ def learning_plot(to_plot='average', path=Path.cwd() / 'data' / 'experiment' / '
     # axes[2].set_yticks(numpy.linspace(0, 0.0001, 5))
 
     # annotations
-    axes[0].annotate('mold \ninsertion', xy=(.1, .75), xycoords=axes[0].get_xaxis_transform(),
+    axes[0].annotate('insertion', xy=(.1, .75), xycoords=axes[0].get_xaxis_transform(), fontsize=fs,
                 xytext=(0, 0), textcoords="offset points", ha="left", va="center", rotation='horizontal')
-    axes[0].annotate('mold \nreplacement', xy=(5.1, .75), xycoords=axes[0].get_xaxis_transform(),
+    axes[0].annotate('replace-\nment', xy=(5.1, .75), xycoords=axes[0].get_xaxis_transform(), fontsize=fs,
                 xytext=(0, 0), textcoords="offset points", ha="left", va="center", rotation='horizontal')
-    axes[0].annotate('mold \nremoval', xy=(10.1, .75), xycoords=axes[0].get_xaxis_transform(),
+    axes[0].annotate('removal', xy=(10.1, .75), xycoords=axes[0].get_xaxis_transform(), fontsize=fs,
                 xytext=(0, 0), textcoords="offset points", ha="left", va="center", rotation='horizontal')
 
     # horizontal lines
     for y in numpy.linspace(.2, 1, 9):
-        axes[0].axhline(y=y, xmin=0, xmax=20, color='0.7', linewidth=.1, zorder=-1)
+        axes[0].axhline(y=y, xmin=0, xmax=20, color='0.9', linewidth=.5, zorder=-1)
     for y in numpy.arange(10, 22, 5):
-        axes[1].axhline(y=y, xmin=0, xmax=20, color='0.7', linewidth=.1, zorder=-1)
+        axes[1].axhline(y=y, xmin=0, xmax=20, color='0.9', linewidth=.5, zorder=-1)
     for y in numpy.arange(4, 9, 2):
-        axes[2].axhline(y=y, xmin=0, xmax=20, color='0.7', linewidth=.1, zorder=-1)
+        axes[2].axhline(y=y, xmin=0, xmax=20, color='0.9', linewidth=.5, zorder=-1)
 
     plt.tight_layout(pad=1.08, h_pad=.5, w_pad=None, rect=None)
 
     # subplot labels
     axes[0].annotate('A', c='k', weight='bold', xycoords='axes fraction',
-                xy=(-.1, 1.005))
+                xy=(-.1, 1.005), fontsize=fs)
     axes[1].annotate('B', c='k', weight='bold', xycoords='axes fraction',
-                xy=(-.3, 1.005))
+                xy=(-.3, 1.005), fontsize=fs)
     axes[2].annotate('C', c='k', weight='bold', xycoords='axes fraction',
-                xy=(-.3, 1.005))
+                xy=(-.3, 1.005), fontsize=fs)
 
     return fig, axis

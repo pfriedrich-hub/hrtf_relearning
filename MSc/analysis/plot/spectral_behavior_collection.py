@@ -2,6 +2,7 @@ import numpy
 import scipy
 from matplotlib import pyplot as plt
 import MSc.analysis.statistics.stats_df as stats_df
+from matplotlib import markers
 from MSc.misc.unit_conversion import cm2in
 
 measures = ['EG', 'vertical RMSE', 'vertical SD', 'horizontal RMSE', 'horizontal SD']
@@ -16,7 +17,7 @@ def vsi_ef_l_r_pub(main_df, axis=None, figsize=(12, 8)):
     if not axis:
         fig, axis = plt.subplots(figsize=(width, height))
     axis.tick_params(axis='both', direction="in", bottom=True, top=False, left=True, right=False,
-                     width=0.5, length=2)
+                     width=0.5, length=2, labelsize=8)
     fig = axis.get_figure()
     # plot data
     axis.scatter(x, y, marker='.', c='grey', label='Free ears', s=8)
@@ -25,8 +26,8 @@ def vsi_ef_l_r_pub(main_df, axis=None, figsize=(12, 8)):
     x_ticks = axis.set_xticks(ticks)
     x_ticks[0]._apply_params(width=0) # doesnt work
     axis.set_yticks(ticks)
-    axis.set_xlim(0, 1)
-    axis.set_ylim(0, 1)
+    axis.set_xlim(0, 1.1)
+    axis.set_ylim(0, 1.1)
     # string format
     ticklabels = [item.get_text() for item in axis.get_xticklabels()]
     ticklabels[0] = '0'
@@ -60,7 +61,7 @@ def ef_vsi_pub(main_df, axis=None, measure='vertical RMSE', figsize=(9, 7)):
     if not axis:
         fig, axis = plt.subplots(figsize=(width, height))
     axis.tick_params(axis='both', direction="in", bottom=True, top=False, left=True, right=False,
-                     width=0.5, length=2)
+                     width=0.5, length=2, labelsize=8)
     fig = axis.get_figure()
     # x = numpy.array([item[measures.index(measure)] for item in main_df['EFD0'].drop(1)])  # remove outlier
     x = numpy.array([item[measures.index(measure)] for item in main_df['EFD0']])  # remove outlier
@@ -121,9 +122,11 @@ def vsi_m_l_r_pub(main_df, axis=None, figsize=(12, 8)):
     fig = axis.get_figure()
     # plot data
     c_list = ['0.8', '#2668B3', '#CF1F48']  # triadic color scheme
-    axis.scatter(x[0], y[0], marker='.', c=c_list[0], label='Free ears', s=8)
-    axis.scatter(x[1], y[1], marker='.', c=c_list[1], label='Molds 1', s=8)
-    axis.scatter(x[2], y[2], marker='.', c=c_list[2], label='Molds 2', s=8)
+    # plt.style.use('grayscale')
+    c_list = ['0', '0', '0.5']  # greyscale color scheme
+    axis.scatter(x[0], y[0],fc='none', edgecolors=c_list[0], linewidth=.5, c=c_list[0], label='Free ears', s=5)
+    axis.scatter(x[1], y[1], marker='o', c=c_list[1], label='Molds 1', s=5)
+    axis.scatter(x[2], y[2], marker='s', c=c_list[2], label='Molds 2', s=5)
     # axes ticks and limits
     ticks = numpy.arange(0, 1.1, 0.4)
     x_ticks = axis.set_xticks(ticks)
@@ -161,8 +164,8 @@ def vsi_m_l_r_pub(main_df, axis=None, figsize=(12, 8)):
     for loc, spine in axis.spines.items():
         spine.set_lw(0.5)
     # legend
-    l = axis.legend(frameon=False, loc='lower left', markerscale=0, labelspacing=0, alignment='left',
-                    fontsize=8, bbox_to_anchor=((-0.2, 0.8)))
+    l = axis.legend(frameon=False, loc='lower left', markerscale=1, labelspacing=0, alignment='left',
+                    fontsize=8, bbox_to_anchor=((-0, 0.8)))
     for i, text in enumerate(l.get_texts()):
         text.set_color(c_list[i])
     axis.set_aspect('equal')
@@ -245,15 +248,17 @@ def scatter_perm_vsi_dis_pub(main_df, bandwidth, axis=None):
     axis.set_xlabel('Left Ear\nVSI Dissimilarity')
     axis.set_ylabel('Right Ear\nVSI Dissimilarity')
     c_list = ['0.8', '#2668B3', '#CF1F48', '#F7D724']  # triadic color scheme
-    axis.scatter(vsi_dis[:, 0], vsi_dis[:, 1], marker='.', color=c_list[0], label='Free vs. Free', s=8)
-    axis.scatter(x[0], y[0], marker='.', c=c_list[1], label='Free vs. Molds1', s=8)
-    axis.scatter(x[1], y[1], marker='.', c=c_list[2], label='Free vs. Molds2', s=8)
-    axis.scatter(x[2], y[2], marker='.', c=c_list[3], label='Molds1 vs. Molds2', s=8)
+    c_list = ['0.8', '0', '0.5']  # greyscale color scheme
+
+    axis.scatter(vsi_dis[:, 0], vsi_dis[:, 1], fc='none', edgecolors=c_list[0], linewidth=.5, label='Free vs. Free', s=5)
+    axis.scatter(x[0], y[0], marker='o', c=c_list[1], label='Free vs. Molds1', s=5)
+    axis.scatter(x[1], y[1], marker='s', c=c_list[2], label='Free vs. Molds2', s=5)
+    # axis.scatter(x[2], y[2], marker='.', c=c_list[3], label='Molds1 vs. Molds2', s=8)
     axis.set_ylim(0, 1.2)
     axis.set_xlim(0, 1.2)
     # legend
-    l = axis.legend(frameon=False, loc='lower left', markerscale=0, labelspacing=0,
-                    fontsize=8, bbox_to_anchor=(-0.2, 0.8), alignment='left')
+    l = axis.legend(frameon=False, loc='lower left', markerscale=1, labelspacing=0,
+                    fontsize=8, bbox_to_anchor=(-0.2, 0.9), alignment='left')
     for i, text in enumerate(l.get_texts()):
         text.set_color(c_list[i])
     # axes and ticks
@@ -308,7 +313,7 @@ def boxplot_vsi_dis_pub(main_df, axis=None):
     axis.set_yticklabels(yticklabels)
     xticklabels = [item.get_text() for item in axis.get_xticklabels()]
     axis.set_xticklabels(xticklabels)
-
+    plt.yticks(rotation=0)
 
 
 
@@ -579,7 +584,7 @@ def th_d5dr_vsi_dis_m1m2(main_df, axis=None, measure='vertical RMSE', figsize=(1
     # set plot spines lw
     for loc, spine in axis.spines.items():
         spine.set_lw(0.5)
-    axis.set_title('Mold 1 vs Mold 2')
+    # axis.set_title('Mold 1 vs Mold 2')
     # axes and ticks
     xticks = numpy.arange(0,21,5)
     x_ticks = axis.set_xticks(xticks)
@@ -620,7 +625,7 @@ def th_d5dr_vsi_dis(main_df, axis=None, measure='vertical RMSE', figsize=(10, 7)
     # set plot spines lw
     for loc, spine in axis.spines.items():
         spine.set_lw(0.5)
-    axis.set_title('Free vs Mold 2')
+    # axis.set_title('Free vs Mold 2')
     xticks = numpy.arange(10,26,5)
     x_ticks = axis.set_xticks(xticks)
     return fig, axis
@@ -651,7 +656,7 @@ def th_d0dr_vsi_dis(main_df, axis=None, measure='vertical RMSE', figsize=(10, 7)
     # set plot spines lw
     for loc, spine in axis.spines.items():
         spine.set_lw(0.5)
-    axis.set_title('Free vs Mold 1')
+    # axis.set_title('Free vs Mold 1')
     xticks = numpy.arange(10,26,5)
     x_ticks = axis.set_xticks(xticks)
     return fig, axis

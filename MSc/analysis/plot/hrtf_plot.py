@@ -2,7 +2,9 @@ import MSc.analysis.hrtf_analysis as hrtf_analysis
 import MSc.analysis.processing.hrtf_processing as hrtf_processing
 import MSc.analysis.statistics.stats_df as stats_df
 import numpy
+from matplotlib import font_manager
 import matplotlib.colors as colors
+import matplotlib.patheffects as pe
 from matplotlib import pyplot as plt
 import copy
 import scipy
@@ -21,7 +23,7 @@ def plot_mean_vsi_across_bands(hrtf_df, condition='Ears Free', bands=None, axis=
     if not axis:
         fig, axis = plt.subplots(figsize=(width, height))
     axis.tick_params(axis='both', direction="in", bottom=True, top=False, left=True, right=False,
-                     width=0.5, length=2, labelsize=9.5)
+                     width=0.5, length=2, labelsize=8)
     fig = axis.get_figure()
     axis.plot(mean_vsi_across_bands, c='k', lw=.5)
     # xticks
@@ -33,6 +35,8 @@ def plot_mean_vsi_across_bands(hrtf_df, condition='Ears Free', bands=None, axis=
         else:
             xlabels[idx] = '%.1f-%.1f' % (band[0], band[1])
     axis.set_xticklabels(xlabels)
+
+    # try moving around x labels
     # axis.get_xticklabels()[2].set_weight('bold')
     # axis.get_xticklabels()[2].set_fontsize(14)
     # axis.get_xticklabels()[0].set_verticalalignment('center_baseline')
@@ -40,6 +44,8 @@ def plot_mean_vsi_across_bands(hrtf_df, condition='Ears Free', bands=None, axis=
     # axis.get_xticklabels()[4].set_verticalalignment('bottom')
     # axis.get_xticklabels()[1].set_verticalalignment('top')
     # axis.get_xticklabels()[3].set_verticalalignment('top')
+    # plt.setp(axis.xaxis.get_majorticklabels()[1], ha="right")
+
     # disable spines
     axis.spines['top'].set_visible(False)
     axis.spines['right'].set_visible(False)
@@ -60,7 +66,6 @@ def plot_mean_vsi_across_bands(hrtf_df, condition='Ears Free', bands=None, axis=
 
 def spectral_overview(main_df, axes=None, cbar_axes=None, zlim=None, figsize=(21, 5)):
     """
-    plot mean subject dtfs for all free ears and spectral change probability for M1 and M2
     """
     plt.rcParams.update({'axes.spines.right': True, 'axes.spines.top': True})
     fig_width = cm2in(figsize[0])
@@ -68,6 +73,13 @@ def spectral_overview(main_df, axes=None, cbar_axes=None, zlim=None, figsize=(21
     # dpi = None
     dpi = 264
     bandwidth = (4000, 16000)
+    fs = 8  # label fontsize
+    lw = .5
+    params = {'font.family':'Helvetica', 'xtick.labelsize': fs, 'ytick.labelsize': fs, 'axes.labelsize': fs,
+              'boxplot.capprops.linewidth': lw, 'lines.linewidth': lw,
+              'ytick.direction': 'in', 'xtick.direction': 'in', 'ytick.major.size': 2,
+              'xtick.major.size': 2, 'axes.linewidth': lw, 'axes.titlesize': fs}
+    plt.rcParams.update(params)
     # get hrtf
     ef_hrtf = hrtf_processing.average_hrtf(list(main_df['EF hrtf']))
     n_bins = ef_hrtf[0].n_frequencies
@@ -93,6 +105,7 @@ def spectral_overview(main_df, axes=None, cbar_axes=None, zlim=None, figsize=(21
     threshold = None  # calculate threshold as rms between participants free ears dtfs
     plot_spectral_change_p(main_df, 0, threshold, bandwidth, axes[2], False)
     plot_spectral_change_p(main_df, 1, threshold, bandwidth, axes[3], True, cbar_axis=cbar_axes[1])
+
     # labels
     axes[2].set_xlabel('Frequency (kHz)')
     axes[0].set_ylabel('Elevation (degrees)')
@@ -104,10 +117,14 @@ def spectral_overview(main_df, axes=None, cbar_axes=None, zlim=None, figsize=(21
     axes[2].set_yticklabels([])
     axes[3].set_yticklabels([])
     # subplot numbering
+
     number_size = plt.rcParams.get('axes.titlesize')
-    axes[0].annotate('A', size=number_size, xy=(.008, .89), c='w', weight='bold', xycoords='axes fraction')
-    axes[2].annotate('B', size=number_size, xy=(.008, .89), c='w', weight='bold', xycoords='axes fraction')
-    axes[3].annotate('C', size=number_size, xy=(.008, .89), c='w', weight='bold', xycoords='axes fraction')
+    axes[0].annotate('A', size=number_size, xy=(.008, .89), c='w', weight='bold', xycoords='axes fraction'
+                     , path_effects=[pe.withStroke(linewidth=1, foreground='k')])
+    axes[2].annotate('B', size=number_size, xy=(.008, .89), c='w', weight='bold', xycoords='axes fraction'
+                     , path_effects=[pe.withStroke(linewidth=1, foreground='k')])
+    axes[3].annotate('C', size=number_size, xy=(.008, .89), c='w', weight='bold', xycoords='axes fraction'
+                     , path_effects=[pe.withStroke(linewidth=1, foreground='k')])
     plt.show()
 
 def hrtf_compare(hrtf_df, axes=None, cbar_axis=None, average_ears=True, hrtf_diff=False, zlim=(-11,6), figsize=(12, 4)):
@@ -218,9 +235,19 @@ def ear_mod_images(main_df, subject, chan=0, figsize=(6.5, 13), bandwidth=(4000,
     fig_width, fig_height = cm2in(figsize[0]), cm2in(figsize[1])
     # fig, axes = plt.subplots(3, 1, sharey=True, sharex=True, figsize=(fig_width, fig_height),
     #                          subplot_kw=dict(box_aspect=1), dpi=dpi ,constrained_layout=True)
-    fig, axes = plt.subplots(4, 1, figsize=(fig_width, fig_height), dpi=dpi,
-                             gridspec_kw={'height_ratios': [8.5, 8.5, 8.5, .5]}
-                             , constrained_layout=True)
+    params = {'font.family':'Helvetica', 'axes.spines.right': True, 'axes.spines.top': True,
+              'axes.spines.left': True, 'axes.spines.bottom': True,
+              'axes.titlesize': 8,
+              'xtick.labelsize': 8, 'ytick.labelsize': 8, 'axes.labelsize': 8,
+              'boxplot.capprops.linewidth': 0.5, 'lines.linewidth': .5,
+              'ytick.direction': 'in', 'xtick.direction': 'in', 'ytick.major.size': 2,
+              'xtick.major.size': 2, 'axes.linewidth': .5}
+    plt.rcParams.update(params)
+    fig, axes = plt.subplots(1, 4, figsize=(fig_width, fig_height), dpi=dpi,
+                             gridspec_kw={'width_ratios': [8.5, 8.5, 8.5, .5]}
+                             ,constrained_layout=True)
+    # for ax in axes[:3]:
+    #     ax.set_box_aspect(1)
     try:
         hrtf_ef = main_df[main_df['subject'] == subject]['EF hrtf'].values[0]
     except:
@@ -245,22 +272,26 @@ def ear_mod_images(main_df, subject, chan=0, figsize=(6.5, 13), bandwidth=(4000,
     hrtf_image(hrtf_ef, bandwidth, n_bins, axes[0], chan=chan, z_min=z_min, z_max=z_max, cbar=False, )
     hrtf_image(hrtf_m1, bandwidth, n_bins, axes[1], chan=chan, z_min=z_min, z_max=z_max, cbar=False)
     hrtf_image(hrtf_m2, bandwidth, n_bins, axes[2], chan=chan, z_min=z_min, z_max=z_max, cbar=True, cbar_axis=axes[3],
-               cbar_rotation='horizontal')
-    for ax in axes[:2]:
-        ax.set_xticklabels([])
-    for ax in axes[:3]:
-        ax.set_ylabel('Elevation (degrees)')
+               cbar_rotation='vertical')
+    for ax in axes[1:3]:
+        ax.set_yticklabels([])
+    # for ax in axes[:3]:
+    axes[0].set_ylabel('Elevation (degrees)')
 
-    axes[2].set_xlabel('Frequency (kHz)')
+    axes[1].set_xlabel('Frequency (kHz)')
     # titles
     axes[0].set_title('Free ears')
     axes[1].set_title('Molds 1')
     axes[2].set_title('Molds 2')
     # subplot numbering
     number_size = plt.rcParams.get('axes.titlesize')
-    axes[0].annotate('A', size=number_size, xy=(.008, .89), c='w', weight='bold', xycoords='axes fraction')
-    axes[1].annotate('B', size=number_size, xy=(.008, .89), c='w', weight='bold', xycoords='axes fraction')
-    axes[2].annotate('C', size=number_size, xy=(.008, .89), c='w', weight='bold', xycoords='axes fraction')
+    labels = ['A', 'B', 'C']
+    for i, ax in enumerate(axes[:3]):
+        ax.annotate(labels[i], path_effects=[pe.withStroke(linewidth=1, foreground='k')],
+                    size=number_size, xy=(.014, .89), c='w', weight='bold', xycoords='axes fraction')
+    # axes[0].annotate('A', size=number_size, xy=(.014, .87), c='k', weight='bold', xycoords='axes fraction')
+    # axes[1].annotate('B', size=number_size, xy=(.014, .87), c='k', weight='bold', xycoords='axes fraction')
+    # axes[2].annotate('C', size=number_size, xy=(.014, .87), c='k', weight='bold', xycoords='axes fraction')
 
     return fig, axis
 
@@ -282,7 +313,7 @@ def hrtf_image(hrtf, bandwidth=(4000, 16000), n_bins=None, axis=None, chan=0, z_
         z_min = numpy.floor(numpy.min(img[freq_idx]))
     if not z_max:
         z_max = numpy.ceil(numpy.max(img[freq_idx]))
-    cbar_levels = numpy.linspace(z_min, z_max, 100)
+    cbar_levels = numpy.linspace(z_min, z_max, 50)  # set levels:contour 50:10
     # plot
     if not axis:
         fig, axis = plt.subplots()
@@ -290,10 +321,14 @@ def hrtf_image(hrtf, bandwidth=(4000, 16000), n_bins=None, axis=None, chan=0, z_
         fig = axis.get_figure()
     # cmap = plt.get_cmap('cmr.rainforest_r')
     # cmap = 'RdYlBu'
-    cmap = plt.get_cmap('viridis_r')
+    # cmap = plt.get_cmap('viridis_r')
+    cmap = plt.get_cmap('plasma_r')
+
     # cmap = truncate_colormap(cmap, minval=0.05, maxval=0.7, n=512)
     contour = axis.contourf(freqs[freq_idx], elevations, img.T[:, freq_idx],
                         cmap=cmap, origin='upper', levels=cbar_levels)
+    # plot contour lines between levels
+    axis.contour(contour, colors='k', linestyles='solid', levels=numpy.linspace(z_min, z_max, 10), linewidths=.5)
     plt.setp(contour.collections, edgecolor="face")
     axis.tick_params(axis='both', direction="in", bottom=True, top=True, left=True, right=True, reset=False,
                             width=1, length=1)
@@ -378,21 +413,34 @@ def plot_spectral_change_p(main_df, condition, threshold, bandwidth=(4000, 16000
     else:
         fig = axis.get_figure()
     freq_idx = numpy.logical_and(frequencies >= bandwidth[0], frequencies <= bandwidth[1])
-    cbar_levels = numpy.linspace(0, 1, 100)
+    cbar_levels = numpy.linspace(0, 1, 50)
     # cmap = plt.get_cmap('cmr.rainforest_r')
-    # cmap = 'RdYlBu'
+    # cmap = 'RdYlBu_r'
     # cmap = plt.get_cmap('viridis_r')
-    cmap = plt.get_cmap('cividis')
+    # cmap = plt.get_cmap('cividis')
+    cmap = plt.get_cmap('plasma')
     # cmap = truncate_colormap(cmap, minval=0.05, maxval=0.7, n=512)
     contour = axis.contourf(frequencies[freq_idx], elevations, change_p[:, freq_idx],
                         cmap=cmap, origin='upper', levels=cbar_levels)
+
+    # filtered = change_p[:, freq_idx]
+    # Resample your data grid by a factor of 3 using cubic spline interpolation.
+    # filtered = scipy.ndimage.zoom(change_p[:, freq_idx], 3.4)
+
+    from scipy.ndimage import gaussian_filter  # filter before plotting
+    filtered = gaussian_filter(change_p[:, freq_idx], sigma=.75)
+
+    axis.contour(frequencies[freq_idx], elevations, filtered, colors='k', linestyles='solid',
+                    levels=numpy.array([0. ,0.7, 1. ]), linewidths=.5)
+
+                 # levels=numpy.linspace(0,1,4), linewidths=.5)
+
     plt.setp(contour.collections, edgecolor="face")  # avoid white lines in svg rendering
     x_tick_pos = [(x) for x in (numpy.arange(bandwidth[0], bandwidth[1] + 1, 4000)).astype('int')]
     x_tick_labels = [str((x / 1000).astype('int')) for x in x_tick_pos]
     axis.set_xticklabels(x_tick_labels)
     x_ticks = axis.set_xticks(x_tick_pos)
-    x_ticks[0]._apply_params(width=0)
-    x_ticks[-1]._apply_params(width=0)
+
     try:
         axis.get_xticklabels()[0].set_horizontalalignment('left')
         axis.get_xticklabels()[-1].set_horizontalalignment('right')
@@ -404,6 +452,8 @@ def plot_spectral_change_p(main_df, condition, threshold, bandwidth=(4000, 16000
     axis.set_xticklabels(ticks)
     axis.tick_params(axis='both', direction="in", bottom=True, top=True, left=True, right=True,
                             width=1, length=1)
+    x_ticks[0]._apply_params(width=0)
+    x_ticks[-1]._apply_params(width=0)
     if cbar:
         # cbar_ticks = [int(0), 0.2, 0.4, 0.6, 0.8, int(1)]
         cbar_ticks = [int(0), 0.5, int(1)]
@@ -418,6 +468,9 @@ def plot_spectral_change_p(main_df, condition, threshold, bandwidth=(4000, 16000
         cbar.set_ticklabels(['0', '0.5', '1'])
         cbar_axis.tick_params(axis='both', direction="in", bottom=True, top=True, left=True, right=True,
                               width=1, length=1)
+        y_ticks = cbar_axis.set_yticks(cbar_ticks)
+        y_ticks[0]._apply_params(width=0)
+        y_ticks[-1]._apply_params(width=0)
         cbar_axis.set_title('p')
     return axis
 

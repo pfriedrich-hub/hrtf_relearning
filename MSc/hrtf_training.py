@@ -6,7 +6,7 @@ from pathlib import Path
 import time
 import MSc.analysis.localization_analysis as localization
 
-data_dir = Path.cwd() / 'final_data'
+data_dir = Path.cwd() / 'MSc' / 'data'
 fs = 48828
 slab.set_default_samplerate(fs)
 

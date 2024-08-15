@@ -5,15 +5,17 @@ import datetime
 date = datetime.datetime.now()
 from matplotlib import pyplot as plt
 from pathlib import Path
-from participants import Participants
 from old.MSc.analysis.localization_analysis import localization_accuracy
 fs = 48828
 slab.set_default_samplerate(fs)
 
-subject = Participants(id='test')
-condition = 'test'
+subject_id = 'mh'
+condition = 'Ears Free'
+data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_4' / subject_id / condition
 
-def localization_test(subject, condition, repetitions=3):
+repetitions = 3  # number of repetitions per speaker
+
+def localization_test(subject_id, data_dir, condition, repetitions):
     global speakers, stim, sensor, tone, file_name
     if not freefield.PROCESSORS.mode:
         freefield.initialize('dome', default='play_rec', sensor_tracking=True)
@@ -46,11 +48,6 @@ def localization_test(subject, condition, repetitions=3):
             dist[i] = numpy.sqrt(diff[0] ** 2 + diff[1] ** 2)
         if all(dist >= 35):  # check if distance is never smaller than 35°
             break
-
-    # todo think about which locations the virtual localization test should cover (discrete or continuous)?
-    # todo generate random source sequence with min eculidean distance between consecutive trials?
-    sequence = numpy.array((numpy.random.randint(-45, 45, 150), numpy.random.randint(-45, 45, 150))).T
-
     trial_sequence = slab.Trialsequence(trials=range(len(sequence)))
     # loop over trials
     data_dir.mkdir(parents=True, exist_ok=True)  # create subject data directory if it doesnt exist
@@ -113,3 +110,68 @@ if __name__ == "__main__":
     elevation_gain, ele_rmse, ele_var, az_rmse, az_var = localization_accuracy(sequence, show=True, plot_dim=1)
     print('gain: %.2f\nrmse: %.2f\nsd: %.2f' % (elevation_gain, ele_rmse, ele_var))
 
+
+
+"""
+import slab
+from pathlib import Path
+from analysis.localization_analysis import localization_accuracy
+
+file_name = 'localization_lw_ears_free_10.12'
+
+for path in Path.cwd().glob("**/"+str(file_name)):
+    file_path = path
+sequence = slab.Trialsequence(conditions=45, n_reps=1)
+sequence.load_pickle(file_path)
+
+# plot
+from matplotlib import pyplot as plt
+fig, axis = plt.subplots(1, 1)
+elevation_gain, ele_rmse, ele_var, az_rmse, az_var = localization_accuracy(sequence, show=True, plot_dim=2,
+ binned=True, axis=axis)
+axis.set_xlabel('Response Azimuth (degrees)')
+axis.set_ylabel('Response Elevation (degrees)')
+fig.suptitle(file_name)
+"""
+
+
+"""
+
+
+#--------- stitch incomplete sequences ------------------#
+
+filename_1 = 'localization_sm_Earmolds Week 1_6_29.01'
+filename_2 = 'localization_sm_Earmolds Week 1_29.01_1'
+sequence_1 = slab.Trialsequence(conditions=45, n_reps=1)
+sequence_2 = deepcopy(sequence_1)
+sequence_1.load_pickle(file_name=data_dir / filename_1)
+sequence_2.load_pickle(file_name=data_dir / filename_2)
+data_1 = sequence_1.data[:-sequence_1.n_remaining]
+data_2 = sequence_2.data[:-sequence_2.n_remaining]
+data = data_1 + data_2
+sequence = sequence_1
+file_name = filename_1
+sequence.data = data
+
+#  save
+sequence.save_pickle(data_dir / file_name, clobber=True)
+
+# ----------- correct azimuth for >300° ---------- #
+
+file_name = 'localization_lm_Ears Free_05.06_1'
+for path in Path.cwd().glob("**/*"+str(file_name)):
+    file_path = path
+sequence = slab.Trialsequence(conditions=45, n_reps=1)
+sequence.load_pickle(file_path)
+
+for i, entry in enumerate(sequence.data):
+    sequence.data[i][0][sequence.data[i][0] > 180] -= 360
+    
+for i, entry in enumerate(sequence.data):
+    sequence.data[i][0][sequence.data[i][0] < -180] += 360
+    
+# -------------- save ------------------#
+
+sequence.save_pickle(file_path, clobber=True)
+
+"""

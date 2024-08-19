@@ -10,8 +10,8 @@ data_path = Path.cwd() / 'data'
 fs = 24414  # RP 2 limitation
 
 class Training():
-    def __init__(self, target_size=5, target_time=.5, game_time=180, trial_time=20,
-                 az_range=(-45, 45), ele_range=(-45, 45)):
+    def __init__(self, target_size=5, target_time=.5, game_time=180, trial_time=30,
+                 az_range=(-30, 30), ele_range=(-30, 30)):
         self.target_size = target_size
         self.target_time = target_time
         self.game_time = game_time
@@ -33,9 +33,9 @@ class Training():
 
     def run(self):
         # init RP2 processor
+        freefield.set_logger('debug')
         freefield.initialize(setup='dome', device=['RP2', 'RP2', data_path / 'rcx' / 've_training_RP2.rcx'],
                              sensor_tracking=True)
-        # freefield.set_logger('warning')
 
         while True:
             self.training_session()
@@ -52,7 +52,7 @@ class Training():
         trial_prep = time.time()  # time between trials
         self.set_target()  # get next target
         print('Press button to start')        # calibrate (wait for button)
-        freefield.calibrate_sensor(led_feedback=False, button_control=True)
+        freefield.calibrate_sensor(led_feedback=False, button_control=True)  # todo find out why this function crashes if called from within another function
         self.game_start += time.time() - trial_prep  # count time only while playing
         self.play_trial()
         self.scores.append(self.score)
@@ -67,7 +67,7 @@ class Training():
             self.update_headpose()  # read headpose from sensor and send to dsp
             # distance = freefield.read('distance', 'RP2')  # get headpose - target distance
             dst = self.pose - self.target
-            distance = numpy.sqrt(numpy.sum(numpy.square(dst)))  # same as reading it from proc but faster
+            distance = numpy.sqrt(numpy.sum(numpy.square(dst)))  # faster than reading from DSP
             print('distance: azimuth %.1f, elevation %.1f, total %.2f'
                   % (dst[0], dst[1], distance), end="\r", flush=True)
             if distance < self.target_size:
@@ -98,6 +98,9 @@ class Training():
                 break
             else:
                 continue
+            if not freefield.SENSOR.device.device.is_connected:
+                print('Sensor connection lost!')
+                break
 
     def set_target(self, min_dist=45):
         target = (numpy.random.randint(self.az_range[0], self.az_range[1]),

@@ -9,9 +9,22 @@ import slab
 data_path = Path.cwd() / 'data'
 fs = 24414  # RP 2 limitation
 
-class Training():
+class Training(processor):
     def __init__(self, target_size=5, target_time=.5, game_time=180, trial_time=30,
                  az_range=(-30, 30), ele_range=(-30, 30)):
+        self.processor = processor
+        if self.processor == 'RP2':
+            self.setup = 'dome'
+            self.zbus = True
+            self.connection = 'zBus'
+            self.led_feedback = False
+            self.button_control = True
+        elif self.processor == 'RM1':
+            self.setup = None
+            self.zbus = False
+            self.connection = 'USB'
+            self.led_feedback = False
+            self.button_control = False
         self.target_size = target_size
         self.target_time = target_time
         self.game_time = game_time
@@ -32,10 +45,9 @@ class Training():
         return f'{type(self)} Sessions played: {len(self.scores)} Scores: {repr(self.scores)}'
 
     def run(self):
-        # init RP2 processor
         freefield.set_logger('debug')
-        freefield.initialize(setup='dome', device=['RP2', 'RP2', data_path / 'rcx' / 've_training_RP2.rcx'],
-                             sensor_tracking=True)
+        freefield.initialize(setup=self.setup, zbus=self.zbus, connection=self.connection, sensor_tracking=True,
+            device=[self.processor, self.processor, data_path / 'rcx' / f've_training_{self.processor}.rcx'])
 
         while True:
             self.training_session()
@@ -51,15 +63,18 @@ class Training():
         # while not self.game_over:  # loop over trials until end time has passed
         trial_prep = time.time()  # time between trials
         self.set_target()  # get next target
-        print('Press button to start')        # calibrate (wait for button)
-        freefield.calibrate_sensor(led_feedback=False, button_control=True)  # todo find out why this function crashes if called from within another function
+        if self.processor == 'RP2': # calibrate (wait for button)
+            print('Press button to start sensor calibration')
+        elif self.processor == 'RM1':
+            input('Press button to start sensor calibration')
+        freefield.calibrate_sensor(led_feedback=self.led_feedback, button_control=self.button_control)
         self.game_start += time.time() - trial_prep  # count time only while playing
         self.play_trial()
         self.scores.append(self.score)
         print(f'Run {len(self.scores)}: {self.score} points')
 
     def play_trial(self):
-        freefield.play(1, 'RP2')  # start pulse train
+        freefield.play(1, self.processor)  # start pulse train
         self.trial_start = time.time()  # get trial start time
         count_down = False  # condition for counting time on target
         # within trial loop: continuously update headpose and monitor time
@@ -130,3 +145,8 @@ class Training():
         self.pose = freefield.get_head_pose()
         freefield.write('head_az', self.pose[0], 'RP2')
         freefield.write('head_ele', self.pose[1], 'RP2')
+
+if __name__ == "__main__":
+
+    training = Training('RM1')
+    training.run()

@@ -9,18 +9,16 @@ import slab
 data_path = Path.cwd() / 'data'
 fs = 24414  # RP 2 limitation
 
-class Training(processor):
-    def __init__(self, target_size=5, target_time=.5, game_time=180, trial_time=30,
+class Training():
+    def __init__(self, processor='RP2', target_size=5, target_time=.5, game_time=180, trial_time=30,
                  az_range=(-30, 30), ele_range=(-30, 30)):
         self.processor = processor
         if self.processor == 'RP2':
-            self.setup = 'dome'
             self.zbus = True
             self.connection = 'zBus'
             self.led_feedback = False
             self.button_control = True
         elif self.processor == 'RM1':
-            self.setup = None
             self.zbus = False
             self.connection = 'USB'
             self.led_feedback = False
@@ -46,13 +44,13 @@ class Training(processor):
 
     def run(self):
         freefield.set_logger('debug')
-        freefield.initialize(setup=self.setup, zbus=self.zbus, connection=self.connection, sensor_tracking=True,
+        freefield.initialize(setup='dome', zbus=self.zbus, connection=self.connection, sensor_tracking=True,
             device=[self.processor, self.processor, data_path / 'rcx' / f've_training_{self.processor}.rcx'])
 
         while True:
             self.training_session()
             print('Press button to play again.')
-            freefield.wait_for_button('RP2')
+            self.wait_for_button()
 
     def stop(self):
         freefield.halt()
@@ -63,10 +61,7 @@ class Training(processor):
         # while not self.game_over:  # loop over trials until end time has passed
         trial_prep = time.time()  # time between trials
         self.set_target()  # get next target
-        if self.processor == 'RP2': # calibrate (wait for button)
-            print('Press button to start sensor calibration')
-        elif self.processor == 'RM1':
-            input('Press button to start sensor calibration')
+        self.wait_for_button()
         freefield.calibrate_sensor(led_feedback=self.led_feedback, button_control=self.button_control)
         self.game_start += time.time() - trial_prep  # count time only while playing
         self.play_trial()
@@ -80,7 +75,7 @@ class Training(processor):
         # within trial loop: continuously update headpose and monitor time
         while True:
             self.update_headpose()  # read headpose from sensor and send to dsp
-            # distance = freefield.read('distance', 'RP2')  # get headpose - target distance
+            # distance = freefield.read('distance', self.processor))  # get headpose - target distance
             dst = self.pose - self.target
             distance = numpy.sqrt(numpy.sum(numpy.square(dst)))  # faster than reading from DSP
             print('distance: azimuth %.1f, elevation %.1f, total %.2f'
@@ -113,9 +108,6 @@ class Training(processor):
                 break
             else:
                 continue
-            if not freefield.SENSOR.device.device.is_connected:
-                print('Sensor connection lost!')
-                break
 
     def set_target(self, min_dist=45):
         target = (numpy.random.randint(self.az_range[0], self.az_range[1]),
@@ -128,25 +120,31 @@ class Training(processor):
                           numpy.random.randint(self.ele_range[0], self.ele_range[1]))
                 diff = numpy.diff((target, self.target), axis=0)[0]
                 euclidean_dist = numpy.sqrt(diff[0] ** 2 + diff[1] ** 2)
-        freefield.write('target_az', target[0], 'RP2')
-        freefield.write('target_ele', target[1], 'RP2')
+        freefield.write('target_az', target[0], self.processor)
+        freefield.write('target_ele', target[1], self.processor)
         print('\n TARGET| azimuth: %.1f, elevation %.1f' % (target[0], target[1]))
         self.target = target
 
     def play_end_sound(self, sound='buzzer'):
         goal_sound = self.sounds[sound]
-        freefield.write('n_goal', goal_sound.n_samples, 'RP2')
-        freefield.write('goal', goal_sound, 'RP2')
-        freefield.play(2, 'RP2')  # stop pulse train and play buzzer sound
-        freefield.wait_to_finish_playing('RP2', 'goal_play')
+        freefield.write('n_goal', goal_sound.n_samples, self.processor)
+        freefield.write('goal', goal_sound, self.processor)
+        freefield.play(2, self.processor)  # stop pulse train and play buzzer sound
+        freefield.wait_to_finish_playing(self.processor, 'goal_play')
 
     def update_headpose(self):
         # get headpose from sensor and write to processor
         self.pose = freefield.get_head_pose()
-        freefield.write('head_az', self.pose[0], 'RP2')
-        freefield.write('head_ele', self.pose[1], 'RP2')
+        freefield.write('head_az', self.pose[0], self.processor)
+        freefield.write('head_ele', self.pose[1], self.processor)
 
-if __name__ == "__main__":
+    def wait_for_button(self):
+        if self.processor == 'RP2':  # calibrate (wait for button)
+            print('Press button to start sensor calibration')
+        elif self.processor == 'RM1':
+            input('Press button to start sensor calibration')
 
-    training = Training('RM1')
-    training.run()
+# if __name__ == "__main__":
+#
+#     training = Training('RM1')
+#     training.run()

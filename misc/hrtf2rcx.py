@@ -30,12 +30,12 @@ def hrtf2binary(hrtf, filename, n_bins=None):
     for ele in elevations:
         n_az = len(sources[sources[:, 1] == ele])
         if not n_az == n_az_ref:
-            print('warning: varying number of azimuth sources across elevations')
+            print(f'warning: varying number of azimuth sources across elevations (at {ele}° elevation).')
     n_ele_ref = len(sources[sources[:, 0] == azimuths[0]])
     for az in azimuths:
         n_ele = len(sources[sources[:, 0] == az])
         if not n_ele == n_ele_ref:
-            print('warning: varying number of elevation sources across azimuths')
+            print(f'warning: varying number of elevation sources at {az}° Azimuth.')
 
     if n_bins == None:
         n_bins = hrtf[0].n_taps
@@ -69,11 +69,12 @@ def hrtf2binary(hrtf, filename, n_bins=None):
 
         # write Filter Coefficients
         elevations[::-1].sort()  # sort elevations in Descending Order
+        # elevations[::1].sort()  # hrtfs from aachen have up and down reversed?
         for elevation in elevations:
             ele_sources = sources[numpy.where(sources[:, 1] == elevation)[0]]  # get sources at each elevation
             azimuths = ele_sources[:, 0]
-            azimuths[::-1].sort()  # sort azimuths in descending order
-            # azimuths[::1].sort()  # hrtfs from aachen have clockwise decreasing az values?
+            # azimuths[::-1].sort()  # sort azimuths in descending order
+            azimuths[::1].sort()  # hrtfs from aachen have clockwise decreasing az values?
             for azimuth in azimuths:
                 source_idx, = numpy.where(numpy.logical_and(sources[:, 0] == azimuth, sources[:, 1] == elevation))[0]
 

@@ -1,8 +1,7 @@
 import matplotlib
 import freefield
 matplotlib.use('TkAgg')
-from matplotlib import pyplot as plt
-from misc.RM1 import connect_RM1, array2RM1
+from old.RM1 import connect_RM1, array2RM1
 from pathlib import Path
 import time
 import numpy

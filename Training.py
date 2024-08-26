@@ -9,7 +9,7 @@ import slab
 data_dir = Path.cwd() / 'data'
 fs = 24414  # RP 2 limitation
 
-class Training():
+class Training:
     def __init__(self, processor='RP2', target_size=5, target_time=.5, game_time=180, trial_time=30,
                  az_range=(-30, 30), ele_range=(-30, 30)):
         self.processor = processor
@@ -43,14 +43,13 @@ class Training():
         return f'{type(self)} Sessions played: {len(self.scores)} Scores: {repr(self.scores)}'
 
     def run(self):
-        freefield.set_logger('debug')
+        freefield.set_logger('warning')
         freefield.initialize(setup='dome', zbus=self.zbus, connection=self.connection, sensor_tracking=True,
-            device=[self.processor, self.processor, data_dir / 'rcx' / f've_training_{self.processor}.rcx'])
+            device=[self.processor, self.processor, data_dir / 'rcx' / f'training_{self.processor}.rcx'])
 
         while True:
             self.training_session()
-            print('Press button to play again.')
-            self.wait_for_button()
+            self.wait_for_button('Press button to play again.')
 
     def stop(self):
         freefield.halt()
@@ -61,7 +60,7 @@ class Training():
         # while not self.game_over:  # loop over trials until end time has passed
         trial_prep = time.time()  # time between trials
         self.set_target()  # get next target
-        self.wait_for_button()
+        self.wait_for_button('press enter to start')
         freefield.calibrate_sensor(led_feedback=self.led_feedback, button_control=self.button_control)
         self.game_start += time.time() - trial_prep  # count time only while playing
         self.play_trial()
@@ -156,13 +155,24 @@ class Training():
         freefield.write('head_az', self.pose[0], self.processor)
         freefield.write('head_ele', self.pose[1], self.processor)
 
-    def wait_for_button(self):
-        if self.processor == 'RP2':  # calibrate (wait for button)
-            print('Press button to start sensor calibration')
+    def wait_for_button(self, *msg):
+        response = None
+        if self.processor == 'RP2':
+            if msg: print(msg)
+            else: print('Waiting for button.')
+            while not response:
+                response = freefield.wait_for_button('RP2', 'response')
         elif self.processor == 'RM1':
-            input('Press button to start sensor calibration')
+            if msg: response = input(msg)
+            else: input('Waiting for button.')
+        return response
 
-# if __name__ == "__main__":
-#
-#     training = Training('RM1')
-#     training.run()
+    # def wait_for_button(self):
+    #     if self.processor == 'RP2':  # calibrate (wait for button)
+    #         print('Press button to start sensor calibration')
+    #     elif self.processor == 'RM1':
+    #         input('Press button to start sensor calibration')
+
+if __name__ == "__main__":
+    training = Training('RM1')
+    training.run()

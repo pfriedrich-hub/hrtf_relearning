@@ -6,7 +6,7 @@ from pathlib import Path
 import time
 import numpy
 import slab
-data_path = Path.cwd() / 'data'
+data_dir = Path.cwd() / 'data'
 fs = 24414  # RP 2 limitation
 
 class Training():
@@ -31,9 +31,9 @@ class Training():
         self.ele_range = ele_range
         self.target = None
         self.scores = []
-        self.sounds = {'coins': slab.Sound(data=data_path / 'sounds' / 'coins.wav'),
-                  'coin': slab.Sound(data=data_path / 'sounds' / 'coin.wav'),
-                  'buzzer': slab.Sound(data_path / 'sounds' / 'buzzer.wav')}
+        self.sounds = {'coins': slab.Sound(data=data_dir / 'sounds' / 'coins.wav'),
+                  'coin': slab.Sound(data=data_dir / 'sounds' / 'coin.wav'),
+                  'buzzer': slab.Sound(data_dir / 'sounds' / 'buzzer.wav')}
         for sound, key in zip(self.sounds.values(), self.sounds.keys()):
             self.sounds[key] = sound.resample(fs)
 
@@ -45,7 +45,7 @@ class Training():
     def run(self):
         freefield.set_logger('debug')
         freefield.initialize(setup='dome', zbus=self.zbus, connection=self.connection, sensor_tracking=True,
-            device=[self.processor, self.processor, data_path / 'rcx' / f've_training_{self.processor}.rcx'])
+            device=[self.processor, self.processor, data_dir / 'rcx' / f've_training_{self.processor}.rcx'])
 
         while True:
             self.training_session()
@@ -108,6 +108,24 @@ class Training():
                 break
             else:
                 continue
+
+    def make_sequence(self, targets, min_dist=45):
+        # create n_reps elements sequence with more than min_dist angular distance between successive targets
+        def euclidean(D2array):
+            diff = numpy.diff(D2array, axis=0)
+            return numpy.sqrt(diff[:, 0] ** 2 + diff[:, 1] ** 2)
+        n_targets = self.targets.shape[0]
+        n_trials = self.n_reps * n_targets
+        sequence = numpy.zeros((n_trials, 2))
+        while True:
+            for s in range(self.n_reps):
+                dist = numpy.zeros(n_targets)
+                while any(dist < min_dist):
+                    seq = self.targets[numpy.random.choice(n_targets, n_targets, replace=False), :]
+                    dist = euclidean(seq)
+                sequence[s*n_targets:s*n_targets+n_targets] = seq
+            if all(euclidean(sequence) >= 35):
+                return sequence
 
     def set_target(self, min_dist=45):
         target = (numpy.random.randint(self.az_range[0], self.az_range[1]),

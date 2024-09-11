@@ -11,14 +11,14 @@ def movie(hrtf_list, azimuth_range, elevation_range, interval=500, map='feature_
     settings = {'map': map, 'kind': kind}
     # plot features for sources in range 0 / +50 azimuth across elevations
     # if axis == 'azimuth':
-    source_idx = hrtf_list[0].get_source_idx(azimuth_range=azimuth_range, elevation_range=elevation_range)
+    source_idx = hrtf_list[0].get_source_idx(azimuth=azimuth_range, elevation=elevation_range)
     azimuths = numpy.unique(hrtf_list[0].sources.vertical_polar[source_idx, 0])
     elevations = numpy.unique(hrtf_list[0].sources.vertical_polar[source_idx, 1])
     bandwidth = (1000, 18000)
     data = []
     for az in azimuths:
         print(az)
-        source_idx = hrtf_list[0].get_source_idx(azimuth_range=az,elevation_range=(elevations.min(), elevations.max()))
+        source_idx = hrtf_list[0].get_source_idx(azimuth=az,elevation=(elevations.min(), elevations.max()))
         # sort by ascending elevation
         sources = hrtf_list[0].sources.vertical_polar[source_idx]
         sorting_idx = numpy.argsort(sources, axis=0, kind=None, order=None)[:,1]

@@ -37,7 +37,7 @@ def hrtf2binary(hrtf, filename, n_bins=None, add_itd=False, add_ild=False):
         if not n_ele == n_ele_ref:
             print(f'warning: varying number of elevation sources at {az}° Azimuth.')
 
-    if n_bins == None:
+    if n_bins is None:
         n_bins = hrtf[0].n_taps
     else:
         print(f'interpolating IR to {n_bins} bins.')
@@ -50,11 +50,11 @@ def hrtf2binary(hrtf, filename, n_bins=None, add_itd=False, add_ild=False):
     header[3] = min(azimuths)  # IV Minimum Azimuth value in degrees (e.g. -165)
     header[4] = max(azimuths)  # V Maximum Azimuth value in degrees (e.g. 180)
     header[5] = az_res  # VI Inverse of the Position separation of Az in degrees, defined as 1.0/(AZ separation) e.g. 15 degrees between channel would =0.066666.
-    header[6] = n_az  # VII % Number of Az positions at each elevation
+    header[6] = n_az_ref  # VII % Number of Az positions at each elevation
     header[7] = min(elevations)  # VIII Minimum Elevation value in degrees.
     header[8] = max(elevations)  # IX Maximum Elevation value in degrees (Must include a value for 90).
     header[9] = ele_res  # X Inverse of the Position separation of Elevation in degrees, defined as 1.0/(EL separation). e.g. 30 degrees between EL would be 1/30=.0333.
-    header[10] = n_ele  # XI Number of elevation positions for each Azimuth+1. The additional value is for the filter at 90 degrees. In cases where there will be no filter at 90 degrees elevation it is still necessary to include a dummy filter.
+    header[10] = n_ele_ref  # XI Number of elevation positions for each Azimuth+1. The additional value is for the filter at 90 degrees. In cases where there will be no filter at 90 degrees elevation it is still necessary to include a dummy filter.
     header[11] = 1e6 / hrtf.samplerate  # XII Filter sampling period in microseconds. Calculated as the inverse of the sampling rate * 1,000,000.
 
     # write header and filter coefficients to binary file (see RPvdsEx help)
@@ -62,10 +62,10 @@ def hrtf2binary(hrtf, filename, n_bins=None, add_itd=False, add_ild=False):
         # write header
         array('i', header[0:3].astype('int32')).tofile(output_file)
         array('f', header[3:6].astype('float32')).tofile(output_file)
-        array('i', [header[6].astype('int32')]).tofile(output_file)
+        array('i', header[6].astype('int32')).tofile(output_file)
         array('f', header[7:10].astype('float32')).tofile(output_file)
-        array('i', [header[10].astype('int32')]).tofile(output_file)
-        array('f', [header[11].astype('float32')]).tofile(output_file)
+        array('i', header[10].astype('int32')).tofile(output_file)
+        array('f', header[11].astype('float32')).tofile(output_file)
 
         # write Filter Coefficients
         elevations[::-1].sort()  # sort elevations in Descending Order
@@ -89,7 +89,7 @@ def hrtf2binary(hrtf, filename, n_bins=None, add_itd=False, add_ild=False):
                     fir_coefs = hrtf[source_idx].data
 
                 if add_itd:
-                    itd = slab.Binaural.azimuth_to_itd(azimuth, head_radius=10)  # head radius in cm
+                    itd = slab.Binaural.azimuth_to_itd(azimuth, head_radius=11)  # head radius in cm
                     if itd > 0:  # add left delay
                         delay = numpy.array((int(itd * hrtf.samplerate), 0))
                     elif itd < 0:  # add right delay

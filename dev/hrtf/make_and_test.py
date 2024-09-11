@@ -9,11 +9,11 @@ filename = 'hrtf_1'
 hrtf = make_hrtf(n_azimuths=50, azimuth_range=(0, 50), n_elevations=8, elevation_range=(-40, 40), n_bins=256)
 
 # inspect
-movie([hrtf], (0,50), (-40,40), interval=200, map='average', kind='waterfall', save=False)
+# movie([hrtf], (0,50), (-40,40), interval=200, map='average', kind='waterfall', save=False)
 
 # convert to IR, write to binary file and test
 hrir = tf2ir(hrtf)
-hrtf2binary(hrir, filename)
+hrtf2binary(hrir, filename, add_itd=True)
 
 test = HRTF_test('RM1', target=(0, 0))
 test.run()

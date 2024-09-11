@@ -113,7 +113,7 @@ hrtf_analysis.hrtf_images(plot_dict, n_bins=n_bins, bandwidth=bandwidth, plot='i
 
 """
 
-# hrtf_analysis.mean_vsi_across_bands(hrtf_dict, show=True)
+# hrtf.mean_vsi_across_bands(hrtf_dict, show=True)
 
 lst = [subj for subj in subject_list if subj not in exclude]
 
@@ -123,7 +123,7 @@ lst = [subj for subj in subject_list if subj not in exclude]
 #     plot_dict = {}
 #     for c in conditions:
 #         plot_dict[c] = hrtf_dict[c][to_plot]
-#     hrtf_analysis.hrtf_images(plot_dict, n_bins, bandwidth=(4000, 16000), title=('participant id: %s' % s))
+#     hrtf.hrtf_images(plot_dict, n_bins, bandwidth=(4000, 16000), title=('participant id: %s' % s))
 
 
 
@@ -133,7 +133,7 @@ lst = [subj for subj in subject_list if subj not in exclude]
 
 
 #------ smoothe hrtf and write to file ------#
-hrtf_dict = hrtf_analysis.get_hrtfs(path, subject_list, conditions, smoothe=False,
+hrtf_dict = hrtf.get_hrtfs(path, subject_list, conditions, smoothe=False,
                                     baseline=False, bandwidth=bandwidth, dfe=False)
 import copy
 subject_dir_list = list(path.iterdir())
@@ -142,11 +142,11 @@ for condition in hrtf_dict.keys():
         if subject_path.name in hrtf_dict[condition].keys():
             print('processing %s %s' %(subject_path.name, condition))
             hrtf_out = copy.deepcopy(hrtf_dict[condition][subject_path.name])
-            hrtf_out = hrtf_analysis.smoothe_hrtf(hrtf_out, high_cutoff=1500)
+            hrtf_out = hrtf.smoothe_hrtf(hrtf_out, high_cutoff=1500)
             # hrtf_out = hrtf_out.diffuse_field_equalization()
-            # hrtf_out = hrtf_analysis.baseline_hrtf(hrtf_out, bandwidth=(3000, 17000))
+            # hrtf_out = hrtf.baseline_hrtf(hrtf_out, bandwidth=(3000, 17000))
             hrtf_dict[condition][subject_path.name] = hrtf_out
             
-hrtf_analysis.write_processed_hrtf(hrtf_dict, path, dir_name='processed_hrtf')
+hrtf.write_processed_hrtf(hrtf_dict, path, dir_name='processed_hrtf')
 
 """

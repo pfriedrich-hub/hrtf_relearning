@@ -36,4 +36,4 @@ def overlapping_bands():
     return bands
 
 
-# single band analysis: 3.7 to 12.9 kHz (middlebrooks 1999)
+# single band dev: 3.7 to 12.9 kHz (middlebrooks 1999)

@@ -5,7 +5,7 @@ date = datetime.datetime.now()
 date = f'{date.strftime("%d")}_{date.strftime("%m")}'
 from pathlib import Path
 from Subject import Subject
-from analysis.localization_analysis import *
+from dev.localization_analysis import *
 
 fs = 25000
 slab.set_default_samplerate(fs)

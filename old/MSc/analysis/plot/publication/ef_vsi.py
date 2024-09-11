@@ -20,7 +20,7 @@ def ef_vsi(hrtf_df, main_df, figsize):
     main_df = stats_df.add_hrtf_stats(main_df, bandwidth=(5700, 11300), vsi_dis_bw=(5700, 13500))
     sp_beh_plot.vsi_ef_l_r_pub(main_df, axis=ax2)
     # ef rmse vsi
-    main_df = stats_df.add_hrtf_stats(main_df, bandwidth=(5700, 13500))  # edit analysis bw for next line
+    main_df = stats_df.add_hrtf_stats(main_df, bandwidth=(5700, 13500))  # edit dev bw for next line
     sp_beh_plot.ef_vsi_pub(main_df, measure='vertical RMSE', axis=ax3)
     ax1.annotate('A', (-.2, 1.005), c='k', weight='bold', xycoords='axes fraction')
     ax2.annotate('B', (-.55, 1.01), c='k', weight='bold', xycoords='axes fraction')

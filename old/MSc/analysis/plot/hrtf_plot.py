@@ -620,7 +620,7 @@ def hrtf_overview(hrtf_df, to_plot='average', n_bins=None, dfe=False, axis=None,
     hrtf_dict['diff_ef_m1'] = hrtf_analysis.hrtf_difference(hrtf_dict['hrtf_ef'], hrtf_dict['hrtf_m1'])
     hrtf_dict['diff_ef_m2'] = hrtf_analysis.hrtf_difference(hrtf_dict['hrtf_ef'], hrtf_dict['hrtf_m2'])
     hrtf_dict['diff_m1_m2'] = hrtf_analysis.hrtf_difference(hrtf_dict['hrtf_m1'], hrtf_dict['hrtf_m2'])
-    # hrtf_dict['diff_diff_ef_m1_diff_ef_m2'] = hrtf_analysis.hrtf_difference(diff_ef_m1, diff_ef_m2)
+    # hrtf_dict['diff_diff_ef_m1_diff_ef_m2'] = hrtf.hrtf_difference(diff_ef_m1, diff_ef_m2)
 
     # apply diffuse field equalization
     if dfe:
@@ -696,7 +696,7 @@ def truncate_colormap(cmap, minval=0.0, maxval=1.0, n=100):
 """
 # ---- deprecated ---- #
 def plot_vsi_across_bands_old(hrtf, bands, n_bins, axis=None):
-    vsi_across_bands = hrtf_analysis.vsi_across_bands_old(hrtf, bands, n_bins)
+    vsi_across_bands = hrtf.vsi_across_bands_old(hrtf, bands, n_bins)
     if not bands:
         bands = [(4000, 5700), (5700, 8000), (8000, 11300), (11300, 16000)]
     if not axis:
@@ -717,9 +717,9 @@ def hrtf_correlation(hrtf_df, to_plot='average', n_bins=None, dfe=True, axis=Non
     hrtf_dict = dict()
     # get hrtf
     if to_plot == 'average':
-        hrtf_dict['hrtf_ef'] = hrtf_analysis.average_hrtf(list(hrtf_df[hrtf_df['condition'] == 'Ears Free']['hrtf']))
-        hrtf_dict['hrtf_m1'] = hrtf_analysis.average_hrtf(list(hrtf_df[hrtf_df['condition'] == 'Earmolds Week 1']['hrtf']))
-        hrtf_dict['hrtf_m2'] = hrtf_analysis.average_hrtf(list(hrtf_df[hrtf_df['condition'] == 'Earmolds Week 2']['hrtf']))
+        hrtf_dict['hrtf_ef'] = hrtf.average_hrtf(list(hrtf_df[hrtf_df['condition'] == 'Ears Free']['hrtf']))
+        hrtf_dict['hrtf_m1'] = hrtf.average_hrtf(list(hrtf_df[hrtf_df['condition'] == 'Earmolds Week 1']['hrtf']))
+        hrtf_dict['hrtf_m2'] = hrtf.average_hrtf(list(hrtf_df[hrtf_df['condition'] == 'Earmolds Week 2']['hrtf']))
     else:
         hrtf_dict['hrtf_ef'] = hrtf_df[hrtf_df['condition'] == 'Ears Free'][hrtf_df['subject'] == to_plot]['hrtf']
         hrtf_dict['hrtf_m1'] = hrtf_df[hrtf_df['condition'] == 'Earmolds Week 1'][hrtf_df['subject'] == to_plot]['hrtf']
@@ -727,11 +727,11 @@ def hrtf_correlation(hrtf_df, to_plot='average', n_bins=None, dfe=True, axis=Non
 
     fig, axes = plt.subplots(1, 3, sharey=True, figsize=(12, 4))
     fig.subplots_adjust(left=None, bottom=None, right=None, top=None, wspace=0.05)
-    corr_ef_m1 = hrtf_analysis.hrtf_correlation(hrtf_dict['hrtf_ef'], hrtf_dict['hrtf_m1'], show=True, axis=axes[0],
+    corr_ef_m1 = hrtf.hrtf_correlation(hrtf_dict['hrtf_ef'], hrtf_dict['hrtf_m1'], show=True, axis=axes[0],
                                                 bandwidth=bandwidth, cbar=False, n_bins=n_bins)
-    corr_ef_m2= hrtf_analysis.hrtf_correlation(hrtf_dict['hrtf_ef'], hrtf_dict['hrtf_m2'], show=True, axis=axes[1],
+    corr_ef_m2= hrtf.hrtf_correlation(hrtf_dict['hrtf_ef'], hrtf_dict['hrtf_m2'], show=True, axis=axes[1],
                                                bandwidth=bandwidth, cbar=False, n_bins=n_bins)
-    corr_m1_m2= hrtf_analysis.hrtf_correlation(hrtf_dict['hrtf_m1'], hrtf_dict['hrtf_m2'], show=True, axis=axes[2],
+    corr_m1_m2= hrtf.hrtf_correlation(hrtf_dict['hrtf_m1'], hrtf_dict['hrtf_m2'], show=True, axis=axes[2],
                                                bandwidth=bandwidth, cbar=True, n_bins=n_bins)
 
     cbar = False

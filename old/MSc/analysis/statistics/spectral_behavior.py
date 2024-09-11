@@ -115,9 +115,9 @@ measure_idx = measures.index(measure)
 # w2_exclude=['cs', 'lm', 'lk']  # these subjects did not complete Week 2 of the experiment
 localization_dataframe = loc_analysis.get_localization_dataframe(path)
 # exclude = ['svm']  # missing M1 hrtf
-hrtf_dataframe = hrtf_analysis.get_hrtf_df(path, processed=False)
+hrtf_dataframe = hrtf.get_hrtf_df(path, processed=False)
 # process hrtf
-hrtf_dataframe = hrtf_analysis.process_hrtfs(hrtf_dataframe, filter='erb', baseline=True, write=False)  # baseline hrtf
+hrtf_dataframe = hrtf.process_hrtfs(hrtf_dataframe, filter='erb', baseline=True, write=False)  # baseline hrtf
 # scatter plots and statistics
 
 
@@ -135,9 +135,9 @@ for bandwidth in bands:
 
 
 # test d1 drop and spectral difference
-import analysis.hrtf_analysis as hrtf_an
-import analysis.plot.hrtf_plot as hrtf_pl
-import analysis.localization_analysis as loc_an
+import dev.hrtf as hrtf_an
+import dev.plot.hrtf_plot as hrtf_pl
+import dev.localization_analysis as loc_an
 import scipy
 import misc.octave_spacing
 data_path = path=Path.cwd() / 'data' / 'experiment' / 'master'

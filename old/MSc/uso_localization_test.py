@@ -113,7 +113,7 @@ if __name__ == "__main__":
 """
 import slab
 from pathlib import Path
-from analysis.localization_analysis import localization_accuracy
+from dev.localization_analysis import localization_accuracy
 subject_id = 'lk'
 condition = 'Earmolds Week 1'
 data_dir = Path.cwd() / 'data' / 'experiment' / 'bracket_4' / subject_id / condition

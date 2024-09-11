@@ -100,7 +100,7 @@ hrtf = hrtf_dataframe[hrtf_dataframe['subject']==subject][hrtf_dataframe['condit
 
 # overview plots
 hrtf_plot.plot_hrtf_overview(hrtf_dataframe, subject, condition, bands, n_bins, equalize)
-# hrtf_analysis.mean_vsi_across_bands(hrtf_dataframe, condition, bands, n_bins, equalize, show=True)
+# hrtf.mean_vsi_across_bands(hrtf_dataframe, condition, bands, n_bins, equalize, show=True)
 # hrtf_plot.plot_average(hrtf_dataframe, condition=condition, equalize=True, kind='image')  #todo fix copy error
 
 # subject plots
@@ -188,7 +188,7 @@ axis.set_ylabel('HRTF 1 Elevation (degrees)')
 axis.set_xlabel('HRTF 2 Elevation (degrees)')
 
 
-# power analysis
+# power dev
 from statsmodels.stats.power import tt_solve_power
 import numpy
 # power: (= 1 - beta, fehler 2. art) - wahrscheinlichkeit die nullhypothese richtigerweise zu verwerfen

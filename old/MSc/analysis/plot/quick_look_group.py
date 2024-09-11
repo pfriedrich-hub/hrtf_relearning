@@ -171,10 +171,10 @@ for subject in hrtf_df['subject'].unique():
 """# process all"""
 hrtf_df = hrtf_processing.get_hrtf_df(path=path, processed=False)
 hrtf_df = hrtf_processing.process_hrtfs(hrtf_df, filter='erb', baseline=True, dfe=True, write=True)
-# hrtf_df = hrtf_analysis.process_hrtfs(hrtf_df, filter='scepstral', baseline=True, write=True)
+# hrtf_df = hrtf.process_hrtfs(hrtf_df, filter='scepstral', baseline=True, write=True)
 
 # plot all subjects hrtf + vsi
-# hrtf_df = hrtf_analysis.get_hrtf_df(path=data_path, processed=False)
+# hrtf_df = hrtf.get_hrtf_df(path=data_path, processed=False)
 # hrtf_pl.subj_hrtf_vsi(hrtf_df, to_plot='all', condition='Ears Free', bands=None)
 # hrtf_pl.subj_hrtf_vsi_dis(hrtf_df, to_plot='all', conditions=('Ears Free', 'Earmolds Week 1'), bands=None)
 

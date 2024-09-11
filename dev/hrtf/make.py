@@ -1,9 +1,10 @@
 import matplotlib.pyplot as plt
 import numpy
 import slab
+from pathlib import Path
 from sklearn import linear_model
 reg = linear_model.LinearRegression()
-from dev.hrtf.movie import movie
+
 
 def add_feature(tf, freq_bins, mu, sigma, scaling):
     """
@@ -83,38 +84,44 @@ def make_hrtf(n_azimuths, azimuth_range, n_elevations, elevation_range, n_bins=2
             tf = numpy.ones(n_bins)   # blank dtf
 
             # peak 1
-            # mu = linear_notch_position(azimuth, elevation, x=[(0,25), (-40,40)], y=(3e3, 5e3))  # y=mu freqs, x=coordinates
-            # s = linear_notch_width(azimuth, elevation, x=[(0,50), (-40,40)], y=(500, 1200))
-            # sf = linear_scaling_factor(azimuth, elevation, x=[(0,50), (-10,10)], y=(s * 2, s * 3))
-            # tf = add_feature(tf, freq_bins=freq_bins, mu=mu, sigma=s, scaling=sf)  # add gaussian notch
+            mu = linear_notch_position(azimuth, elevation, x=[(0,50), (-40,40)], y=(3.5e3, 4.5e3))  # y=mu freqs, x=coordinates
+            s = linear_notch_width(azimuth, elevation, x=[(0,50), (-20,20)], y=(800, 1800))
+            sf = linear_scaling_factor(azimuth, elevation, x=[(0,50), (-40,40)], y=(s * 6, s * 8))
+            tf = add_feature(tf, freq_bins=freq_bins, mu=mu, sigma=s, scaling=sf)
 
             # notch 1
-            mu = linear_notch_position(azimuth, elevation, x=[(0,10), (-40,40)], y=(6e3, 11e3))
-            s = linear_notch_width(azimuth, elevation, x=[(0,50), (-40,40)], y=(500, 1000))
-            sf = linear_scaling_factor(azimuth, elevation, x=[(0,50), (-40,40)], y=(s * -1.7, s * -2.2))
-            tf = add_feature(tf, freq_bins=freq_bins, mu=mu, sigma=s, scaling=sf)  # add gaussian notch
+            mu = linear_notch_position(azimuth, elevation, x=[(-10,10), (-40,40)], y=(6e3, 10e3))
+            s = linear_notch_width(azimuth, elevation, x=[(0,50), (-40,40)], y=(1200, 500))
+            sf = linear_scaling_factor(azimuth, elevation, x=[(0,50), (-40,40)], y=(s * -1.8, s * -2.4))
+            tf = add_feature(tf, freq_bins=freq_bins, mu=mu, sigma=s, scaling=sf)
 
             # peak 2
-            # mu = linear_notch_position(azimuth, elevation, x=[(0, 10), (-40, 5)], y=(10e3, 12e3))
-            # s = linear_notch_width(azimuth, elevation, x=[(0, 50), (-40, 5)], y=(1000, 300))
-            # sf = linear_scaling_factor(azimuth, elevation, x=[(0, 50), (-40, 5)], y=(s * 2.5, s * 1.5))
-            # tf = add_feature(tf, freq_bins=freq_bins, mu=mu, sigma=s, scaling=sf)  # add gaussian notch
+            mu = linear_notch_position(azimuth, elevation, x=[(0, 50), (-40, 10)], y=(10e3, 12e3))
+            s = linear_notch_width(azimuth, elevation, x=[(0, 50), (-40, 10)], y=(1000, 200))
+            sf = linear_scaling_factor(azimuth, elevation, x=[(0, 50), (-40, 10)], y=(s * 6, s * .5))
+            tf = add_feature(tf, freq_bins=freq_bins, mu=mu, sigma=s, scaling=sf)
 
-            tf = add_feature(tf, freq_bins=freq_bins, mu=mu, sigma=s, scaling=sf)  # add gaussian notch
+            # notch 2        # todo use nonlinear width here
+            mu = linear_notch_position(azimuth, elevation, x=[(0, 10), (-40, 25)], y=(15e3, 13e3))
+            s = linear_notch_width(azimuth, elevation, x=[(0, 50), (40, -40)], y=(800, 300))
+            sf = linear_scaling_factor(azimuth, elevation, x=[(0, 50), (-40, 25)], y=(s * -2, s * -2.3))
+            tf = add_feature(tf, freq_bins=freq_bins, mu=mu, sigma=s, scaling=sf)  # add gaussian
+
+            # peak 3
+            mu = linear_notch_position(azimuth, elevation, x=[(0, 10), (-30, 40)], y=(18.5e3, 14.5e3))
+            s = linear_notch_width(azimuth, elevation, x=[(0, 50), (-30, 40)], y=(800, 400))
+            sf = linear_scaling_factor(azimuth, elevation, x=[(0, 50), (-30, 40)], y=(s * 2.2, s * 1.5))
+            tf = add_feature(tf, freq_bins=freq_bins, mu=mu, sigma=s, scaling=sf)
+
             tf += numpy.finfo(float).eps  # avoid log10(0) error
             dtfs[source_idx, :, 0] = tf
             dtfs[source_idx, :, 1] = tf
-
-            print(f'az {azimuth}, ele {elevation}, mu: {mu}')
-            print(sources[source_idx])
             source_idx += 1
     return slab.HRTF(data=dtfs, samplerate=44e3, datatype='TF', sources=sources)
 
-hrtf = make_hrtf(n_azimuths=50, azimuth_range=(0, 50), n_elevations=16, elevation_range=(-40, 40), n_bins=256)
-# movie([hrtf], (0,50), (-40,40),  interval=100, map='average', kind='waterfall')
-hrtf.plot_sources(hrtf.cone_sources(0))  # todo fix
-hrtf.plot_tf(hrtf.cone_sources(0))  # todo fix
+# hrtf = make_hrtf(n_azimuths=50, azimuth_range=(0, 50), n_elevations=8, elevation_range=(-40, 40), n_bins=256)
+# movie([hrtf], (0,50), (-40,40), interval=200, map='average', kind='waterfall', save='hrtf_1.sofa')
 
+# hrtf.plot_sources(hrtf.cone_sources(0))  # todo fix
+# hrtf.plot_tf(hrtf.cone_sources(0))  # todo check if notch moves correctly from 0 to 50 az
 
-# hrtf = slab.HRTF.kemar()
-# movie([hrtf], azimuth_range=(0,50), elevation_range=(-20,20), map='average', kind='image')

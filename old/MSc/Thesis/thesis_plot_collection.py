@@ -44,7 +44,7 @@ hrtf_plot.plot_mean_vsi_across_bands(hrtf_df, condition='Ears Free', bands=None,
 # L/R vsi
 sp_beh_plot.th_vsi_ef_l_r(main_df, axis=ax2)
 # ef rmse vsi
-main_df = stats_df.add_hrtf_stats(main_df, bandwidth=(5700, 13500))  # edit analysis bw for next line
+main_df = stats_df.add_hrtf_stats(main_df, bandwidth=(5700, 13500))  # edit dev bw for next line
 sp_beh_plot.ef_vsi_th(main_df, measure='vertical RMSE', axis=ax3)
 main_df = stats_df.add_hrtf_stats(main_df, bandwidth=(5700, 11300), vsi_dis_bw=(5700, 13500))
 for ax_id, ax in enumerate([ax1, ax2, ax3]):

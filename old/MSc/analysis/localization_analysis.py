@@ -360,5 +360,5 @@ az_y = loc_data[:, 0, 0]
 bads_idx = numpy.where(az_y == None)
 az_y = numpy.array(numpy.delete(az_y, bads_idx), dtype=numpy.float)
 az_x = numpy.array(numpy.delete(az_x, bads_idx), dtype=numpy.float)
-azimuth_gain = scipy.analysis.linregress(az_x, az_y)[0]
+azimuth_gain = scipy.dev.linregress(az_x, az_y)[0]
 """

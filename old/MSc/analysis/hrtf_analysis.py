@@ -13,7 +13,7 @@ import scipy
 import pandas
 pandas.set_option('display.max_rows', 1000, 'display.max_columns', 1000, 'display.width', 1000)
 
-# ------ HRTF analysis ------ #
+# ------ HRTF dev ------ #
 
 # ----- VSI (trapeau und schönwiesner 2015) ---- #
 def vsi(hrtf, bandwidth=(4000, 16000), ear_idx=[0, 1], average=True):
@@ -258,7 +258,7 @@ def add_hrtf_pc_weights(hrtf_df, weights):
         hrtf_2 = hrtf_dataframe[hrtf_dataframe['subject'] == subject][hrtf_dataframe['condition'] == conditions[1]][
             'hrtf'].values[0]
         fig, axes = plt.subplots(2, 2, figsize=(10,8))
-        hrtf_dif = hrtf_analysis.hrtf_difference(hrtf_1, hrtf_2)
+        hrtf_dif = hrtf.hrtf_difference(hrtf_1, hrtf_2)
         hrtf_plot.hrtf_image(hrtf_1, axis=axes[0, 0])
         hrtf_plot.hrtf_image(hrtf_2, axis=axes[0, 1])
         hrtf_plot.hrtf_image(hrtf_dif, axis=axes[1, 0])

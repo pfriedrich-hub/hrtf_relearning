@@ -265,7 +265,7 @@ def plot_response_pattern(sequence, axis=None, show_single_responses=True, label
 # # plot_hrtf_correlation(hrtf_free, hrtf_mold, src)
 #
 # """ Plot DTF correlation """
-# from hrtf_analysis import dtf_correlation
+# from hrtf import dtf_correlation
 # def plot_correlation(hrtf_free, hrtf_mold, sources):
 #     # compare heatmap of hrtf free and with mold
 #     fig, axis = plt.subplots(2, 2, sharey=True)

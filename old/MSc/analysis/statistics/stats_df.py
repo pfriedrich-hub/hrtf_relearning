@@ -70,7 +70,7 @@ def add_hrtf_stats(main_df, bandwidth, vsi_dis_bw=None):  # , bands=None):
             main_df.loc[subject_id]['EF M1 VSI dissimilarity'] = hrtf_analysis.vsi_dissimilarity(hrtf_ef, hrtf_m1, vsi_dis_bw)
             main_df.loc[subject_id]['EF M1 spectral difference'] = hrtf_analysis.spectral_difference(hrtf_ef, hrtf_m1, vsi_dis_bw)
             # main_df.loc[subject_id]['EF M1 weighted VSI dissimilarity'] = \
-            #     hrtf_analysis.weighted_vsi_dissimilarity(hrtf_ef, hrtf_m1, bands)
+            #     hrtf.weighted_vsi_dissimilarity(hrtf_ef, hrtf_m1, bands)
             main_df.loc[subject_id]['M1 VSI'] = hrtf_analysis.vsi(hrtf_m1, bandwidth, ear_idx=[0, 1], average=True)
             main_df.loc[subject_id]['M1 spectral strength'] = hrtf_analysis.spectral_strength(hrtf_m1, bandwidth)
 
@@ -105,7 +105,7 @@ def add_hrtf_stats(main_df, bandwidth, vsi_dis_bw=None):  # , bands=None):
             main_df.loc[subject_id]['EF M2 VSI dissimilarity'] = hrtf_analysis.vsi_dissimilarity(hrtf_ef, hrtf_m2, vsi_dis_bw)
             main_df.loc[subject_id]['EF M2 spectral difference'] = hrtf_analysis.spectral_difference(hrtf_ef, hrtf_m2, vsi_dis_bw)
             # main_df.loc[subject_id]['EF M2 weighted VSI dissimilarity'] = \
-            #     hrtf_analysis.weighted_vsi_dissimilarity(hrtf_ef, hrtf_m2, bands)
+            #     hrtf.weighted_vsi_dissimilarity(hrtf_ef, hrtf_m2, bands)
             main_df.loc[subject_id]['EF M2 VSI dissimilarity l'] = hrtf_analysis.vsi_dissimilarity(hrtf_ef, hrtf_m2,
                                                                                                    vsi_dis_bw,
                                                                                                    ear_idx=[0])
@@ -123,7 +123,7 @@ def add_hrtf_stats(main_df, bandwidth, vsi_dis_bw=None):  # , bands=None):
             main_df.loc[subject_id]['M1 M2 VSI dissimilarity'] = hrtf_analysis.vsi_dissimilarity(hrtf_m1, hrtf_m2, vsi_dis_bw)
             main_df.loc[subject_id]['M1 M2 spectral difference'] = hrtf_analysis.spectral_difference(hrtf_m1, hrtf_m2, vsi_dis_bw)
             # main_df.loc[subject_id]['M1 M2 weighted VSI dissimilarity'] = \
-            #     hrtf_analysis.weighted_vsi_dissimilarity(hrtf_m1, hrtf_m2, bands)
+            #     hrtf.weighted_vsi_dissimilarity(hrtf_m1, hrtf_m2, bands)
 
             main_df.loc[subject_id]['M1 M2 VSI dissimilarity l'] = hrtf_analysis.vsi_dissimilarity(hrtf_m1, hrtf_m2,
                                                                                                    vsi_dis_bw, ear_idx=[0])

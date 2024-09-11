@@ -115,7 +115,7 @@ if __name__ == "__main__":
 """
 import slab
 from pathlib import Path
-from analysis.localization_analysis import localization_accuracy
+from dev.localization_analysis import localization_accuracy
 
 file_name = 'localization_lw_ears_free_10.12'
 

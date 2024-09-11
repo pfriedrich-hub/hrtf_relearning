@@ -203,8 +203,8 @@ if __name__ == "__main__":
     sources = list(range(hrtf.n_sources-1, -1, -1))  # works for 0°/+/-17.5° cone
     hrtf.plot_tf(sources, xlim=(4000, 16000))
     # fig, axis = plt.subplots(2, 1)
-    # hrtf_analysis.plot_hrtf_image(hrtf, sources, plot_bins, kind='waterfall', axis=axis[0], ear=plot_ear, xlim=(4000, 16000), dfe=dfe)
-    # hrtf_analysis.vsi_across_bands(hrtf, sources, n_bins=plot_bins, axis=axis[1], dfe=dfe)
+    # hrtf.plot_hrtf_image(hrtf, sources, plot_bins, kind='waterfall', axis=axis[0], ear=plot_ear, xlim=(4000, 16000), dfe=dfe)
+    # hrtf.vsi_across_bands(hrtf, sources, n_bins=plot_bins, axis=axis[1], dfe=dfe)
     # axis[0].set_title(subject_id)
     # # hrtf.plot_tf(sources, xlim=(low_freq, high_freq), ear=plot_ear)
     # hrtf.plot_tf(sources, xlim=(4000, 16000), ear=plot_ear)
@@ -217,7 +217,7 @@ for path in Path.cwd().glob("**/"+str(file_name)):
 hrtf = slab.HRTF(file_path)
 
 
-import analysis.hrtf_analysis as hrtf_analysis
+import dev.hrtf as hrtf
 import slab
 from matplotlib import pyplot as plt
 from pathlib import Path
@@ -230,10 +230,10 @@ hrtf = slab.HRTF(Path.cwd() / 'data' / 'experiment' / 'bracket_3' / subject_id /
 
 
 sources = hrtf.cone_sources(0)
-hrtf = hrtf_analysis.baseline_hrtf(hrtf)
+hrtf = hrtf.baseline_hrtf(hrtf)
 hrtf.plot_tf(sources, n_bins=plot_bins)
 fig, axis = plt.subplots()
-hrtf_analysis.hrtf_image(hrtf, bandwidth=(4000, 16000), n_bins=300, axis=axis, z_min=None, z_max=None, cbar=True)
+hrtf.hrtf_image(hrtf, bandwidth=(4000, 16000), n_bins=300, axis=axis, z_min=None, z_max=None, cbar=True)
 fig.axes[1].set_position([0.925, 0.101, 0.012, 0.77])
 
 

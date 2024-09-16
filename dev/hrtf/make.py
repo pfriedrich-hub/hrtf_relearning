@@ -4,6 +4,7 @@ import slab
 from pathlib import Path
 from sklearn import linear_model
 reg = linear_model.LinearRegression()
+from dev.hrtf.movie import movie
 
 
 def add_feature(tf, freq_bins, mu, sigma, scaling):
@@ -114,13 +115,16 @@ def make_hrtf(n_azimuths, azimuth_range, n_elevations, elevation_range, n_bins=2
             tf = add_feature(tf, freq_bins=freq_bins, mu=mu, sigma=s, scaling=sf)
 
             tf += numpy.finfo(float).eps  # avoid log10(0) error
+
+            # todo convert from dB to amplitude spectrum?
+
             dtfs[source_idx, :, 0] = tf
             dtfs[source_idx, :, 1] = tf
             source_idx += 1
     return slab.HRTF(data=dtfs, samplerate=44e3, datatype='TF', sources=sources)
 
 # hrtf = make_hrtf(n_azimuths=50, azimuth_range=(0, 50), n_elevations=8, elevation_range=(-40, 40), n_bins=256)
-# movie([hrtf], (0,50), (-40,40), interval=200, map='average', kind='waterfall', save='hrtf_1.sofa')
+# movie([hrtf], (0,50), (-40,40), interval=200, map='average', kind='waterfall', save='hrtf_1')
 
 # hrtf.plot_sources(hrtf.cone_sources(0))  # todo fix
 # hrtf.plot_tf(hrtf.cone_sources(0))  # todo check if notch moves correctly from 0 to 50 az

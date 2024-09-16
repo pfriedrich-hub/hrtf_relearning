@@ -1,10 +1,8 @@
 import numpy
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
-import slab
 from pathlib import Path
-from dev.hrtf.average import hrtf_average
-import dev.hrtf.binary_feature_map as feature_map
+from old.average import hrtf_average
 
 def movie(hrtf_list, azimuth_range, elevation_range, interval=500, map='feature_p', kind='image', save=None):
     global data, fig, ax, frequencies, azimuths, elevations, settings
@@ -24,7 +22,7 @@ def movie(hrtf_list, azimuth_range, elevation_range, interval=500, map='feature_
         sorting_idx = numpy.argsort(sources, axis=0, kind=None, order=None)[:,1]
         source_idx = source_idx[sorting_idx]
         if settings['map'] == 'feature_p':
-            map, frequencies = feature_map.feature_p(hrtf_list, source_idx, thresholds=None, bandwidth=bandwidth)
+            map, frequencies = feature_p(hrtf_list, source_idx, thresholds=None, bandwidth=bandwidth)
         elif settings['map'] == 'average':
             frequencies = hrtf_list[0][0].tf(show=False)[0]
             freq_idx = numpy.logical_and(frequencies >= bandwidth[0], frequencies <= bandwidth[1])
@@ -88,6 +86,33 @@ def plot(data):
     ax.set_title(f'Azimuth: {azimuths[0]}')
     return im
 
+def feature_p(hrtf_list, source_idx, thresholds=None, bandwidth=(1000,18000), show=False):
+    threshold_list = []
+    feature_maps = []
+    for i, hrtf in enumerate(hrtf_list):
+        frequencies = hrtf[0].tf(show=False)[0]
+        freq_idx = numpy.where(numpy.logical_and(frequencies>bandwidth[0], frequencies<bandwidth[1]))
+        tf_data = hrtf.tfs_from_sources(sources=source_idx, n_bins=None, ear='both')
+        tf_data = numpy.squeeze(tf_data[:, freq_idx], axis=1)  # crop freq bins
+        if not thresholds:
+            # get mean of RMS differences across all combinations of DTFs measured with free ears (Trapeau, Schönwiesner 2015)
+            # instead, get mean across min / max for each elevation - a bit extreme
+            # instead, get upper and lower 5%
+            # thresholds = (numpy.mean(numpy.min(tf_data, axis=1)), numpy.mean(numpy.max(tf_data, axis=1)))
+            l_thresh = [numpy.percentile(tf_data[:,:,0], 25), numpy.percentile(tf_data[:,:,0], 75)]
+            r_thresh = [numpy.percentile(tf_data[:,:,1], 25), numpy.percentile(tf_data[:,:,1], 75)]
+            threshold_list.extend([r_thresh, l_thresh])
+        else:
+            thresh = thresholds
+        # get freq bins and elevations for which gain was below threshold
+        l_notch_map = (tf_data[:,:,0] < l_thresh[0]) * -1
+        l_peak_map = (tf_data[:,:,0] > l_thresh[1])
+        l_filtered = l_notch_map + l_peak_map
+        r_notch_map = (tf_data[:,:,1] < r_thresh[0]) * -1
+        r_peak_map = (tf_data[:,:,1] > r_thresh[1])
+        r_filtered = r_notch_map + r_peak_map
+        feature_maps.extend([l_filtered, r_filtered])
+    return numpy.sum(numpy.array(feature_maps), axis=0) / len(feature_maps), frequencies[freq_idx]  # average
 
 
 # ----- plot aachen database

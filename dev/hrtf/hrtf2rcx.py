@@ -2,6 +2,7 @@ from pathlib import Path
 import numpy
 import slab
 from array import array
+from dev.hrtf.tf2ir import tf2ir
 fs = 48828
 binary_path = Path.cwd() / 'data' / 'hrtf' / 'binary'
 sofa_path = Path.cwd() / 'data' / 'hrtf' / 'sofa'
@@ -10,9 +11,10 @@ def hrtf2binary(hrtf, filename, n_bins=None, add_itd=False, add_ild=False):
     """
     Convert HRIR sofa to binary file to be used with HRTFCoef in RPvdsEx.
     """
-    if not hrtf.datatype == 'IR':
-        raise ValueError('HRTF must be of datatype "IR"')
-
+    if hrtf.datatype not in ['TF', 'FIR']:
+        raise ValueError('Unknown datatype.')
+    if hrtf.datatype == 'TF':
+        hrtf = tf2ir(hrtf)
     sources = hrtf.sources.vertical_polar
     elevations = numpy.asarray(sorted(list(set(sources[:, 1]))))
     azimuths = numpy.asarray(sorted(list(set(sources[:, 0]))))
@@ -62,23 +64,21 @@ def hrtf2binary(hrtf, filename, n_bins=None, add_itd=False, add_ild=False):
         # write header
         array('i', header[0:3].astype('int32')).tofile(output_file)
         array('f', header[3:6].astype('float32')).tofile(output_file)
-        array('i', header[6].astype('int32')).tofile(output_file)
+        array('i', [header[6].astype('int32')]).tofile(output_file)
         array('f', header[7:10].astype('float32')).tofile(output_file)
-        array('i', header[10].astype('int32')).tofile(output_file)
-        array('f', header[11].astype('float32')).tofile(output_file)
+        array('i', [header[10].astype('int32')]).tofile(output_file)
+        array('f', [header[11].astype('float32')]).tofile(output_file)
 
         # write Filter Coefficients
         elevations[::-1].sort()  # sort elevations in Descending Order
         # elevations[::1].sort()  # hrtfs from aachen have up and down reversed?
         for elevation in elevations:
-            ele_sources = hrtf.get_
             ele_sources = sources[numpy.where(sources[:, 1] == elevation)[0]]  # get sources at each elevation
             azimuths = ele_sources[:, 0]
             azimuths[::-1].sort()  # sort azimuths in descending order
             # azimuths[::1].sort()  # hrtfs from aachen have clockwise decreasing az values?
             for azimuth in azimuths:
                 source_idx, = numpy.where(numpy.logical_and(sources[:, 0] == azimuth, sources[:, 1] == elevation))[0]
-
                 if not n_bins == hrtf[source_idx].n_taps:  # interpolate bins if necessary
                     t = numpy.linspace(0, hrtf[source_idx].duration, hrtf[source_idx].n_taps)
                     t_interp = numpy.linspace(0, t[-1], n_bins)
@@ -90,17 +90,15 @@ def hrtf2binary(hrtf, filename, n_bins=None, add_itd=False, add_ild=False):
 
                 if add_itd:
                     itd = slab.Binaural.azimuth_to_itd(azimuth, head_radius=11)  # head radius in cm
-                    if itd > 0:  # add left delay
+                    if itd >= 0:  # add left delay
                         delay = numpy.array((int(itd * hrtf.samplerate), 0))
                     elif itd < 0:  # add right delay
                         delay = numpy.array((0, int(-itd * hrtf.samplerate)))
                     fir_coefs = numpy.vstack((fir_coefs, delay))  # add group delays
                 else:
                     fir_coefs = numpy.vstack((fir_coefs, numpy.zeros(2)))  # add zero group delays
-
                 array('f', fir_coefs[:, 0].astype('float32')).tofile(output_file)  # write left ear filter
                 array('f', fir_coefs[:, 1].astype('float32')).tofile(output_file)  # write right ear filter
-
     output_file.close()
 
 

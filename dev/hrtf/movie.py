@@ -2,7 +2,7 @@ import numpy
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from pathlib import Path
-from old.average import hrtf_average
+from misc.average import hrtf_average
 
 def movie(hrtf_list, azimuth_range, elevation_range, interval=500, map='feature_p', kind='image', save=None):
     global data, fig, ax, frequencies, azimuths, elevations, settings

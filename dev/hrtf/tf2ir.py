@@ -25,7 +25,7 @@ def fsamp(magnitude):
     """
     Use the frequency sampling method to design an FIR filter to match the frequency
     response of a given magnitude spectrum;
-    The desired response is sampled on a dense equidistant frequency grid { H(w) = abs[H(w)] * exp[i * phi(w)] }
+    The desired response is sampled on a frequency grid { H(w) = abs[H(w)] * exp[i * phi(w)] }
     This discretized response is then transformed to the time domain by inverse Fourier transform (IFFT).
     The resulting impulse response is windowed to smooth out the resulting response and to reduce the impulse response
      to the desired filter length 𝑁.

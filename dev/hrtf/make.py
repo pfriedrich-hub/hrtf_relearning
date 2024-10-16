@@ -9,7 +9,7 @@ from dev.hrtf.movie import movie
 
 def add_feature(tf, freq_bins, mu, sigma, scaling):
     """
-    add a scaled inverse gaussian 'notch' to a dtf
+    add a scaled inverse gaussian 'feature' to a dtf
     """
     notch = (1 / (sigma * numpy.sqrt(2 * numpy.pi))) * (numpy.exp(-0.5 * ((freq_bins - mu) / sigma) ** 2)) * scaling
     notch_idx = numpy.where(numpy.logical_and(freq_bins > int(mu - sigma * 4), freq_bins < int(mu + sigma * 4)))
@@ -116,16 +116,14 @@ def make_hrtf(n_azimuths, azimuth_range, n_elevations, elevation_range, n_bins=2
 
             tf += numpy.finfo(float).eps  # avoid log10(0) error
 
-            # todo convert from dB to amplitude spectrum?
-
             dtfs[source_idx, :, 0] = tf
             dtfs[source_idx, :, 1] = tf
             source_idx += 1
     return slab.HRTF(data=dtfs, samplerate=44e3, datatype='TF', sources=sources)
 
-# hrtf = make_hrtf(n_azimuths=50, azimuth_range=(0, 50), n_elevations=8, elevation_range=(-40, 40), n_bins=256)
-# movie([hrtf], (0,50), (-40,40), interval=200, map='average', kind='waterfall', save='hrtf_1')
+hrtf = make_hrtf(n_azimuths=50, azimuth_range=(0, 50), n_elevations=8, elevation_range=(-40, 40), n_bins=256)
+movie([hrtf], (0,50), (-40,40), interval=200, map='average', kind='waterfall', save='hrtf_1')
 
 # hrtf.plot_sources(hrtf.cone_sources(0))  # todo fix
 # hrtf.plot_tf(hrtf.cone_sources(0))  # todo check if notch moves correctly from 0 to 50 az
-
+# todo mirror hrtf for sources in the back and see if glitches disappear

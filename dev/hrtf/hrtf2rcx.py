@@ -91,9 +91,9 @@ def hrtf2binary(hrtf, filename, n_bins=None, add_itd=False, add_ild=False):
                 if add_itd:
                     itd = slab.Binaural.azimuth_to_itd(azimuth, head_radius=11)  # head radius in cm
                     if itd >= 0:  # add left delay
-                        delay = numpy.array((int(itd * hrtf.samplerate), 0))
+                        delay = numpy.array((int(itd / 2 * hrtf.samplerate), 0))
                     elif itd < 0:  # add right delay
-                        delay = numpy.array((0, int(-itd * hrtf.samplerate)))
+                        delay = numpy.array((0, int(- itd / 2 * hrtf.samplerate)))
                     fir_coefs = numpy.vstack((fir_coefs, delay))  # add group delays
                 else:
                     fir_coefs = numpy.vstack((fir_coefs, numpy.zeros(2)))  # add zero group delays
@@ -102,7 +102,8 @@ def hrtf2binary(hrtf, filename, n_bins=None, add_itd=False, add_ild=False):
     output_file.close()
 
 
-
+# todo add ild: use mean level difference above 1.5 khz? -
+#  i dont want to impose spectral cues other than the ones chosen by design
 
 
 """

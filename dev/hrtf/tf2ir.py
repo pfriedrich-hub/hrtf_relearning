@@ -10,14 +10,18 @@ def tf2ir(hrtf):
     for src_idx, filt in enumerate(input.data):
         ir = []
         for ch_idx in range(filt.n_channels):
-            _, magnitude = filt.tf(channels=ch_idx, show=False)  # get magnitude in dB?
+            # frequency sampling function
             # magnitude = filt.channel(ch_idx).data  # get raw power spectrum
-            ir.append(fsamp(magnitude = filt.channel(ch_idx).data))
+            # ir.append(fsamp(magnitude = filt.channel(ch_idx).data))
+            # slab filter method
+            frequency, gain = filt.tf(channels=ch_idx, show=False)  # get magnitude in dB?
+            ir.append(slab.Filter.band(kind='hp', frequency=frequency.tolist(), gain=gain[:, 0].tolist(),
+                                       samplerate=filt.samplerate, length=filt.n_samples, fir='IR'))
         input[src_idx] = slab.Filter(data=ir, samplerate=hrtf.samplerate, fir='IR')
-            # shift to make causal
-            # (path differences between the origin and the ear are usually
-            # smaller than 30 cm but numerical HRIRs show stringer pre-ringing)
-            # hrir = np.roll(hrir, n_shift, axis=-1)
+        # shift to make causal
+        # (path differences between the origin and the ear are usually
+        # smaller than 30 cm but numerical HRIRs show stringer pre-ringing)
+        # hrir = np.roll(hrir, n_shift, axis=-1)
     input.datatype = 'FIR'
     return input
 

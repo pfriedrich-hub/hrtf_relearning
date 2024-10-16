@@ -22,12 +22,12 @@ fs = 48828
 freefield.initialize('dome', default='play_rec')
 
 # initialize setup with modified samplerate (97656)
-fs = 97656
-proc_list = [['RP2', 'RP2', Path.cwd() / 'data' / 'rcx' / 'rec_buf.rcx'],
-             ['RX81', 'RX8', Path.cwd() / 'data' / 'rcx' / 'play_buf.rcx'],
-             ['RX82', 'RX8', Path.cwd() / 'data' / 'rcx' / 'play_buf.rcx']]
-freefield.initialize('dome', device=proc_list)
-freefield.PROCESSORS.mode = 'play_rec'
+# fs = 97656
+# proc_list = [['RP2', 'RP2', Path.cwd() / 'data' / 'rcx' / 'rec_buf.rcx'],
+#              ['RX81', 'RX8', Path.cwd() / 'data' / 'rcx' / 'play_buf.rcx'],
+#              ['RX82', 'RX8', Path.cwd() / 'data' / 'rcx' / 'play_buf.rcx']]
+# freefield.initialize('dome', device=proc_list)
+# freefield.PROCESSORS.mode = 'play_rec'
 
 
 freefield.set_logger('warning')
@@ -68,25 +68,29 @@ target = slab.Sound(data=numpy.mean(temp_recs, axis=0))
 # # use original signal as reference - WARNING could result in unrealistic equalization filters,
 #  can be used for HRTF measurement calibration to get really flat chirp spectra
 baseline_amp = target.level  # at 10 db gain on preamp and signal level 90 dB!
-target = deepcopy(signal)
-target.level = baseline_amp
+# target = deepcopy(signal)
+# target.level = baseline_amp
 
 # get speaker id's for each column in the dome
-table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')
-speaker_table = numpy.loadtxt(table_file, skiprows=1, usecols=(0, 3, 4), delimiter=",", dtype=float)
-speaker_list = []
-for az in azimuthal_angles:
-    speaker_list.append((speaker_table[speaker_table[:, 1] == az][:, 0]).astype('int'))
+# table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')
+# speaker_table = numpy.loadtxt(table_file, skiprows=1, usecols=(0, 3, 4), delimiter=",", dtype=float)
+# speaker_list = []
+# for az in azimuthal_angles:
+#     speaker_list.append((speaker_table[speaker_table[:, 1] == az][:, 0]).astype('int'))
+#
+# speaker_list[3] = numpy.delete(speaker_list[3], [numpy.where(speaker_list[3] == 19), numpy.where(speaker_list[3] == 27)])
 
-speaker_list[3] = numpy.delete(speaker_list[3], [numpy.where(speaker_list[3] == 19), numpy.where(speaker_list[3] == 27)])
 
-dome_rec = []  # store all recordings from the dome for final spectral difference
+
+# dome_rec = []  # store all recordings from the dome for final spectral difference
 equalization = dict()  # dictionary to hold equalization parameters
 
 
 #------------------- hold on --------------------#
 # pick single column to calibrate speaker_list[0] to speaker_list[6]
-speakers = freefield.pick_speakers(speaker_list[3])
+# speakers = freefield.pick_speakers(speaker_list[3])
+# todo for varvara:
+#  pick the right peakers: speakers = freefield.pick_speakers([[17.5,0], [-17.5, 0]])
 # place microphone 90° to source column at equal distance (recordings should be done in far field: > 1m)
 
 
@@ -181,19 +185,27 @@ equalization.update(array_equalization)
 
 
 # write final equalization to pkl file
-freefield_path = freefield.DIR / 'data'
-project_path = Path.cwd() / 'data' / 'calibration'
+# freefield_path = freefield.DIR / 'data'
+project_path = Path.cwd() / 'data' / 'calibration' # todo varvara get your own path to your project
 equalization_path = project_path / f'calibration_dome_100k_31.10'
 with open(equalization_path, 'wb') as f:  # save the newly recorded calibration
     pickle.dump(equalization, f, pickle.HIGHEST_PROTOCOL)
 
 
+#todo varvara: in your experiment, load the pickle file (equalization dict), and apply the level and filter to the signal (wav files)
+# todo this:
+#     pick your speaker from the dict, and get level and filter_bank
+#     attenuated = deepcopy(signal)  <- this is your .wav
+#     attenuated = filter_bank.apply(attenuated)  <- choose the right speaker
+#     attenuated.level += level  # which order? doesnt seem to matter much
+
+
 # check spectral difference across dome
-dome_recs = slab.Sound(dome_rec)
-diff = freefield.spectral_range(dome_recs)
+# dome_recs = slab.Sound(dome_rec)
+# diff = freefield.spectral_range(dome_recs)
 
 
-# ------------------  ole_test calibration  ---------------------#
+# ------------------  test calibration  ---------------------#
 
 import freefield
 import slab

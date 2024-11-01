@@ -3,7 +3,7 @@ from dev.hrtf.movie import movie
 from pathlib import Path
 data_path = Path.cwd() / 'data' / 'hrtf' / 'sofa'
 # ----- plot feature probability map across database
-#
+
 # database_path =  data_path / 'aachen_database'
 # hrtf_list = [slab.HRTF(sofa_path) for sofa_path in list(database_path.glob('*.sofa'))]
 # movie(hrtf_list, ear='left', azimuth_range=(-180, 180), elevation_range=(-60, 60), interval=200, map='feature_p',
@@ -11,9 +11,9 @@ data_path = Path.cwd() / 'data' / 'hrtf' / 'sofa'
 
 # ----- plot kemar
 
-hrtf_list = [slab.HRTF(data_path / 'Kemar_HRTF_sofa.sofa')]
-movie(hrtf_list, ear='left', azimuth_range=(-180, 180), elevation_range=(-60,60), interval=20, map='average',
-      kind='image', save='kemar_full')
+# hrtf_list = [slab.HRTF(data_path / 'Kemar_HRTF_sofa.sofa')]
+# movie(hrtf_list, ear='left', azimuth_range=(-180, 180), elevation_range=(-60,60), interval=20, map='average',
+#       kind='image', save='kemar_full')
 
 # ------ plot synth HRTF
 

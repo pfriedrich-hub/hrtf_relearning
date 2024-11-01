@@ -1,5 +1,4 @@
-from dev.hrtf.make import make_hrtf
-from dev.hrtf.movie import movie
+from dev.hrtf.make.make_frontal import make_hrtf
 from dev.hrtf.tf2ir import tf2ir
 from dev.hrtf.hrtf2rcx import hrtf2binary
 # from misc.HRTF_test import HRTF_test

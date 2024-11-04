@@ -1,16 +1,21 @@
 import argparse
-import sys
-import time
-# import msvcrt
-import freefield
-import slab
 from pythonosc import udp_client
 
-sources = slab.HRTF.kemar().sources.vertical_polar
+import time
+import numpy
+from pathlib import Path
+# import freefield
+import slab
 
-def start_tracker():
+# choose hrtf
+hrtf = slab.HRTF.kemar()
+# hrtf = slab.HRTF('/Users/paulfriedrich/projects/hrtf_relearning/data/hrtf/sofa/aachen_database/MRT02.sofa')
+
+def filters(hrtf):
+
     # Default values
-    oscIdentifier = '/pyBinSim'
+    filt_identifier = '/pyBinSim'
+    file_identifier = '/pyBinSimFile'
     ip = '127.0.0.1'
     port = 10000
     comPort = 'COM4'    # please choose the correct COM-Port
@@ -19,6 +24,7 @@ def start_tracker():
     print(['Baudrate: ', baudRate])
     print(['IP: ', ip])
     print(['Using Port ', port])
+
     # Create OSC client
     parser = argparse.ArgumentParser()
     parser.add_argument("--ip", default=ip, help="The ip of the OSC server")
@@ -26,65 +32,33 @@ def start_tracker():
     args = parser.parse_args()
     client = udp_client.SimpleUDPClient(args.ip, args.port)
 
+    # get list of sound files
+    soundpath = Path.cwd() / 'data' / 'sounds' / 'pinknoise_pulses'
+    pulses = sorted(list(soundpath.glob('*wav')))
 
-    # nSources = 1
-    # minAngleDifference = 5
-    # filterSet = 0
+    # cartesian sources for distance
+    sources = hrtf.sources.cartesian
+    r = hrtf.sources.vertical_polar[:, 2].mean()
 
-    # Internal settings:
-    # positionVectorSubSampled = range(0, 360, minAngleDifference)
+    for i, (az, ele) in enumerate(zip(numpy.linspace(0, 360, 37),
+                                      numpy.linspace(-60, 60, 37))):
 
+        # find idx of the nearest source coordinates
+        target = hrtf._get_coordinates((az, ele, r), 'spherical').cartesian
+        distances = numpy.sqrt(((target - sources) ** 2).sum(axis=1))
+        idx = int(numpy.argmin(distances))
 
+        # change filter
+        filter_msg = [0, idx, 0, 0, 0, 0, 0]
+        client.send_message(filt_identifier, filter_msg)
+        print(f'sending parameters: az: {hrtf.sources.vertical_polar[idx, 0]}'
+              f' ele: {hrtf.sources.vertical_polar[idx, 1]}')
 
-    # try:
-    #     spark9dof = Spark9dof(com_port=comPort, baudrate=baudRate)
-    # except RuntimeError as e:
-    #     print(e)
-    #     sys.exit(-1)
+        # change sound file
+        sound_msg = str(pulses[i])
+        client.send_message(file_identifier, sound_msg)
 
-    for i in range(len(sources)):
-
-
-        # # define current angles as "zero position"	when spacebar is hit
-        # if msvcrt.kbhit():
-        #     char = msvcrt.getch()
-        #
-        #     if ord(char) == 32:
-        #         rollOffset = roll
-        #         pitchOffset = pitch
-        #         yawOffset = yaw
-
-            # # Key '1' actives 1st filter set
-            # if ord(char) == 49:
-            #     filterSet = 0
-            # # Key '2' actives 2nd filter set
-            # if ord(char) == 50:
-            #     filterSet = 1
-
-
-            # print(filterSet)
-        #
-        # rpy = spark9dof.get_sensor_data()
-        #
-        # if rpy:
-        #     roll, pitch, yaw = rpy
-        #     yaw += 180
-        # else:
-        #     roll, pitch, yaw = 0, 0, 0
-
-
-
-        # build OSC Message and send it
-        # for n in range(0, nSources):
-        #     # channel valueOne valueTwo ValueThree valueFour valueFive ValueSix
-        #     yaw = min(positionVectorSubSampled, key=lambda x: abs(x - yaw))
-        binSimParameters = [0, i, 0, 0, 0, 0, 0]
-        # print(['Source ', n, ' Yaw: ', round(yaw), '  Filterset: ', filterSet])
-        client.send_message(oscIdentifier, binSimParameters)
-        print(f'sending parameters: az: {sources[i, 0]} ele: {sources[i, 1]}')
-
-        time.sleep(0.3)
-
+        time.sleep(0.1)
 
 if __name__ == "__main__":
-    start_tracker()
+    filters(hrtf)

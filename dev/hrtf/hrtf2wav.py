@@ -1,7 +1,6 @@
 from pathlib import Path
 import numpy
 import slab
-from array import array
 from dev.hrtf.tf2ir import tf2ir
 fs = 48828
 wav_path = Path.cwd() / 'data' / 'hrtf' / 'wav'
@@ -22,8 +21,8 @@ def hrtf2wav(hrtf, filename, n_bins=None, add_itd=True):
 
     # create subfolder
     if not (wav_path / filename).exists():
-        (wav_path / filename).mkdir(exist_ok=False)
-        (wav_path / filename / 'IR_data').mkdir(exist_ok=False)
+        (wav_path / filename).mkdir(exist_ok=True)
+        (wav_path / filename / 'IR_data').mkdir(exist_ok=True)
     # write to pybinsim settings.txt:
     filter_list_fname = wav_path / filename / f"filter_list_{filename}.txt"
     with open(wav_path / filename / f'{filename}_settings.txt', 'w') as file:

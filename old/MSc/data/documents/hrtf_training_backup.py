@@ -38,7 +38,7 @@ def hrtf_training(time_limit, t_max=500, target_size=5, target_time=0.5):
     stim = slab.Sound.pinknoise(duration=10.0)
     freefield.write(tag='playbuflen', value=stim.n_samples, processors=['RX81', 'RX82'])
     freefield.write(tag='final_data', value=stim.data, processors=['RX81', 'RX82'])
-    # noise = slab.Sound.pinknoise(duration=0.025, level=90)
+    # noise = slab.Sound.pinknoise_pulses(duration=0.025, level=90)
     # noise = noise.ramp(when='both', duration=0.01)
     # silence = slab.Sound.silence(duration=0.025)
     # stim = slab.Sound.sequence(noise, silence, noise, silence, noise,

@@ -11,8 +11,8 @@ os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
 
 slab.Signal.set_default_samplerate(48828)  # default samplerate for generating sounds, filters etc.
 
-# pinknoise
-# sound = slab.Binaural.pinknoise(duration=2.0)
+# pinknoise_pulses
+# sound = slab.Binaural.pinknoise_pulses(duration=2.0)
 
 # chirp
 # sound = slab.Binaural.chirp(duration=0.5, level=70, from_frequency=0, to_frequency=18000)

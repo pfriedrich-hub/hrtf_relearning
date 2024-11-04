@@ -33,9 +33,12 @@ class Training:
                         'coins': slab.Sound.read(sound_dir / 'coins.wav'),
                         'coin': slab.Sound.read(sound_dir / 'coin.wav'),
                         'buzzer': slab.Sound.read(sound_dir / 'buzzer.wav'),
-                        'pulses': [slab.Sound.read(filename) for filename in
-                                  sorted(list((sound_dir / 'pinknoise_pulses').glob('*wav')))]
-                       }
+                        # 'pulses': [slab.Sound.read(filename) for filename in
+                        #           sorted(list((sound_dir / 'pinknoise_pulses').glob('*wav')))]
+                        'noise': slab.Sound.read(sound_dir / 'pinknoise_44100.wav'),
+                        'silence': slab.Sound.read(sound_dir / 'silence_44100.wav'),
+                        }
+
         for sound, key in zip(self.sounds.values(), self.sounds.keys()):
             self.sounds[key] = sound.resample(fs)
         self.sounds['coins'].level, self.sounds['coin'].level, self.sounds['buzzer'].level = 75, 75, 75
@@ -138,30 +141,29 @@ class Training:
         print('distance: azimuth %.1f, elevation %.1f, total %.2f'
               % (dst[0], dst[1], self.distance), end="\r", flush=True)
 
-        # I how is idx related to the pulse duration? - linear
-        idx = numpy.arange(0, len(self.sounds['pulses']))
-        n = 0.025 # intercept
-        m = 0.01 # increment from numpy.linspace in make_pulses.py
-        duration = m * idx + n
-
-        # II how is distance related to pulse duration? - nonlinear
-
-        # from hrtf training :
-        ele_dist = numpy.abs(target[1] - pose[1])
-        # total distance of head pose from target
-        total_distance = numpy.sqrt(az_dist ** 2 + ele_dist ** 2)
-        # distance of current head pose from target window
-        window_distance = total_distance - goal_attr['target_size']
-        # scale ISI with total distance; use scale factor for pulse interval duration
-        interval_scale = (total_distance - 2 + 1e-9) / pulse_attr['max_distance']
-        interval = pulse_attr['max_pulse_interval'] * (numpy.log(interval_scale + 0.05) + 3) / 3  # log scaling
-
-        # III how is distance related to index?
 
 
-        i = int(dist * m + n)
-        # i controls pulse speed should depend on distance
-        sound_msg = str(self.sounds['pulses'][i])
+        # # I how is idx related to the pulse duration? - linear
+        # idx = numpy.arange(0, len(self.sounds['pulses']))
+        # n = 0.025 # intercept
+        # m = 0.01 # increment from numpy.linspace in make_pulses.py
+        # duration = m * idx + n
+        # # II how is distance related to pulse duration? - nonlinear
+        # # from hrtf training :
+        # ele_dist = numpy.abs(target[1] - pose[1])
+        # # total distance of head pose from target
+        # total_distance = numpy.sqrt(az_dist ** 2 + ele_dist ** 2)
+        # # distance of current head pose from target window
+        # window_distance = total_distance - goal_attr['target_size']
+        # # scale ISI with total distance; use scale factor for pulse interval duration
+        # interval_scale = (total_distance - 2 + 1e-9) / pulse_attr['max_distance']
+        # interval = pulse_attr['max_pulse_interval'] * (numpy.log(interval_scale + 0.05) + 3) / 3  # log scaling
+        # # III how is distance related to index?
+        # i = int(dist * m + n)
+        # # i controls pulse speed should depend on distance
+        # sound_msg = str(self.sounds['pulses'][i])
+
+
         self.osc_client.send_message('/pyBinSimFile', sound_msg)
 
     @staticmethod

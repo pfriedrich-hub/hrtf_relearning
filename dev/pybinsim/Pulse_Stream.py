@@ -2,8 +2,6 @@ import pybinsim
 import logging
 from pathlib import Path
 import threading
-import argparse
-from pythonosc import udp_client
 import queue
 import time
 wav_dir = Path.cwd() / 'data' / 'sounds'
@@ -63,7 +61,7 @@ class Pulse_Stream:
 
     def halt(self):
         self.set_interval.join()
-        self.audio_stream.join()  # end binsim thread
+        self.audio_stream.join()  # todo end binsim thread
 
 
 

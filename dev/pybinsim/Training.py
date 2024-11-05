@@ -2,7 +2,6 @@ import matplotlib
 matplotlib.use('TkAgg')
 from dev.pybinsim.Pulse_Stream import Pulse_Stream
 from matplotlib import pyplot as plt
-import logging
 import freefield
 from pathlib import Path
 import argparse
@@ -10,8 +9,7 @@ from pythonosc import udp_client
 import time
 import numpy
 import slab
-
-sound_dir = Path.cwd() / 'data' / 'sounds'
+data_dir = Path.cwd() / 'data'
 fs = 44100
 slab.set_default_samplerate(fs)
 
@@ -21,6 +19,7 @@ class Training:
 
         # general parameters
         self.filename = filename
+        self.hrtf = slab.HRTF(data_dir / 'hrtf' / str(filename + '.sofa'))
         self.target_size = target_size
         self.target_time = target_time
         self.game_time = game_time
@@ -30,28 +29,32 @@ class Training:
         self.target = None
         self.scores = []
 
+        # init sensor
+        self.sensor = freefield.motion_sensor.Sensor()
+        self.sensor.connect()
+
+        # init pybinsim streamer and osc messenger
+        self.osc_client = self._make_osc_client()
+        self.pulse_stream = Pulse_Stream(self.filename)
+
         # load sounds
         self.sounds = {
-                        'coins': slab.Sound.read(sound_dir / 'coins.wav'),
-                        'coin': slab.Sound.read(sound_dir / 'coin.wav'),
-                        'buzzer': slab.Sound.read(sound_dir / 'buzzer.wav'),
+                        'coins': slab.Sound.read(data_dir / 'sounds' / 'coins.wav'),
+                        'coin': slab.Sound.read(data_dir / 'sounds' / 'coin.wav'),
+                        'buzzer': slab.Sound.read(data_dir / 'sounds' / 'buzzer.wav'),
                         }
         for sound, key in zip(self.sounds.values(), self.sounds.keys()):
             self.sounds[key] = sound.resample(fs)
             self.sounds[key].level = 75
 
-        # inst pybinsim streamer and osc messenger
-        self.osc_client = self._make_osc_client()
-        self.pulse_stream = Pulse_Stream(self.filename)
 
     def __repr__(self):
         return f'{type(self)} Sessions played: {len(self.scores)} Scores: {repr(self.scores)}'
 
     def run(self):
-        # freefield.initialize(setup=None, sensor_tracking=True)
         while True:
             self.training_session()
-            self._wait_for_button('Press button to play again.')
+            self._wait_for_button('Press Enter to play again.')
 
     def training_session(self):
         self.game_over, self.score = False, 0        # reset countdown and score
@@ -60,7 +63,7 @@ class Training:
             trial_prep = time.time()  # time between trials
             self.set_target()  # get next target
             self._wait_for_button('Press Enter to start.')
-            # freefield.calibrate_sensor(led_feedback=self.led_feedback, button_control=self.button_control)
+            freefield.calibrate_sensor(led_feedback=False, button_control=False)
             self.game_start += time.time() - trial_prep  # count time only while playing
             self.play_trial()
             self.scores.append(self.score)
@@ -73,7 +76,8 @@ class Training:
         count_down = False  # condition for counting time on target
         # within trial loop: continuously update headpose and monitor time
         while True:
-            self.get_distance()  # read headpose from sensor and calculate distance from target
+            self.get_headpose()  # read headpose from sensor
+            self.set_filter() # select the appropriate filter
             self.set_pulse_train() # convert distance to pulse interval and pass to pulse_stream object
 
             if self.distance < self.target_size:
@@ -124,14 +128,27 @@ class Training:
         self.sounds[sound].play()  # play end sound
         time.sleep(self.sounds[sound].duration)
 
-    def get_distance(self):
-        headpose = freefield.get_head_pose()
-        dst = headpose - self.target
+    def get_headpose(self):
+        self.headpose = freefield.get_head_pose()
+
+    def set_filter(self):
+        # get sound source coordinates relative to head pose
+        rel_coords = self.target - self.headpose
+        # find idx of the nearest filter in the hrtf
+        filter_coords = self.hrtf._get_coordinates((rel_coords, rel_coords), 'spherical').cartesian
+        distances = numpy.sqrt(((filter_coords - self.hrtf.sources.cartesian) ** 2).sum(axis=1))
+        idx = int(numpy.argmin(distances))
+        # change filter
+        filter_msg = [0, idx, 0, 0, 0, 0, 0]
+        self.osc_client.send_message('/pyBinSim', filter_msg)
+        print(f'sending parameters: az: {self.hrtf.sources.vertical_polar[idx, 0]}'
+              f' ele: {self.hrtf.sources.vertical_polar[idx, 1]}')
+
+    def set_pulse_train(self):
+        dst = self.headpose - self.target
         self.distance = numpy.linalg.norm(dst)
         print('distance: azimuth %.1f, elevation %.1f, total %.2f'
               % (dst[0], dst[1], self.distance), end="\r", flush=True)
-
-    def set_pulse_train(self):
         # maximal pulse interval in ms
         max_interval = 500
         # max displacement from center
@@ -141,7 +158,6 @@ class Training:
         # scale interval logarithmically with distance
         interval = max_interval * (numpy.log(interval_scale + 0.05) + 3) / 3  # log scaling
         self.pulse_stream.set_interval(interval)
-
 
     @staticmethod
     def _make_osc_client():
@@ -179,10 +195,11 @@ class Training:
                 return sequence
 
     @staticmethod
-    def _wait_for_button(*msg):
+    def _wait_for_button(*msg, button=''):
         response = None
-        if msg: response = input(msg)
-        else: input('Waiting for button.')
+        while response != button:
+            if msg: response = input(msg)
+            else: response = input('Waiting for button.')
         return response
 
 

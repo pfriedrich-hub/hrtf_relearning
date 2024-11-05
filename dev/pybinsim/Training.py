@@ -1,6 +1,8 @@
 import matplotlib
 matplotlib.use('TkAgg')
+from dev.pybinsim.Pulse_Stream import Pulse_Stream
 from matplotlib import pyplot as plt
+import logging
 import freefield
 from pathlib import Path
 import argparse
@@ -8,8 +10,6 @@ from pythonosc import udp_client
 import time
 import numpy
 import slab
-from dev.pybinsim.binsim import *
-import threading
 
 sound_dir = Path.cwd() / 'data' / 'sounds'
 fs = 44100
@@ -18,6 +18,7 @@ slab.set_default_samplerate(fs)
 class Training:
     def __init__(self, filename='kemar', target_size=5, target_time=.5, game_time=180, trial_time=30,
                  az_range=(-30, 30), ele_range=(-30, 30)):
+
         # general parameters
         self.filename = filename
         self.target_size = target_size
@@ -28,23 +29,20 @@ class Training:
         self.ele_range = ele_range
         self.target = None
         self.scores = []
+
         # load sounds
         self.sounds = {
                         'coins': slab.Sound.read(sound_dir / 'coins.wav'),
                         'coin': slab.Sound.read(sound_dir / 'coin.wav'),
                         'buzzer': slab.Sound.read(sound_dir / 'buzzer.wav'),
-                        # 'pulses': [slab.Sound.read(filename) for filename in
-                        #           sorted(list((sound_dir / 'pinknoise_pulses').glob('*wav')))]
-                        'noise': slab.Sound.read(sound_dir / 'pinknoise_44100.wav'),
-                        'silence': slab.Sound.read(sound_dir / 'silence_44100.wav'),
                         }
-
         for sound, key in zip(self.sounds.values(), self.sounds.keys()):
             self.sounds[key] = sound.resample(fs)
-        self.sounds['coins'].level, self.sounds['coin'].level, self.sounds['buzzer'].level = 75, 75, 75
-        # pybinsim
+            self.sounds[key].level = 75
+
+        # inst pybinsim streamer and osc messenger
         self.osc_client = self._make_osc_client()
-        self.binsim = threading.Thread(target=binsim_start, args=(self.filename,))
+        self.pulse_stream = Pulse_Stream(self.filename)
 
     def __repr__(self):
         return f'{type(self)} Sessions played: {len(self.scores)} Scores: {repr(self.scores)}'
@@ -53,16 +51,11 @@ class Training:
         # freefield.initialize(setup=None, sensor_tracking=True)
         while True:
             self.training_session()
-            self.wait_for_button('Press button to play again.')
-
-    def stop(self):
-        freefield.halt()
+            self._wait_for_button('Press button to play again.')
 
     def training_session(self):
-
         self.game_over, self.score = False, 0        # reset countdown and score
         self.game_start = time.time()
-
         while not self.game_over:  # loop over trials until end time has passed
             trial_prep = time.time()  # time between trials
             self.set_target()  # get next target
@@ -74,13 +67,14 @@ class Training:
             print(f'Run {len(self.scores)}: {self.score} points')
 
     def play_trial(self):
-        self.binsim.start()  # start pulse train
+        self.pulse_stream.start()  # start binsim stream
         self.trial_start = time.time()  # get trial start time
+        time_on_target = 0
         count_down = False  # condition for counting time on target
         # within trial loop: continuously update headpose and monitor time
         while True:
-            self.update_headpose()  # read headpose from sensor
-            self.set_pulse_train() # get distance and set pulse train params to binsim
+            self.get_distance()  # read headpose from sensor and calculate distance from target
+            self.set_pulse_train() # convert distance to pulse interval and pass to pulse_stream object
 
             if self.distance < self.target_size:
                 if not count_down:  # start counting time as longs as pose matches target
@@ -91,22 +85,22 @@ class Training:
             if time.time() > time_on_target + self.target_time:
                 if time.time() - self.trial_start <= 3:
                     points = 2
-                    self.sounds['coins'].play
+                    self.end_trial('coins')
                 else:
                     points = 1
-                    self.end_sound('coin')
+                    self.end_trial('coin')
                 self.score += points
                 print('Score! %i' % points)
                 break
             # end trial after 10 seconds
             if time.time() > self.trial_start + self.trial_time:
-                self.end_sound('buzzer')
+                self.end_trial('buzzer')
                 # print('Time out')
                 break
             # end training sequence if game time is up
             if time.time() > self.game_start + self.game_time:
                 self.game_over = True
-                self.end_sound('buzzer')
+                self.end_trial('buzzer')
                 break
             else:
                 continue
@@ -125,46 +119,45 @@ class Training:
         print('\n TARGET| azimuth: %.1f, elevation %.1f' % (target[0], target[1]))
         self.target = target
 
-    def end_sound(self, sound='buzzer'):
+    def end_trial(self, sound='buzzer'):
         self.binsim.join()  # end binsim thread
         self.sounds[sound].play()  # play end sound
+        time.sleep(self.sounds[sound].duration)
 
-    def update_headpose(self):
-        self.pose = freefield.get_head_pose()
-
-    def set_pulse_train(self):
-        dst = self.pose - self.target
-        self.distance = numpy.sqrt(numpy.sum(numpy.square(dst)))  # faster than reading from DSP
-        # OR
-        self.distance = numpy.linalg.norm(self.pose - self.target)
-
+    def get_distance(self):
+        headpose = freefield.get_head_pose()
+        dst = headpose - self.target
+        self.distance = numpy.linalg.norm(dst)
         print('distance: azimuth %.1f, elevation %.1f, total %.2f'
               % (dst[0], dst[1], self.distance), end="\r", flush=True)
 
+    def set_pulse_train(self):
+        # maximal pulse interval in ms
+        max_interval = 500
+        # max displacement from center
+        max_distance = numpy.linalg.norm(numpy.min((self.az_range,self.ele_range), axis=1) - numpy.array((0,0)))
+        # scale distance with maximal distance
+        interval_scale = (self.distance - 2 + 1e-9) / max_distance
+        # scale interval logarithmically with distance
+        interval = max_interval * (numpy.log(interval_scale + 0.05) + 3) / 3  # log scaling
+        self.pulse_stream.set_interval(interval)
 
 
-        # # I how is idx related to the pulse duration? - linear
-        # idx = numpy.arange(0, len(self.sounds['pulses']))
-        # n = 0.025 # intercept
-        # m = 0.01 # increment from numpy.linspace in make_pulses.py
-        # duration = m * idx + n
-        # # II how is distance related to pulse duration? - nonlinear
-        # # from hrtf training :
-        # ele_dist = numpy.abs(target[1] - pose[1])
-        # # total distance of head pose from target
-        # total_distance = numpy.sqrt(az_dist ** 2 + ele_dist ** 2)
-        # # distance of current head pose from target window
-        # window_distance = total_distance - goal_attr['target_size']
-        # # scale ISI with total distance; use scale factor for pulse interval duration
-        # interval_scale = (total_distance - 2 + 1e-9) / pulse_attr['max_distance']
-        # interval = pulse_attr['max_pulse_interval'] * (numpy.log(interval_scale + 0.05) + 3) / 3  # log scaling
-        # # III how is distance related to index?
-        # i = int(dist * m + n)
-        # # i controls pulse speed should depend on distance
-        # sound_msg = str(self.sounds['pulses'][i])
+    @staticmethod
+    def _make_osc_client():
+        # Create OSC client
+        ip = '127.0.0.1'
+        port = 10000
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--ip", default=ip, help="The ip of the OSC server")
+        parser.add_argument("--port", type=int, default=port, help="The port the OSC server is listening on")
+        args = parser.parse_args()
+        osc_client = udp_client.SimpleUDPClient(args.ip, args.port)
+        return osc_client
 
-
-        self.osc_client.send_message('/pyBinSimFile', sound_msg)
+    @staticmethod
+    def _stop_game():
+        freefield.halt()
 
     @staticmethod
     def _make_sequence(targets, n_reps, min_dist=45):
@@ -192,17 +185,15 @@ class Training:
         else: input('Waiting for button.')
         return response
 
-    @ staticmethod
-    def _make_osc_client():
-        # Create OSC client
-        ip = '127.0.0.1'
-        port = 10000
-        parser = argparse.ArgumentParser()
-        parser.add_argument("--ip", default=ip, help="The ip of the OSC server")
-        parser.add_argument("--port", type=int, default=port, help="The port the OSC server is listening on")
-        args = parser.parse_args()
-        osc_client = udp_client.SimpleUDPClient(args.ip, args.port)
-        return osc_client
+
+    # def update_interval(self):
+    #     self.set_interval.start()
+    #     while True:
+    #         self.interval_duration = float(input("Enter 0 to Exit or float > 0 to set interval duration: "))
+    #         self.interval_queue.put(self.interval_duration)
+    #         if self.interval_duration == 99:
+    #             break
+    #     self.halt()
 
     # def wait_for_button(self):
     #     if self.processor == 'RP2':  # calibrate (wait for button)

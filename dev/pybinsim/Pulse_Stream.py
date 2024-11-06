@@ -10,8 +10,8 @@ class Pulse_Stream:
     def __init__(self, filtername):
         """
         filtername (str): Name of the folder containing the filter_list.txt, settings.txt and direction filters
-
         """
+
         # init binsim object and assign thread to handle stream
         self.binsim = self._init_pybinsim(filtername)
         self.audio_stream = threading.Thread(target=self._binsim_start, args=(self.binsim,))
@@ -21,13 +21,13 @@ class Pulse_Stream:
         self.set_interval = threading.Thread(target=self.make_pulse, args=())
 
         # set initial interval duration
-        self.interval_duration = 0
+        self.interval_duration = -1
 
     @staticmethod
     def _init_pybinsim(filtername):
         # init binsim object
         binsim = pybinsim.BinSim(Path.cwd() / 'data' / 'hrtf' / 'wav' / filtername / f'{filtername}_settings.txt')
-        pybinsim.logger.setLevel(logging.WARNING)  # defaults to INFO
+        pybinsim.logger.setLevel(logging.DEBUG)  # defaults to INFO
         return binsim
 
     @staticmethod
@@ -38,10 +38,14 @@ class Pulse_Stream:
         while True:
             # get input queue value and set pulse interval duration
             try:
-                self.interval_duration = self.interval_queue.get(timeout=0.001)  # update interval duration
+                self.interval_duration = self.interval_queue.get(timeout=1e-6)  # update interval duration
             except queue.Empty:
                 pass
-            if self.interval_duration != 0:
+            if self.interval_duration == -1:
+                self.binsim.config.configurationDict['loudnessFactor'] = 0
+            elif self.interval_duration == 0:
+                self.binsim.config.configurationDict['loudnessFactor'] = 0.5
+            elif self.interval_duration > 0:
                 time.sleep(self.interval_duration / 1000)
                 self.binsim.config.configurationDict['loudnessFactor'] = 0
                 time.sleep(self.interval_duration / 1000)
@@ -60,17 +64,23 @@ class Pulse_Stream:
         self.interval_queue.put(interval_duration)
 
     def halt(self):
-        self.set_interval.join()
-        self.audio_stream.join()  # todo end binsim thread
+        self.update_interval(-1)
 
 
+# self = Pulse_Stream('kemar')
+# self.start()
+# time.sleep(3)
+# self.halt()
+
+
+
+# self.binsim.stream.stop_stream()
+# self.start()
 
 
 # if __name__ == "__main__":
 #     pulse = Pulse_Stream('kemar')
 #     pulse.start()
-
-
 
 # import threading
 # import queue

@@ -1,3 +1,5 @@
+from platform import processor
+
 import matplotlib
 matplotlib.use('TkAgg')
 from dev.pybinsim.Pulse_Stream import Pulse_Stream
@@ -19,7 +21,7 @@ class Training:
 
         # general parameters
         self.filename = filename
-        self.hrtf = slab.HRTF(data_dir / 'hrtf' / str(filename + '.sofa'))
+        self.hrtf = slab.HRTF(data_dir / 'hrtf' / 'sofa' / str(filename + '.sofa'))
         self.target_size = target_size
         self.target_time = target_time
         self.game_time = game_time
@@ -28,10 +30,6 @@ class Training:
         self.ele_range = ele_range
         self.target = None
         self.scores = []
-
-        # init sensor
-        self.sensor = freefield.motion_sensor.Sensor()
-        self.sensor.connect()
 
         # init pybinsim streamer and osc messenger
         self.osc_client = self._make_osc_client()
@@ -52,6 +50,29 @@ class Training:
         return f'{type(self)} Sessions played: {len(self.scores)} Scores: {repr(self.scores)}'
 
     def run(self):
+        # init sensor
+        freefield.initialize(setup='dome', default=None, device=None, sensor_tracking=True)
+
+
+        freefield.calibrate_sensor(led_feedback=False, button_control=False)
+        self.get_headpose()
+        print(self.headpose)
+        self.set_target()
+
+        rel_coords =  self.target - self.headpose
+        # find idx of the nearest filter in the hrtf
+        filter_coords = self.hrtf._get_coordinates((rel_coords[0], rel_coords[1],
+                        self.hrtf.sources.vertical_polar[0,2]), 'spherical').cartesian
+        distances = numpy.sqrt(((filter_coords - self.hrtf.sources.cartesian) ** 2).sum(axis=1))
+        idx = int(numpy.argmin(distances))
+        sound = slab.Sound.pinknoise()
+        self.hrtf[idx].apply(sound).play()
+        self.hrtf.plot_sources(idx)
+        self.set_filter()  # select the appropriate filter
+
+
+        # start background threads
+        self.pulse_stream.start()
         while True:
             self.training_session()
             self._wait_for_button('Press Enter to play again.')
@@ -70,7 +91,6 @@ class Training:
             print(f'Run {len(self.scores)}: {self.score} points')
 
     def play_trial(self):
-        self.pulse_stream.start()  # start binsim stream
         self.trial_start = time.time()  # get trial start time
         time_on_target = 0
         count_down = False  # condition for counting time on target
@@ -124,7 +144,7 @@ class Training:
         self.target = target
 
     def end_trial(self, sound='buzzer'):
-        self.binsim.join()  # end binsim thread
+        self.pulse_stream.halt()  # end binsim thread
         self.sounds[sound].play()  # play end sound
         time.sleep(self.sounds[sound].duration)
 
@@ -135,14 +155,15 @@ class Training:
         # get sound source coordinates relative to head pose
         rel_coords = self.target - self.headpose
         # find idx of the nearest filter in the hrtf
-        filter_coords = self.hrtf._get_coordinates((rel_coords, rel_coords), 'spherical').cartesian
+        filter_coords = self.hrtf._get_coordinates((rel_coords[0], rel_coords[1],
+                        self.hrtf.sources.vertical_polar[0,2]), 'spherical').cartesian
         distances = numpy.sqrt(((filter_coords - self.hrtf.sources.cartesian) ** 2).sum(axis=1))
         idx = int(numpy.argmin(distances))
         # change filter
         filter_msg = [0, idx, 0, 0, 0, 0, 0]
         self.osc_client.send_message('/pyBinSim', filter_msg)
         print(f'sending parameters: az: {self.hrtf.sources.vertical_polar[idx, 0]}'
-              f' ele: {self.hrtf.sources.vertical_polar[idx, 1]}')
+              f' ele: {self.hrtf.sources.vertical_polar[idx, 1]}', end="\r", flush=True)
 
     def set_pulse_train(self):
         dst = self.headpose - self.target
@@ -157,14 +178,18 @@ class Training:
         interval_scale = (self.distance - 2 + 1e-9) / max_distance
         # scale interval logarithmically with distance
         interval = max_interval * (numpy.log(interval_scale + 0.05) + 3) / 3  # log scaling
-        self.pulse_stream.set_interval(interval)
+        self.pulse_stream.update_interval(interval)
 
     @staticmethod
     def _make_osc_client():
         # Create OSC client
+        host = '127.0.0.1'
+        mode = 'client'
         ip = '127.0.0.1'
         port = 10000
         parser = argparse.ArgumentParser()
+        parser.add_argument("--host", default=host)
+        parser.add_argument("--mode", default=mode)
         parser.add_argument("--ip", default=ip, help="The ip of the OSC server")
         parser.add_argument("--port", type=int, default=port, help="The port the OSC server is listening on")
         args = parser.parse_args()
@@ -202,22 +227,6 @@ class Training:
             else: response = input('Waiting for button.')
         return response
 
-
-    # def update_interval(self):
-    #     self.set_interval.start()
-    #     while True:
-    #         self.interval_duration = float(input("Enter 0 to Exit or float > 0 to set interval duration: "))
-    #         self.interval_queue.put(self.interval_duration)
-    #         if self.interval_duration == 99:
-    #             break
-    #     self.halt()
-
-    # def wait_for_button(self):
-    #     if self.processor == 'RP2':  # calibrate (wait for button)
-    #         print('Press button to start sensor calibration')
-    #     elif self.processor == 'RM1':
-    #         input('Press button to start sensor calibration')
-
-# if __name__ == "__main__":
-    # training = Training('kemar')
-    # training.run()
+if __name__ == "__main__":
+    self = Training('kemar')
+    # self.run()

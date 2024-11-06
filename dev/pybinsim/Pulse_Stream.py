@@ -27,7 +27,7 @@ class Pulse_Stream:
     def _init_pybinsim(filtername):
         # init binsim object
         binsim = pybinsim.BinSim(Path.cwd() / 'data' / 'hrtf' / 'wav' / filtername / f'{filtername}_settings.txt')
-        pybinsim.logger.setLevel(logging.DEBUG)  # defaults to INFO
+        pybinsim.logger.setLevel(logging.INFO)  # defaults to INFO
         return binsim
 
     @staticmethod
@@ -61,7 +61,9 @@ class Pulse_Stream:
         """
         interval duration: (float, int): pulse interval duration in ms
         """
-        self.interval_queue.put(interval_duration)
+        with self.interval_queue.mutex:  # clear queue
+            self.interval_queue.queue.clear()
+        self.interval_queue.put(interval_duration)  # add new value
 
     def halt(self):
         self.update_interval(-1)

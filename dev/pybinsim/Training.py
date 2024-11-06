@@ -15,6 +15,8 @@ data_dir = Path.cwd() / 'data'
 fs = 44100
 slab.set_default_samplerate(fs)
 
+# todo adjust pulse train to make it intuitive, get a good HRIR from jakab
+
 class Training:
     def __init__(self, filename='kemar', target_size=5, target_time=.5, game_time=180, trial_time=30,
                  az_range=(-30, 30), ele_range=(-30, 30)):
@@ -34,6 +36,7 @@ class Training:
         # init pybinsim streamer and osc messenger
         self.osc_client = self._make_osc_client()
         self.pulse_stream = Pulse_Stream(self.filename)
+        self.filter_idx = 0  # filter index in the initial osc message
 
         # load sounds
         self.sounds = {
@@ -52,25 +55,7 @@ class Training:
     def run(self):
         # init sensor
         freefield.initialize(setup='dome', default=None, device=None, sensor_tracking=True)
-
-
-        freefield.calibrate_sensor(led_feedback=False, button_control=False)
-        self.get_headpose()
-        print(self.headpose)
-        self.set_target()
-
-        rel_coords =  self.target - self.headpose
-        # find idx of the nearest filter in the hrtf
-        filter_coords = self.hrtf._get_coordinates((rel_coords[0], rel_coords[1],
-                        self.hrtf.sources.vertical_polar[0,2]), 'spherical').cartesian
-        distances = numpy.sqrt(((filter_coords - self.hrtf.sources.cartesian) ** 2).sum(axis=1))
-        idx = int(numpy.argmin(distances))
-        sound = slab.Sound.pinknoise()
-        self.hrtf[idx].apply(sound).play()
-        self.hrtf.plot_sources(idx)
-        self.set_filter()  # select the appropriate filter
-
-
+        freefield.SENSOR.set_fusion_mode('NDOF')
         # start background threads
         self.pulse_stream.start()
         while True:
@@ -97,9 +82,9 @@ class Training:
         # within trial loop: continuously update headpose and monitor time
         while True:
             self.get_headpose()  # read headpose from sensor
-            self.set_filter() # select the appropriate filter
+            self.set_filter() # set the HRIR to pybinsim
             self.set_pulse_train() # convert distance to pulse interval and pass to pulse_stream object
-
+            # check for hits
             if self.distance < self.target_size:
                 if not count_down:  # start counting time as longs as pose matches target
                     time_on_target, count_down = time.time(), True
@@ -154,22 +139,31 @@ class Training:
     def set_filter(self):
         # get sound source coordinates relative to head pose
         rel_coords = self.target - self.headpose
+        # convert coordinates to HRTF convention (=physics convention)
+        # rel_coords = numpy.asarray(rel_coords)
+        if rel_coords[0] > 0:
+            rel_coords[0] = 360 - rel_coords[0]
+        elif rel_coords[0] < 0:
+            rel_coords[0] *= -1
         # find idx of the nearest filter in the hrtf
         filter_coords = self.hrtf._get_coordinates((rel_coords[0], rel_coords[1],
                         self.hrtf.sources.vertical_polar[0,2]), 'spherical').cartesian
         distances = numpy.sqrt(((filter_coords - self.hrtf.sources.cartesian) ** 2).sum(axis=1))
-        idx = int(numpy.argmin(distances))
-        # change filter
-        filter_msg = [0, idx, 0, 0, 0, 0, 0]
-        self.osc_client.send_message('/pyBinSim', filter_msg)
-        print(f'sending parameters: az: {self.hrtf.sources.vertical_polar[idx, 0]}'
-              f' ele: {self.hrtf.sources.vertical_polar[idx, 1]}', end="\r", flush=True)
+        next_idx = int(numpy.argmin(distances))
+        if next_idx != self.filter_idx:
+            # change filter
+            filter_msg = [0, next_idx, 0, 0, 0, 0, 0]
+            self.osc_client.send_message('/pyBinSim', filter_msg)
+            self.filter_idx = next_idx
+            # print(f'sending parameters: az: {self.hrtf.sources.vertical_polar[idx, 0]}'
+            #       f' ele: {self.hrtf.sources.vertical_polar[idx, 1]}', end="\r", flush=True)
+
 
     def set_pulse_train(self):
         dst = self.headpose - self.target
         self.distance = numpy.linalg.norm(dst)
-        print('distance: azimuth %.1f, elevation %.1f, total %.2f'
-              % (dst[0], dst[1], self.distance), end="\r", flush=True)
+        # print('distance: azimuth %.1f, elevation %.1f, total %.2f'
+        #       % (dst[0], dst[1], self.distance), end="\r", flush=True)
         # maximal pulse interval in ms
         max_interval = 500
         # max displacement from center
@@ -229,4 +223,4 @@ class Training:
 
 if __name__ == "__main__":
     self = Training('kemar')
-    # self.run()
+    self.run()

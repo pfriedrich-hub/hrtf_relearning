@@ -140,7 +140,6 @@ class Training:
         # get sound source coordinates relative to head pose
         rel_coords = self.target - self.headpose
         # convert coordinates to HRTF convention (=physics convention)
-        # rel_coords = numpy.asarray(rel_coords)
         if rel_coords[0] > 0:
             rel_coords[0] = 360 - rel_coords[0]
         elif rel_coords[0] < 0:
@@ -155,15 +154,13 @@ class Training:
             filter_msg = [0, next_idx, 0, 0, 0, 0, 0]
             self.osc_client.send_message('/pyBinSim', filter_msg)
             self.filter_idx = next_idx
-            # print(f'sending parameters: az: {self.hrtf.sources.vertical_polar[idx, 0]}'
-            #       f' ele: {self.hrtf.sources.vertical_polar[idx, 1]}', end="\r", flush=True)
 
 
     def set_pulse_train(self):
         dst = self.headpose - self.target
         self.distance = numpy.linalg.norm(dst)
-        # print('distance: azimuth %.1f, elevation %.1f, total %.2f'
-        #       % (dst[0], dst[1], self.distance), end="\r", flush=True)
+        print('distance: azimuth %.1f, elevation %.1f, total %.2f'
+              % (dst[0], dst[1], self.distance), end="\r", flush=True)
         # maximal pulse interval in ms
         max_interval = 500
         # max displacement from center

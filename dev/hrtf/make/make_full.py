@@ -56,22 +56,21 @@ def linear_scaling_factor(azimuth, elevation, X1, X2, Y):
     return float(scaling)
 
 def make_hrtf(n_bins=256):
-    azimuths = numpy.linspace(-90, 90, 72)
-    elevations = numpy.linspace(-60, 60, 25)
-    n_sources = len(azimuths) * len(elevations)
+    n_azimuths = 72
+    n_elevations = 25
+    azimuths = numpy.linspace(-90, 90, n_azimuths)
+    elevations = numpy.linspace(-60, 60, n_elevations)
+    n_sources = n_azimuths * n_elevations
     distance = 1
-    sources = numpy.zeros((n_sources, 3))
-    # sources = numpy.array(numpy.meshgrid(azimuths, elevations)).T.reshape(n_sources, 2)
-    # sources = numpy.column_stack((sources, distances))
+    sources = numpy.array(numpy.meshgrid(azimuths, elevations)).T.reshape(n_sources, 2)
+    sources = numpy.column_stack((sources, numpy.ones(n_sources) * distance))
 
-    dtfs = numpy.zeros((n_sources, n_bins, 2))
+    dtfs = []
     freq_bins = numpy.linspace(20, 20e3, n_bins)
-    source_idx = 0
     for az_idx, azimuth in enumerate(azimuths):
+        dtfs_at_az = numpy.zeros((len(elevations), n_bins))
         for ele_idx, elevation in enumerate(elevations):
             tf = numpy.ones(n_bins)   # blank dtf
-
-            # ---- left ear ---- #
 
             # peak 1
             # increasing width and scaling from -60 to 50° az
@@ -104,18 +103,19 @@ def make_hrtf(n_bins=256):
             # sf = linear_scaling_factor(azimuth, elevation, x=[(0, 50), (-30, 40)], y=(s * 2.2, s * 1.5))
             # tf = add_feature(tf, freq_bins=freq_bins, mu=mu, sigma=s, scaling=sf)
 
-
             tf += numpy.finfo(float).eps  # avoid log10(0) error
-            dtfs[source_idx, :, 0] = tf
+            dtfs_at_az[ele_idx, :] = tf
+        dtfs.append(dtfs_at_az)
 
-            # --- right ear
-            dtfs[source_idx, :, 1] = tf
+    # left ear
+    dtfs_l = numpy.asarray(dtfs).reshape(n_azimuths * n_elevations, n_bins)
+    # right ear: mirror dtfs on the vertical midline +90° az filters will be at -90° for the other ear
+    dtfs_r = numpy.asarray(list(reversed(dtfs))).reshape(n_azimuths * n_elevations, n_bins)
 
-            # --- source coords
-            sources[source_idx] = numpy.array((azimuth, elevation, distance))
-            source_idx += 1
+    dtfs = numpy.stack((dtfs_l, dtfs_r), axis=2)
 
     return slab.HRTF(data=dtfs, samplerate=44e3, datatype='TF', sources=sources)
 
 hrtf = make_hrtf()
 movie([hrtf], (-180,180), (-60,60), ear='left', interval=100, map='average', kind='image', save='hrtf_1.1')
+movie([hrtf], (-180,180), (-60,60), ear='right', interval=100, map='average', kind='image', save='hrtf_1.1')

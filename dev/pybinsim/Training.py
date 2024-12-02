@@ -155,7 +155,6 @@ class Training:
             self.osc_client.send_message('/pyBinSim', filter_msg)
             self.filter_idx = next_idx
 
-
     def set_pulse_train(self):
         dst = self.headpose - self.target
         self.distance = numpy.linalg.norm(dst)

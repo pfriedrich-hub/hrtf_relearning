@@ -123,7 +123,7 @@ def make_hrtf(n_azimuths, azimuth_range, n_elevations, elevation_range, n_bins=2
     return slab.HRTF(data=dtfs, samplerate=44e3, datatype='TF', sources=sources)
 
 hrtf = make_hrtf(n_azimuths=50, azimuth_range=(-180, 180), n_elevations=8, elevation_range=(-40, 40), n_bins=256)
-movie([hrtf], (0,50), (-40,40), interval=200, map='average', kind='waterfall', save='hrtf_1')
+movie([hrtf], (0,50), (-40,40), interval=25, map='average', kind='waterfall', save='hrtf_1')
 
 # hrtf.plot_sources(hrtf.cone_sources(0))  # todo fix
 # hrtf.plot_tf(hrtf.cone_sources(0))  # todo check if notch moves correctly from 0 to 50 az

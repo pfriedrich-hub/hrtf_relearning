@@ -8,7 +8,7 @@ sofa_path = Path.cwd() / 'data' / 'hrtf' / 'sofa'
 
 def hrtf2wav(hrtf, filename, n_bins=None, add_itd=True):
     """
-    Convert HRIR sofa to binary file to be used with HRTFCoef in RPvdsEx.
+    Convert HRIR filters from a sofa file to wav files for use with pybinsim.
     """
     if hrtf.datatype not in ['TF', 'FIR']:
         raise ValueError('Unknown datatype.')

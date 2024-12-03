@@ -57,7 +57,9 @@ class Training:
         freefield.initialize(setup='dome', default=None, device=None, sensor_tracking=True)
         freefield.SENSOR.set_fusion_mode('NDOF')
         # start background threads
-        self.pulse_stream.start()
+        # self.pulse_stream.start()
+        self.pulse_stream.audio_stream.start()
+        self.pulse_stream.set_interval.start()
         while True:
             self.training_session()
             self._wait_for_button('Press Enter to play again.')

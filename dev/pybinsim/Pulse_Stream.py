@@ -27,7 +27,7 @@ class Pulse_Stream:
     def _init_pybinsim(filtername):
         # init binsim object
         binsim = pybinsim.BinSim(Path.cwd() / 'data' / 'hrtf' / 'wav' / filtername / f'{filtername}_settings.txt')
-        pybinsim.logger.setLevel(logging.INFO)  # defaults to INFO
+        pybinsim.logger.setLevel(logging.DEBUG)  # defaults to INFO
         return binsim
 
     @staticmethod

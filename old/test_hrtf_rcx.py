@@ -2,7 +2,7 @@ import matplotlib
 matplotlib.use('TkAgg')
 from matplotlib import pyplot as plt
 from win32com.client import Dispatch
-from dev.hrtf.hrtf2rcx import hrtf2binary
+from dev.hrtf.process.hrtf2rcx import hrtf2binary
 from pathlib import Path
 import numpy
 import slab

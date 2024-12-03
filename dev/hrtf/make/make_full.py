@@ -1,9 +1,7 @@
-import matplotlib.pyplot as plt
 import numpy
 import slab
-from pathlib import Path
 from sklearn.linear_model import LinearRegression
-from dev.hrtf.movie import movie
+from dev.hrtf.inspect.movie import movie
 
 def add_feature(tf, freq_bins, mu, sigma, scaling):
     """

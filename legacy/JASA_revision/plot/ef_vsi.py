@@ -23,6 +23,6 @@ def ef_vsi(hrtf_df, main_df, figsize):
     main_df = stats_df.add_hrtf_stats(main_df, bandwidth=(5700, 13500))  # edit dev bw for next line
     sp_beh_plot.ef_vsi_pub(main_df, measure='vertical RMSE', axis=ax3)
     ax1.annotate('A', (-.2, 1.005), c='k', weight='bold', xycoords='axes fraction')
-    ax2.annotate('B', (-.55, 1.01), c='k', weight='bold', xycoords='axes fraction')
-    ax3.annotate('C', (-.55, 1.01), c='k', weight='bold', xycoords='axes fraction')
+    ax2.annotate('B', (-.65, 1.05), c='k', weight='bold', xycoords='axes fraction')
+    ax3.annotate('C', (-.65, 1.05), c='k', weight='bold', xycoords='axes fraction')
     # plt.tight_layout(pad=.5, h_pad=None, w_pad=None, rect=None)

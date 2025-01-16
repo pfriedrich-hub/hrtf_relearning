@@ -16,7 +16,7 @@ from pathlib import Path
 
 data_path = Path.cwd() / 'legacy' / 'MSc' / 'data' / 'experiment' / 'master'
 plot_path = Path('/Users/paulfriedrich/Desktop/PhD/Jasa/revision/Manuscript/figures')
-# hrtf_df = build_df.get_hrtf_df(data_path, processed=True)
+hrtf_df = build_df.get_hrtf_df(data_path, processed=True)
 main_df = get_df.main_dataframe(data_path, processed_hrtf=True)
 
 ## time course
@@ -44,12 +44,12 @@ main_df = get_df.main_dataframe(data_path, processed_hrtf=True)
 # plt.savefig(plot_path / 'Figure_6_ef_vsi.svg', format='svg')
 
 # # spectral image EF and spectral change probability m1 and m2
-hrtf_plot.spectral_overview(main_df, figsize=(11.5, 4))
-# plt.savefig(plot_path / 'Figure_7_spectral.svg', format='svg')
+# hrtf_plot.spectral_overview(main_df, figsize=(13, 4), return_n=True)
+# plt.savefig(plot_path / 'Figure_7_spectral_n.svg', format='svg')
 
 # acoustic effects on vsi / vsi dissimilarity figure box
 # mold_vsi(main_df, figsize=(8.5, 9.6))
-# plt.savefig(plot_path / 'Figure_8_mold_vsi.svg', format='svg')
+# plt.savefig(plot_path / 'Figure_8_mold_vsi_modified.svg', format='svg')
 
 # acoustic effect on behavioral impact - figure box
 # acoustic_behavior(main_df, figsize=(8.5, 3.5))

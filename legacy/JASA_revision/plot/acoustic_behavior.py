@@ -11,7 +11,10 @@ def acoustic_behavior(main_df, figsize):
     plt.rcParams.update({'font.family':'Helvetica', 'axes.spines.right': False, 'axes.spines.top': False, 'axes.labelsize': fs,
                          'ytick.labelsize': fs, 'xtick.labelsize': fs, 'boxplot.medianprops.color': 'black',
                          'boxplot.medianprops.linewidth': .5})
-
+    plt.rcParams.update({'font.family':'Helvetica', 'xtick.labelsize': fs, 'ytick.labelsize': fs, 'axes.labelsize': fs,
+              'boxplot.capprops.linewidth': lw, 'lines.linewidth': lw,
+              'ytick.direction': 'in', 'xtick.direction': 'in', 'ytick.major.size': 2,
+              'xtick.major.size': 2, 'axes.linewidth': .5, 'axes.spines.right': False, 'axes.spines.top': False})
     fig_widht, fig_height = cm2in(figsize[0]), cm2in(figsize[1])
     main_df = stats_df.add_hrtf_stats(main_df, bandwidth=(5700, 11300), vsi_dis_bw=(5700, 13500))
     # acoustic effect on behavioral impact - figure box
@@ -28,6 +31,6 @@ def acoustic_behavior(main_df, figsize):
     axes[2].set_xlabel('')
     for ax in axes:
         ax.set_box_aspect(1)
-    axes[0].set_title('Free vs Mold 1', fontsize=fs)
-    axes[1].set_title('Free vs Mold 2', fontsize=fs)
-    axes[2].set_title('Mold 1 vs Mold 2', fontsize=fs)
+    axes[0].set_title('Free vs. Mold 1', fontsize=fs)
+    axes[1].set_title('Free vs. Mold 2', fontsize=fs)
+    axes[2].set_title('Mold 1 vs. Mold 2', fontsize=fs)

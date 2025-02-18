@@ -76,7 +76,7 @@ def stim_response_plot(sub_id='vk', figsize=(14, 7), conditions = ['Ears Free', 
         # ticks and labels
         axis.set_xticks(elevation_ticks)
         axis.set_yticks(elevation_ticks)
-        axis.set_xlabel('Target elevations (deg)')
+        axis.set_xlabel('Target Elevations (deg)')
         labels = axis.get_xticklabels()
         labels[1].set_text('-25')
         labels[3].set_text('0')
@@ -95,6 +95,6 @@ def stim_response_plot(sub_id='vk', figsize=(14, 7), conditions = ['Ears Free', 
     axes[0].legend(handles=handles, labels=labels, frameon=False, loc='upper left', handleheight=0.25,
                 labelspacing=0, alignment='left', fontsize=8, bbox_to_anchor=((-0, 0.95)))
 
-    axes[0].set_ylabel('Response elevations (deg)')
+    axes[0].set_ylabel('Response Elevations (deg)')
     axes[0].annotate('A', (.02, 0.95), c='k', weight='bold', xycoords='axes fraction')
     axes[1].annotate('B', (.02, 0.95), c='k', weight='bold', xycoords='axes fraction')

@@ -57,7 +57,7 @@ def learning_plot(path, w2_exclude, figsize):
     # ----- plot ----- #
     days = numpy.arange(12)  # days of measurement
     days[-1] = 15
-    labels = ['Elevation Gain', 'RMSE (°)', 'SD (°)']
+    labels = ['Elevation Gain', 'RMSE (deg)', 'SD (deg)']
     w1_color = 0 # EG color and label
     w2_color = 0.6  # deviation in color of w2 adaptation
     indiv_color = 0.9

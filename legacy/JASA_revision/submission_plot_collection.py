@@ -32,8 +32,8 @@ main_df = get_df.main_dataframe(data_path, processed_hrtf=True)
 # plt.savefig(plot_path / 'Figure_3_stim_resp.svg', format='svg')
 
 # # # main result: figure box: A - learning curve on elevation gain, B - precision and accuracy
-# fig, axes = ele_learning.learning_plot(path=data_path, w2_exclude = ['cs', 'lm', 'lk'], figsize=(17.5, 6.5))
-# plt.savefig(plot_path / 'Figure_4_learning.svg', format='svg')
+fig, axes = ele_learning.learning_plot(path=data_path, w2_exclude = ['cs', 'lm', 'lk'], figsize=(17.5, 6.5))
+plt.savefig(plot_path / 'Figure_4_learning.svg', format='svg')
 
 # evolution of response pattern
 # fig, axis = loc_plot.response_evolution(to_plot='average', figsize=(13, 5.3), path=data_path)

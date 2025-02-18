@@ -1,9 +1,8 @@
-from platform import processor
-
 import matplotlib
+import threading
 matplotlib.use('TkAgg')
-from dev.pybinsim.Pulse_Stream import Pulse_Stream
-from matplotlib import pyplot as plt
+from experiment.misc.Pulse_Stream import Pulse_Stream
+from hrtf.processing.hrtf2wav import hrtf2wav
 import freefield
 from pathlib import Path
 import argparse
@@ -15,15 +14,17 @@ data_dir = Path.cwd() / 'data'
 fs = 44100
 slab.set_default_samplerate(fs)
 
-# todo adjust pulse train to make it intuitive, get a good HRIR from jakab
+filename = 'KU100_HRIR_L2702.sofa'
+# todo adjust pulse train to make it intuitive, get a good HRIR for testing,
+#  check if one sensor calibration at the beginning is sufficient
 
 class Training:
-    def __init__(self, filename='kemar', target_size=5, target_time=.5, game_time=180, trial_time=30,
+    def __init__(self, filename='kemar.sofa', target_size=5, target_time=.5, game_time=180, trial_time=30,
                  az_range=(-30, 30), ele_range=(-30, 30)):
 
         # general parameters
-        self.filename = filename
-        self.hrtf = slab.HRTF(data_dir / 'hrtf' / 'sofa' / str(filename + '.sofa'))
+        self.filename = Path(filename)
+        self.hrtf = slab.HRTF(data_dir / 'hrtf' / 'sofa' / filename)
         self.target_size = target_size
         self.target_time = target_time
         self.game_time = game_time
@@ -35,7 +36,7 @@ class Training:
 
         # init pybinsim streamer and osc messenger
         self.osc_client = self._make_osc_client()
-        self.pulse_stream = Pulse_Stream(self.filename)
+        self.pulse_stream = Pulse_Stream(self.filename.stem)
         self.filter_idx = 0  # filter index in the initial osc message
 
         # load sounds
@@ -48,7 +49,6 @@ class Training:
             self.sounds[key] = sound.resample(fs)
             self.sounds[key].level = 75
 
-
     def __repr__(self):
         return f'{type(self)} Sessions played: {len(self.scores)} Scores: {repr(self.scores)}'
 
@@ -56,10 +56,6 @@ class Training:
         # init sensor
         freefield.initialize(setup='dome', default=None, device=None, sensor_tracking=True)
         freefield.SENSOR.set_fusion_mode('NDOF')
-        # start background threads
-        # self.pulse_stream.start()
-        self.pulse_stream.audio_stream.start()
-        self.pulse_stream.set_interval.start()
         while True:
             self.training_session()
             self._wait_for_button('Press Enter to play again.')
@@ -78,14 +74,24 @@ class Training:
             print(f'Run {len(self.scores)}: {self.score} points')
 
     def play_trial(self):
+        self.get_distance()
+        # filter selection thread: select filter based on relative headpose and osc message to pybinsim
+        self.filter_thread = threading.Thread(target=self.set_filter, args=())
+        # pulse thread: convert distance to pulse interval and pass to pulse_stream
+        self.pulse_thread = threading.Thread(target=self.set_pulse, args=())
+
+        # start trial
+        self.filter_thread.start()
+        # self.pulse_thread.start()
+        self.pulse_stream.interval_duration = 100
+
         self.trial_start = time.time()  # get trial start time
         time_on_target = 0
         count_down = False  # condition for counting time on target
-        # within trial loop: continuously update headpose and monitor time
-        while True:
-            self.get_headpose()  # read headpose from sensor
-            self.set_filter() # set the HRIR to pybinsim
-            self.set_pulse_train() # convert distance to pulse interval and pass to pulse_stream object
+        while True:  # main thread: control game behavior by pose-to-target distance
+            self.get_distance()
+            print('distance: azimuth %.1f, elevation %.1f, total %.2f'
+                  % (self.relative_coords[0], self.relative_coords[1], self.distance), end="\r", flush=True)
             # check for hits
             if self.distance < self.target_size:
                 if not count_down:  # start counting time as longs as pose matches target
@@ -104,7 +110,7 @@ class Training:
                 print('Score! %i' % points)
                 break
             # end trial after 10 seconds
-            if time.time() > self.trial_start + self.trial_time:
+            if time.time() > self.trial_start + self.trial_time:  #  todo check which variables need to be stored in self
                 self.end_trial('buzzer')
                 # print('Time out')
                 break
@@ -115,6 +121,47 @@ class Training:
                 break
             else:
                 continue
+
+    def get_distance(self):
+        self.headpose = freefield.get_head_pose()
+        self.relative_coords = self.headpose - self.target
+        self.distance = numpy.linalg.norm(self.relative_coords)
+
+    def set_filter(self):
+        thread = threading.currentThread()
+        while getattr(thread, "run", True):
+            # convert coordinates to physics / HRTF convention
+            if self.relative_coords[0] > 0:
+                self.relative_coords[0] = 360 - self.relative_coords[0]
+            elif self.relative_coords[0] < 0:
+                self.relative_coords[0] *= -1
+            # find idx of the nearest filter in the hrtf
+            polar = numpy.array((self.relative_coords[0], self.relative_coords[1],
+                                 self.hrtf.sources.vertical_polar[0,2]))
+            filter_coords = self.hrtf._vertical_polar_to_cartesian(polar[numpy.newaxis, :])
+            # filter_coords = self.hrtf._get_coordinates((self.relative_coords[0], self.relative_coords[1],
+            #                 self.hrtf.sources.vertical_polar[0,2]), 'spherical').cartesian
+            distances = numpy.sqrt(((filter_coords - self.hrtf.sources.cartesian) ** 2).sum(axis=1))
+            next_idx = int(numpy.argmin(distances))  # todo check whether this selects the correct filter
+            if next_idx != self.filter_idx:
+                # change filter
+                filter_msg = [0, next_idx, 0, 0, 0, 0, 0]
+                self.osc_client.send_message('/pyBinSim', filter_msg)
+                self.filter_idx = next_idx
+            time.sleep(.01)
+
+    def set_pulse(self):
+        thread = threading.currentThread()
+        # maximal pulse interval in ms
+        max_interval = 500
+        # max displacement from center
+        max_distance = numpy.linalg.norm(numpy.min((self.az_range, self.ele_range), axis=1) - numpy.array((0, 0)))
+        while getattr(thread, "run", True):
+            # scale distance with maximal distance
+            interval_scale = (self.distance - 2 + 1e-9) / max_distance
+            # scale interval logarithmically with distance
+            interval = max_interval * (numpy.log(interval_scale + 0.05) + 3) / 3  # log scaling
+            self.pulse_stream.interval_duration = interval
 
     def set_target(self, min_dist=45):
         target = (numpy.random.randint(self.az_range[0], self.az_range[1]),
@@ -131,46 +178,11 @@ class Training:
         self.target = target
 
     def end_trial(self, sound='buzzer'):
-        self.pulse_stream.halt()  # end binsim thread
-        self.sounds[sound].play()  # play end sound
+        self.pulse_stream.interval_duration = -1  # pause pybinsim pyaudio stream
+        self.filter_thread.run = False
+        self.pulse_thread.run = False
+        self.sounds[sound].play()  # play end sound #todo play game sounds from target locations
         time.sleep(self.sounds[sound].duration)
-
-    def get_headpose(self):
-        self.headpose = freefield.get_head_pose()
-
-    def set_filter(self):
-        # get sound source coordinates relative to head pose
-        rel_coords = self.target - self.headpose
-        # convert coordinates to HRTF convention (=physics convention)
-        if rel_coords[0] > 0:
-            rel_coords[0] = 360 - rel_coords[0]
-        elif rel_coords[0] < 0:
-            rel_coords[0] *= -1
-        # find idx of the nearest filter in the hrtf
-        filter_coords = self.hrtf._get_coordinates((rel_coords[0], rel_coords[1],
-                        self.hrtf.sources.vertical_polar[0,2]), 'spherical').cartesian
-        distances = numpy.sqrt(((filter_coords - self.hrtf.sources.cartesian) ** 2).sum(axis=1))
-        next_idx = int(numpy.argmin(distances))
-        if next_idx != self.filter_idx:
-            # change filter
-            filter_msg = [0, next_idx, 0, 0, 0, 0, 0]
-            self.osc_client.send_message('/pyBinSim', filter_msg)
-            self.filter_idx = next_idx
-
-    def set_pulse_train(self):
-        dst = self.headpose - self.target
-        self.distance = numpy.linalg.norm(dst)
-        print('distance: azimuth %.1f, elevation %.1f, total %.2f'
-              % (dst[0], dst[1], self.distance), end="\r", flush=True)
-        # maximal pulse interval in ms
-        max_interval = 500
-        # max displacement from center
-        max_distance = numpy.linalg.norm(numpy.min((self.az_range,self.ele_range), axis=1) - numpy.array((0,0)))
-        # scale distance with maximal distance
-        interval_scale = (self.distance - 2 + 1e-9) / max_distance
-        # scale interval logarithmically with distance
-        interval = max_interval * (numpy.log(interval_scale + 0.05) + 3) / 3  # log scaling
-        self.pulse_stream.update_interval(interval)
 
     @staticmethod
     def _make_osc_client():
@@ -193,25 +205,6 @@ class Training:
         freefield.halt()
 
     @staticmethod
-    def _make_sequence(targets, n_reps, min_dist=45):
-        # create n_reps elements sequence with more than min_dist angular distance between successive targets
-        def euclidean(D2array):
-            diff = numpy.diff(D2array, axis=0)
-            return numpy.sqrt(diff[:, 0] ** 2 + diff[:, 1] ** 2)
-        n_targets = targets.shape[0]
-        n_trials = n_reps * n_targets
-        sequence = numpy.zeros((n_trials, 2))
-        while True:
-            for s in range(n_reps):
-                dist = numpy.zeros(n_targets)
-                while any(dist < min_dist):
-                    seq = targets[numpy.random.choice(n_targets, n_targets, replace=False), :]
-                    dist = euclidean(seq)
-                sequence[s*n_targets:s*n_targets+n_targets] = seq
-            if all(euclidean(sequence) >= 35):
-                return sequence
-
-    @staticmethod
     def _wait_for_button(*msg, button=''):
         response = None
         while response != button:
@@ -220,5 +213,7 @@ class Training:
         return response
 
 if __name__ == "__main__":
-    self = Training('kemar')
+    if not (data_dir / 'hrtf' / 'wav' / str(Path(filename).stem)).exists():
+        hrtf2wav(filename)
+    self = Training(filename)
     self.run()

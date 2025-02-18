@@ -1,15 +1,17 @@
 from pathlib import Path
 import numpy
 import slab
-from dev.hrtf.processing.tf2ir import tf2ir
+from hrtf.processing.tf2ir import tf2ir
 fs = 48828
 wav_path = Path.cwd() / 'data' / 'hrtf' / 'wav'
 sofa_path = Path.cwd() / 'data' / 'hrtf' / 'sofa'
+sound_path = Path.cwd() / 'data' / 'sounds'
 
-def hrtf2wav(hrtf, filename, n_bins=None, add_itd=True):
+def hrtf2wav(filename, n_bins=None, add_itd=True):
     """
     Convert HRIR filters from a sofa file to wav files for use with pybinsim.
     """
+    hrtf = slab.HRTF(sofa_path / filename)
     if hrtf.datatype not in ['TF', 'FIR']:
         raise ValueError('Unknown datatype.')
     if hrtf.datatype == 'TF':
@@ -18,16 +20,17 @@ def hrtf2wav(hrtf, filename, n_bins=None, add_itd=True):
         n_bins = hrtf[0].n_taps
     else:
         print(f'interpolating IR to {n_bins} bins.')
-
     # create subfolder
-    if not (wav_path / filename).exists():
-        (wav_path / filename).mkdir(exist_ok=True)
-        (wav_path / filename / 'IR_data').mkdir(exist_ok=True)
+    dir_name = Path(filename).stem
+    if not (wav_path / dir_name).exists():
+        (wav_path / dir_name).mkdir(exist_ok=True)
+        (wav_path / dir_name / 'IR_data').mkdir(exist_ok=True)
     # write to pybinsim settings.txt:
-    filter_list_fname = wav_path / filename / f"filter_list_{filename}.txt"
-    with open(wav_path / filename / f'{filename}_settings.txt', 'w') as file:
+    print(f'Writing {dir_name}_settings.txt ...')
+    filter_list_fname = wav_path / dir_name / f"filter_list_{dir_name}.txt"
+    with open(wav_path / dir_name / f'{dir_name}_settings.txt', 'w') as file:
         file.write(
-        f'soundfile C:/Users/admpf18fixi/Projects/hrtf_relearning/data/sounds/pinknoise_44100.wav\n'
+        f'soundfile C:/Users/admpf18fixi/Projects/hrtf_relearning/data/sounds/pinknoise_{hrtf.samplerate}.wav\n'
         f'blockSize {int(hrtf[0].n_samples / 2)}\n'
         f'filterSize {hrtf[0].n_samples}\n'
         f'filterList {filter_list_fname}\n'
@@ -40,6 +43,7 @@ def hrtf2wav(hrtf, filename, n_bins=None, add_itd=True):
         )
 
     # write IR Filters to wav files
+    print(f'Writing wav files from {filename} and {dir_name}.text ...')
     for source_idx in range(hrtf.n_sources):
         coordinates = hrtf.sources.vertical_polar[source_idx].astype('int')
         if not n_bins == hrtf[source_idx].n_taps:  # interpolate bins if necessary
@@ -61,7 +65,7 @@ def hrtf2wav(hrtf, filename, n_bins=None, add_itd=True):
         # else:
         #     fir_coefs = numpy.vstack((fir_coefs, numpy.zeros(2)))  # add zero group delays
 
-        fname = wav_path / filename / 'IR_data' / f'{coordinates[0]}_{coordinates[1]}.wav'
+        fname = wav_path / dir_name / 'IR_data' / f'{coordinates[0]}_{coordinates[1]}.wav'
         # write to wav
         slab.Sound(data=fir_coefs, samplerate=int(hrtf.samplerate)).write(filename=fname)
 
@@ -69,3 +73,6 @@ def hrtf2wav(hrtf, filename, n_bins=None, add_itd=True):
         with open(filter_list_fname, 'a') as file:
             file.write(f'{source_idx} 0 0 0 0 0 {fname}\n')
 
+    # create 30s pinknoise with the correct samplerate
+    (slab.Sound.pinknoise(duration=30.0, samplerate=hrtf.samplerate, level=80).write
+     (sound_path / f'pinknoise_{hrtf.samplerate}.wav'))

@@ -108,12 +108,12 @@ def fsamp(magnitude):
     tf = filtered / fft_interp  # of course this returns the original hrtf filter
 
 
-    # plot
+    # plots
     data = tf
     plt.figure()
-    plt.plot(freqs, numpy.imag(data))
-    plt.plot(freqs, numpy.real(data))
-    plt.plot(freqs, numpy.abs(data))
+    plt.plots(freqs, numpy.imag(data))
+    plt.plots(freqs, numpy.real(data))
+    plt.plots(freqs, numpy.abs(data))
 
     # try: reconstruct phase- from powerspectrum
     ir = hrtf[0].data[:, 0]
@@ -136,7 +136,7 @@ def fsamp(magnitude):
     data = frequency_spectrum
     fig = plt.figure()
     ax = plt.axes(projection='3d')
-    ax.plot(frequencies, numpy.log(power_spectrum), phase_spectrum)
+    ax.plots(frequencies, numpy.log(power_spectrum), phase_spectrum)
 
 
     freqs = numpy.arange(1, hrtf.samplerate/2, 1)
@@ -161,15 +161,15 @@ def fsamp(magnitude):
     x = numpy.sum(sine_waves, axis=0)
     # x = x / len(sine_waves)
     plt.figure()
-    plt.plot(y, x)
+    plt.plots(y, x)
 
     fc = numpy.fft.rfft(x, axis=0)
 
     fc = fc /len(y) * 2
     plt.figure()
-    plt.plot(numpy.real(fc))
-    plt.plot(numpy.imag(fc))
-    plt.plot(numpy.abs(fc))
+    plt.plots(numpy.real(fc))
+    plt.plots(numpy.imag(fc))
+    plt.plots(numpy.abs(fc))
 
 
     # step 2: obtain complex transfer function (divide filtered signal by input signal in the frequency domain)

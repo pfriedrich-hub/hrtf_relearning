@@ -2,7 +2,6 @@ import numpy
 import slab
 from sklearn import linear_model
 reg = linear_model.LinearRegression()
-from dev.hrtf.analysis.animation import movie
 
 
 def add_feature(tf, freq_bins, mu, sigma, scaling):

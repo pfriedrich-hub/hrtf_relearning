@@ -13,7 +13,7 @@ sofa_path_template = sofa_path_target
 # sofa_path_template = Path.cwd() / 'data' / 'hrtf' / 'sofa' / 'kemar.sofa'
 
 sig_path = Path.cwd() / 'data' / 'sounds' / '1s_pinknoise_44100.wav'
-fig_savepath = Path.cwd() / 'data' / 'plot'
+fig_savepath = Path.cwd() / 'data' / 'plots'
 
 shutup = False
 do_dtf = False
@@ -362,7 +362,7 @@ def hrtf2dtf(hrtf, sampling, freq_range, shutup):
     if not(shutup):
         print("------------CTF--------")
         print(ctf)
-        ax = pf.plot.time_freq(ctf, label="ctf")
+        ax = pf.plots.time_freq(ctf, label="ctf")
         ax[0].set_title("Time domain")
         ax[1].set_title("Frequency domain")
         ax[1].legend(loc="lower center")

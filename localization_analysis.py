@@ -64,7 +64,7 @@ def localization_accuracy(data, show=True, plot_dim=2, binned=True, axis=None, s
                 mean_loc = binned_data
                 # azimuth_ticks = azimuths
                 # elevation_ticks = elevations
-            for az in azimuths:  # plot lines between target locations
+            for az in azimuths:  # plots lines between target locations
                 [x] = mean_loc[numpy.where(mean_loc[:, 0] == az), 0]
                 [y] = mean_loc[numpy.where(mean_loc[:, 0] == az), 1]
                 axis.plot(x, y, color='black', linewidth=0.5)
@@ -74,7 +74,7 @@ def localization_accuracy(data, show=True, plot_dim=2, binned=True, axis=None, s
                 axis.plot(x, y, color='black', linewidth=0.5)
 
             axis.scatter(mean_loc[:, 2], mean_loc[:, 3], color='black', s=25)
-            for az in azimuths:  # plot lines between target locations
+            for az in azimuths:  # plots lines between target locations
                 [x] = mean_loc[numpy.where(mean_loc[:, 0] == az), 2]
                 [y] = mean_loc[numpy.where(mean_loc[:, 0] == az), 3]
                 axis.plot(x, y, color='black', linewidth=1)
@@ -96,7 +96,7 @@ def localization_accuracy(data, show=True, plot_dim=2, binned=True, axis=None, s
             axis.set_ylabel('perceived elevations')
             axis.grid(visible=True, which='major', axis='both', linestyle='dashed', linewidth=0.5, color='grey')
             axis.set_axisbelow(True)
-            # scatter plot with regression line (elevation gain)
+            # scatter plots with regression line (elevation gain)
             axis.scatter(targets[:, 1][left_ids], responses[:, 1][left_ids], s=10, c='red', label='left')
             axis.scatter(targets[:, 1][right_ids], responses[:, 1][right_ids], s=10, c='blue', label='right')
             axis.scatter(targets[:, 1][mid_ids], responses[:, 1][mid_ids], s=10, c='black', label='middle')

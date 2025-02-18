@@ -2,15 +2,15 @@ import numpy
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from pathlib import Path
-from misc.average import hrtf_average
-from misc.feature_p import feature_p
+from hrtf.processing.average import hrtf_average
+from hrtf.analysis.feature_p import feature_p
 
 
 def hrtf_animation(hrtf_list, azimuth_range, elevation_range, ear='both', interval=100, map='feature_p', kind='image',
           filename=None, write=None, show=True):
     global data, fig, ax, frequencies, azimuths, elevations, settings
     settings = {'map': map, 'kind': kind}
-    # plot features for sources in range 0 / +50 azimuth across elevations
+    # plots features for sources in range 0 / +50 azimuth across elevations
     # if axis == 'azimuth':
     if not len(hrtf_list) == 0:
         source_idx = hrtf_list[0].get_source_idx(azimuth=azimuth_range, elevation=elevation_range)
@@ -84,9 +84,9 @@ def plot(data):
         vlines = numpy.arange(0, len(data)) * linesep
         for idx, filter in enumerate(data):
             im = ax.plot(frequencies, filter + vlines[idx], linewidth=0.75, color='0.0', alpha=0.7)
-        ticks = vlines[::2]  # plot every second elevation
+        ticks = vlines[::2]  # plots every second elevation
         labels = elevations
-        # plot every third elevation label, omit comma to save space
+        # plots every third elevation label, omit comma to save space
         labels = labels[::2].astype(int)
         ax.set(yticks=ticks, yticklabels=labels)
         ax.grid(visible=True, axis='y', which='both', linewidth=0.25)
@@ -100,21 +100,21 @@ def plot(data):
     return im
 
 
-# ----- plot aachen database
+# ----- plots aachen database
 # import slab
 # database_path = Path.cwd() / 'data' / 'hrtf' / 'sofa' / 'aachen_database'
 # hrtf_list = [slab.HRTF(sofa_path) for sofa_path in list(database_path.glob('*.sofa'))]
 # movie(hrtf_list, azimuth_range=(-180, 180), elevation_range=(-60,60), ear='left', interval=150, map='feature_p',
 #       kind='image', save=Path.cwd() / 'data' / 'animations' / 'aachen_full.mp4')
 
-# ----- plot single hrtf
+# ----- plots single hrtf
 # import slab
 # database_path = Path.cwd() / 'data' / 'hrtf' / 'sofa' / 'aachen_database'
 # hrtf_list = [slab.HRTF(list(database_path.glob('*.sofa'))[0])]
 # movie(hrtf_list, azimuth_range=(-180, 180), elevation_range=(-60,60), ear='left', interval=150, map='average',
 #       kind='image', save=Path.cwd() / 'data' / 'animations' / 'aachen_01.mp4')
 
-# ----- plot kemar
+# ----- plots kemar
 #
 # hrtf_list = [slab.HRTF.kemar()]
 # movie(hrtf_list, azimuth_range=(0,50), elevation_range=(-20,20), map='average', kind='image')
@@ -122,7 +122,7 @@ def plot(data):
 
 """
 
-        # plot average
+        # plots average
         fig, axis = plt.subplots()
         contour = axis.contourf(frequencies, azimuths, map)
         plt.title(ele)

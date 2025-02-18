@@ -2,8 +2,8 @@ import numpy
 import slab
 from pathlib import Path
 from sklearn.linear_model import LinearRegression
-from dev.hrtf.analysis.animation import hrtf_animation
-from dev.hrtf.processing.tf2ir import tf2ir
+from hrtf.analysis.animation import hrtf_animation
+from hrtf.processing.tf2ir import tf2ir
 
 filename = 'hrtf_double_notch'
 
@@ -128,7 +128,7 @@ def linear_scaling_factor(azimuth, elevation, X1, X2, Y):
 # make
 hrtf = make_hrtf()
 
-# plot
+# plots
 hrtf_animation([hrtf], (-180,180), (-60,60), 'left', 100,
                'average', 'image', filename+'_L', write, show)
 hrtf_animation([hrtf], (-180,180), (-60,60), 'left', 100,

@@ -82,8 +82,8 @@ class Training:
 
         # start trial
         self.filter_thread.start()
-        # self.pulse_thread.start()
-        self.pulse_stream.interval_duration = 100
+        self.pulse_thread.start()
+        # self.pulse_stream.interval_duration = 100  # test loops
 
         self.trial_start = time.time()  # get trial start time
         time_on_target = 0
@@ -121,6 +121,7 @@ class Training:
                 break
             else:
                 continue
+            time.sleep(.001)
 
     def get_distance(self):
         self.headpose = freefield.get_head_pose()
@@ -148,7 +149,7 @@ class Training:
                 filter_msg = [0, next_idx, 0, 0, 0, 0, 0]
                 self.osc_client.send_message('/pyBinSim', filter_msg)
                 self.filter_idx = next_idx
-            time.sleep(.01)
+            time.sleep(.001)
 
     def set_pulse(self):
         thread = threading.currentThread()
@@ -162,6 +163,7 @@ class Training:
             # scale interval logarithmically with distance
             interval = max_interval * (numpy.log(interval_scale + 0.05) + 3) / 3  # log scaling
             self.pulse_stream.interval_duration = interval
+            time.sleep(.001)
 
     def set_target(self, min_dist=45):
         target = (numpy.random.randint(self.az_range[0], self.az_range[1]),

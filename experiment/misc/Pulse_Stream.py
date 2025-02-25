@@ -41,4 +41,5 @@ class Pulse_Stream:
                 self.binsim.config.configurationDict['loudnessFactor'] = 0
                 time.sleep(interval_duration / 1000)
                 self.binsim.config.configurationDict['loudnessFactor'] = 0.5
-            time.sleep(1e-6)
+            time.sleep(.001)
+

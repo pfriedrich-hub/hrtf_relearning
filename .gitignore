@@ -1,7 +1,7 @@
 **/legacy
 **misc.xml
 **hrtf_relearning.iml
-**/data/resources/
-**/data/sofa/
+**/data/hrtf/
 **/data/hrtf/wav/
-
+**/data/animations/
+**/data/resources/

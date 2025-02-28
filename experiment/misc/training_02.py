@@ -130,7 +130,6 @@ def play_trial_worker(target, pulse_queue, osc_client, hrtf_sources, trial_time,
         return score
 
 
-return 0
 
 
 def play_session(game_time, trial_time, target_size, target_time, az_range, ele_range, osc_client, hrtf_sources,
@@ -198,7 +197,8 @@ if __name__ == "__main__":
     parser.add_argument("--ele_range", type=int, nargs=2, default=[-30, 30],
                         help="Elevation range for target selection")
     parser.add_argument("--hrtf_filename", type=str, default='KU100_HRIR_L2702', help="HRTF filename for PyBinSim")
-
+    if not (data_dir / 'hrtf' / 'wav' / str(Path(filename).stem)).exists():
+        hrtf2wav(filename)
     args = parser.parse_args()
     main(args.game_time, args.trial_time, args.target_size, args.target_time, tuple(args.az_range),
          tuple(args.ele_range), args.hrtf_filename)

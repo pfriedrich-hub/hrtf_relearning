@@ -20,17 +20,19 @@ def hrtf2wav(filename, n_bins=None, add_itd=True):
         n_bins = hrtf[0].n_taps
     else:
         print(f'interpolating IR to {n_bins} bins.')
-    # create subfolder
+    # create subfolders
     dir_name = Path(filename).stem
     if not (wav_path / dir_name).exists():
         (wav_path / dir_name).mkdir(exist_ok=True)
         (wav_path / dir_name / 'IR_data').mkdir(exist_ok=True)
+        (wav_path / dir_name / 'sounds').mkdir(exist_ok=True)
+
     # write to pybinsim settings.txt:
     print(f'Writing {dir_name}_settings.txt ...')
     filter_list_fname = wav_path / dir_name / f"filter_list_{dir_name}.txt"
     with open(wav_path / dir_name / f'{dir_name}_settings.txt', 'w') as file:
         file.write(
-        f'soundfile C:/Users/admpf18fixi/Projects/hrtf_relearning/data/sounds/pinknoise_{hrtf.samplerate}.wav\n'
+        f'soundfile {str(wav_path / dir_name / "sounds" / "pinknoise.wav")}\n'
         f'blockSize {int(hrtf[0].n_samples / 2)}\n'
         f'filterSize {hrtf[0].n_samples}\n'
         f'filterList {filter_list_fname}\n'
@@ -38,7 +40,7 @@ def hrtf2wav(filename, n_bins=None, add_itd=True):
         f'samplingRate {int(hrtf.samplerate)}\n'
         'enableCrossfading True\n'
         'useHeadphoneFilter False\n'
-        'loudnessFactor 0.5\n'
+        'loudnessFactor 0\n'
         'loopSound True\n'
         )
 
@@ -73,6 +75,13 @@ def hrtf2wav(filename, n_bins=None, add_itd=True):
         with open(filter_list_fname, 'a') as file:
             file.write(f'{source_idx} 0 0 0 0 0 {fname}\n')
 
-    # create 30s pinknoise with the correct samplerate
-    (slab.Sound.pinknoise(duration=30.0, samplerate=hrtf.samplerate, level=80).write
-     (sound_path / f'pinknoise_{hrtf.samplerate}.wav'))
+    # create 20s pinknoise with the correct samplerate
+    (slab.Sound.pinknoise(duration=20.0, samplerate=hrtf.samplerate, level=80).write
+     (wav_path / dir_name / 'sounds' / f'pinknoise.wav'))
+    # resample game sounds
+    buzzer = slab.Sound.read(sound_path / 'buzzer.wav')
+    buzzer.resample(hrtf.samplerate).write(wav_path / dir_name / 'sounds' / f'buzzer.wav')
+    coin = slab.Sound.read(sound_path / 'coin.wav')
+    coin.resample(hrtf.samplerate).write(wav_path / dir_name / 'sounds' / f'coin.wav')
+    coins = slab.Sound.read(sound_path / 'coins.wav')
+    coins.resample(hrtf.samplerate).write(wav_path / dir_name / 'sounds' / f'coins.wav')

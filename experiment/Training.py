@@ -1,221 +1,235 @@
-import matplotlib
-import threading
-matplotlib.use('TkAgg')
-from experiment.misc.Pulse_Stream import Pulse_Stream
-from hrtf.processing.hrtf2wav import hrtf2wav
-import freefield
-from pathlib import Path
 import argparse
-from pythonosc import udp_client
+import logging
+import multiprocessing as mp
 import time
 import numpy
-import slab
-data_dir = Path.cwd() / 'data'
+from pythonosc import udp_client
+# from experiment.misc import meta_motion
+from hrtf.processing.hrtf2wav import *
+logging.getLogger().setLevel('INFO')
+
+data_dir = Path.cwd() / 'data' / 'hrtf'
 fs = 44100
 slab.set_default_samplerate(fs)
 
-filename = 'KU100_HRIR_L2702.sofa'
-# todo adjust pulse train to make it intuitive, get a good HRIR for testing,
-#  check if one sensor calibration at the beginning is sufficient
+def init_osc_client():
+    host = '127.0.0.1'
+    mode = 'client'
+    ip = '127.0.0.1'
+    port = 10000
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--host", default=host)
+    parser.add_argument("--mode", default=mode)
+    parser.add_argument("--ip", default=ip, help="The ip of the OSC server")
+    parser.add_argument("--port", type=int, default=port, help="The port the OSC server is listening on")
+    args = parser.parse_args()
+    osc_client = udp_client.SimpleUDPClient(args.ip, args.port)
+    return udp_client.SimpleUDPClient(args.ip, args.port)
 
-class Training:
-    def __init__(self, filename='kemar.sofa', target_size=5, target_time=.5, game_time=180, trial_time=30,
-                 az_range=(-30, 30), ele_range=(-30, 30)):
+def set_target(az_range, ele_range, target, min_dist=30):
+    while True:
+        prev_tar = target[:]
+        next_tar = [numpy.random.randint(az_range[0], az_range[1]),
+                  numpy.random.randint(ele_range[0], ele_range[1])]
+        if numpy.linalg.norm(numpy.subtract(prev_tar, next_tar)) >= min_dist:
+            target[:] = next_tar
+            break
+    logging.info(f'Set Target to {next_tar}.')
 
-        # general parameters
-        self.filename = Path(filename)
-        self.hrtf = slab.HRTF(data_dir / 'hrtf' / 'sofa' / filename)
-        self.target_size = target_size
-        self.target_time = target_time
-        self.game_time = game_time
-        self.trial_time = trial_time
-        self.az_range = az_range
-        self.ele_range = ele_range
-        self.target = None
-        self.scores = []
+def play_sound(wav_name, osc_client, pulse_interval):
+    pulse_interval[0] = 0  # Temporarily set pulse interval to 0 to play game sound
+    osc_client.send_message('/pyBinSimFile', str(data_dir / 'wav' / 'sounds' / f'{wav_name}.wav'))
+    time.sleep(1)
+    pulse_interval[0] = -1  # Restore mute after sound  # Play 'coin' sound
+    osc_client.send_message('/pyBinSimFile', str(data_dir / 'wav' / 'sounds' / 'pinknoise.wav'))
 
-        # init pybinsim streamer and osc messenger
-        self.osc_client = self._make_osc_client()
-        self.pulse_stream = Pulse_Stream(self.filename.stem)
-        self.filter_idx = 0  # filter index in the initial osc message
+# sub processes
+def head_tracking(distance, target, osc_client, filter_name, sensor_state):
+    hrtf_sources = slab.HRTF(data_dir / 'sofa' / f'{filter_name}.sofa').sources.vertical_polar
 
-        # load sounds
-        self.sounds = {
-                        'coins': slab.Sound.read(data_dir / 'sounds' / 'coins.wav'),
-                        'coin': slab.Sound.read(data_dir / 'sounds' / 'coin.wav'),
-                        'buzzer': slab.Sound.read(data_dir / 'sounds' / 'buzzer.wav'),
-                        }
-        for sound, key in zip(self.sounds.values(), self.sounds.keys()):
-            self.sounds[key] = sound.resample(fs)
-            self.sounds[key].level = 75
+    # init motion sensor
+    # device = meta_motion.get_device()  # Ensure this function initializes the hardware correctly
+    # state = meta_motion.State(device)
+    # motion_sensor = meta_motion.Sensor(state)
+    # logging.info('Calibrating sensor..')
+    # time.sleep(.1)
+    # motion_sensor.calibrate()
 
-    def __repr__(self):
-        return f'{type(self)} Sessions played: {len(self.scores)} Scores: {repr(self.scores)}'
+    sensor_state[0] = 1  # signal other processes that sensor is initialized
+    logging.debug('motion sensor running')
 
-    def run(self):
-        # init sensor
-        freefield.initialize(setup='dome', default=None, device=None, sensor_tracking=True)
-        freefield.SENSOR.set_fusion_mode('NDOF')
-        while True:
-            self.training_session()
-            self._wait_for_button('Press Enter to play again.')
+    while not sensor_state[0] == 2:
+        time.sleep(0.1)
 
-    def training_session(self):
-        self.game_over, self.score = False, 0        # reset countdown and score
-        self.game_start = time.time()
-        while not self.game_over:  # loop over trials until end time has passed
-            trial_prep = time.time()  # time between trials
-            self.set_target()  # get next target
-            self._wait_for_button('Press Enter to start.')
-            freefield.calibrate_sensor(led_feedback=False, button_control=False)
-            self.game_start += time.time() - trial_prep  # count time only while playing
-            self.play_trial()
-            self.scores.append(self.score)
-            print(f'Run {len(self.scores)}: {self.score} points')
+    # start = time.time()
+    # while True:
+        # headpose = motion_sensor.get_pose()
 
-    def play_trial(self):
-        self.get_distance()
-        # filter selection thread: select filter based on relative headpose and osc message to pybinsim
-        self.filter_thread = threading.Thread(target=self.set_filter, args=())
-        # pulse thread: convert distance to pulse interval and pass to pulse_stream
-        self.pulse_thread = threading.Thread(target=self.set_pulse, args=())
+    # test
+    for az, ele in zip(numpy.linspace(-30, target[0], 1000), numpy.linspace(-30, target[1], 1000)):
+        headpose = numpy.array((az, ele))
+        time.sleep(.01)
 
-        # start trial
-        self.filter_thread.start()
-        self.pulse_thread.start()
-        # self.pulse_stream.interval_duration = 100  # test loops
+        relative_coords = headpose - target[:]
+        distance[0] = numpy.linalg.norm(relative_coords)  # set distance for play_session
+        logging.debug(f'head tracking: set distance value {distance[0]}')
 
-        self.trial_start = time.time()  # get trial start time
-        time_on_target = 0
-        count_down = False  # condition for counting time on target
-        while True:  # main thread: control game behavior by pose-to-target distance
-            self.get_distance()
-            print('distance: azimuth %.1f, elevation %.1f, total %.2f'
-                  % (self.relative_coords[0], self.relative_coords[1], self.distance), end="\r", flush=True)
-            # check for hits
-            if self.distance < self.target_size:
-                if not count_down:  # start counting time as longs as pose matches target
-                    time_on_target, count_down = time.time(), True
+        if relative_coords[0] < 0:  # todo setup sensor for 0-360° az values (freefield)
+            relative_coords[0] = 360 + relative_coords[0]  # convert to (0 < az < 360)
+        # relative_coords[0] *= -1  # mirror for counter-clockwise az increase (HRTF (physics) convention)
+
+        # find the closest filter idx and send to pybinsim
+        rel_target = numpy.array((relative_coords[0], relative_coords[1], hrtf_sources[0, 2]))
+        filter_idx = numpy.argmin(numpy.linalg.norm(rel_target-hrtf_sources, axis=1))
+        osc_client.send_message('/pyBinSim', [0, int(filter_idx), 0, 0, 0, 0, 0])
+        logging.debug(f'head tracking: sent filter idx {filter_idx}')
+        # logging.info(f'sent filter value at {time.time() - start}')
+        time.sleep(0.005)
+
+def pulse_stream(filter_name, pulse_interval, binsim_state):
+    import pybinsim
+    binsim = pybinsim.BinSim(data_dir / 'wav' / filter_name / f'{filter_name}_settings.txt')
+    pybinsim.logger.setLevel(logging.WARNING)
+    binsim.soundHandler.loopSound = True
+    binsim.stream_start()
+    pulse_interval[0] = -1
+
+    while not binsim.stream._is_running:
+        time.sleep(0.1)
+    binsim_state[0] = 1
+
+    def smooth_transition(target_value, step=0.05, delay=0.002):
+        current_value = binsim.config.configurationDict['loudnessFactor']
+        while abs(current_value - target_value) > step:
+            current_value += step if target_value > current_value else -step
+            binsim.config.configurationDict['loudnessFactor'] = round(current_value, 2)
+            time.sleep(delay)
+        binsim.config.configurationDict['loudnessFactor'] = target_value
+
+    while True:
+        interval = pulse_interval[0]
+        if interval == -1:  # Mute sound
+            smooth_transition(0)
+        elif interval < 5:  # continuous sound
+            smooth_transition(0.5)
+        elif interval > 5:  # pulse sound
+            smooth_transition(0.5)
+            time.sleep(interval / 1000)
+            smooth_transition(0)
+            time.sleep(interval / 1000)
+
+        logging.debug(f'got interval value {interval}')
+        time.sleep(0.005)
+
+def play_trial(distance, pulse_interval, score, osc_client, trial_time, target_size, target_time):
+    # distance-to-interval parameters
+    max_interval = 500  # interval duration at max distance in ms
+    max_distance = numpy.linalg.norm(numpy.subtract([0,0],[30, 30]))  # max distance in degrees
+    threshold = .5  # the distance threshold in degrees below which interval duration should be zero
+    steepness = 10  # controls how gradually the interval duration increases
+
+    time_on_target = 0
+    count_down = False
+    trial_start = time.time()
+
+    while time.time() - trial_start < trial_time:
+        dist = distance[0]
+        logging.debug(f'play trial: got distance value {dist}')
+        if dist <= threshold:  # interval duration from distance
+            interval = 0
+        else:
+            norm_dist = (dist - threshold) / (max_distance - threshold)
+            norm_dist = numpy.clip(norm_dist, 0, 1)  # Keep in range [0, 1]
+            interval = int(max_interval * (numpy.log1p(steepness * norm_dist) / numpy.log1p(steepness)))
+        pulse_interval[0] = max(0, interval)  # ensure non-negative interval
+        logging.debug(f'play trial: set interval value {max(0, interval)}')
+
+        if dist < target_size:
+            if not count_down:
+                time_on_target, count_down = time.time(), True
+        else:
+            time_on_target, count_down = time.time(), False
+
+        if count_down and time.time() > time_on_target + target_time:
+            if time.time() - trial_start <= 3:
+                score[0] += 2
+                play_sound('coins', osc_client, pulse_interval)
             else:
-                time_on_target, count_down = time.time(), False  # reset timer if pose no longer matches target
-            # end trial if goal conditions are met
-            if time.time() > time_on_target + self.target_time:
-                if time.time() - self.trial_start <= 3:
-                    points = 2
-                    self.end_trial('coins')
-                else:
-                    points = 1
-                    self.end_trial('coin')
-                self.score += points
-                print('Score! %i' % points)
-                break
-            # end trial after 10 seconds
-            if time.time() > self.trial_start + self.trial_time:  #  todo check which variables need to be stored in self
-                self.end_trial('buzzer')
-                # print('Time out')
-                break
-            # end training sequence if game time is up
-            if time.time() > self.game_start + self.game_time:
-                self.game_over = True
-                self.end_trial('buzzer')
-                break
-            else:
-                continue
-            time.sleep(.001)
+                score[0] += 1
+                play_sound('coin', osc_client, pulse_interval)
+            break
 
-    def get_distance(self):
-        self.headpose = freefield.get_head_pose()
-        self.relative_coords = self.headpose - self.target
-        self.distance = numpy.linalg.norm(self.relative_coords)
+        logging.debug(f'trial_time {time.time() - trial_start}')
+        time.sleep(0.005)
+    pulse_interval[0] = -1
 
-    def set_filter(self):
-        thread = threading.currentThread()
-        while getattr(thread, "run", True):
-            # convert coordinates to physics / HRTF convention
-            if self.relative_coords[0] > 0:
-                self.relative_coords[0] = 360 - self.relative_coords[0]
-            elif self.relative_coords[0] < 0:
-                self.relative_coords[0] *= -1
-            # find idx of the nearest filter in the hrtf
-            polar = numpy.array((self.relative_coords[0], self.relative_coords[1],
-                                 self.hrtf.sources.vertical_polar[0,2]))
-            filter_coords = self.hrtf._vertical_polar_to_cartesian(polar[numpy.newaxis, :])
-            # filter_coords = self.hrtf._get_coordinates((self.relative_coords[0], self.relative_coords[1],
-            #                 self.hrtf.sources.vertical_polar[0,2]), 'spherical').cartesian
-            distances = numpy.sqrt(((filter_coords - self.hrtf.sources.cartesian) ** 2).sum(axis=1))
-            next_idx = int(numpy.argmin(distances))  # todo check whether this selects the correct filter
-            if next_idx != self.filter_idx:
-                # change filter
-                filter_msg = [0, next_idx, 0, 0, 0, 0, 0]
-                self.osc_client.send_message('/pyBinSim', filter_msg)
-                self.filter_idx = next_idx
-            time.sleep(.001)
+def play_session(game_time, trial_time, target_size, target_time, az_range, ele_range, filter_name):
 
-    def set_pulse(self):
-        thread = threading.currentThread()
-        # maximal pulse interval in ms
-        max_interval = 500
-        # max displacement from center
-        max_distance = numpy.linalg.norm(numpy.min((self.az_range, self.ele_range), axis=1) - numpy.array((0, 0)))
-        while getattr(thread, "run", True):
-            # scale distance with maximal distance
-            interval_scale = (self.distance - 2 + 1e-9) / max_distance
-            # scale interval logarithmically with distance
-            interval = max_interval * (numpy.log(interval_scale + 0.05) + 3) / 3  # log scaling
-            self.pulse_stream.interval_duration = interval
-            time.sleep(.001)
+    # shared variables
+    sensor_state = mp.Array("i", [0])  # sensor_tracking control
+    binsim_state = mp.Array("i", [0])  # play_trial control
+    target = mp.Array("i", [0, 0])  # from get_target to sensor_tracking
+    distance = mp.Array("f", [0])  # from sensor_tracking to play_trial
+    pulse_interval = mp.Array("i", [-1]) # from play_trial to pulse_stream, initially muted
+    score = mp.Array("i", [0])  # from play_trial
+    osc_client = init_osc_client()
 
-    def set_target(self, min_dist=45):
-        target = (numpy.random.randint(self.az_range[0], self.az_range[1]),
-                  numpy.random.randint(self.ele_range[0], self.ele_range[1]))
-        if self.target:  # check if target is at least min_dist away from previous target
-            diff = numpy.diff((target, self.target), axis=0)[0]
-            euclidean_dist = numpy.sqrt(diff[0] ** 2 + diff[1] ** 2)
-            while euclidean_dist < min_dist:
-                target = (numpy.random.randint(self.az_range[0], self.az_range[1]),
-                          numpy.random.randint(self.ele_range[0], self.ele_range[1]))
-                diff = numpy.diff((target, self.target), axis=0)[0]
-                euclidean_dist = numpy.sqrt(diff[0] ** 2 + diff[1] ** 2)
-        print('\n TARGET| azimuth: %.1f, elevation %.1f' % (target[0], target[1]))
-        self.target = target
+    # connect sensor and wait for process to run
+    tracking_worker = mp.Process(target=head_tracking, args=(distance, target, osc_client,
+                                                                    filter_name, sensor_state))
+    tracking_worker.start()
+    while sensor_state[0] == 0:  # wait for sensor to initialize
+        time.sleep(0.1)
 
-    def end_trial(self, sound='buzzer'):
-        self.pulse_stream.interval_duration = -1  # pause pybinsim pyaudio stream
-        self.filter_thread.run = False
-        self.pulse_thread.run = False
-        self.sounds[sound].play()  # play end sound #todo play game sounds from target locations
-        time.sleep(self.sounds[sound].duration)
+    # set up pulse stream (init pybinsim)
+    pulse_worker = mp.Process(target=pulse_stream, args=(filter_name, distance, binsim_state))
+    pulse_worker.start()
+    while binsim_state[0] == 0:  # wait for pyaudio to initialize
+        time.sleep(.01)
 
-    @staticmethod
-    def _make_osc_client():
-        # Create OSC client
-        host = '127.0.0.1'
-        mode = 'client'
-        ip = '127.0.0.1'
-        port = 10000
-        parser = argparse.ArgumentParser()
-        parser.add_argument("--host", default=host)
-        parser.add_argument("--mode", default=mode)
-        parser.add_argument("--ip", default=ip, help="The ip of the OSC server")
-        parser.add_argument("--port", type=int, default=port, help="The port the OSC server is listening on")
-        args = parser.parse_args()
-        osc_client = udp_client.SimpleUDPClient(args.ip, args.port)
-        return osc_client
+    input("Press Enter to start the game...")
+    scores = []
+    sensor_state[0] = 2  # start sensor tracking
+    start_time = time.time()
 
-    @staticmethod
-    def _stop_game():
-        freefield.halt()
+    while time.time() - start_time < game_time:
+        set_target(az_range, ele_range, target, min_dist=30)
+        trial_worker = mp.Process(target=play_trial, args=(distance, pulse_interval, score,
+                                                   osc_client, trial_time, target_size, target_time))
+        trial_worker.start()
+        trial_worker.join()
+        scores.append(score[0])
+        print(f'Trial complete: {score} points')
+        input("Press Enter to start the next trial...")
 
-    @staticmethod
-    def _wait_for_button(*msg, button=''):
-        response = None
-        while response != button:
-            if msg: response = input(msg)
-            else: response = input('Waiting for button.')
-        return response
+    play_sound('buzzer', osc_client, pulse_interval)
+    print(f'Game Over! Total Score: {sum(scores)}')
+    pulse_worker.terminate()
+    pulse_worker.join()
+    tracking_worker.terminate()
+    tracking_worker.join()
 
 if __name__ == "__main__":
-    if not (data_dir / 'hrtf' / 'wav' / str(Path(filename).stem)).exists():
-        hrtf2wav(filename)
-    self = Training(filename)
-    self.run()
+    parser = argparse.ArgumentParser(description="Run the auditory training experiment.")
+    parser.add_argument("--game_time", type=int, default=200, help="Total session duration in seconds")
+    parser.add_argument("--trial_time", type=int, default=90, help="Time limit per trial in seconds")
+    parser.add_argument("--target_size", type=int, default=5, help="Size of the target zone")
+    parser.add_argument("--target_time", type=float, default=3, help="Time required to hold gaze on target")
+    parser.add_argument("--az_range", type=int, nargs=2, default=[-30, 30], help="Azimuth range for target selection")
+    parser.add_argument("--ele_range", type=int, nargs=2, default=[-30, 30],
+                        help="Elevation range for target selection")
+    parser.add_argument("--filter_name", type=str, default='KU100_HRIR_L2702', help="HRTF filename for PyBinSim")
+    args = parser.parse_args()
+    if not (data_dir / 'wav' / args.filter_name).exists():
+        hrtf2wav(f'{args.filter_name}.sofa')
+    play_session(args.game_time, args.trial_time, args.target_size, args.target_time, tuple(args.az_range),
+         tuple(args.ele_range), args.filter_name)
+
+    # game_time  = 90
+    # trial_time = 10
+    # target_size = 5
+    # target_time = 3
+    # az_range = (-30, 30)
+    # ele_range = (-30, 30)
+    # filter_name = 'KU100_HRIR_L2702'
+

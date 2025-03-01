@@ -70,9 +70,10 @@ class Sensor:
         logging.debug("Configuring motion sensor")
         # setup ble
         libmetawear.mbl_mw_settings_set_connection_parameters(state.device.board, 7.5, 7.5, 0, 6000)
-        # setup quaternionA
-        # libmetawear.mbl_mw_sensor_fusion_set_mode(sensor.device.board, SensorFusionMode.NDOF)
-        libmetawear.mbl_mw_sensor_fusion_set_mode(state.device.board, SensorFusionMode.IMU_PLUS)
+        # Calculates absolute orientation from accelerometer, gyro, and magnetometer:
+        libmetawear.mbl_mw_sensor_fusion_set_mode(state.device.board, SensorFusionMode.NDOF)
+        # Calculates relative orientation in space from accelerometer and gyro data:
+        # libmetawear.mbl_mw_sensor_fusion_set_mode(state.device.board, SensorFusionMode.IMU_PLUS)
         libmetawear.mbl_mw_sensor_fusion_set_acc_range(state.device.board, SensorFusionAccRange._8G)
         libmetawear.mbl_mw_sensor_fusion_set_gyro_range(state.device.board, SensorFusionGyroRange._2000DPS)
         libmetawear.mbl_mw_sensor_fusion_write_config(state.device.board)

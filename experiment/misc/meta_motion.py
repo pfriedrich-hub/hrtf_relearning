@@ -63,7 +63,7 @@ def get_device():
 class Sensor:
     def __init__(self, state):
         self.state = self._connect(state)
-        self.convention = 'physics'
+        self.convention = 'psychoacoustics'
 
     @staticmethod
     def _connect(state):
@@ -99,7 +99,7 @@ class Sensor:
         if not self.state.device.is_connected:
             logging.warning('Sensor connection lost! Reconnect? (Y/n)')
             if input().upper() == 'Y':
-                self.halt()  # probably unnecessary
+                self.halt()
                 self.state.device.connect()
         pose_log = numpy.zeros((n_datapoints, 2))
         n = 0
@@ -109,19 +109,49 @@ class Sensor:
                 pose_log[n] = pose
                 n += 1
         pose = numpy.mean(pose_log, axis=0).astype('float16')
-        if self.convention == 'physics':
-            pose[0] = 360 - pose[0]
-        elif self.convention == 'psychoacoustics':
-            if pose[0] > 180:
-                pose[0] -= 360
+        if self.convention == 'psychoacoustics':
+            pose[0] = (pose[0] + 180) % 360 - 180
         if calibrate:
             if self.pose_offset is None:
                 logging.warning("Device not calibrated")
             else:
-                pose = pose - self.pose_offset
+                if self.convention == 'psychoacoustics':  # normalize AZ to [0, 360] range
+                    pose[0] = (pose[0] - self.pose_offset[0] + 180) % 360 - 180
+                if self.convention == 'physics':
+                    pose[0] = (pose[0] - self.pose_offset[0]) % 360
+                    if pose[0] < 0: pose[0] = pose[0] + 360
+                pose[1] = (pose[1] - self.pose_offset[1])
         if print_pose:
                 logging.info('head pose: azimuth: %.1f, elevation: %.1f' % (pose[0], pose[1]))
         return pose
+
+    def calibrate(self):
+        """
+        Calibrate the motion sensor offset to 0° Azimuth and 0° Elevation. A LED will light up to guide head orientation
+        towards the center speaker. After a button is pressed, head orientation will be measured until it remains stable.
+        The average is then used as an offset for pose estimation.
+            Args:
+            led_feedback: whether to turn on the central led to assist gaze control during calibration
+            button_control (str): whether to initialize calibration by button response; may be 'processor' if a button is
+             connected to the RP2 or 'keyboard', if usb keyboard inumpyut is to be used.
+        Returns:
+            bool: True if difference between pose and fix is smaller than var, False otherwise
+        """
+        log_size = 100
+        limit = 0.2
+        logging.debug('calibrating')
+        log = numpy.zeros(2)
+        while True:  # wait in loop for sensor to stabilize
+            pose = self.get_pose(calibrate=False)
+            log = numpy.vstack((log, pose))
+            # check if orientation is stable for at least 30 data points
+            if len(log) > log_size:
+                diff = numpy.mean(numpy.abs(numpy.diff(log[-log_size:], axis=0)), axis=0)
+                logging.debug('calibration: az diff: %f,  ele diff: %f' % (diff[0], diff[1]))
+                if diff[0] < limit and diff[1] < limit:  # limit in degree
+                    break
+        self.pose_offset = numpy.mean(log, axis=0).astype('float16')
+        logging.debug('Sensor calibration complete.')
 
     def halt(self):
         """
@@ -155,33 +185,6 @@ class Sensor:
         libmetawear.mbl_mw_sensor_fusion_write_config(self.state.device.board)
         logging.info(f'Sensor fusion mode set to {fusion_mode}')
 
-    def calibrate(self):
-        """
-        Calibrate the motion sensor offset to 0° Azimuth and 0° Elevation. A LED will light up to guide head orientation
-        towards the center speaker. After a button is pressed, head orientation will be measured until it remains stable.
-        The average is then used as an offset for pose estimation.
-            Args:
-            led_feedback: whether to turn on the central led to assist gaze control during calibration
-            button_control (str): whether to initialize calibration by button response; may be 'processor' if a button is
-             connected to the RP2 or 'keyboard', if usb keyboard inumpyut is to be used.
-        Returns:
-            bool: True if difference between pose and fix is smaller than var, False otherwise
-        """
-        log_size = 100
-        limit = 0.2
-        logging.debug('calibrating')
-        log = numpy.zeros(2)
-        while True:  # wait in loop for sensor to stabilize
-            pose = self.get_pose(calibrate=False)
-            log = numpy.vstack((log, pose))
-            # check if orientation is stable for at least 30 data points
-            if len(log) > log_size:
-                diff = numpy.mean(numpy.abs(numpy.diff(log[-log_size:], axis=0)), axis=0)
-                logging.debug('calibration: az diff: %f,  ele diff: %f' % (diff[0], diff[1]))
-                if diff[0] < limit and diff[1] < limit:  # limit in degree
-                    break
-        self.pose_offset = numpy.mean(log[-int(log_size / 2):], axis=0).astype('float16')
-        logging.debug('Sensor calibration complete.')
 
 
 

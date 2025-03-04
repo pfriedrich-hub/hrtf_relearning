@@ -51,6 +51,7 @@ class Localization:
             self.motion_sensor.calibrate()
             # generate and play stim, get pose response
             self.play_trial()
+            logging.info(f'{self.target}')
             # write to file
             self.subject.write()
         return
@@ -71,9 +72,10 @@ class Localization:
 
         # get response
         input('Aim at Sound and press Enter to confirm.')
-        self.subject.localization[self.filename].add_response(self.motion_sensor.get_pose())
+        response = self.motion_sensor.get_pose()
         self.play_sound(data_dir / 'hrtf' / 'wav' / hrtf_name / 'sounds' / 'beep.wav', self.target)
         time.sleep(.25)
+        self.subject.localization[self.filename].add_response(numpy.array((response, self.target)))
 
     def play_sound(self, path, target):
         # set filter

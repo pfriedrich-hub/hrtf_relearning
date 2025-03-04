@@ -1,18 +1,26 @@
+import numpy
+import scipy
+from matplotlib import pyplot as plt
+
 def localization_accuracy(sequence, show=True, plot_dim=2, binned=True, axis=None, show_single_responses=True,
                           elevation='all', azimuth='all'):
     if sequence.this_n == -1 or sequence.n_remaining == 132 or not sequence.data:
         return numpy.nan, numpy.nan, numpy.nan, numpy.nan, numpy.nan, numpy.nan
     # retrieve data
-    loc_data = numpy.asarray(sequence.data)
-    loc_data = loc_data.reshape(loc_data.shape[0], 2, 2)
-    targets = loc_data[:, 1]  # [az, ele]
-    responses = loc_data[:, 0]
-    elevations = numpy.unique(loc_data[:, 1, 1])
-    azimuths = numpy.unique(loc_data[:, 1, 0])
-    targets[:, 1] = loc_data[:, 1, 1]  # target elevations
-    responses[:, 1] = loc_data[:, 0, 1]  # percieved elevations
-    targets[:, 0] = loc_data[:, 1, 0]
-    responses[:, 0] = loc_data[:, 0, 0]
+    # loc_data = numpy.asarray(sequence.data)
+    # loc_data = loc_data.reshape(loc_data.shape[0], 2, 2)
+    # targets = loc_data[:, 1]  # [az, ele]
+    # responses = loc_data[:, 0]
+
+    targets = numpy.asarray(sequence.conditions)  # [az, ele]
+    responses = numpy.asarray(sequence.data).reshape(10,2)
+
+    # elevations = numpy.unique(loc_data[:, 1, 1])
+    # azimuths = numpy.unique(loc_data[:, 1, 0])
+    # targets[:, 1] = loc_data[:, 1, 1]  # target elevations
+    # responses[:, 1] = loc_data[:, 0, 1]  # percieved elevations
+    # targets[:, 0] = loc_data[:, 1, 0]
+    # responses[:, 0] = loc_data[:, 0, 0]
 
     #  elevation gain, rmse, response variability
     elevation_gain, n = scipy.stats.linregress(targets[:, 1], responses[:, 1])[:2]

@@ -47,7 +47,7 @@ class Localization:
         for self.target in self.subject.localization[self.filename]:
             logging.info(f'Target: {self.target}')
             # calibrate sensor
-            input('Look at the Center and press Enter')
+            input('Look at the Center and press Enter\n')
             self.motion_sensor.calibrate()
             # generate and play stim, get pose response
             self.play_trial()
@@ -88,7 +88,7 @@ class Localization:
         filter_idx = numpy.argmin(numpy.linalg.norm(rel_target - self.hrtf_sources, axis=1))
         self.osc_client.send_message('/pyBinSim', [0, int(filter_idx), 0, 0, 0, 0, 0])
         logging.info(f'set filter for {self.hrtf_sources[filter_idx]}')
-        time.sleep(.1)
+        # time.sleep(.1)
         # play
         self.osc_client.send_message('/pyBinSimFile', str(path))
         logging.info(f'Playing {path.stem}')

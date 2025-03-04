@@ -12,11 +12,9 @@ def localization_accuracy(sequence, show=True, plot_dim=2, binned=True, axis=Non
     targets = loc_data[:, 1]  # [az, ele]
     responses = loc_data[:, 0]
 
-    # targets = numpy.asarray(sequence.conditions)  # [az, ele]
-    # responses = numpy.asarray(sequence.data).reshape(10,2)
 
-    # elevations = numpy.unique(loc_data[:, 1, 1])
-    # azimuths = numpy.unique(loc_data[:, 1, 0])
+    elevations = numpy.unique(loc_data[:, 1, 1])
+    azimuths = numpy.unique(loc_data[:, 1, 0])
     # targets[:, 1] = loc_data[:, 1, 1]  # target elevations
     # responses[:, 1] = loc_data[:, 0, 1]  # percieved elevations
     # targets[:, 0] = loc_data[:, 1, 0]
@@ -41,16 +39,16 @@ def localization_accuracy(sequence, show=True, plot_dim=2, binned=True, axis=Non
     # below_ids = numpy.where(loc_data[:, 1, 1] < 0)
 
     # mean perceived location for each target speaker
-    i = 0
-    mean_loc = numpy.zeros((45, 2, 2))
-    for az_id, azimuth in enumerate(numpy.unique(targets[:, 0])):
-        for ele_id, elevation in enumerate(numpy.unique(targets[:, 1])):
-            [perceived_targets] = loc_data[numpy.where(numpy.logical_and(loc_data[:, 1, 1] == elevation,
-                          loc_data[:, 1, 0] == azimuth)), 0]
-            if perceived_targets.size != 0:
-                mean_perceived = numpy.mean(perceived_targets, axis=0)
-                mean_loc[i] = numpy.array(((azimuth, mean_perceived[0]), (elevation, mean_perceived[1])))
-                i += 1
+    # i = 0
+    # mean_loc = numpy.zeros((45, 2, 2))
+    # for az_id, azimuth in enumerate(numpy.unique(targets[:, 0])):
+    #     for ele_id, elevation in enumerate(numpy.unique(targets[:, 1])):
+    #         [perceived_targets] = loc_data[numpy.where(numpy.logical_and(loc_data[:, 1, 1] == elevation,
+    #                       loc_data[:, 1, 0] == azimuth)), 0]
+    #         if perceived_targets.size != 0:
+    #             mean_perceived = numpy.mean(perceived_targets, axis=0)
+    #             mean_loc[i] = numpy.array(((azimuth, mean_perceived[0]), (elevation, mean_perceived[1])))
+    #             i += 1
 
     # divide target space in 16 half overlapping sectors and get mean response for each sector
     mean_loc_binned = numpy.empty((0, 2, 2))
@@ -66,6 +64,7 @@ def localization_accuracy(sequence, show=True, plot_dim=2, binned=True, axis=Non
             mean_tar_bin[:, [0, 1]] = mean_tar_bin[:, [1, 0]]
             mean_loc_binned = numpy.concatenate((mean_loc_binned, [mean_tar_bin]))
 
+    # plot
     if show:
         if not axis:
             fig, axis = plt.subplots(1, 1)

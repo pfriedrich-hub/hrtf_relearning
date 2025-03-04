@@ -1,105 +1,86 @@
-import freefield
-import slab
-import datetime
+import argparse
+import logging
+import time
+from pythonosc import udp_client
+from experiment.misc import meta_motion
+from hrtf.processing.hrtf2wav import *
+logging.getLogger().setLevel('INFO')
 import pybinsim
+import datetime
 date = datetime.datetime.now()
 date = f'{date.strftime("%d")}_{date.strftime("%m")}'
-from pathlib import Path
-import argparse
-from pythonosc import udp_client
-from experiment.Subject import Subject
-from localization_analysis import *
-from hrtf.processing.hrtf2wav import hrtf2wav
-import logging
-import threading
-
 data_dir = Path.cwd() / 'data'
+from experiment.Subject import Subject
 
-subject_id = 'Paul'
-hrtf_filename = 'KU100_HRIR_L2702.sofa'
+subject_id = 'test'
+hrtf_name ='KU100_HRIR_L2702'
+slab.set_default_samplerate(slab.HRTF(data_dir / 'hrtf' / 'sofa' / f'{hrtf_name}.sofa').samplerate)
 
 class Localization:
-    def __init__(self, subject_id, hrtf_filename, n_trials=150, az_range=(-52.5, 52.5), ele_range=(-37.5, 37.5), min_dist=35):
-        self.sequence = self._make_sequence(n_trials, az_range, ele_range, min_dist)
+    def __init__(self, subject_id, hrtf_name):
+        # metadata
         self.filename = subject_id + '_' + date
-        self.n_trials = n_trials
         self.subject = Subject(subject_id)
-        self.beep = slab.Sound.tone(frequency=1000, level=70)
-        self.hrtf = slab.HRTF(data_dir / 'hrtf' / 'sofa' / hrtf_filename)
-        slab.set_default_samplerate(self.hrtf.samplerate)
+        self.hrtf_sources = slab.HRTF(data_dir / 'hrtf' / 'sofa' / f'{hrtf_name}.sofa').sources.vertical_polar
+        self.stim_path = data_dir / 'hrtf' / 'wav' / hrtf_name / 'sounds' / 'noise_burst.wav'
+        # make trial sequence
+        self.sequence = self._make_sequence(10, (-52.5, 52.5), (-37.5, 37.5), 20)
+        self.target = None
 
-        self.osc_client = self._make_osc_client()
-        self.filter_idx = 0  # filter index in the initial osc message
-        self.binsim = self._init_pybinsim(Path(hrtf_filename).stem)
-        self.audio_stream = threading.Thread(target=self._binsim_start, args=(self.binsim,))
+        # init pybinsim
+        self.osc_client = self._init_osc_client()
+        self.binsim = self.init_pybinsim()
 
-    # def __repr__(self):
-    #     return f'{type(self)} Sessions played: {len(self.scores)} Scores: {repr(self.scores)}'
+        # init motion sensor
+        self.motion_sensor = self.init_sensor()
+        time.sleep(.2)
 
     def run(self):
-        freefield.initialize(setup='dome', default=None, device=None, sensor_tracking=True)
-        self._wait_for_button('Press Enter to start.')
-        freefield.calibrate_sensor(led_feedback=False, button_control=False)
-        for self.target in self.sequence:
-            # freefield.calibrate_sensor(led_feedback=False, button_control=False)
-            self.sequence.add_response(self.localization_trial())
-            self.wait_for_button('Press Enter to continue')
-
+        # enable audio
+        self.binsim.config.configurationDict['loudnessFactor'] = 0.5
+        for target in self.sequence:
+            # center head and calibrate sensor
+            input('Look at the center and press enter to calibrate sensor')
+            self.motion_sensor.calibrate()
+            # generate and play stim
+            self.play_trial(target)
+            # get head pose response
+            self.get_pose()
+        # save trial sequence
+        self.sequence.save_pickle('test_sequence.pkl')
+        # plot
         return
 
-    def localization_trial(self):
-        self.play_sound(sound=self._make_stim(), coordinates=self.target)  # play stimulus
-        self.wait_for_button('Aim at the sound and press Enter to confirm')  # wait for response
-        response = freefield.get_head_pose()  # get pose
-        print('Response| azimuth %.1f |elevation %.1f' % (response[0], response[1]))
-        self.play_sound(sound=self.beep, coordinates=(0, 0))  # play stimulus
-        return response
+    def play_trial(self, target):
+        # generate stimulus
+        noise = slab.Sound.pinknoise(duration=0.025, level=90)
+        noise = noise.ramp(when='both', duration=0.01)
+        silence = slab.Sound.silence(duration=0.025)
+        stim = slab.Sound.sequence(noise, silence, noise, silence, noise,
+                                   silence, noise, silence, noise)
+        stim.ramp('both', 0.01)
+        stim.write(self.stim_path)
 
-    def play_sound(self, sound, coordinates):
-        # write sound to wav and send to pybinsim
-        self.set_sound(sound)
-        self.set_filter(coordinates)  # set the HRIR to pybinsim
-        self.audio_stream.start()
-        # self.binsim.stream_close()  #todo see if stream closes automatically when looping is set to false
+        # set filter
+        pose = self.motion_sensor.get_pose()
+        # set distance for play_session
+        relative_coords = target - pose
+        # find the closest filter idx and send to pybinsim
+        relative_coords[0] = (-relative_coords[0] + 360) % 360  # mirror and convert to HRTF convetion [0 < az < 360]
+        rel_target = numpy.array((relative_coords[0], relative_coords[1], self.hrtf_sources[0, 2]))
+        filter_idx = numpy.argmin(numpy.linalg.norm(rel_target - self.hrtf_sources, axis=1))
+        self.osc_client.send_message('/pyBinSim', [0, int(filter_idx), 0, 0, 0, 0, 0])
+        logging.info(f'set filter for {self.hrtf_sources[filter_idx]}')
 
-    def set_sound(self, sound):
-        sound.write(data_dir / 'sounds' / 'localization.wav')
-        self.osc_client.send_message('/pyBinSimFile', 'localization.wav')
-
-    def set_filter(self, coordinates):
-        # get sound source coordinates relative to head pose
-        self.headpose = freefield.get_head_pose()
-        rel_coords = coordinates - self.headpose
-        # convert coordinates to HRTF convention (=physics convention)
-        if rel_coords[0] > 0:
-            rel_coords[0] = 360 - rel_coords[0]
-        elif rel_coords[0] < 0:
-            rel_coords[0] *= -1
-        # find idx of the nearest filter in the hrtf
-        filter_coords = self.hrtf._get_coordinates((rel_coords[0], rel_coords[1],
-                        self.hrtf.sources.vertical_polar[0,2]), 'spherical').cartesian
-        distances = numpy.sqrt(((filter_coords - self.hrtf.sources.cartesian) ** 2).sum(axis=1))
-        next_idx = int(numpy.argmin(distances))
-        if next_idx != self.filter_idx:
-            # change filter
-            filter_msg = [0, next_idx, 0, 0, 0, 0, 0]
-            self.osc_client.send_message('/pyBinSim', filter_msg)
-            self.filter_idx = next_idx
+        # play
+        self.osc_client.send_message('/pyBinSimFile', str(self.stim_path))
+        # self.binsim.config.configurationDict['loudnessFactor'] = .5
+        logging.info(f'playing sound {self.stim_path}')
+        time.sleep(stim.duration)
+        # self.binsim.config.configurationDict['loudnessFactor'] = 0
 
     @staticmethod
-    def _init_pybinsim(filtername):
-        # init binsim object
-        binsim = pybinsim.BinSim(Path.cwd() / 'data' / 'hrtf' / 'wav' / filtername / f'{filtername}_settings.txt')
-        pybinsim.logger.setLevel(logging.DEBUG)  # defaults to INFO
-        return binsim
-
-    @staticmethod
-    def _binsim_start(binsim):
-        binsim.stream_start()
-
-    @staticmethod
-    def _make_osc_client():
-        # Create OSC client
+    def _init_osc_client():
         host = '127.0.0.1'
         mode = 'client'
         ip = '127.0.0.1'
@@ -110,18 +91,16 @@ class Localization:
         parser.add_argument("--ip", default=ip, help="The ip of the OSC server")
         parser.add_argument("--port", type=int, default=port, help="The port the OSC server is listening on")
         args = parser.parse_args()
-        osc_client = udp_client.SimpleUDPClient(args.ip, args.port)
-        return osc_client
+        return udp_client.SimpleUDPClient(args.ip, args.port)
 
-    @staticmethod
-    def _wait_for_button(*msg, button=''):
-        response = None
-        while response != button:
-            if msg:
-                response = input(msg)
-            else:
-                response = input('Waiting for button.')
-        return response
+    def init_pybinsim(self):
+        binsim = pybinsim.BinSim(data_dir / 'hrtf' / 'wav' / hrtf_name / f'{hrtf_name}_settings.txt')
+        pybinsim.logger.setLevel(logging.INFO)
+        binsim.soundHandler.loopSound = False
+        binsim.config.configurationDict['loudnessFactor'] = 0
+        self.osc_client.send_message('/pyBinSimFile', str(self.stim_path))
+        binsim.stream_start()
+        return binsim
 
     @staticmethod
     def _make_sequence(n_trials, az_range, ele_range, min_dist):
@@ -129,35 +108,152 @@ class Localization:
         Create a sequence of n_trials target locations
         with more than min_dist angular distance between successive targets
         """
+        logging.info('Setting up trial sequence.')
         sequence = []
-        target = (numpy.random.randint(az_range[0], az_range[1] + 1),
-                  numpy.random.randint(ele_range[0], ele_range[1] + 1))
+        target = (0, 0)
         for i in range(n_trials):
-            distance = 0
-            while distance < min_dist:
-                next_target = (numpy.random.randint(az_range[0], az_range[1] + 1),
-                               numpy.random.randint(ele_range[0], ele_range[1] + 1))
-                distance = numpy.sqrt((target[0] - next_target[0]) ** 2 + (target[1] - next_target[1]) ** 2)
-            sequence.append(next_target)
-            target = next_target
-        sequence = slab.Trialsequence(sequence)
-        return sequence
+            while True:
+                prev_tar = target
+                next_tar = [numpy.random.randint(az_range[0], az_range[1]),
+                            numpy.random.randint(ele_range[0], ele_range[1])]
+                if numpy.linalg.norm(numpy.subtract(prev_tar, next_tar)) >= min_dist:
+                    break
+            sequence.append(next_tar)
+        return slab.Trialsequence(sequence)
 
-    @staticmethod
-    def _make_stim():
-        noise = slab.Sound.pinknoise(duration=0.025, level=90).ramp(when='both')
-        silence = slab.Sound.silence(duration=0.025)
-        return slab.Sound.sequence(noise, silence, noise, silence, noise, silence, noise, silence, noise)
+    def init_sensor(self):
+        # init motion sensor
+        device = meta_motion.get_device()  # Ensure this function initializes the hardware correctly
+        state = meta_motion.State(device)
+        return meta_motion.Sensor(state)
+
+    def get_pose(self):
+        input('Aim at sound source and press Enter to confirm.')
+        self.osc_client.send_message('/pyBinSimFile', str(data_dir / 'hrtf' / 'wav' /
+                                                          hrtf_name / 'sounds' / 'beep.wav'))
+        time.sleep(.5)
+        self.motion_sensor.get_pose()
+
+if __name__ == "__main__":
+    make_wav(hrtf_name)
+    self = Localization(subject_id, hrtf_name)
+    self.run()
+
+
+"""
+
+    def play_trial(self):
+        # motion_sensor.calibrate()
+        # pose = self.motion_sensor.get_pose()
+        # distance-to-interval parameters
+        max_interval = 250  # interval duration at max distance in ms
+        max_distance = numpy.linalg.norm(numpy.subtract([0,0],[az_range[0], ele_range[0]]))  # max distance in degrees
+        threshold = target_size  # the distance threshold in degrees below which interval duration should be zero
+        steepness = 50  # controls how gradually the interval duration increases
+
+        # game variables
+        time_on_target = 0
+        count_down = False
+
+        # start
+        sensor_state.value = 2  # start sensor tracking
+        binsim_state.value = 2  # unmute sound, start pulsing
+        running = True
+        trial_start = time.time()
+
+        while time.time() - trial_start < trial_time:
+            dist = distance.value
+            logging.debug(f'play trial: got distance value {dist}')
+            if dist <= threshold:  # get interval duration from distance
+                interval = 0
+            else:
+                norm_dist = (dist - threshold) / (max_distance - threshold)
+                norm_dist = numpy.clip(norm_dist, 0, 1)  # Keep in range [0, 1]
+                interval = int(max_interval * (numpy.log1p(steepness * norm_dist) / numpy.log1p(steepness))) + 100
+            interval = max(0, interval)  # ensure non-negative interval
+            logging.debug(f'play trial: set interval value {interval}')
+            pulse_interval.value = interval
+            if dist < target_size:
+                if not count_down:
+                    time_on_target, count_down = time.time(), True
+            else:
+                time_on_target, count_down = time.time(), False
+            # goal condition
+            if count_down and time.time() > time_on_target + target_time:
+                if time.time() - trial_start <= 3:
+                    play_sound('coins', osc_client, pulse_interval, binsim_state)
+                    score.value += 2
+                else:
+                    play_sound('coin', osc_client, pulse_interval, binsim_state)
+                    score.value += 1
+                binsim_state.value = 1  # stop pulse stream
+                sensor_state.value = 1  # stop sensor tracking
+            logging.debug(f'play trial: trial time {time.time() - trial_start}')
+            time.sleep(0.005)
+
+    def play_session(game_time, trial_time, target_size, target_time, az_range, ele_range):
+        # shared variables
+        osc_client = init_osc_client()  # binsim communication
+        sensor_state = mp.Value("i", 0)  # sensor_tracking control
+        binsim_state = mp.Value("i", 0)  # pulse_stream control
+        score = mp.Value("i", 0)  # score counter (play_trial)
+        target = mp.Array("i", [0, 0])  # get_target sets target - used by sensor_tracking
+        distance = mp.Value("f", 0)  # sensor_tracking updates distance and sends to play_trial
+        pulse_interval = mp.Value("i", 0) # play_trial updates interval and sends to pulse_stream
+        # p_distance, c_distance = mp.Pipe()  # sensor_tracking updates distance and sends to play_trial
+        # p_interval, c_interval = mp.Pipe() # play_trial updates interval and sends to pulse_stream
+
+        # connect sensor and wait for process to run
+        tracking_worker = mp.Process(target=head_tracking, args=(distance, target, osc_client, sensor_state))
+        tracking_worker.start()
+        while sensor_state.value == 0:  # wait for sensor to initialize
+            time.sleep(0.1)
+
+        # set up pulse stream (init pybinsim)
+        pulse_worker = mp.Process(target=pulse_stream, args=(pulse_interval, binsim_state))
+        pulse_worker.start()
+        while binsim_state.value == 0:  # wait for pyaudio to initialize
+            time.sleep(.01)
+
+        scores = []
+        start_time = time.time()
+        while time.time() - start_time < game_time:
+            set_target(az_range, ele_range, target, min_dist=30)
+            trial_worker = mp.Process(target=play_trial, args=(distance, pulse_interval, score, binsim_state, sensor_state,
+                                                               osc_client, trial_time, target_size, target_time))
+            time.sleep(.5)
+            input("Press Enter to play.")
+            trial_worker.start()
+            trial_worker.join()
+            trial_worker.terminate()
+            scores.append(score.value)
+            print(f'Trial complete: {score.value} points')
+            time.sleep(.5)
+            sensor_state = 0 # recalibrate sensor
+        # end
+        play_sound('buzzer', osc_client, pulse_interval)
+        print(f'Game Over! Total Score: {sum(scores)}')
+        pulse_worker.terminate()
+        pulse_worker.join()
+        tracking_worker.terminate()
+        tracking_worker.join()
+
+    if __name__ == "__main__":
+        if not (data_dir / 'wav' / filename).exists():
+            hrtf2wav(f'{filename}.sofa')
+        play_session(game_time, trial_time, target_size, target_time, tuple(az_range), tuple(ele_range))
 
 
 
-#
-# if __name__ == "__main__":
-#     subject = Subject(id=subject_id)
-#     localization = Localization(n_repetitions=3)
-#     localization_data = localization.run()
-#     subject.localization_data.append({'data': localization_data, 'condition': filename, 'date': date})
-#     subject.write()
-#     if not (data_dir / 'hrtf' / 'wav' / str(Path(filename).stem)).exists():
-#         hrtf2wav(filename)
-#     localization_accuracy(data=localization_data)
+"""
+
+        # parser = argparse.ArgumentParser(description="Run the auditory training experiment.")
+        # parser.add_argument("--game_time", type=int, default=90, help="Total session duration in seconds")
+        # parser.add_argument("--trial_time", type=int, default=10, help="Time limit per trial in seconds")
+        # parser.add_argument("--target_size", type=int, default=2, help="Size of the target zone")
+        # parser.add_argument("--target_time", type=float, default=1, help="Time required to hold gaze on target")
+        # parser.add_argument("--az_range", type=int, nargs=2, default=[-45, 45], help="Azimuth range for target selection")
+        # parser.add_argument("--ele_range", type=int, nargs=2, default=[-45, 45], help="Elevation range for target selection")
+        # parser.add_argument("--filename", type=str, default='KU100_HRIR_L2702', help="HRTF filename for PyBinSim")
+        # args = parser.parse_args()
+        #

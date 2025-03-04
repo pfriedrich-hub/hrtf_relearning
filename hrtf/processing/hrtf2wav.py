@@ -2,16 +2,20 @@ from pathlib import Path
 import numpy
 import slab
 from hrtf.processing.tf2ir import tf2ir
-fs = 48828
 wav_path = Path.cwd() / 'data' / 'hrtf' / 'wav'
 sofa_path = Path.cwd() / 'data' / 'hrtf' / 'sofa'
 sound_path = Path.cwd() / 'data' / 'sounds'
+
+def make_wav(filename):
+    if not (wav_path /filename).exists():
+        hrtf2wav(f'{filename}.sofa')
 
 def hrtf2wav(filename, n_bins=None, add_itd=True):
     """
     Convert HRIR filters from a sofa file to wav files for use with pybinsim.
     """
     hrtf = slab.HRTF(sofa_path / filename)
+    slab.set_default_samplerate(hrtf.samplerate)
     if hrtf.datatype not in ['TF', 'FIR']:
         raise ValueError('Unknown datatype.')
     if hrtf.datatype == 'TF':
@@ -69,19 +73,20 @@ def hrtf2wav(filename, n_bins=None, add_itd=True):
 
         fname = wav_path / dir_name / 'IR_data' / f'{coordinates[0]}_{coordinates[1]}.wav'
         # write to wav
-        slab.Sound(data=fir_coefs, samplerate=int(hrtf.samplerate)).write(filename=fname)
-
+        slab.Sound(data=fir_coefs).write(filename=fname)
         # write to filter_list
         with open(filter_list_fname, 'a') as file:
             file.write(f'{source_idx} 0 0 0 0 0 {fname}\n')
 
     # create 20s pinknoise with the correct samplerate
-    (slab.Sound.pinknoise(duration=20.0, samplerate=hrtf.samplerate, level=80).write
-     (wav_path / dir_name / 'sounds' / f'pinknoise.wav'))
+    slab.Sound.pinknoise(duration=20.0, level=80).write(wav_path / dir_name / 'sounds' / 'pinknoise.wav')
+    # beep
+    slab.Sound.tone(frequency=1000, level=60, duration=.25).write(wav_path / dir_name / 'sounds' / 'beep.wav')
     # resample game sounds
     buzzer = slab.Sound.read(sound_path / 'buzzer.wav')
-    buzzer.resample(hrtf.samplerate).write(wav_path / dir_name / 'sounds' / f'buzzer.wav')
+    buzzer.resample(hrtf.samplerate).write(wav_path / dir_name / 'sounds' / 'buzzer.wav')
     coin = slab.Sound.read(sound_path / 'coin.wav')
-    coin.resample(hrtf.samplerate).write(wav_path / dir_name / 'sounds' / f'coin.wav')
+    coin.resample(hrtf.samplerate).write(wav_path / dir_name / 'sounds' / 'coin.wav')
     coins = slab.Sound.read(sound_path / 'coins.wav')
-    coins.resample(hrtf.samplerate).write(wav_path / dir_name / 'sounds' / f'coins.wav')
+    coins.resample(hrtf.samplerate).write(wav_path / dir_name / 'sounds' / 'coins.wav')
+

@@ -28,7 +28,7 @@ def init_osc_client():
     parser.add_argument("--ip", default=ip, help="The ip of the OSC server")
     parser.add_argument("--port", type=int, default=port, help="The port the OSC server is listening on")
     args = parser.parse_args()
-    osc_client = udp_client.SimpleUDPClient(args.ip, args.port)
+    # osc_client = udp_client.SimpleUDPClient(args.ip, args.port)
     return udp_client.SimpleUDPClient(args.ip, args.port)
 
 def set_target(az_range, ele_range, target, min_dist=30):
@@ -209,8 +209,7 @@ def play_session(game_time, trial_time, target_size, target_time, az_range, ele_
     tracking_worker.join()
 
 if __name__ == "__main__":
-    if not (data_dir / 'wav' / filename).exists():
-        hrtf2wav(f'{filename}.sofa')
+    make_wav(filename)
     play_session(game_time, trial_time, target_size, target_time, tuple(az_range), tuple(ele_range))
 
 

@@ -1,8 +1,7 @@
 import argparse
 import logging
 import time
-from experiment.misc.localization_analysis import *
-from numpy.random import standard_t
+# from experiment.misc.localization_analysis import *
 from pythonosc import udp_client
 from experiment.misc import meta_motion
 from hrtf.processing.hrtf2wav import *
@@ -22,15 +21,16 @@ slab.set_default_samplerate(slab.HRTF(data_dir / 'hrtf' / 'sofa' / f'{hrtf_name}
 
 class Localization:
     def __init__(self, subject_id, hrtf_name):
-        # metadata
-        self.filename = subject_id + '_loc_' + date
+        # make trial sequence and write to subject
         self.subject = Subject(subject_id)
+        self.filename = subject_id + '_loc_' + date
+        self.subject.localization[self.filename] = (
+            self._make_sequence((-52.5, 52.5), (-37.5, 37.5), 20, 10, 3))
+        self.subject.write()
+
+        # metadata
         self.hrtf_sources = slab.HRTF(data_dir / 'hrtf' / 'sofa' / f'{hrtf_name}.sofa').sources.vertical_polar
         self.stim_path = data_dir / 'hrtf' / 'wav' / hrtf_name / 'sounds' / 'noise_burst.wav'
-        # make trial sequence and write to subject
-        self.subject.localization[self.filename] = self._make_sequence(10, (-52.5, 52.5), (-37.5, 37.5), 20)
-        self.subject.write()
-        # self.sequence = self._make_sequence(10, (-52.5, 52.5), (-37.5, 37.5), 20)
         self.target = None
 
         # init pybinsim
@@ -94,7 +94,7 @@ class Localization:
         logging.info(f'Playing {path.stem}')
 
     @staticmethod
-    def _make_sequence(n_trials, az_range, ele_range, min_dist):
+    def _make_sequence(az_range, ele_range, min_dist, n_unique_targets, n_repteitions):
         """
         Create a sequence of n_trials target locations
         with more than min_dist angular distance between successive targets
@@ -104,8 +104,12 @@ class Localization:
         with min_dist angular distance between successive targets
         """
         logging.info('Setting up trial sequence.')
-        targets = numpy.random.choice(numpy.arange(az_range[0], az_range[1] + 1), size=(50, 2), replace=False)
-        targets = numpy.repeat(targets, 3, axis=0)
+        azimuth_range = numpy.arange(az_range[0], az_range[1] + 1)  # Example: from -90° to 90° with 1° steps
+        elevation_range = numpy.arange(ele_range[0], ele_range[1] + 1)
+        target_azimuths = numpy.random.choice(azimuth_range, n_unique_targets, replace=False)
+        target_elevations = numpy.random.choice(elevation_range, n_unique_targets, replace=False)
+        targets = numpy.column_stack((target_azimuths, target_elevations))
+        targets = numpy.repeat(targets, n_repteitions, axis=0)
         targets = numpy.random.permutation(targets).tolist()
         sequence = [targets.pop(0)]
         while targets:
@@ -151,5 +155,5 @@ if __name__ == "__main__":
     loc_test = Localization(subject_id, hrtf_name)
     loc_test.run()
 
-    sequence = Subject(subject_id).localization[loc_test.filename]
-    localization_accuracy(sequence)
+    # sequence = Subject(subject_id).localization[loc_test.filename]
+    # localization_accuracy(sequence)

@@ -98,18 +98,22 @@ class Localization:
         """
         Create a sequence of n_trials target locations
         with more than min_dist angular distance between successive targets
+
+        randomly select [n_trials / 3] unique target locations
+        create a sequence of n_trials target locations so that each unique location appears 3 times in the sequence
+        with min_dist angular distance between successive targets
         """
         logging.info('Setting up trial sequence.')
-        sequence = []
-        target = (0, 0)
-        for i in range(n_trials):
-            while True:
-                prev_tar = target
-                next_tar = [numpy.random.randint(az_range[0], az_range[1]),
-                            numpy.random.randint(ele_range[0], ele_range[1])]
-                if numpy.linalg.norm(numpy.subtract(prev_tar, next_tar)) >= min_dist:
-                    break
-            sequence.append(next_tar)
+        targets = numpy.random.choice(numpy.arange(az_range[0], az_range[1] + 1), size=(50, 2), replace=False)
+        targets = numpy.repeat(targets, 3, axis=0)
+        targets = numpy.random.permutation(targets).tolist()
+        sequence = [targets.pop(0)]
+        while targets:
+            for tar in targets:
+                if numpy.linalg.norm(numpy.subtract(tar, sequence[-1])) >= min_dist:
+                    sequence.append(tar)
+                    targets.remove(tar)
+                    break  # Restart checking from the beginning
         return slab.Trialsequence(sequence)
 
     @staticmethod

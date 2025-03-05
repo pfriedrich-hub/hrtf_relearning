@@ -32,9 +32,9 @@ def localization_accuracy(sequence, show=True, plot_dim=2, binned=True, axis=Non
     az_var, ele_var = az_sd ** 2, ele_sd ** 2
 
     # target ids
-    right_ids = numpy.where(loc_data[:, 1, 0] > 0)
-    left_ids = numpy.where(loc_data[:, 1, 0] < 0)
-    mid_ids = numpy.where(loc_data[:, 1, 0] == 0)
+    # right_ids = numpy.where(loc_data[:, 1, 0] > 0)
+    # left_ids = numpy.where(loc_data[:, 1, 0] < 0)
+    # mid_ids = numpy.where(loc_data[:, 1, 0] == 0)
     # above_ids = numpy.where(loc_data[:, 1, 1] > 0)
     # below_ids = numpy.where(loc_data[:, 1, 1] < 0)
 
@@ -63,6 +63,30 @@ def localization_accuracy(sequence, show=True, plot_dim=2, binned=True, axis=Non
             mean_tar_bin = numpy.mean(tar_bin, axis=0).T
             mean_tar_bin[:, [0, 1]] = mean_tar_bin[:, [1, 0]]
             mean_loc_binned = numpy.concatenate((mean_loc_binned, [mean_tar_bin]))
+
+
+    az_range = (-60, 60)
+    ele_range = (-45, 45)
+    az_range = (-52.5, 52.5)
+    ele_range = (-37.5, 37.5)
+    sector_size = 10
+
+    # step 1: divide target space into half overlapping sectors with "sector_size":
+    az_bins = numpy.arange(az_range[0], az_range[1] + sector_size, sector_size / 2)
+    az_bins = numpy.sort(numpy.asarray([[az_bins[i], az_bins[i + 2]] for i in range(len(az_bins) - 2)]))
+
+
+
+
+    ele_bins = numpy.arange(ele_range[0], ele_range[1] + bin_size, bin_size)
+
+    for az in az_bins:
+        for ele in ele_bins:
+
+
+    # Compute the 2D histogram
+    bin_counts, x_edges, y_edges, _ = scipy.stats.binned_statistic_2d(
+        responses[:, 0], responses[:, 1], None, statistic='count', bins=[x_bins, y_bins])
 
     # plot
     if show:

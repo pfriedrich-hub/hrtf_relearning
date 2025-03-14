@@ -78,6 +78,7 @@ def localization_accuracy(sequence, show=True, plot_dim=2, binned=True, axis=Non
 
 
 
+
     ele_bins = numpy.arange(ele_range[0], ele_range[1] + bin_size, bin_size)
 
     for az in az_bins:

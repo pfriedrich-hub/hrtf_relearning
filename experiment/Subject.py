@@ -1,6 +1,9 @@
-from pathlib import Path
+import platform
+import pathlib
+if platform.system() == 'Darwin':  pathlib.WindowsPath = pathlib.PosixPath
 import pickle
 import logging
+from pathlib import Path
 results_dir = Path.cwd() / 'data' / 'results'
 
 class Subject:

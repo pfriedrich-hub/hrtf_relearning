@@ -1,67 +1,119 @@
-import numpy as np
+import matplotlib
+matplotlib.use("QtAgg")
+# matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
-from scipy.spatial import distance
+import numpy as np
+import random
 
-def generate_points(field_azimuth, field_elevation, square_size, min_distance):
-    az_min, az_max = field_azimuth
-    el_min, el_max = field_elevation
-    az_step, el_step = square_size
 
-    # Compute square centers
-    az_centers = np.arange(az_min + az_step / 2, az_max, az_step)
-    el_centers = np.arange(el_min + el_step / 2, el_max, el_step)
-    square_centers = np.array([[az, el] for az in az_centers for el in el_centers])
+def make_sequence(
+        azimuth_range=(-60, 60),
+        elevation_range=(-50, 50),
+        sector_size=(20, 20),  # (azimuth_size, elevation_size)
+        min_sector_distance=30,
+        points_per_sector=3
+):
+    """
+    Generates uniformly random points within sectors while ensuring a minimum distance between successive sectors.
 
-    # Generate one random point per square
-    points = square_centers + np.random.uniform(-az_step / 2, az_step / 2, size=square_centers.shape)
+    Parameters:
+    - azimuth_range: tuple (min_azimuth, max_azimuth)
+    - elevation_range: tuple (min_elevation, max_elevation)
+    - sector_size: tuple (azimuth_size, elevation_size) in degrees
+    - min_sector_distance: minimum distance between successive sectors in sequence
+    - points_per_sector: number of points per sector
 
-    # Repeat each point 3 times
-    repeated_points = np.repeat(points, 3, axis=0)
+    Returns:
+    - points: List of (azimuth, elevation) tuples
+    - selected_sectors: List of selected sector centers
+    """
+    azimuth_size, elevation_size = sector_size
+    num_azimuth_sectors = (azimuth_range[1] - azimuth_range[0]) // azimuth_size
+    num_elevation_sectors = (elevation_range[1] - elevation_range[0]) // elevation_size
+    num_sectors = num_azimuth_sectors * num_elevation_sectors
 
-    # Enforce min-distance constraint
-    return enforce_min_distance(repeated_points, min_distance), square_centers, (az_min, az_max, az_step), (el_min, el_max, el_step)
+    # Compute sector centers
+    sector_centers = [
+        (azimuth_range[0] + (i + 0.5) * azimuth_size, elevation_range[0] + (j + 0.5) * elevation_size)
+        for i in range(num_azimuth_sectors) for j in range(num_elevation_sectors)
+    ]
+    random.shuffle(sector_centers)
 
-def enforce_min_distance(points, min_distance):
-    np.random.shuffle(points)
-    ordered_points = [points[0]]
-    remaining_points = list(points[1:])
-
-    while remaining_points:
-        valid_indices = [i for i, p in enumerate(remaining_points)
-                         if distance.euclidean(ordered_points[-1], p) >= min_distance]
-
-        if valid_indices:
-            ordered_points.append(remaining_points.pop(np.random.choice(valid_indices)))
+    # Select sectors ensuring minimum distance constraint
+    selected_sectors = []
+    remaining_sectors = sector_centers[:]
+    while len(selected_sectors) < num_sectors:
+        if not selected_sectors:
+            selected_sectors.append(remaining_sectors.pop(0))
         else:
-            np.random.shuffle(remaining_points)
+            last_sector = selected_sectors[-1]
+            valid_sectors = [
+                sec for sec in remaining_sectors
+                if np.linalg.norm(np.array(sec) - np.array(last_sector)) >= min_sector_distance
+            ]
+            if valid_sectors:
+                selected_sector = valid_sectors.pop(0)
+                selected_sectors.append(selected_sector)
+                remaining_sectors.remove(selected_sector)
+            else:
+                break  # Stop if no valid sector is found
 
-    return np.array(ordered_points)
+    # Generate random points within each selected sector
+    points = [
+        (
+            np.random.uniform(sector[0] - azimuth_size / 2, sector[0] + azimuth_size / 2),
+            np.random.uniform(sector[1] - elevation_size / 2, sector[1] + elevation_size / 2)
+        )
+        for sector in selected_sectors for _ in range(points_per_sector)
+    ]
 
-def plot_with_grid(points, square_centers, az_range, el_range):
-    az_min, az_max, az_step = az_range
-    el_min, el_max, el_step = el_range
+    return points, selected_sectors
 
-    plt.figure(figsize=(8, 6))
-    plt.scatter(points[:, 0], points[:, 1], alpha=0.6, label="Generated Points")
-    plt.scatter(square_centers[:, 0], square_centers[:, 1], color="red", marker="x", s=100, label="Square Centers")
 
-    # Set grid lines matching the squares
-    plt.xticks(np.arange(az_min, az_max + az_step, az_step))
-    plt.yticks(np.arange(el_min, el_max + el_step, el_step))
-    plt.grid(True, linestyle="--", alpha=0.5)
+def plot_random_points(points, selected_sectors, azimuth_range, elevation_range, sector_size):
+    """Plots the generated random points and sector boundaries with grid lines."""
+    azimuth_size, elevation_size = sector_size
+    fig, ax = plt.subplots(figsize=(8, 6))
+    ax.set_xlim(azimuth_range)
+    ax.set_ylim(elevation_range)
+    ax.set_xlabel("Azimuth (°)")
+    ax.set_ylabel("Elevation (°)")
+    ax.set_title("Random Points in Sectors with Minimum Distance Constraint")
 
-    plt.xlabel("Azimuth (°)")
-    plt.ylabel("Elevation (°)")
-    plt.title("Randomized Points with Grid Aligned to Squares")
-    plt.legend()
+    # Plot sector boundaries
+    for sec in selected_sectors:
+        rect = plt.Rectangle(
+            (sec[0] - azimuth_size / 2, sec[1] - elevation_size / 2),
+            azimuth_size, elevation_size, edgecolor='gray', facecolor='none', linestyle="--"
+        )
+        ax.add_patch(rect)
+
+    # Plot grid lines
+    azimuth_ticks = np.arange(azimuth_range[0], azimuth_range[1] + azimuth_size, azimuth_size)
+    elevation_ticks = np.arange(elevation_range[0], elevation_range[1] + elevation_size, elevation_size)
+    ax.set_xticks(azimuth_ticks)
+    ax.set_yticks(elevation_ticks)
+    ax.grid(True, linestyle="--", linewidth=0.5)
+
+    # Plot points
+    azimuths, elevations = zip(*points)
+    ax.scatter(azimuths, elevations, color='red', label="Random Points")
+
+    ax.legend()
     plt.show()
 
-# Parameters
-field_azimuth = (-45, 45)
-field_elevation = (-45, 45)
-square_size = (10, 10)
-min_distance = 30
+# Example usage
+# azimuth_range = (-50, 50)
+# elevation_range = (-40, 40)
+# sector_size = (10, 10)  # (azimuth_size, elevation_size)
+# min_sector_distance = 30
+# points_per_sector = 3
+#
+# points, selected_sectors = make_sequence(
+#     azimuth_range, elevation_range, sector_size, min_sector_distance, points_per_sector
+# )
+# plot_random_points(points, selected_sectors, azimuth_range, elevation_range, sector_size)
 
-# Generate and plot points
-points, square_centers, az_range, el_range = generate_points(field_azimuth, field_elevation, square_size, min_distance)
-plot_with_grid(points, square_centers, az_range, el_range)
+# import matplotlib
+# matplotlib.use("Qt5Agg")
+# # matplotlib.use("TkAgg")

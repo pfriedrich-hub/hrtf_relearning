@@ -4,6 +4,7 @@ import time
 # from experiment.misc.localization_analysis import *
 from pythonosc import udp_client
 from experiment.misc import meta_motion
+from experiment.misc.make_sequence import *
 from hrtf.processing.hrtf2wav import *
 logging.getLogger().setLevel('INFO')
 import pybinsim
@@ -18,14 +19,13 @@ subject_id = 'test'
 hrtf_name ='KU100_HRIR_L2702'
 slab.set_default_samplerate(slab.HRTF(data_dir / 'hrtf' / 'sofa' / f'{hrtf_name}.sofa').samplerate)
 
-
 class Localization:
     def __init__(self, subject_id, hrtf_name):
         # make trial sequence and write to subject
         self.subject = Subject(subject_id)
         self.filename = subject_id + '_loc_' + date
-        self.subject.localization[self.filename] = (
-            self._make_sequence((-52.5, 52.5), (-37.5, 37.5), 20, 10, 3))
+        self.subject.localization[self.filename], _ = make_sequence(field_azimuth = (-45, 45), field_elevation = (-35, 35), square_size = (12.5, 12.5),
+                          points_per_square = 3, min_distance = 20)
         self.subject.write()
 
         # metadata
@@ -150,10 +150,10 @@ class Localization:
         return meta_motion.Sensor(state)
 
 
-if __name__ == "__main__":
-    make_wav(hrtf_name)
-    loc_test = Localization(subject_id, hrtf_name)
-    loc_test.run()
+# if __name__ == "__main__":
+#     make_wav(hrtf_name)
+#     loc_test = Localization(subject_id, hrtf_name)
+#     loc_test.run()
 
     # sequence = Subject(subject_id).localization[loc_test.filename]
     # localization_accuracy(sequence)

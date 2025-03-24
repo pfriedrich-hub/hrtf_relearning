@@ -8,14 +8,15 @@ results_dir = Path.cwd() / 'data' / 'results'
 
 class Subject:
     def __init__(self, id):
-        self.file_path = results_dir / f'{id}.pkl'
+        file_path = results_dir / f'{id}.pkl'
 
         # check if subject exists in data folder and laod the data
-        if (self.file_path).exists():
+        if (file_path).exists():
             logging.info('Loading subject data.')
-            with open(self.file_path, 'rb') as subj_file:
+            with open(file_path, 'rb') as subj_file:
                 subject = pickle.load(subj_file)
                 self.__dict__ = subject.__dict__.copy()
+                self.file_path = results_dir / f'{id}.pkl'  # overwrite Path to match current system for writing
 
         else:  # otherwise create a new subject object
             logging.info('Creating new subject data.')

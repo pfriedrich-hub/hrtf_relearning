@@ -1,10 +1,10 @@
 import matplotlib
-matplotlib.use("QtAgg")
+import slab
+# matplotlib.use("QtAgg")
 # matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 import numpy as np
 import random
-
 
 def make_sequence(
         azimuth_range=(-60, 60),
@@ -66,8 +66,8 @@ def make_sequence(
         )
         for sector in selected_sectors for _ in range(points_per_sector)
     ]
-
-    return points, selected_sectors
+    sequence = slab.Trialsequence(points)
+    return sequence, points, selected_sectors
 
 
 def plot_random_points(points, selected_sectors, azimuth_range, elevation_range, sector_size):
@@ -109,7 +109,7 @@ def plot_random_points(points, selected_sectors, azimuth_range, elevation_range,
 # min_sector_distance = 30
 # points_per_sector = 3
 #
-# points, selected_sectors = make_sequence(
+# _, points, selected_sectors = make_sequence(
 #     azimuth_range, elevation_range, sector_size, min_sector_distance, points_per_sector
 # )
 # plot_random_points(points, selected_sectors, azimuth_range, elevation_range, sector_size)

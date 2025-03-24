@@ -4,7 +4,7 @@ from matplotlib import pyplot as plt
 
 def localization_accuracy(sequence, show=True, plot_dim=2, binned=True, axis=None, show_single_responses=True,
                           elevation='all', azimuth='all'):
-    if sequence.this_n == -1 or sequence.n_remaining == 132 or not sequence.data:
+    if sequence.this_n == -1 or sequence.n_remaining == len(sequence.data) or not sequence.data:
         return numpy.nan, numpy.nan, numpy.nan, numpy.nan, numpy.nan, numpy.nan
     # retrieve data
     loc_data = numpy.asarray(sequence.data)

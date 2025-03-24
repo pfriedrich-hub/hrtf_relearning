@@ -24,8 +24,12 @@ class Localization:
         # make trial sequence and write to subject
         self.subject = Subject(subject_id)
         self.filename = subject_id + '_loc_' + date
-        self.subject.localization[self.filename], _ = make_sequence(field_azimuth = (-45, 45), field_elevation = (-35, 35), square_size = (12.5, 12.5),
-                          points_per_square = 3, min_distance = 20)
+        self.subject.localization[self.filename], *_ = make_sequence(
+            azimuth_range=(-30, 30),
+            elevation_range=(-30, 30),
+            sector_size=(10, 10),  # (azimuth_size, elevation_size)
+            min_sector_distance=10,
+            points_per_sector=1)
         self.subject.write()
 
         # metadata
@@ -94,33 +98,6 @@ class Localization:
         logging.info(f'Playing {path.stem}')
 
     @staticmethod
-    def _make_sequence(az_range, ele_range, min_dist, n_unique_targets, n_repteitions):
-        """
-        Create a sequence of n_trials target locations
-        with more than min_dist angular distance between successive targets
-
-        randomly select [n_trials / 3] unique target locations
-        create a sequence of n_trials target locations so that each unique location appears 3 times in the sequence
-        with min_dist angular distance between successive targets
-        """
-        logging.info('Setting up trial sequence.')
-        azimuth_range = numpy.arange(az_range[0], az_range[1] + 1)  # Example: from -90° to 90° with 1° steps
-        elevation_range = numpy.arange(ele_range[0], ele_range[1] + 1)
-        target_azimuths = numpy.random.choice(azimuth_range, n_unique_targets, replace=False)
-        target_elevations = numpy.random.choice(elevation_range, n_unique_targets, replace=False)
-        targets = numpy.column_stack((target_azimuths, target_elevations))
-        targets = numpy.repeat(targets, n_repteitions, axis=0)
-        targets = numpy.random.permutation(targets).tolist()
-        sequence = [targets.pop(0)]
-        while targets:
-            for tar in targets:
-                if numpy.linalg.norm(numpy.subtract(tar, sequence[-1])) >= min_dist:
-                    sequence.append(tar)
-                    targets.remove(tar)
-                    break  # Restart checking from the beginning
-        return slab.Trialsequence(sequence)
-
-    @staticmethod
     def _init_osc_client():
         host = '127.0.0.1'
         mode = 'client'
@@ -150,10 +127,42 @@ class Localization:
         return meta_motion.Sensor(state)
 
 
-# if __name__ == "__main__":
-#     make_wav(hrtf_name)
-#     loc_test = Localization(subject_id, hrtf_name)
-#     loc_test.run()
+if __name__ == "__main__":
+    make_wav(hrtf_name)
+    loc_test = Localization(subject_id, hrtf_name)
+    loc_test.run()
 
-    # sequence = Subject(subject_id).localization[loc_test.filename]
+    sequence = Subject(subject_id).localization[loc_test.filename]
     # localization_accuracy(sequence)
+
+
+
+    #
+    # @staticmethod
+    # def _make_sequence(az_range, ele_range, min_dist, n_unique_targets, n_repteitions):
+    #     """
+    #     Create a sequence of n_trials target locations
+    #     with more than min_dist angular distance between successive targets
+    #
+    #     randomly select [n_trials / 3] unique target locations
+    #     create a sequence of n_trials target locations so that each unique location appears 3 times in the sequence
+    #     with min_dist angular distance between successive targets
+    #     """
+    #     logging.info('Setting up trial sequence.')
+    #     azimuth_range = numpy.arange(az_range[0], az_range[1] + 1)  # Example: from -90° to 90° with 1° steps
+    #     elevation_range = numpy.arange(ele_range[0], ele_range[1] + 1)
+    #     target_azimuths = numpy.random.choice(azimuth_range, n_unique_targets, replace=False)
+    #     target_elevations = numpy.random.choice(elevation_range, n_unique_targets, replace=False)
+    #     targets = numpy.column_stack((target_azimuths, target_elevations))
+    #     targets = numpy.repeat(targets, n_repteitions, axis=0)
+    #     targets = numpy.random.permutation(targets).tolist()
+    #     sequence = [targets.pop(0)]
+    #     while targets:
+    #         for tar in targets:
+    #             if numpy.linalg.norm(numpy.subtract(tar, sequence[-1])) >= min_dist:
+    #                 sequence.append(tar)
+    #                 targets.remove(tar)
+    #                 break  # Restart checking from the beginning
+    #     return slab.Trialsequence(sequence)
+    #
+

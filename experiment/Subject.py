@@ -24,7 +24,7 @@ class Subject:
 
     def write(self):
         if (self.file_path).exists():
-            logging.info('Updating subject file.')
+            logging.debug('Updating subject file.')
         else: logging.info('Creating subject file.')
         with open(self.file_path, 'wb') as subj_file:
             pickle.dump(self, subj_file, pickle.HIGHEST_PROTOCOL)

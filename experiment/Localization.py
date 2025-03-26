@@ -22,14 +22,15 @@ slab.set_default_samplerate(slab.HRTF(data_dir / 'hrtf' / 'sofa' / f'{hrtf_name}
 class Localization:
     def __init__(self, subject_id, hrtf_name):
         # make trial sequence and write to subject
+        azimuth_range = (-30, 30)
+        elevation_range = (-30, 30)
+        sector_size = (10, 10)
+        targets_per_sector = 1
+        min_distance = 10
         self.subject = Subject(subject_id)
         self.filename = subject_id + '_loc_' + date
-        self.subject.localization[self.filename], *_ = make_sequence(
-            azimuth_range=(-30, 30),
-            elevation_range=(-30, 30),
-            sector_size=(10, 10),  # (azimuth_size, elevation_size)
-            min_sector_distance=10,
-            points_per_sector=1)
+        self.subject.localization[self.filename] = make_sequence(azimuth_range, elevation_range, sector_size, # (azimuth_size, elevation_size)
+            targets_per_sector, min_distance)
         self.subject.write()
 
         # metadata
@@ -132,7 +133,7 @@ if __name__ == "__main__":
     loc_test = Localization(subject_id, hrtf_name)
     loc_test.run()
 
-    sequence = Subject(subject_id).localization[loc_test.filename]
+    # sequence = Subject(subject_id).localization[loc_test.filename]
     # localization_accuracy(sequence)
 
 

@@ -1,3 +1,5 @@
+import matplotlib
+matplotlib.use('tkagg')
 import numpy
 import scipy
 from matplotlib import pyplot as plt
@@ -12,7 +14,6 @@ def localization_accuracy(sequence, show=True, plot_dim=2, binned=True, axis=Non
     targets = loc_data[:, 1]  # [az, ele]
     responses = loc_data[:, 0]
 
-
     elevations = numpy.unique(loc_data[:, 1, 1])
     azimuths = numpy.unique(loc_data[:, 1, 0])
     # targets[:, 1] = loc_data[:, 1, 1]  # target elevations
@@ -22,11 +23,17 @@ def localization_accuracy(sequence, show=True, plot_dim=2, binned=True, axis=Non
 
     #  elevation gain, rmse, response variability
     elevation_gain, n = scipy.stats.linregress(targets[:, 1], responses[:, 1])[:2]
+    azimuth_gain, n = scipy.stats.linregress(targets[:, 0], responses[:, 0])[:2]
+
     rmse = numpy.sqrt(numpy.mean(numpy.square(targets - responses), axis=0))
+
+    for sector_center in sequence.sector_centers
+
+
     variability = numpy.mean([numpy.std(responses[numpy.where(numpy.all(targets == target, axis=1))], axis=0)
                     for target in numpy.unique(targets, axis=0)], axis=0)
 
-    azimuth_gain, n = scipy.stats.linregress(targets[:, 0], responses[:, 0])[:2]
+
     az_rmse, ele_rmse = rmse[0], rmse[1]
     az_sd, ele_sd = variability[0], variability[1]
     az_var, ele_var = az_sd ** 2, ele_sd ** 2

@@ -1,3 +1,5 @@
+import matplotlib
+matplotlib.use('tkagg')
 import platform
 import pathlib
 if platform.system() == 'Darwin':  pathlib.WindowsPath = pathlib.PosixPath
@@ -8,12 +10,13 @@ results_dir = Path.cwd() / 'data' / 'results'
 
 class Subject:
     def __init__(self, id):
-        file_path = results_dir / f'{id}.pkl'
+        self.file_path = results_dir / f'{id}.pkl'
+
 
         # check if subject exists in data folder and laod the data
-        if (file_path).exists():
+        if (self.file_path).exists():
             logging.info('Loading subject data.')
-            with open(file_path, 'rb') as subj_file:
+            with open(self.file_path, 'rb') as subj_file:
                 subject = pickle.load(subj_file)
                 self.__dict__ = subject.__dict__.copy()
                 self.file_path = results_dir / f'{id}.pkl'  # overwrite Path to match current system for writing

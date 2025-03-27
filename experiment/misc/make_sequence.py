@@ -68,6 +68,7 @@ def make_sequence(
     ]
     sequence = slab.Trialsequence(points)
     sequence.sector_centers = sector_centers
+    sequence.sector_size = sector_size
     return sequence
 #
 #

@@ -133,8 +133,8 @@ if __name__ == "__main__":
     loc_test = Localization(subject_id, hrtf_name)
     loc_test.run()
 
-    # sequence = Subject(subject_id).localization[loc_test.filename]
-    # localization_accuracy(sequence)
+    sequence = Subject(subject_id).localization[loc_test.filename]
+    plot_localization(sequence)
 
 
 

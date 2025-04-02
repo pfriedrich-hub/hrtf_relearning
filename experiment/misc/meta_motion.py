@@ -64,6 +64,7 @@ class Sensor:
     def __init__(self, state):
         self.state = self._connect(state)
         self.convention = 'psychoacoustics'
+        self.data_log = []
 
     @staticmethod
     def _connect(state):
@@ -109,6 +110,16 @@ class Sensor:
                 pose_log[n] = pose
                 n += 1
         pose = numpy.mean(pose_log, axis=0).astype('float16')
+
+        if len(self.data_log) > 1e6: # check if value deviates from mean sensor data of past second
+            if numpy.diff(pose, numpy.mean(self.data_log, axis=1)):
+                self.data_log.append(pose)
+
+        # d = numpy.abs(data_log - numpy.median(data_log))  # deviation from median
+        #     mdev = numpy.median(d)  # median deviation
+        #     s = d / mdev if mdev else numpy.zeros_like(d)  # factorized mean deviation to detect outliers
+        #     pose = numpy.array((numpy.mean(pose_log[:, 0][(s < 2)[:, 0]]), numpy.mean(pose_log[:, 1][(s < 2)[:, 1]])))
+
         if self.convention == 'psychoacoustics':
             pose[0] = (pose[0] + 180) % 360 - 180
         if calibrate:
@@ -123,7 +134,7 @@ class Sensor:
                 pose[1] = (pose[1] - self.pose_offset[1])
         if print_pose:
                 logging.info('head pose: azimuth: %.1f, elevation: %.1f' % (pose[0], pose[1]))
-        return pose
+        return self.data_log[-1]
 
     def calibrate(self):
         """

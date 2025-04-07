@@ -1,6 +1,7 @@
 from pathlib import Path
 import numpy
 import slab
+import time
 from hrtf.processing.tf2ir import tf2ir
 wav_path = Path.cwd() / 'data' / 'hrtf' / 'wav'
 sofa_path = Path.cwd() / 'data' / 'hrtf' / 'sofa'
@@ -37,21 +38,40 @@ def hrtf2wav(filename, n_bins=None, add_itd=True):
     with open(wav_path / dir_name / f'{dir_name}_settings.txt', 'w') as file:
         file.write(
         f'soundfile {str(wav_path / dir_name / "sounds" / "pinknoise.wav")}\n'
-        f'blockSize {int(hrtf[0].n_samples / 2)}\n'
-        f'filterSize {hrtf[0].n_samples}\n'
+        f'blockSize {int(hrtf[0].n_samples / 2)}\n' # low values reduce delay but increase cpu load.
+        f'ds_filterSize {hrtf[0].n_samples}\n'
+        f'early_filterSize {hrtf[0].n_samples}\n'
+        f'late_filterSize {hrtf[0].n_samples}\n'  # reverb filter
+        f'headphone_filterSize {hrtf[0].n_samples}\n'  # headphone equalizer
+        f'filterSource[mat/wav] wav\n'
         f'filterList {filter_list_fname}\n'
-        'maxChannels 1\n'
+        f'maxChannels 1\n'
         f'samplingRate {int(hrtf.samplerate)}\n'
-        'enableCrossfading True\n'
-        'useHeadphoneFilter False\n'
-        'loudnessFactor 0\n'
-        'loopSound True\n'
+        f'enableCrossfading True\n'
+        f'loudnessFactor 0\n'
+        f'loopSound True\n'
+        
+        # convolver settings 
+        f'torchConvolution[cpu/cuda] cpu\n'
+        f'torchStorage[cpu/cuda] cpu\n'
+        f'pauseConvolution False\n'
+        f'pauseAudioPlayback False\n'
+        f'useHeadphoneFilter False\n'
+        f'ds_convolverActive True\n'
+        f'early_convolverActive False\n'
+        f'late_convolverActive False\n'
+        
+        # osc receiver settings
+        f'recv_type osc\n'
+        f'recv_protocol udp\n'
+        f'recv_ip 127.0.0.1\n'
+        f'recv_port 10000\n'
         )
 
     # write IR Filters to wav files
     print(f'Writing wav files from {filename} and {dir_name}.text ...')
     for source_idx in range(hrtf.n_sources):
-        coordinates = hrtf.sources.vertical_polar[source_idx].astype('int')
+        coordinates = hrtf.sources.vertical_polar[source_idx]
         if not n_bins == hrtf[source_idx].n_taps:  # interpolate bins if necessary
             t = numpy.linspace(0, hrtf[source_idx].duration, hrtf[source_idx].n_taps)
             t_interp = numpy.linspace(0, t[-1], n_bins)
@@ -76,12 +96,19 @@ def hrtf2wav(filename, n_bins=None, add_itd=True):
         slab.Sound(data=fir_coefs).write(filename=fname)
         # write to filter_list
         with open(filter_list_fname, 'a') as file:
-            file.write(f'{source_idx} 0 0 0 0 0 {fname}\n')
+            # file.write(f'DS {source_idx} 0 0 0 0 0 {fname}\n')
+            file.write(f'DS'
+                       f' 0 0 0'  # Value 1 - 3: listener orientation[yaw, pitch, roll]
+                       f' 0 0 0'  # Value 4 - 6: listener position[x, y, z]
+                       f' 0 0 0'  # Value 7 - 9: source orientation[yaw, pitch, roll]
+                       f' {coordinates[0]} {coordinates[1]} 0'  # Value 10 - 12: source position[x, y, z]
+                       f' 0 0 0'  # Value 13 - 15: custom values[a, b, c]
+                       f' {fname}\n')
 
     # create 20s pinknoise with the correct samplerate
     slab.Sound.pinknoise(duration=20.0, level=80).write(wav_path / dir_name / 'sounds' / 'pinknoise.wav')
     # beep
-    slab.Sound.tone(frequency=1000, level=60, duration=.25).write(wav_path / dir_name / 'sounds' / 'beep.wav')
+    slab.Sound.tone(frequency=750, level=50, duration=.15).write(wav_path / dir_name / 'sounds' / 'beep.wav')
     # resample game sounds
     buzzer = slab.Sound.read(sound_path / 'buzzer.wav')
     buzzer.resample(hrtf.samplerate).write(wav_path / dir_name / 'sounds' / 'buzzer.wav')
@@ -89,4 +116,4 @@ def hrtf2wav(filename, n_bins=None, add_itd=True):
     coin.resample(hrtf.samplerate).write(wav_path / dir_name / 'sounds' / 'coin.wav')
     coins = slab.Sound.read(sound_path / 'coins.wav')
     coins.resample(hrtf.samplerate).write(wav_path / dir_name / 'sounds' / 'coins.wav')
-
+    time.sleep(.5)  # wait until files are written

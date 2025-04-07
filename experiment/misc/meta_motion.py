@@ -1,6 +1,7 @@
 from __future__ import print_function
 import time
 import numpy
+from scipy.stats import zscore
 import logging
 try:
     from mbientlab.warble import *
@@ -64,7 +65,7 @@ class Sensor:
     def __init__(self, state):
         self.state = self._connect(state)
         self.convention = 'psychoacoustics'
-        self.data_log = []
+        self.is_calibrated = False
 
     @staticmethod
     def _connect(state):
@@ -90,40 +91,28 @@ class Sensor:
 
     @staticmethod
     def _validate(pose):
-        if (not any(numpy.isnan(pose)) and all(-180 <= _pose <= 360 for _pose in pose)
-                and not all(_pose == 0 for _pose in pose)):
+        if not any(numpy.isnan(pose)) and all(1e-6 <= abs(_pose) <= 360 for _pose in pose):
             return True
         else:
             return False
 
-    def get_pose(self, n_datapoints=10, calibrate=True, print_pose=False):
+    def get_pose(self, n_datapoints=1, calibrate=True, print_pose=False):
         if not self.state.device.is_connected:
             logging.warning('Sensor connection lost! Reconnect? (Y/n)')
             if input().upper() == 'Y':
                 self.halt()
                 self.state.device.connect()
-        pose_log = numpy.zeros((n_datapoints, 2))
-        n = 0
-        while n < n_datapoints:  # filter invalid values
+        pose_log = []
+        while len(pose_log) < n_datapoints:  # filter invalid values
             pose = numpy.array((self.state.pose.yaw, self.state.pose.roll))
             if self._validate(pose):
-                pose_log[n] = pose
-                n += 1
+                pose_log.append(pose)
+        # self._remove_outliers(pose_log, threshold=1)
         pose = numpy.mean(pose_log, axis=0).astype('float16')
-
-        if len(self.data_log) > 1e6: # check if value deviates from mean sensor data of past second
-            if numpy.diff(pose, numpy.mean(self.data_log, axis=1)):
-                self.data_log.append(pose)
-
-        # d = numpy.abs(data_log - numpy.median(data_log))  # deviation from median
-        #     mdev = numpy.median(d)  # median deviation
-        #     s = d / mdev if mdev else numpy.zeros_like(d)  # factorized mean deviation to detect outliers
-        #     pose = numpy.array((numpy.mean(pose_log[:, 0][(s < 2)[:, 0]]), numpy.mean(pose_log[:, 1][(s < 2)[:, 1]])))
-
         if self.convention == 'psychoacoustics':
             pose[0] = (pose[0] + 180) % 360 - 180
         if calibrate:
-            if self.pose_offset is None:
+            if not self.is_calibrated:
                 logging.warning("Device not calibrated")
             else:
                 if self.convention == 'psychoacoustics':  # normalize AZ to [0, 360] range
@@ -134,7 +123,7 @@ class Sensor:
                 pose[1] = (pose[1] - self.pose_offset[1])
         if print_pose:
                 logging.info('head pose: azimuth: %.1f, elevation: %.1f' % (pose[0], pose[1]))
-        return self.data_log[-1]
+        return pose
 
     def calibrate(self):
         """
@@ -162,6 +151,7 @@ class Sensor:
                 if diff[0] < limit and diff[1] < limit:  # limit in degree
                     break
         self.pose_offset = numpy.mean(log, axis=0).astype('float16')
+        self.is_calibrated = True
         logging.debug('Sensor calibration complete.')
 
     def halt(self):
@@ -196,10 +186,26 @@ class Sensor:
         libmetawear.mbl_mw_sensor_fusion_write_config(self.state.device.board)
         logging.info(f'Sensor fusion mode set to {fusion_mode}')
 
+    @staticmethod
+    def _remove_outliers(pose_log, threshold=3.0):
+        """
+        Remove outliers from a 2D coordinate array using z-score.
 
+        Parameters:
+        - pose_log: list of length n_datapoints
+        - threshold: float, z-score threshold
 
+        Returns:
+        - filtered_coords: numpy array with outliers removed
+        """
+        # pose_log = numpy.asarray(pose_log)
+        # z_scores = numpy.abs(zscore(pose_log, axis=0))
+        # mask = (z_scores < threshold).all(axis=1)
+        # return pose_log[mask]
+        pose_log = numpy.asarray(pose_log)
+        d = numpy.abs(pose_log - numpy.median(pose_log))  # deviation from median
+        mdev = numpy.median(d)  # median deviation
+        s = d / mdev if mdev else numpy.zeros_like(d)  # factorized mean deviation to detect outliers
+        pose = numpy.array((numpy.mean(pose_log[:, 0][(s < 2)[:, 0]]), numpy.mean(pose_log[:, 1][(s < 2)[:, 1]])))
+        return pose
 
-#     d = numpy.abs(pose_log - numpy.median(pose_log))  # deviation from median
-#     mdev = numpy.median(d)  # median deviation
-#     s = d / mdev if mdev else numpy.zeros_like(d)  # factorized mean deviation to detect outliers
-#     pose = numpy.array((numpy.mean(pose_log[:, 0][(s < 2)[:, 0]]), numpy.mean(pose_log[:, 1][(s < 2)[:, 1]])))

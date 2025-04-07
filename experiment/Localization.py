@@ -1,7 +1,7 @@
 import argparse
 import logging
 import time
-# from experiment.misc.localization_analysis import *
+from experiment.misc.localization_analysis import *
 from pythonosc import udp_client
 from experiment.misc import meta_motion
 from experiment.misc.make_sequence import *
@@ -19,14 +19,15 @@ subject_id = 'test'
 hrtf_name ='KU100_HRIR_L2702'
 slab.set_default_samplerate(slab.HRTF(data_dir / 'hrtf' / 'sofa' / f'{hrtf_name}.sofa').samplerate)
 
+
 class Localization:
     def __init__(self, subject_id, hrtf_name):
         # make trial sequence and write to subject
-        azimuth_range = (-30, 30)
-        elevation_range = (-30, 30)
-        sector_size = (10, 10)
-        targets_per_sector = 1
-        min_distance = 10
+        azimuth_range = (-20, 20)
+        elevation_range = (-20, 20)
+        sector_size = (20, 20)
+        targets_per_sector = 3
+        min_distance = 0
         self.subject = Subject(subject_id)
         self.filename = subject_id + '_loc_' + date
         self.subject.localization[self.filename] = make_sequence(azimuth_range, elevation_range, sector_size, # (azimuth_size, elevation_size)
@@ -56,7 +57,6 @@ class Localization:
             self.motion_sensor.calibrate()
             # generate and play stim, get pose response
             self.play_trial()
-            logging.info(f'{self.target}')
             # write to file
             self.subject.write()
         return
@@ -78,7 +78,7 @@ class Localization:
         # get response
         input('Aim at Sound and press Enter to confirm.')
         response = self.motion_sensor.get_pose()
-        self.play_sound(data_dir / 'hrtf' / 'wav' / hrtf_name / 'sounds' / 'beep.wav', self.target)
+        self.play_sound(data_dir / 'hrtf' / 'wav' / hrtf_name / 'sounds' / 'beep.wav', [0, 0])
         time.sleep(.25)
         self.subject.localization[self.filename].add_response(numpy.array((response, self.target)))
 
@@ -92,11 +92,11 @@ class Localization:
         rel_target = numpy.array((relative_coords[0], relative_coords[1], self.hrtf_sources[0, 2]))
         filter_idx = numpy.argmin(numpy.linalg.norm(rel_target - self.hrtf_sources, axis=1))
         self.osc_client.send_message('/pyBinSim', [0, int(filter_idx), 0, 0, 0, 0, 0])
-        logging.info(f'set filter for {self.hrtf_sources[filter_idx]}')
+        logging.debug(f'set filter for {self.hrtf_sources[filter_idx]}')
         # time.sleep(.1)
         # play
         self.osc_client.send_message('/pyBinSimFile', str(path))
-        logging.info(f'Playing {path.stem}')
+        logging.debug(f'Playing {path.stem}')
 
     @staticmethod
     def _init_osc_client():
@@ -114,7 +114,7 @@ class Localization:
 
     def init_pybinsim(self):
         binsim = pybinsim.BinSim(data_dir / 'hrtf' / 'wav' / hrtf_name / f'{hrtf_name}_settings.txt')
-        pybinsim.logger.setLevel(logging.INFO)
+        pybinsim.logger.setLevel(logging.DEBUG)
         binsim.soundHandler.loopSound = False
         binsim.config.configurationDict['loudnessFactor'] = 0
         self.osc_client.send_message('/pyBinSimFile', str(self.stim_path))
@@ -135,35 +135,3 @@ if __name__ == "__main__":
 
     sequence = Subject(subject_id).localization[loc_test.filename]
     plot_localization(sequence)
-
-
-
-    #
-    # @staticmethod
-    # def _make_sequence(az_range, ele_range, min_dist, n_unique_targets, n_repteitions):
-    #     """
-    #     Create a sequence of n_trials target locations
-    #     with more than min_dist angular distance between successive targets
-    #
-    #     randomly select [n_trials / 3] unique target locations
-    #     create a sequence of n_trials target locations so that each unique location appears 3 times in the sequence
-    #     with min_dist angular distance between successive targets
-    #     """
-    #     logging.info('Setting up trial sequence.')
-    #     azimuth_range = numpy.arange(az_range[0], az_range[1] + 1)  # Example: from -90° to 90° with 1° steps
-    #     elevation_range = numpy.arange(ele_range[0], ele_range[1] + 1)
-    #     target_azimuths = numpy.random.choice(azimuth_range, n_unique_targets, replace=False)
-    #     target_elevations = numpy.random.choice(elevation_range, n_unique_targets, replace=False)
-    #     targets = numpy.column_stack((target_azimuths, target_elevations))
-    #     targets = numpy.repeat(targets, n_repteitions, axis=0)
-    #     targets = numpy.random.permutation(targets).tolist()
-    #     sequence = [targets.pop(0)]
-    #     while targets:
-    #         for tar in targets:
-    #             if numpy.linalg.norm(numpy.subtract(tar, sequence[-1])) >= min_dist:
-    #                 sequence.append(tar)
-    #                 targets.remove(tar)
-    #                 break  # Restart checking from the beginning
-    #     return slab.Trialsequence(sequence)
-    #
-

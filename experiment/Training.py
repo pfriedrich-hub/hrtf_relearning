@@ -3,9 +3,13 @@ import logging
 import multiprocessing as mp
 from pythonosc import udp_client
 # from pythonosc import tcp_client
+import pybinsim
 from experiment.misc import meta_motion
 from hrtf.processing.hrtf2wav import *
-logging.getLogger().setLevel('DEBUG')
+logging.getLogger().setLevel('WARNING')
+pybinsim.logger.setLevel(logging.WARNING)
+# binsim_logger = logging.getLogger('binsim')
+# binsim_logger.setLevel('WARNING')
 
 filename ='KU100_HRIR_L2702'
 data_dir = Path.cwd() / 'data' / 'hrtf'
@@ -13,14 +17,15 @@ data_dir = Path.cwd() / 'data' / 'hrtf'
 amp_scaling = .3
 target_size = 5
 target_time = .5
-az_range = (-20, 20)
-ele_range = (-20, 20)
-min_dist = 10
-game_time  = 360
-trial_time = 30
+az_range = (-45, 45)
+ele_range = (-45, 45)
+min_dist = 25
+game_time  = 90
+trial_time = 10
 
 # sub processes
-def head_tracking(distance, target, sensor_state, osc_client):
+def head_tracking(distance, target, sensor_state):
+    osc_client = make_osc_client(port=10000)
     hrtf_sources = slab.HRTF(data_dir / 'sofa' / f'{filename}.sofa').sources.vertical_polar
     # init motion sensor
     device = meta_motion.get_device()
@@ -54,64 +59,36 @@ def head_tracking(distance, target, sensor_state, osc_client):
         time.sleep(0.01)    # these intervals mainly determines CPU load
 
 def binsim_stream(binsim_state):
-    import pybinsim
     binsim = pybinsim.BinSim(data_dir / 'wav' / filename / f'{filename}_settings.txt')
-    pybinsim.logger.setLevel(logging.DEBUG)
+    # pybinsim.logger.setLevel(logging.DEBUG)
     binsim.soundHandler.loopSound = True
     binsim.stream_start()
-    while not binsim.stream:
-        time.sleep(0.1)
-    binsim_state.value = 1  # set flag for completed binsim init
-
-def pulse_maker(pulse_interval, binsim_state):
-    osc_client = make_osc_client(port=10000)
-
-    # import pybinsim
-    # def smooth_transition(start=0, stop=1, step=0.1, delay=0.001):
-    #     target_value = stop * amp_scaling
-    #     step = step * amp_scaling
-    #     # current_value = binsim.config.configurationDict['loudnessFactor']
-    #     current_value = binsim.config.configurationDict['loudnessFactor']
-    #     while abs(current_value - target_value) > step:
-    #         current_value += step if target_value > current_value else -step
-    #         binsim.config.configurationDict['loudnessFactor'] = round(current_value, 2)
-    #         time.sleep(delay)
-    #     binsim.config.configurationDict['loudnessFactor'] = target_value
-
-    # init binsim
-    # binsim = pybinsim.BinSim(data_dir / 'wav' / filename / f'{filename}_settings.txt')
-    # pybinsim.logger.setLevel(logging.DEBUG)
-    # binsim.soundHandler.loopSound = True
-    # binsim.stream_start()
-    # while not binsim.stream:
+    # logging.info(binsim.stream)
+    # while not binsim.stream: #todo
+    #     logging.info(binsim.stream)
     #     time.sleep(0.1)
-    #
     # binsim_state.value = 1  # set flag for completed binsim init
 
+def pulse_control(pulse_interval, binsim_state):
+    osc_client = make_osc_client(port=10003)
     while True:
-        # logging.debug(binsim_state.value)
         if binsim_state.value == 1:  # Mute sound, stop updating interval
-            # smooth_transition(0)
-            osc_client.send_message('/pyBinSimPauseAudioPlayback', False)
+            osc_client.send_message('/pyBinSimLoudness', 0)
         elif binsim_state.value == 2:  # play sound with given interval
             interval = pulse_interval.value
-            # interval = 0  # disable pulse
             logging.debug(f'pulse stream: got interval value {interval}')
             if interval == 0:  # continuous sound
-                # smooth_transition(0.5)
-                osc_client.send_message('/pyBinSimPauseAudioPlayback', True)
+                osc_client.send_message('/pyBinSimLoudness', 0.5)
             else:  # pulse sound
-                # smooth_transition(0.5)
-                osc_client.send_message('/pyBinSimPauseAudioPlayback', True)
+                osc_client.send_message('/pyBinSimLoudness', 0.5)
                 time.sleep(interval / 1000)
-                # smooth_transition(0)
-                osc_client.send_message('/pyBinSimPauseAudioPlayback', False)
+                osc_client.send_message('/pyBinSimLoudness', 0)
                 time.sleep(interval / 1000)
         time.sleep(0.01)   # these intervals mainly determines CPU load
 
 def play_trial(distance, pulse_interval, score, binsim_state, sensor_state,
                trial_time, target_size, target_time):
-    # osc_client = make_osc_client(port=10000)  # binsim communication
+    osc_client = make_osc_client(port=10003)  # binsim communication
     logging.debug(f'"play_trial" started')
     # game variables
     score.value = 0
@@ -164,8 +141,7 @@ def play_sound(wav_name, osc_client, pulse_interval, binsim_state):
     binsim_state.value = 2  # make sure that stream is not muted
     fpath = str(data_dir / 'wav' / filename / 'sounds' / f'{wav_name}.wav')
     osc_client.send_message('/pyBinSimFile', fpath)
-    # time.sleep(slab.Sound.read(fpath).duration)
-    time.sleep(1.5)
+    time.sleep(slab.Sound.read(fpath).duration)
     binsim_state.value = 1  # mute stream after playing sound
     osc_client.send_message('/pyBinSimFile', str(data_dir / 'wav' / filename / 'sounds' / 'pinknoise.wav'))
 
@@ -178,30 +154,30 @@ def play_session(game_time, trial_time, target_size, target_time, az_range, ele_
     target = mp.Array("i", [0, 0])  # get_target sets target - used by sensor_tracking
     distance = mp.Value("f", 0)  # sensor_tracking updates distance and sends to play_trial
     pulse_interval = mp.Value("i", 0) # play_trial updates interval and sends to pulse_stream
-    # p_distance, c_distance = mp.Pipe()  # sensor_tracking updates distance and sends to play_trial
-    # p_interval, c_interval = mp.Pipe() # play_trial updates interval and sends to pulse_stream
 
     # init sensor
-    tracking_worker = mp.Process(target=head_tracking, args=(distance, target, sensor_state, osc_client))
+    tracking_worker = mp.Process(target=head_tracking, args=(distance, target, sensor_state))
     tracking_worker.start()
     # init pybinsim
-    pulse_worker = mp.Process(target=pulse_stream, args=(pulse_interval, binsim_state))
+    binsim_worker = mp.Process(target=binsim_stream, args=[binsim_state])
+    binsim_worker.start()
+    # start pulse stream
+    pulse_worker = mp.Process(target=pulse_control, args=(pulse_interval, binsim_state))
     pulse_worker.start()
 
-    while not (binsim_state.value == 1 and sensor_state.value == 1):
-        time.sleep(0.1) # init pyaudio and sensor
+    # wait for init
+    while not sensor_state.value == 1:
+        time.sleep(0.1) # init binsim and sensor #todo
 
+    # play trials
     scores = []
     start_time = time.time()
+    time.sleep(.5)
     while time.time() - start_time < game_time:
         set_target(az_range, ele_range, target, min_dist)
-        # trial_worker = mp.Process(target=play_trial, args=(distance, pulse_interval, score, binsim_state, sensor_state,
-        #                                                 trial_time, target_size, target_time))
         time.sleep(.1)
         input("Press Enter to play.")
         play_trial(distance, pulse_interval, score, binsim_state, sensor_state, trial_time, target_size, target_time)
-        # trial_worker.start()  #todo this takes too long
-        # trial_worker.join()
         scores.append(score.value)
         # time.sleep(.1)
 
@@ -218,7 +194,6 @@ def distance_to_interval(distance):  # todo fix
     max_interval = 250  # interval duration at max distance in ms
     max_distance = numpy.linalg.norm(numpy.subtract([0, 0], [az_range[0], ele_range[0]]))  # max distance in degrees
     steepness = 50  # controls how the interval duration increases
-    # interval duration from distance
     if distance <= target_size:
         interval = 0
     else:
@@ -238,9 +213,7 @@ def make_osc_client(port=10000):
     parser.add_argument("--ip", default=ip, help="The ip of the OSC server")
     parser.add_argument("--port", type=int, default=port, help="The port the OSC server is listening on")
     args = parser.parse_args()
-    # osc_client = udp_client.SimpleUDPClient(args.ip, args.port)
     return udp_client.SimpleUDPClient(args.ip, args.port)
-    # return tcp_client.SimpleTCPClient(args.ip, args.port)
 
 
 def set_target(az_range, ele_range, target, min_dist):

@@ -106,12 +106,12 @@ def hrtf2wav(filename, n_bins=None, add_itd=True):
                        f' {fname}\n')
 
     # create 20s pinknoise with the correct samplerate
-    slab.Sound.pinknoise(duration=20.0, level=80).write(wav_path / dir_name / 'sounds' / 'pinknoise.wav')
+    (slab.Sound.pinknoise(duration=180.0).write(wav_path / dir_name / 'sounds' / 'pinknoise.wav'))
     # beep
-    slab.Sound.tone(frequency=750, level=50, duration=.15).write(wav_path / dir_name / 'sounds' / 'beep.wav')
+    (slab.Sound.tone(frequency=750, duration=.15).write(wav_path / dir_name / 'sounds' / 'beep.wav'))
     # resample game sounds
     buzzer = slab.Sound.read(sound_path / 'buzzer.wav')
-    buzzer.resample(hrtf.samplerate).write(wav_path / dir_name / 'sounds' / 'buzzer.wav')
+    (buzzer.resample(hrtf.samplerate).write(wav_path / dir_name / 'sounds' / 'buzzer.wav'))
     coin = slab.Sound.read(sound_path / 'coin.wav')
     coin.resample(hrtf.samplerate).write(wav_path / dir_name / 'sounds' / 'coin.wav')
     coins = slab.Sound.read(sound_path / 'coins.wav')

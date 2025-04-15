@@ -1,5 +1,6 @@
 import argparse
 import logging
+import multiprocessing as mp
 import time
 from experiment.misc.localization_analysis import *
 from pythonosc import udp_client
@@ -17,8 +18,6 @@ from experiment.Subject import Subject
 
 subject_id = 'test'
 hrtf_name ='KU100_HRIR_L2702'
-slab.set_default_samplerate(slab.HRTF(data_dir / 'hrtf' / 'sofa' / f'{hrtf_name}.sofa').samplerate)
-
 
 class Localization:
     def __init__(self, subject_id, hrtf_name):
@@ -35,13 +34,16 @@ class Localization:
         self.subject.write()
 
         # metadata
-        self.hrtf_sources = slab.HRTF(data_dir / 'hrtf' / 'sofa' / f'{hrtf_name}.sofa').sources.vertical_polar
+        hrtf = slab.HRTF(data_dir / 'hrtf' / 'sofa' / f'{hrtf_name}.sofa')
+        slab.set_default_samplerate(hrtf.samplerate)
+        self.hrtf_sources = hrtf.sources.vertical_polar
         self.stim_path = data_dir / 'hrtf' / 'wav' / hrtf_name / 'sounds' / 'noise_burst.wav'
         self.target = None
 
         # init pybinsim
-        self.osc_client = self._init_osc_client()
-        self.binsim = self.init_pybinsim()
+        self.osc_client_1 = self._init_osc_client(port=10000)
+        self.osc_client_2 = self._init_osc_client(port=10003)
+        mp.Process(target=self.binsim_stream, args=()).start()
 
         # init motion sensor
         self.motion_sensor = self.init_sensor()
@@ -49,7 +51,7 @@ class Localization:
 
     def run(self):
         # enable audio
-        self.binsim.config.configurationDict['loudnessFactor'] = 0.5
+        self.osc_client_2.send_message('/pyBinSimLoudness', 0.5)
         for self.target in self.subject.localization[self.filename]:
             logging.info(f'Target: {self.target}')
             # calibrate sensor
@@ -72,38 +74,38 @@ class Localization:
         stim.write(self.stim_path)
 
         # play stim
-        self.play_sound(self.stim_path, self.target)
+        self.play_sound()
         time.sleep(stim.duration)
 
         # get response
         input('Aim at Sound and press Enter to confirm.')
         response = self.motion_sensor.get_pose()
-        self.play_sound(data_dir / 'hrtf' / 'wav' / hrtf_name / 'sounds' / 'beep.wav', [0, 0])
+        # todo check if beep is neccessary
         time.sleep(.25)
         self.subject.localization[self.filename].add_response(numpy.array((response, self.target)))
 
-    def play_sound(self, path, target):
+    def play_sound(self):
         # set filter
         pose = self.motion_sensor.get_pose()
         # set distance for play_session
-        relative_coords = target - pose
+        relative_coords = self.target - pose
         # find the closest filter idx and send to pybinsim
         relative_coords[0] = (-relative_coords[0] + 360) % 360  # mirror and convert to HRTF convetion [0 < az < 360]
         rel_target = numpy.array((relative_coords[0], relative_coords[1], self.hrtf_sources[0, 2]))
         filter_idx = numpy.argmin(numpy.linalg.norm(rel_target - self.hrtf_sources, axis=1))
-        self.osc_client.send_message('/pyBinSim', [0, int(filter_idx), 0, 0, 0, 0, 0])
+        rel_hrtf_coords = self.hrtf_sources[filter_idx]
+        self.osc_client_1.send_message('/pyBinSim_ds_Filter', [0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                                                        float(rel_hrtf_coords[0]), float(rel_hrtf_coords[1]), 0,
+                                                        0, 0, 0])
         logging.debug(f'set filter for {self.hrtf_sources[filter_idx]}')
-        # time.sleep(.1)
         # play
-        self.osc_client.send_message('/pyBinSimFile', str(path))
-        logging.debug(f'Playing {path.stem}')
+        self.osc_client_2.send_message('/pyBinSimFile', str(self.stim_path))
 
     @staticmethod
-    def _init_osc_client():
+    def _init_osc_client(port):
         host = '127.0.0.1'
         mode = 'client'
         ip = '127.0.0.1'
-        port = 10000
         parser = argparse.ArgumentParser()
         parser.add_argument("--host", default=host)
         parser.add_argument("--mode", default=mode)
@@ -112,14 +114,11 @@ class Localization:
         args = parser.parse_args()
         return udp_client.SimpleUDPClient(args.ip, args.port)
 
-    def init_pybinsim(self):
+    def binsim_stream(self):
         binsim = pybinsim.BinSim(data_dir / 'hrtf' / 'wav' / hrtf_name / f'{hrtf_name}_settings.txt')
-        pybinsim.logger.setLevel(logging.DEBUG)
+        self.osc_client_2.send_message('/pyBinSimFile', self.stim_path)
         binsim.soundHandler.loopSound = False
-        binsim.config.configurationDict['loudnessFactor'] = 0
-        self.osc_client.send_message('/pyBinSimFile', str(self.stim_path))
-        binsim.stream_start()
-        return binsim
+        binsim.stream_start()  # run binsim loop
 
     def init_sensor(self):
         # init motion sensor

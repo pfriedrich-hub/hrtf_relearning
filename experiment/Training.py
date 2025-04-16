@@ -6,7 +6,7 @@ import pybinsim
 from experiment.misc import meta_motion
 from hrtf.processing.hrtf2wav import *
 logging.getLogger().setLevel('INFO')
-pybinsim.logger.setLevel(logging.ERROR)
+pybinsim.logger.setLevel(logging.INFO)
 
 filename ='KU100_HRIR_L2702'
 data_dir = Path.cwd() / 'data' / 'hrtf'

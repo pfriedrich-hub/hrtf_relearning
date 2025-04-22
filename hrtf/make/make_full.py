@@ -72,6 +72,8 @@ def make_hrtf(n_bins=256):
     dtfs_r = numpy.asarray(list(reversed(dtfs))).reshape(n_azimuths * n_elevations, n_bins)
 
     dtfs = numpy.stack((dtfs_l, dtfs_r), axis=2)
+
+    sources[sources[:, 0] < 0, 0] = sources[sources[:, 0] < 0, 0] + 360  # convert sources to sofa convention (0, 360)°
     return slab.HRTF(data=dtfs, samplerate=44.1e3, datatype='TF', sources=sources)
 
 

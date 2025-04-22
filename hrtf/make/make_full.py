@@ -70,12 +70,12 @@ def make_hrtf(n_bins=256):
     dtfs_l = numpy.asarray(dtfs).reshape(n_azimuths * n_elevations, n_bins)
     # right ear: mirror DTFs on the sagittal plane, DTFs at 90° az will be equal to -90° for the other ear
     dtfs_r = numpy.asarray(list(reversed(dtfs))).reshape(n_azimuths * n_elevations, n_bins)
-
     dtfs = numpy.stack((dtfs_l, dtfs_r), axis=2)
 
     sources[sources[:, 0] < 0, 0] = sources[sources[:, 0] < 0, 0] + 360  # convert sources to sofa convention (0, 360)°
-    return slab.HRTF(data=dtfs, samplerate=44.1e3, datatype='TF', sources=sources)
+    hrtf = slab.HRTF(data=dtfs, samplerate=44.1e3, datatype='TF', sources=sources)
 
+    return hrtf
 
 def add_feature(tf, freq_bins, mu, sigma, scaling):
     """
@@ -133,8 +133,8 @@ hrtf = make_hrtf()
 # plots
 hrtf_animation([hrtf], (-180,180), (-60,60), 'left', 100,
                'average', 'image', filename+'_L', write, show)
-hrtf_animation([hrtf], (-180,180), (-60,60), 'left', 100,
-               'average', 'image', filename+'_R', write, show)
+# hrtf_animation([hrtf], (-180,180), (-60,60), 'left', 100,
+#                'average', 'image', filename+'_R', write, show)
 
 # write to hrir
 if write:

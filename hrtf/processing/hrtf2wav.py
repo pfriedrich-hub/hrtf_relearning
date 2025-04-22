@@ -22,6 +22,8 @@ def hrtf2wav(filename, n_bins=None, add_itd=True):
         (wav_path / dir_name / 'IR_data').mkdir(exist_ok=True)
         (wav_path / dir_name / 'sounds').mkdir(exist_ok=True)
     hrtf = slab.HRTF(sofa_path / filename)
+    sources = hrtf.sources.vertical_polar
+    sources[sources[:, 0] < 0, 0] = sources[sources[:, 0] < 0, 0] + 360  # convert sources to sofa convention (0, 360)°
     slab.set_default_samplerate(hrtf.samplerate)
 
     # convert to TF to IR
@@ -37,7 +39,7 @@ def hrtf2wav(filename, n_bins=None, add_itd=True):
     # write IR to wav and coordinates to filter_list.txt
     print(f'Writing wav files from {filename} and filter list "{dir_name}.text"')
     for source_idx in range(hrtf.n_sources):
-        coordinates = hrtf.sources.vertical_polar[source_idx]
+        coordinates = sources[source_idx]
         if not n_bins == hrtf[source_idx].n_taps:  # interpolate bins if necessary
             t = numpy.linspace(0, hrtf[source_idx].duration, hrtf[source_idx].n_taps)
             t_interp = numpy.linspace(0, t[-1], n_bins)

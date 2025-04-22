@@ -6,21 +6,21 @@ import pybinsim
 from experiment.misc import meta_motion
 from hrtf.processing.hrtf2wav import *
 
-logging.getLogger().setLevel('INFO')
+logging.getLogger().setLevel('DEBUG')
 pybinsim.logger.setLevel(logging.WARNING)
 
 filename = 'KU100_HRIR_L2702'
 data_dir = Path.cwd() / 'data' / 'hrtf'
 soundfile = 'c_chord_guitar.wav'  # choose file from sounds folder
+# soundfile = 'pinknoise.wav'
 
 target_size = 5
 target_time = 1
 az_range = (-1, 1)
-ele_range = (-90, 180)
+ele_range = (-60, 60)
 min_dist = 30
-game_time = 90
+game_time = 360
 trial_time = 30
-
 
 # main functions
 def play_trial(distance, stream_state, sensor_state, trial_time, game_time, game_timer, target_size, target_time):
@@ -111,7 +111,7 @@ def play_session(az_range, ele_range):
 
 # sub processes
 def binsim_stream():
-    binsim = pybinsim.BinSim(data_dir / 'wav' / filename / f'{filename}_settings.txt')
+    binsim = pybinsim.BinSim(data_dir / 'wav' / filename / f'{filename}_training_settings.txt')
     binsim.soundHandler.loopSound = True
     binsim.stream_start()  # run binsim loop
 
@@ -131,7 +131,7 @@ def stream_control(stream_state):
 def head_tracking(distance, target, sensor_state):
     osc_client = make_osc_client(port=10000)
     hrtf_sources = slab.HRTF(data_dir / 'sofa' / f'{filename}.sofa').sources.vertical_polar
-    """
+
     # init motion sensor
     device = meta_motion.get_device()
     state = meta_motion.State(device)
@@ -162,34 +162,6 @@ def head_tracking(distance, target, sensor_state):
                                                             0, 0, 0])
             logging.debug(f'head tracking: filter coords: {rel_hrtf_coords}')
         time.sleep(0.01)    # these intervals mainly determines CPU load
-    """
-    logging.debug('Motion sensor running')
-    sensor_state.value = 1  # init flag
-    while True:
-        if sensor_state.value == 2:  # to be calibrated flag
-            logging.debug('Calibrating sensor..')
-            pose = numpy.array((0, 0)).astype(numpy.float32)
-            diff = target[:] - pose
-            sensor_state.value = 1
-            time.sleep(.1)
-        elif sensor_state.value == 3:  # head tracking flag
-            if not distance.value < target_size:
-                pose += (diff / 500)  # slowly approach target
-            # set distance for play_session
-            relative_coords = target[:] - pose
-            distance.value = numpy.linalg.norm(relative_coords)
-            # logging.debug(f'head tracking: set distance value {distance.value}')
-            # find the closest filter idx and send to pybinsim
-            relative_coords[0] = (-relative_coords[
-                0] + 360) % 360  # mirror and convert to HRTF convetion [0 < az < 360]
-            rel_target = numpy.array((relative_coords[0], relative_coords[1], hrtf_sources[0, 2]))
-            filter_idx = numpy.argmin(numpy.linalg.norm(rel_target - hrtf_sources, axis=1))
-            rel_hrtf_coords = hrtf_sources[filter_idx]
-            osc_client.send_message('/pyBinSim_ds_Filter', [0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                                                            float(rel_hrtf_coords[0]), float(rel_hrtf_coords[1]), 0,
-                                                            0, 0, 0])
-            # logging.debug(f'head tracking: filter coords: {rel_hrtf_coords}')
-        time.sleep(0.01)  # these intervals mainly determines CPU load
 
 # helpers
 def play_sound(wav_name, stream_state):

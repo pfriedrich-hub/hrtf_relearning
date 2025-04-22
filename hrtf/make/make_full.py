@@ -5,7 +5,7 @@ from sklearn.linear_model import LinearRegression
 from hrtf.analysis.animation import hrtf_animation
 from hrtf.processing.tf2ir import tf2ir
 
-filename = 'hrtf_double_notch'
+filename = 'double_notch'
 
 show=False
 write=True

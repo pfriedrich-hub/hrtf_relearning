@@ -35,7 +35,7 @@ def hrtf2wav(filename, n_bins=None, add_itd=True):
         print(f'interpolating IR to {n_bins} bins.')
 
     # write IR to wav and coordinates to filter_list.txt
-    print(f'Writing wav files from {filename} and {dir_name}.text ...')
+    print(f'Writing wav files from {filename} and filter list "{dir_name}.text"')
     for source_idx in range(hrtf.n_sources):
         coordinates = hrtf.sources.vertical_polar[source_idx]
         if not n_bins == hrtf[source_idx].n_taps:  # interpolate bins if necessary
@@ -59,11 +59,16 @@ def hrtf2wav(filename, n_bins=None, add_itd=True):
                        f' 0 0 0'  # Value 13 - 15: custom values[a, b, c]
                        f' {fname}\n')
 
+    # resample sounds from sound folder
+    for file in sound_path.glob('*.wav'):
+        sound = slab.Sound.read(file)
+        sound.resample(hrtf.samplerate).write(wav_path / dir_name / 'sounds' / file.name)
+
     # write settings.txt:
-    print(f'Writing {dir_name}_settings.txt ...')
-    with open(wav_path / dir_name / f'{dir_name}_settings.txt', 'w') as file:
+    filename = f'{dir_name}_test_settings.txt'
+    with open(wav_path / dir_name / filename, 'w') as file:
         file.write(
-        f'soundfile {str(wav_path / dir_name / "sounds" / "pinknoise.wav")}\n'
+        f'soundfile {str(wav_path / dir_name / "sounds" / "localization.wav")}\n'
         f'blockSize {int(hrtf[0].n_samples / 2)}\n' # low values reduce delay but increase cpu load.
         f'ds_filterSize {hrtf[0].n_samples}\n'
         f'early_filterSize {hrtf[0].n_samples}\n'
@@ -75,7 +80,7 @@ def hrtf2wav(filename, n_bins=None, add_itd=True):
         f'samplingRate {int(hrtf.samplerate)}\n'
         f'enableCrossfading True\n'
         f'loudnessFactor 0\n'
-        f'loopSound True\n'
+        f'loopSound False\n'
         # convolver settings 
         f'torchConvolution[cpu/cuda] cpu\n'
         f'torchStorage[cpu/cuda] cpu\n'
@@ -92,14 +97,39 @@ def hrtf2wav(filename, n_bins=None, add_itd=True):
         f'recv_port 10000\n'
         )
 
-    # resample sounds from sound folder
-    for file in sound_path.glob('*.wav'):
-        sound = slab.Sound.read(file)
-        sound.resample(hrtf.samplerate).write(wav_path / dir_name / 'sounds' / file.name)
-    # create 20s pinknoise with the correct samplerate
-    (slab.Sound.pinknoise(duration=180.0).write(wav_path / dir_name / 'sounds' / 'pinknoise.wav'))
-    time.sleep(.5)  # wait until files are written
-
+    # write settings.txt:
+    filename = f'{dir_name}_training_settings.txt'
+    print(f'Writing {dir_name}_settings.txt ...')
+    with open(wav_path / dir_name / filename, 'w') as file:
+        file.write(
+            f'soundfile {str(wav_path / dir_name / "sounds" / "pinknoise.wav")}\n'
+            f'blockSize {int(hrtf[0].n_samples / 2)}\n'  # low values reduce delay but increase cpu load.
+            f'ds_filterSize {hrtf[0].n_samples}\n'
+            f'early_filterSize {hrtf[0].n_samples}\n'
+            f'late_filterSize {hrtf[0].n_samples}\n'  # reverb filter
+            f'headphone_filterSize {hrtf[0].n_samples}\n'  # headphone equalizer
+            f'filterSource[mat/wav] wav\n'
+            f'filterList {filter_list_fname}\n'
+            f'maxChannels 1\n'
+            f'samplingRate {int(hrtf.samplerate)}\n'
+            f'enableCrossfading True\n'
+            f'loudnessFactor 0\n'
+            f'loopSound True\n'
+            # convolver settings 
+            f'torchConvolution[cpu/cuda] cpu\n'
+            f'torchStorage[cpu/cuda] cpu\n'
+            f'pauseConvolution False\n'
+            f'pauseAudioPlayback False\n'
+            f'useHeadphoneFilter False\n'
+            f'ds_convolverActive True\n'
+            f'early_convolverActive False\n'
+            f'late_convolverActive False\n'
+            # osc receiver settings
+            f'recv_type osc\n'
+            f'recv_protocol udp\n'
+            f'recv_ip 127.0.0.1\n'
+            f'recv_port 10000\n'
+        )
 
         # if add_itd:
         #     itd = slab.Binaural.azimuth_to_itd(azimuth=coordinates[0], head_radius=11)  # head radius in cm

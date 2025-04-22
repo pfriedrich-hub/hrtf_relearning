@@ -1,7 +1,6 @@
 import argparse
 import logging
 import multiprocessing as mp
-import time
 from experiment.misc.localization_analysis import *
 from pythonosc import udp_client
 from experiment.misc import meta_motion
@@ -9,12 +8,12 @@ from experiment.misc.make_sequence import *
 from hrtf.processing.hrtf2wav import *
 logging.getLogger().setLevel('INFO')
 import pybinsim
+pybinsim.logger.setLevel(logging.INFO)
 import datetime
 date = datetime.datetime.now()
 date = f'{date.strftime("%d")}_{date.strftime("%m")}'
 data_dir = Path.cwd() / 'data'
 from experiment.Subject import Subject
-
 
 subject_id = 'test'
 hrtf_name ='KU100_HRIR_L2702'
@@ -22,11 +21,12 @@ hrtf_name ='KU100_HRIR_L2702'
 class Localization:
     def __init__(self, subject_id, hrtf_name):
         # make trial sequence and write to subject
-        azimuth_range = (-20, 20)
-        elevation_range = (-20, 20)
+        azimuth_range = (-40, 40)
+        elevation_range = (-40, 40)
         sector_size = (20, 20)
         targets_per_sector = 3
-        min_distance = 0
+        min_distance = 20
+        self.loudness = .5
         self.subject = Subject(subject_id)
         self.filename = subject_id + '_loc_' + date
         self.subject.localization[self.filename] = make_sequence(azimuth_range, elevation_range, sector_size, # (azimuth_size, elevation_size)
@@ -37,7 +37,7 @@ class Localization:
         hrtf = slab.HRTF(data_dir / 'hrtf' / 'sofa' / f'{hrtf_name}.sofa')
         slab.set_default_samplerate(hrtf.samplerate)
         self.hrtf_sources = hrtf.sources.vertical_polar
-        self.stim_path = data_dir / 'hrtf' / 'wav' / hrtf_name / 'sounds' / 'noise_burst.wav'
+        self.stim_path = data_dir / 'hrtf' / 'wav' / hrtf_name / 'sounds' / 'localization.wav'
         self.target = None
 
         # init pybinsim
@@ -51,7 +51,6 @@ class Localization:
 
     def run(self):
         # enable audio
-        self.osc_client_2.send_message('/pyBinSimLoudness', 0.5)
         for self.target in self.subject.localization[self.filename]:
             logging.info(f'Target: {self.target}')
             # calibrate sensor
@@ -99,7 +98,10 @@ class Localization:
                                                         0, 0, 0])
         logging.debug(f'set filter for {self.hrtf_sources[filter_idx]}')
         # play
+        self.osc_client_2.send_message('/pyBinSimLoudness', 0.5 * self.loudness)
         self.osc_client_2.send_message('/pyBinSimFile', str(self.stim_path))
+        time.sleep(.5)
+        self.osc_client_2.send_message('/pyBinSimLoudness', 0)
 
     @staticmethod
     def _init_osc_client(port):
@@ -115,9 +117,7 @@ class Localization:
         return udp_client.SimpleUDPClient(args.ip, args.port)
 
     def binsim_stream(self):
-        binsim = pybinsim.BinSim(data_dir / 'hrtf' / 'wav' / hrtf_name / f'{hrtf_name}_settings.txt')
-        self.osc_client_2.send_message('/pyBinSimFile', self.stim_path)
-        binsim.soundHandler.loopSound = False
+        binsim = pybinsim.BinSim(data_dir / 'hrtf' / 'wav' / hrtf_name / f'{hrtf_name}_test_settings.txt')
         binsim.stream_start()  # run binsim loop
 
     def init_sensor(self):

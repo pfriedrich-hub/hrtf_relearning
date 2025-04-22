@@ -6,7 +6,7 @@ import pybinsim
 from experiment.misc import meta_motion
 from hrtf.processing.hrtf2wav import *
 logging.getLogger().setLevel('INFO')
-pybinsim.logger.setLevel(logging.INFO)
+pybinsim.logger.setLevel(logging.WARNING)
 
 filename ='KU100_HRIR_L2702'
 data_dir = Path.cwd() / 'data' / 'hrtf'
@@ -14,10 +14,11 @@ data_dir = Path.cwd() / 'data' / 'hrtf'
 target_size = 3
 target_time = 1
 az_range = (-45, 45)
-ele_range = (-45, 45)
+ele_range = (-35, 35)
 min_dist = 30
-game_time  = 20
+game_time  = 90
 trial_time = 10
+loudness_scaling = .5
 
 # main functions
 def play_trial(distance, pulse_interval, pulse_state, sensor_state,
@@ -28,11 +29,15 @@ def play_trial(distance, pulse_interval, pulse_state, sensor_state,
     trial_timer = 0
     time_on_target = 0
     count_down = False
+    time.sleep(.1)
+    input("Press Enter to play.")
     sensor_state.value = 2   # calibrate sensor
-    time.sleep(.01)  # todo see if this can be removed in the live version
-    sensor_state.value = 3  # start tracking
+    time.sleep(.01) # wait until calbration is complete
+    while not sensor_state.value == 3: # make sure tracking is running
+        sensor_state.value = 3  # start tracking
+        time.sleep(.1)
     pulse_interval.value = distance_to_interval(distance.value) # set initial interval value
-    time.sleep(.2)  # wait for pulse maker to read correct interval value before starting pulse
+    time.sleep(.2)  # wait for pulse maker to receive correct interval value before starting pulse
     pulse_state.value = 2 # play pulse
     logging.debug('Starting trial')
     start_time = time.time() # get start time
@@ -81,18 +86,19 @@ def play_session(game_time, trial_time, target_size, target_time, az_range, ele_
     pulse_worker.start()
     # wait for sensor init
     while not sensor_state.value == 1:  # wait for sensor
-        time.sleep(0.1)
+        time.sleep(.1)
     while True:  # loop over games
         scores = []
         game_timer = 0  # set game timer
         # play trials until game time is up
         while game_timer < game_time:
             set_target(az_range, ele_range, target, min_dist)
-            time.sleep(.01)
-            input("Press Enter to play.")
+            # time.sleep(.1)
+            # input("Press Enter to play.")
             game_timer, score = play_trial(distance, pulse_interval, pulse_state, sensor_state,
                        trial_time, game_time, game_timer, target_size, target_time)  # play trial and update game timer
             scores.append(score)
+            # time.sleep(.3)
         # end
         play_sound('buzzer', pulse_state)
         logging.info(f'Game Over! Total Score: {sum(scores)}')
@@ -104,10 +110,9 @@ def play_session(game_time, trial_time, target_size, target_time, az_range, ele_
     tracking_worker.join()
 
 
-# sub processes
+# ----- sub processes ----- #
 def binsim_stream():
-    binsim = pybinsim.BinSim(data_dir / 'wav' / filename / f'{filename}_settings.txt')
-    binsim.soundHandler.loopSound = True
+    binsim = pybinsim.BinSim(data_dir / 'wav' / filename / f'{filename}_training_settings.txt')
     binsim.stream_start()  # run binsim loop
 
 def pulse_maker(pulse_interval, pulse_state):
@@ -135,14 +140,12 @@ def pulse_maker(pulse_interval, pulse_state):
 def head_tracking(distance, target, sensor_state):
     osc_client = make_osc_client(port=10000)
     hrtf_sources = slab.HRTF(data_dir / 'sofa' / f'{filename}.sofa').sources.vertical_polar
-    """
     # init motion sensor
     device = meta_motion.get_device()
     state = meta_motion.State(device)
     motion_sensor = meta_motion.Sensor(state)
     logging.debug('motion sensor running')
     sensor_state.value = 1   # init flag
-
     while True:
         if sensor_state.value == 2:  # to be calibrated flag
             logging.debug('Calibrating sensor..')
@@ -166,37 +169,8 @@ def head_tracking(distance, target, sensor_state):
                                                             0, 0, 0])
             logging.debug(f'head tracking: filter coords: {rel_hrtf_coords}')
         time.sleep(0.01)    # these intervals mainly determines CPU load
-    """
-    logging.debug('Motion sensor running')
-    sensor_state.value = 1   # init flag
-    while True:
-        if sensor_state.value == 2:  # to be calibrated flag
-            logging.debug('Calibrating sensor..')
-            pose = numpy.array((0, 0)).astype(numpy.float32)
-            diff = target[:] - pose
-            sensor_state.value = 1
-            time.sleep(.1)
-        elif sensor_state.value == 3:  # head tracking flag
-            if not distance.value < target_size:
-                pose += (diff / 500)  # slowly approach target
-            # set distance for play_session
-            relative_coords = target[:] - pose
-            distance.value = numpy.linalg.norm(relative_coords)
-            logging.debug(f'head tracking: set distance value {distance.value}')
-            # find the closest filter idx and send to pybinsim
-            relative_coords[0] = (-relative_coords[
-                0] + 360) % 360  # mirror and convert to HRTF convetion [0 < az < 360]
-            rel_target = numpy.array((relative_coords[0], relative_coords[1], hrtf_sources[0, 2]))
-            filter_idx = numpy.argmin(numpy.linalg.norm(rel_target - hrtf_sources, axis=1))
-            rel_hrtf_coords = hrtf_sources[filter_idx]
-            osc_client.send_message('/pyBinSim_ds_Filter', [0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                                                            float(rel_hrtf_coords[0]), float(rel_hrtf_coords[1]), 0,
-                                                            0, 0, 0])
-            logging.debug(f'head tracking: filter coords: {rel_hrtf_coords}')
-        time.sleep(0.01)  # these intervals mainly determines CPU load
 
-
-# helpers
+# ------- helpers ----- #
 def play_sound(wav_name, pulse_state):
     logging.debug(f'playing sound file: {wav_name}')
     pulse_state.value = 1  # mute binsim
@@ -215,7 +189,7 @@ def ramp(osc_client, direction='up', duration=0.05, n_steps=20):
         elif direction == 'down':
             level = 0.5 * (1 - level)
             playing = False
-        osc_client.send_message('/pyBinSimLoudness', level)
+        osc_client.send_message('/pyBinSimLoudness', level * loudness_scaling)
         time.sleep(duration / n_steps)
 
 def distance_to_interval(distance):  # todo fix
@@ -253,6 +227,7 @@ def set_target(az_range, ele_range, target, min_dist):
             target[:] = next_tar
             logging.info(f'Set Target to {next_tar}.')
             break
+
 
 if __name__ == "__main__":
     make_wav(filename)

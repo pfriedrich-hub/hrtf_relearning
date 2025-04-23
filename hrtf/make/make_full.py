@@ -5,7 +5,8 @@ from sklearn.linear_model import LinearRegression
 from hrtf.analysis.animation import hrtf_animation
 from hrtf.processing.tf2ir import tf2ir
 
-filename = 'double_notch'
+filename = 'single_notch'
+sofa_path = Path.cwd() / 'data' / 'hrtf' / 'sofa'
 
 show=False
 write=True
@@ -51,10 +52,12 @@ def make_hrtf(n_bins=256):
             # s = linear_notch_width(azimuth, elevation, x=[(0, 50), (40, -40)], y=(800, 300))
             # sf = linear_scaling_factor(azimuth, elevation, x=[(0, 50), (-40, 25)], y=(s * -2, s * -2.3))
             # tf = add_feature(tf, freq_bins=freq_bins, mu=mu, sigma=s, scaling=sf)  # add gaussian
-            mu = linear_notch_position(azimuth, elevation, X1=(-20,20), X2=(-60,60), Y=(10e3, 14e3))
-            s = linear_notch_width(azimuth, elevation, X1=(0,0), X2=(-60,60), Y=(500, 500))
-            sf = linear_scaling_factor(azimuth, elevation, X1=(0,0), X2=(-60,60), Y=(s * -2.2, s * -2.2))
-            tf = add_feature(tf, freq_bins=freq_bins, mu=mu, sigma=s, scaling=sf)
+
+            # mu = linear_notch_position(azimuth, elevation, X1=(-20,20), X2=(-60,60), Y=(10e3, 14e3))
+            # s = linear_notch_width(azimuth, elevation, X1=(0,0), X2=(-60,60), Y=(500, 500))
+            # sf = linear_scaling_factor(azimuth, elevation, X1=(0,0), X2=(-60,60), Y=(s * -2.2, s * -2.2))
+            # tf = add_feature(tf, freq_bins=freq_bins, mu=mu, sigma=s, scaling=sf)
+
             #
             # # peak 3
             # mu = linear_notch_position(azimuth, elevation, x=[(0, 10), (-30, 40)], y=(18.5e3, 14.5e3))
@@ -73,9 +76,8 @@ def make_hrtf(n_bins=256):
     dtfs = numpy.stack((dtfs_l, dtfs_r), axis=2)
 
     sources[sources[:, 0] < 0, 0] = sources[sources[:, 0] < 0, 0] + 360  # convert sources to sofa convention (0, 360)°
-    hrtf = slab.HRTF(data=dtfs, samplerate=44.1e3, datatype='TF', sources=sources)
+    return slab.HRTF(data=dtfs, samplerate=44.1e3, datatype='TF', sources=sources)
 
-    return hrtf
 
 def add_feature(tf, freq_bins, mu, sigma, scaling):
     """
@@ -139,4 +141,4 @@ hrtf_animation([hrtf], (-180,180), (-60,60), 'left', 100,
 # write to hrir
 if write:
     hrir = tf2ir(hrtf)
-    hrir.write_sofa(Path.cwd() / 'data' / 'hrtf' / 'sofa' / str(filename+'.sofa'))
+    hrir.write_sofa(sofa_path / str(filename+'.sofa'))

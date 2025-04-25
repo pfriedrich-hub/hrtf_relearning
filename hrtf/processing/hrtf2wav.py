@@ -2,7 +2,9 @@ from pathlib import Path
 import numpy
 import slab
 import time
-from hrtf.processing.tf2ir import tf2ir
+from hrtf.processing.tf2ir import *
+from hrtf.processing.add_interaural import *
+
 wav_path = Path.cwd() / 'data' / 'hrtf' / 'wav'
 sofa_path = Path.cwd() / 'data' / 'hrtf' / 'sofa'
 sound_path = Path.cwd() / 'data' / 'sounds'
@@ -11,7 +13,7 @@ def make_wav(filename):
     if not (wav_path /filename).exists():
         hrtf2wav(f'{filename}.sofa')
 
-def hrtf2wav(filename, n_bins=None, add_itd=True):
+def hrtf2wav(filename, n_bins=None, add_interaural=False):
     """
     Convert HRIR filters from a sofa file to wav files for use with pybinsim.
     """
@@ -25,27 +27,34 @@ def hrtf2wav(filename, n_bins=None, add_itd=True):
     slab.set_default_samplerate(hrtf.samplerate)
 
     # convert to TF to IR
-    if hrtf.datatype not in ['TF', 'FIR']:
-        raise ValueError('Unknown datatype.')
     if hrtf.datatype == 'TF':
-        hrtf = tf2ir(hrtf)
+        hrir = tf2ir(hrtf)
+    elif hrtf.datatype == 'FIR':
+        hrir = hrtf
+    else: raise ValueError('Unknown datatype.')
+
     if n_bins is None:
-        n_bins = hrtf[0].n_taps
+        n_bins = hrir[0].n_taps
     else:
         print(f'interpolating IR to {n_bins} bins.')
+        # todo
+
+    if add_interaural:
+        add_interaural_difference(hrir, itd=True, ild=True)
+
 
     # write IR to wav and coordinates to filter_list.txt
     print(f'Writing wav files from {filename} and filter list "{dir_name}.text"')
     for source_idx in range(hrtf.n_sources):
-        coordinates = hrtf.sources.vertical_polar[source_idx]
-        if not n_bins == hrtf[source_idx].n_taps:  # interpolate bins if necessary
-            t = numpy.linspace(0, hrtf[source_idx].duration, hrtf[source_idx].n_taps)
+        coordinates = hrir.sources.vertical_polar[source_idx]
+        if not n_bins == hrir[source_idx].n_taps:  # interpolate bins if necessary
+            t = numpy.linspace(0, hrir[source_idx].duration, hrir[source_idx].n_taps)
             t_interp = numpy.linspace(0, t[-1], n_bins)
             fir_coefs = numpy.zeros((n_bins, 2))
             for idx in range(2):
-                fir_coefs[:, idx] = numpy.interp(t_interp, t, hrtf[source_idx].data[:, idx])
+                fir_coefs[:, idx] = numpy.interp(t_interp, t, hrir[source_idx].data[:, idx])
         else:
-            fir_coefs = hrtf[source_idx].data
+            fir_coefs = hrir[source_idx].data
         fname = wav_path / dir_name / 'IR_data' / f'{coordinates[0]}_{coordinates[1]}.wav'
         slab.Sound(data=fir_coefs).write(filename=fname)
         # write to filter_list.txt
@@ -62,22 +71,22 @@ def hrtf2wav(filename, n_bins=None, add_itd=True):
     # resample sounds from sound folder
     for file in sound_path.glob('*.wav'):
         sound = slab.Sound.read(file)
-        sound.resample(hrtf.samplerate).write(wav_path / dir_name / 'sounds' / file.name)
+        sound.resample(hrir.samplerate).write(wav_path / dir_name / 'sounds' / file.name)
 
     # write settings.txt:
     filename = f'{dir_name}_test_settings.txt'
     with open(wav_path / dir_name / filename, 'w') as file:
         file.write(
         f'soundfile {str(wav_path / dir_name / "sounds" / "localization.wav")}\n'
-        f'blockSize {int(hrtf[0].n_samples / 2)}\n' # low values reduce delay but increase cpu load.
-        f'ds_filterSize {hrtf[0].n_samples}\n'
-        f'early_filterSize {hrtf[0].n_samples}\n'
-        f'late_filterSize {hrtf[0].n_samples}\n'  # reverb filter
-        f'headphone_filterSize {hrtf[0].n_samples}\n'  # headphone equalizer
+        f'blockSize {int(hrir[0].n_samples / 2)}\n' # low values reduce delay but increase cpu load.
+        f'ds_filterSize {hrir[0].n_samples}\n'
+        f'early_filterSize {hrir[0].n_samples}\n'
+        f'late_filterSize {hrir[0].n_samples}\n'  # reverb filter
+        f'headphone_filterSize {hrir[0].n_samples}\n'  # headphone equalizer
         f'filterSource[mat/wav] wav\n'
         f'filterList {filter_list_fname}\n'
         f'maxChannels 1\n'
-        f'samplingRate {int(hrtf.samplerate)}\n'
+        f'samplingRate {int(hrir.samplerate)}\n'
         f'enableCrossfading True\n'
         f'loudnessFactor 0\n'
         f'loopSound False\n'
@@ -103,15 +112,15 @@ def hrtf2wav(filename, n_bins=None, add_itd=True):
     with open(wav_path / dir_name / filename, 'w') as file:
         file.write(
             f'soundfile {str(wav_path / dir_name / "sounds" / "pinknoise.wav")}\n'
-            f'blockSize {int(hrtf[0].n_samples / 2)}\n'  # low values reduce delay but increase cpu load.
-            f'ds_filterSize {hrtf[0].n_samples}\n'
-            f'early_filterSize {hrtf[0].n_samples}\n'
-            f'late_filterSize {hrtf[0].n_samples}\n'  # reverb filter
-            f'headphone_filterSize {hrtf[0].n_samples}\n'  # headphone equalizer
+            f'blockSize {int(hrir[0].n_samples / 2)}\n'  # low values reduce delay but increase cpu load.
+            f'ds_filterSize {hrir[0].n_samples}\n'
+            f'early_filterSize {hrir[0].n_samples}\n'
+            f'late_filterSize {hrir[0].n_samples}\n'  # reverb filter
+            f'headphone_filterSize {hrir[0].n_samples}\n'  # headphone equalizer
             f'filterSource[mat/wav] wav\n'
             f'filterList {filter_list_fname}\n'
             f'maxChannels 1\n'
-            f'samplingRate {int(hrtf.samplerate)}\n'
+            f'samplingRate {int(hrir.samplerate)}\n'
             f'enableCrossfading True\n'
             f'loudnessFactor 0\n'
             f'loopSound True\n'
@@ -130,14 +139,4 @@ def hrtf2wav(filename, n_bins=None, add_itd=True):
             f'recv_ip 127.0.0.1\n'
             f'recv_port 10000\n'
         )
-
-        # if add_itd:
-        #     itd = slab.Binaural.azimuth_to_itd(azimuth=coordinates[0], head_radius=11)  # head radius in cm
-        #     if itd >= 0:  # add left delay
-        #         delay = numpy.array((int(itd / 2 * hrtf.samplerate), 0))
-        #     elif itd < 0:  # add right delay
-        #         delay = numpy.array((0, int(- itd / 2 * hrtf.samplerate)))
-        #     fir_coefs = numpy.vstack((fir_coefs, delay))  # add group delays
-        # else:
-        #     fir_coefs = numpy.vstack((fir_coefs, numpy.zeros(2)))  # add zero group delays
 

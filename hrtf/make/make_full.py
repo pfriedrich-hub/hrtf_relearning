@@ -140,5 +140,4 @@ hrtf_animation([hrtf], (-180,180), (-60,60), 'left', 100,
 
 # write to hrir
 if write:
-    hrir = tf2ir(hrtf)
-    hrir.write_sofa(sofa_path / str(filename+'.sofa'))
+    hrtf.write_sofa(sofa_path / str(filename+'.sofa'))

@@ -1,10 +1,14 @@
+import matplotlib as mpl
+mpl.use('Qt5Agg')
+import matplotlib.pyplot as plt
 import numpy
 import slab
+import scipy
 from pathlib import Path
 from sklearn.linear_model import LinearRegression
 from hrtf.analysis.animation import hrtf_animation
 from hrtf.processing.tf2ir import tf2ir
-
+from hrtf.processing.add_interaural import *
 filename = 'single_notch'
 sofa_path = Path.cwd() / 'data' / 'hrtf' / 'sofa'
 
@@ -21,6 +25,7 @@ def make_hrtf(n_bins=256):
     sources = numpy.array(numpy.meshgrid(azimuths, elevations)).T.reshape(n_sources, 2)
     sources = numpy.column_stack((sources, numpy.ones(n_sources) * distance))
 
+    ext_tf = externalization_tf(hrtf=None, n_bins=n_bins)
     dtfs = []
     freq_bins = numpy.linspace(20, 20e3, n_bins)
     for az_idx, azimuth in enumerate(azimuths):
@@ -36,7 +41,12 @@ def make_hrtf(n_bins=256):
             # tf = add_feature(tf, freq_bins, mu, sigma, scaling)
 
             # # notch 1
-            mu = linear_notch_position(azimuth, elevation, X1=(-20,20), X2=(-60,60), Y=(6e3, 10e3))
+            # mu = linear_notch_position(azimuth, elevation, X1=(-20,20), X2=(-60,60), Y=(6e3, 10e3))
+            # s = linear_notch_width(azimuth, elevation, X1=(0,0), X2=(-60,60), Y=(500, 500))
+            # sf = linear_scaling_factor(azimuth, elevation, X1=(0,0), X2=(-60,60), Y=(s * -2.2, s * -2.2))
+            # tf = add_feature(tf, freq_bins=freq_bins, mu=mu, sigma=s, scaling=sf)
+            # azimuth-invariant notch
+            mu = linear_notch_position(azimuth, elevation, X1=(0,0), X2=(-60,60), Y=(6e3, 10e3))
             s = linear_notch_width(azimuth, elevation, X1=(0,0), X2=(-60,60), Y=(500, 500))
             sf = linear_scaling_factor(azimuth, elevation, X1=(0,0), X2=(-60,60), Y=(s * -2.2, s * -2.2))
             tf = add_feature(tf, freq_bins=freq_bins, mu=mu, sigma=s, scaling=sf)
@@ -66,6 +76,7 @@ def make_hrtf(n_bins=256):
             # tf = add_feature(tf, freq_bins=freq_bins, mu=mu, sigma=s, scaling=sf)
 
             tf += numpy.finfo(float).eps  # avoid log10(0) error
+            tf += ext_tf  # add externalization tf
             dtfs_at_az[ele_idx, :] = tf
         dtfs.append(dtfs_at_az)
 
@@ -78,6 +89,19 @@ def make_hrtf(n_bins=256):
     sources[sources[:, 0] < 0, 0] = sources[sources[:, 0] < 0, 0] + 360  # convert sources to sofa convention (0, 360)°
     return slab.HRTF(data=dtfs, samplerate=44.1e3, datatype='TF', sources=sources)
 
+def externalization_tf(hrtf, n_bins):
+    """
+    Get a low-res version of a DTF from 0° az and 0° elevation from a recorded HRTF to externalize a synthetic HRTF
+    """
+    if not hrtf:
+        hrtf = slab.HRTF.kemar()  # load KEMAR as default
+    idx_frontal = hrtf.get_source_idx(0, 0)[0]
+    ir_data = hrtf.data[idx_frontal].channel(0).data
+    # get low-res version of HRTF spectrum
+    tf_data = numpy.abs(scipy.signal.freqz(ir_data, worN=12, fs=hrtf.samplerate))[1]
+    tf_data[0] = 1  # avoids low-freq attenuation in KEMAR HRTF
+    tf_data = scipy.signal.resample(tf_data, n_bins)
+    return tf_data
 
 def add_feature(tf, freq_bins, mu, sigma, scaling):
     """
@@ -133,11 +157,13 @@ def linear_scaling_factor(azimuth, elevation, X1, X2, Y):
 hrtf = make_hrtf()
 
 # plots
-hrtf_animation([hrtf], (-180,180), (-60,60), 'left', 100,
-               'average', 'image', filename+'_L', write, show)
+# hrtf_animation([hrtf], (-180,180), (-60,60), 'left', 100,
+#                'average', 'image', filename+'_L', write, show)
 # hrtf_animation([hrtf], (-180,180), (-60,60), 'left', 100,
 #                'average', 'image', filename+'_R', write, show)
 
-# write to hrir
+# convert to hrir, add interaural differences and save to sofa
 if write:
-    hrtf.write_sofa(sofa_path / str(filename+'.sofa'))
+    hrir = tf2ir(hrtf)
+    hrir = add_itd(hrir)
+    hrir.write_sofa(sofa_path / str(filename+'.sofa'))

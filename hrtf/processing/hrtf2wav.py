@@ -9,11 +9,15 @@ wav_path = Path.cwd() / 'data' / 'hrtf' / 'wav'
 sofa_path = Path.cwd() / 'data' / 'hrtf' / 'sofa'
 sound_path = Path.cwd() / 'data' / 'sounds'
 
-def make_wav(filename):
-    if not (wav_path /filename).exists():
+# wrapper for hrtf2wav
+def make_wav(filename, overwrite=False):
+    if overwrite:
         hrtf2wav(f'{filename}.sofa')
+    else:
+        if not (wav_path / filename).exists():
+            hrtf2wav(f'{filename}.sofa')
 
-def hrtf2wav(filename, n_bins=None, add_interaural=False):
+def hrtf2wav(filename, n_bins=None):
     """
     Convert HRIR filters from a sofa file to wav files for use with pybinsim.
     """
@@ -38,10 +42,6 @@ def hrtf2wav(filename, n_bins=None, add_interaural=False):
     else:
         print(f'interpolating IR to {n_bins} bins.')
         # todo
-
-    if add_interaural:
-        add_interaural_difference(hrir, itd=True, ild=True)
-
 
     # write IR to wav and coordinates to filter_list.txt
     print(f'Writing wav files from {filename} and filter list "{dir_name}.text"')

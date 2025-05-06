@@ -2,6 +2,7 @@ from pathlib import Path
 import numpy
 import slab
 import time
+import logging
 from hrtf.processing.tf2ir import *
 from hrtf.processing.add_interaural import *
 
@@ -44,7 +45,7 @@ def hrtf2wav(filename, n_bins=None):
         # todo
 
     # write IR to wav and coordinates to filter_list.txt
-    print(f'Writing wav files from {filename} and filter list "{dir_name}.text"')
+    logging.info(f'Writing {filename} to wav files and filter_list.txt ...')
     for source_idx in range(hrtf.n_sources):
         coordinates = hrir.sources.vertical_polar[source_idx]
         if not n_bins == hrir[source_idx].n_taps:  # interpolate bins if necessary
@@ -68,12 +69,13 @@ def hrtf2wav(filename, n_bins=None):
                        f' 0 0 0'  # Value 13 - 15: custom values[a, b, c]
                        f' {fname}\n')
 
-    # resample sounds from sound folder
+    logging.info(f'Resampling sounds from sounds directory ...')
     for file in sound_path.glob('*.wav'):
         sound = slab.Sound.read(file)
         sound.resample(hrir.samplerate).write(wav_path / dir_name / 'sounds' / file.name)
 
     # write settings.txt:
+    logging.info(f'Writing {dir_name}_settings.txt ...')
     filename = f'{dir_name}_test_settings.txt'
     with open(wav_path / dir_name / filename, 'w') as file:
         file.write(
@@ -108,7 +110,6 @@ def hrtf2wav(filename, n_bins=None):
 
     # write settings.txt:
     filename = f'{dir_name}_training_settings.txt'
-    print(f'Writing {dir_name}_settings.txt ...')
     with open(wav_path / dir_name / filename, 'w') as file:
         file.write(
             f'soundfile {str(wav_path / dir_name / "sounds" / "pinknoise.wav")}\n'

@@ -8,7 +8,8 @@ from hrtf.processing.hrtf2wav import *
 logging.getLogger().setLevel('INFO')
 pybinsim.logger.setLevel(logging.WARNING)
 
-filename ='KU100_HRIR_L2702'
+# filename ='KU100_HRIR_L2702'
+filename ='single_notch'
 data_dir = Path.cwd() / 'data' / 'hrtf'
 
 target_size = 3
@@ -155,6 +156,8 @@ def head_tracking(distance, target, sensor_state):
             sensor_state.value = 1
         elif sensor_state.value == 3:  # head tracking flag
             pose = motion_sensor.get_pose()
+            pose_raw = numpy.array((motion_sensor.state.pose.yaw, motion_sensor.state.pose.roll))
+            logging.info(f'raw head pose: {pose_raw}')
             # set distance for play_session
             relative_coords = target[:] - pose
             distance.value = numpy.linalg.norm(relative_coords)

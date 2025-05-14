@@ -1,5 +1,7 @@
+from tempfile import template
+
 import matplotlib as mpl
-mpl.use('Qt5Agg')
+# mpl.use('Qt5Agg')
 import matplotlib.pyplot as plt
 import numpy
 import slab
@@ -25,7 +27,6 @@ def make_hrtf(n_bins=256):
     sources = numpy.array(numpy.meshgrid(azimuths, elevations)).T.reshape(n_sources, 2)
     sources = numpy.column_stack((sources, numpy.ones(n_sources) * distance))
 
-    ext_tf = externalization_tf(hrtf=None, az=0, n_bins=n_bins)
     dtfs = []
     freq_bins = numpy.linspace(20, 20e3, n_bins)
     for az_idx, azimuth in enumerate(azimuths):
@@ -76,13 +77,8 @@ def make_hrtf(n_bins=256):
             # tf = add_feature(tf, freq_bins=freq_bins, mu=mu, sigma=s, scaling=sf)
 
             tf += numpy.finfo(float).eps  # avoid log10(0) error
-
-            #add ext_tf with ild
-            ext_tf = externalization_tf(hrtf=None, az=azimuth, n_bins=n_bins)
-            tf += ext_tf  # add externalization tf
             dtfs_at_az[ele_idx, :] = tf
         dtfs.append(dtfs_at_az)
-
     # left ear
     dtfs_l = numpy.asarray(dtfs).reshape(n_azimuths * n_elevations, n_bins)
     # right ear: mirror DTFs on the sagittal plane, DTFs at 90° az will be equal to -90° for the other ear
@@ -91,20 +87,6 @@ def make_hrtf(n_bins=256):
 
     sources[sources[:, 0] < 0, 0] = sources[sources[:, 0] < 0, 0] + 360  # convert sources to sofa convention (0, 360)°
     return slab.HRTF(data=dtfs, samplerate=44.1e3, datatype='TF', sources=sources)
-
-def externalization_tf(hrtf=None, az=0, n_bins=256):
-    """
-    Get a low-res version of a DTF from 0° az and 0° elevation from a recorded HRTF to externalize a synthetic HRTF
-    """
-    if not hrtf:
-        hrtf = slab.HRTF.kemar()  # load KEMAR as default
-    idx_frontal = hrtf.get_source_idx(az, 0)[0]
-    ir_data = hrtf.data[idx_frontal].channel(0).data
-    # get low-res version of HRTF spectrum
-    tf_data = numpy.abs(scipy.signal.freqz(ir_data, worN=12, fs=hrtf.samplerate))[1]
-    tf_data[0] = 1  # avoids low-freq attenuation in KEMAR HRTF
-    tf_data = scipy.signal.resample(tf_data, n_bins)
-    return tf_data
 
 def add_feature(tf, freq_bins, mu, sigma, scaling):
     """
@@ -158,15 +140,16 @@ def linear_scaling_factor(azimuth, elevation, X1, X2, Y):
 
 # make
 hrtf = make_hrtf()
+hrtf = add_ild(hrtf, template_hrtf=None, band_stop=(6e3, 11e3))
+hrir = tf2ir(hrtf)
+hrir = add_itd(hrir)
 
 # plots
 # hrtf_animation([hrtf], (-180,180), (-60,60), 'left', 100,
-#                'average', 'image', filename+'_L', write, show)
-# hrtf_animation([hrtf], (-180,180), (-60,60), 'left', 100,
-#                'average', 'image', filename+'_R', write, show)
+#                'average', 'waterfall', filename+'_L', write, show, figsize=(7,5))
+hrtf_animation([hrtf], (-180,180), (-60,60), 'right', 100,
+               'average', 'waterfall', filename+'wf_R', write, show, figsize=(7,5))
 
-# convert to hrir, add interaural differences and save to sofa
-if write:
-    hrir = tf2ir(hrtf)
-    hrir = add_itd(hrir)
-    hrir.write_sofa(sofa_path / str(filename+'.sofa'))
+# # convert to hrir, add interaural differences and save to sofa
+# if write:
+#     hrir.write_sofa(sofa_path / str(filename+'.sofa'))

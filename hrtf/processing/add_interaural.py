@@ -14,10 +14,11 @@ def add_ild(hrtf, template_hrtf=None, band_stop=(6e3, 11e3)):
             template_hrtf = slab.HRTF.kemar()  # load KEMAR as default
         for azimuth in numpy.unique(hrtf.sources.vertical_polar[:, 0]):
             # todo workaround: convert to psychophys. convention to use with kemar
+            kemar_azimuth = copy.deepcopy(azimuth)
             if azimuth > 180:
-                azimuth = azimuth - 360
+                kemar_azimuth = azimuth - 360
             # get IR data of the template dtf (at spec. az and 0° elevation)
-            template_dtf_idx = template_hrtf.get_source_idx(azimuth, 0)[0]
+            template_dtf_idx = template_hrtf.get_source_idx(kemar_azimuth, 0)[0]
             ir_data = template_hrtf.data[template_dtf_idx].data
             # get low-res version of HRTF spectrum
             w, tf_data_l = numpy.abs(scipy.signal.freqz(ir_data[:, 0], worN=12, fs=hrtf.samplerate))

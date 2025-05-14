@@ -7,7 +7,7 @@ from hrtf.analysis.feature_p import feature_p
 
 
 def hrtf_animation(hrtf_list, azimuth_range, elevation_range, ear='both', interval=100, map='feature_p', kind='image',
-          filename=None, write=None, show=True):
+          filename=None, write=None, show=True, figsize=(5,5)):
     global data, fig, ax, frequencies, azimuths, elevations, settings
     settings = {'map': map, 'kind': kind}
     # plots features for sources in range 0 / +50 azimuth across elevations
@@ -38,7 +38,7 @@ def hrtf_animation(hrtf_list, azimuth_range, elevation_range, ear='both', interv
             map = map.reshape(map.shape[:2])[:, freq_idx]
         data.append(map)
 
-    fig, ax = plt.subplots(figsize=(10,5))
+    fig, ax = plt.subplots(figsize=figsize)
     ax.set_title(filename)
     if settings['kind'] == 'image':
         global cbar_axis, cbar_levels, cbar_ticks

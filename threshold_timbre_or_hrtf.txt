@@ -1,0 +1,1 @@
+type = hrtf, threshold = 4.5, n_elevations in hrtf possible = 25

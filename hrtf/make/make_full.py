@@ -26,13 +26,17 @@ def make_hrtf(n_bins=256):
     distance = 1
     sources = numpy.array(numpy.meshgrid(azimuths, elevations)).T.reshape(n_sources, 2)
     sources = numpy.column_stack((sources, numpy.ones(n_sources) * distance))
+    kemar = slab.HRTF.kemar()  # get kemar for ils
 
     dtfs = []
     freq_bins = numpy.linspace(20, 20e3, n_bins)
     for az_idx, azimuth in enumerate(azimuths):
         dtfs_at_az = numpy.zeros((len(elevations), n_bins))
         for ele_idx, elevation in enumerate(elevations):
-            tf = numpy.ones(n_bins)   # blank dtf
+            tf = slab.Filter(numpy.ones(shape=(2, n_bins)), samplerate=44.1e3, fir='TF')
+            tf = add_ils(tf, azimuth, template_hrtf=kemar)
+
+            # tf = numpy.ones(n_bins)   # blank dtf - deprecated
 
             # peak 1
             # increasing width and scaling from -60 to 50° az
@@ -94,7 +98,7 @@ def add_feature(tf, freq_bins, mu, sigma, scaling):
     """
     notch = (1 / (sigma * numpy.sqrt(2 * numpy.pi))) * (numpy.exp(-0.5 * ((freq_bins - mu) / sigma) ** 2)) * scaling
     notch_idx = numpy.where(numpy.logical_and(freq_bins > int(mu - sigma * 4), freq_bins < int(mu + sigma * 4)))
-    tf[notch_idx] += notch[notch_idx]
+    tf.data[notch_idx, 0] += notch[notch_idx]
     return tf
 
 def linear_notch_position(azimuth, elevation, X1, X2, Y):
@@ -147,9 +151,9 @@ hrir = add_itd(hrir)
 # plots
 # hrtf_animation([hrtf], (-180,180), (-60,60), 'left', 100,
 #                'average', 'waterfall', filename+'_L', write, show, figsize=(7,5))
-hrtf_animation([hrtf], (-180,180), (-60,60), 'right', 100,
-               'average', 'waterfall', filename+'wf_R', write, show, figsize=(7,5))
+# hrtf_animation([hrtf], (-180,180), (-60,60), 'right', 100,
+#                'average', 'waterfall', filename+'wf_R', write, show, figsize=(7,5))
 
-# # convert to hrir, add interaural differences and save to sofa
-# if write:
-#     hrir.write_sofa(sofa_path / str(filename+'.sofa'))
+# convert to hrir, add interaural differences and save to sofa
+if write:
+    hrir.write_sofa(sofa_path / str(filename+'.sofa'))

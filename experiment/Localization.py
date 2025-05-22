@@ -1,7 +1,6 @@
 import argparse
-import logging
 import multiprocessing as mp
-from experiment.misc.localization_analysis import *
+from analysis.localization_analysis import *
 from pythonosc import udp_client
 from experiment.misc import meta_motion
 from experiment.misc.make_sequence import *

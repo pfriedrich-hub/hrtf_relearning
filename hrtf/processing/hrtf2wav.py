@@ -44,6 +44,11 @@ def hrtf2wav(filename, n_bins=None):
         print(f'interpolating IR to {n_bins} bins.')
         # todo
 
+    logging.info(f'Resampling sounds from sounds directory ...')
+    for file in sound_path.glob('*.wav'):
+        sound = slab.Sound.read(file)
+        sound.resample(hrir.samplerate).write(wav_path / dir_name / 'sounds' / file.name)
+
     # write IR to wav and coordinates to filter_list.txt
     logging.info(f'Writing {filename} to wav files and filter_list.txt ...')
     for source_idx in range(hrtf.n_sources):
@@ -69,12 +74,32 @@ def hrtf2wav(filename, n_bins=None):
                        f' 0 0 0'  # Value 13 - 15: custom values[a, b, c]
                        f' {fname}\n')
 
-    logging.info(f'Resampling sounds from sounds directory ...')
-    for file in sound_path.glob('*.wav'):
-        sound = slab.Sound.read(file)
-        sound.resample(hrir.samplerate).write(wav_path / dir_name / 'sounds' / file.name)
+    # reverb tail:
+    # crop duration, interpolate to n_bins
+    reverb = slab.Sound(wav_path / dir_name / 'sounds' / 'reverb.wav').data
+    duration = 0.1
+    fname = wav_path / dir_name / 'sounds' / 'reverb_IR.wav'
+    reverb = reverb[:int(hrtf.samplerate * duration)]  # crop to 100 ms
+    if not n_bins == reverb.shape[0]:  # interpolate bins if necessary
+        t = numpy.linspace(0, duration, reverb.shape[0])
+        t_interp = numpy.linspace(0, duration, n_bins)
+        reverb_interp = numpy.zeros((n_bins, 2))
+        for idx in range(2):
+            reverb_interp[:, idx] = numpy.interp(t_interp, t, reverb[:, idx])
+        slab.Sound(data=reverb_interp).write(fname)
+    else:
+        slab.Sound(data=reverb).write(fname)
+    #  write IR and filter list entry
+    with open(filter_list_fname, 'a') as file:
+        file.write(f'LR'
+                   f' 0 0 0'  # Value 1 - 3: listener orientation[yaw, pitch, roll]
+                   f' 0 0 0'  # Value 4 - 6: listener position[x, y, z]
+                   f' 0 0 0'  # Value 7 - 9: source orientation[yaw, pitch, roll]
+                   f' 0 0 0'  # Value 10 - 12: source position[x, y, z]
+                   f' 0 0 0'  # Value 13 - 15: custom values[a, b, c]
+                   f' {fname}\n')
 
-    # write settings.txt:
+    # write settings.txt for training and testing:
     logging.info(f'Writing {dir_name}_settings.txt ...')
     filename = f'{dir_name}_test_settings.txt'
     with open(wav_path / dir_name / filename, 'w') as file:
@@ -108,7 +133,6 @@ def hrtf2wav(filename, n_bins=None):
         f'recv_port 10000\n'
         )
 
-    # write settings.txt:
     filename = f'{dir_name}_training_settings.txt'
     with open(wav_path / dir_name / filename, 'w') as file:
         file.write(
@@ -133,7 +157,7 @@ def hrtf2wav(filename, n_bins=None):
             f'useHeadphoneFilter False\n'
             f'ds_convolverActive True\n'
             f'early_convolverActive False\n'
-            f'late_convolverActive False\n'
+            f'late_convolverActive True\n'
             # osc receiver settings
             f'recv_type osc\n'
             f'recv_protocol udp\n'

@@ -1,15 +1,8 @@
-from tempfile import template
-
-import matplotlib as mpl
-mpl.use('Qt5Agg')
 import matplotlib.pyplot as plt
-import numpy
-import slab
-import scipy
 from pathlib import Path
 from sklearn.linear_model import LinearRegression
 from hrtf.analysis.animation import hrtf_animation
-from hrtf.processing.tf2ir import tf2ir
+from hrtf.processing.tf2ir import *
 from hrtf.processing.add_interaural import *
 filename = 'single_notch'
 sofa_path = Path.cwd() / 'data' / 'hrtf' / 'sofa'
@@ -33,10 +26,8 @@ def make_hrtf(n_bins=128):
     for az_idx, azimuth in enumerate(azimuths):
         dtfs_at_az = numpy.zeros((len(elevations), n_bins))
         for ele_idx, elevation in enumerate(elevations):
-            tf = slab.Filter(numpy.ones(shape=(2, n_bins)), samplerate=44.1e3, fir='TF')
+            tf = slab.Filter(numpy.ones(shape=(1, n_bins)), samplerate=44.1e3, fir='TF')
             # tf = add_ils(tf, azimuth, template_hrtf=kemar)
-
-            # tf = numpy.ones(n_bins)   # blank dtf - deprecated
 
             # peak 1
             # increasing width and scaling from -60 to 50° az
@@ -80,8 +71,8 @@ def make_hrtf(n_bins=128):
             # sf = linear_scaling_factor(azimuth, elevation, x=[(0, 50), (-30, 40)], y=(s * 2.2, s * 1.5))
             # tf = add_feature(tf, freq_bins=freq_bins, mu=mu, sigma=s, scaling=sf)
 
-            tf += numpy.finfo(float).eps  # avoid log10(0) error
-            dtfs_at_az[ele_idx, :] = tf
+            # tf.data += numpy.finfo(float).eps  # avoid log10(0) error
+            dtfs_at_az[ele_idx, :] = tf.data.flatten()
         dtfs.append(dtfs_at_az)
     # left ear
     dtfs_l = numpy.asarray(dtfs).reshape(n_azimuths * n_elevations, n_bins)
@@ -144,15 +135,15 @@ def linear_scaling_factor(azimuth, elevation, X1, X2, Y):
 
 # make
 hrtf = make_hrtf()
-hrir = tf2ir(hrtf)
+hrir = hrtf2hrir(hrtf)
 hrir = add_itd(hrir)
 
 # plots
-# hrtf_animation([hrtf], (-180,180), (-60,60), 'left', 100,
-#                'average', 'waterfall', filename+'_L', write, show, figsize=(7,5))
+hrtf_animation([hrtf], (-180,180), (-60,60), 'left', 100,
+               'average', 'waterfall', filename+'_L', write, show, figsize=(7,5))
 hrtf_animation([hrtf], (-180,180), (-60,60), 'right', 100,
-               'average', 'waterfall', filename+'wf_R', write, show, figsize=(7,5))
+               'average', 'waterfall', filename+'R', write, show, figsize=(7,5))
 
-# # convert to hrir, add interaural differences and save to sofa
-# if write:
-#     hrir.write_sofa(sofa_path / str(filename+'.sofa'))
+# convert to hrir, add interaural differences and save to sofa
+if write:
+    hrir.write_sofa(sofa_path / str(filename+'.sofa'))

@@ -255,7 +255,7 @@ if __name__ == "__main__":
 #     time.sleep(.1)
 #     pulse_state.value = 2  # play
 #     time.sleep(slab.Sound.read(fpath).duration)
-#     osc_client.send_message('/pyBinSimFile', str(data_dir / 'wav' / filename / 'sounds' / 'pinknoise.wav'))
+#     osc_client.send_message('/pyBinSimFile', str(data_dir / 'wav' / filename / 'sounds' / 'noise_pulse.wav'))
 #     pulse_state.value = 1  # mute
 
 # def play_sound(wav_name, pulse_state):

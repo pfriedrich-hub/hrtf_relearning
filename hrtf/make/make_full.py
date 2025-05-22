@@ -22,7 +22,6 @@ def make_hrtf(n_bins=128):
     sources = numpy.array(numpy.meshgrid(azimuths, elevations)).T.reshape(n_sources, 2)
     sources = numpy.column_stack((sources, numpy.ones(n_sources) * distance))
     kemar = slab.HRTF.kemar()  # get kemar for ils
-
     dtfs = []
     freq_bins = numpy.linspace(20, 20e3, n_bins)
     for az_idx, azimuth in enumerate(azimuths):

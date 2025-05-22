@@ -140,11 +140,11 @@ def head_tracking(distance, target, sensor_state):
     device = meta_motion.get_device()
     state = meta_motion.State(device)
     motion_sensor = meta_motion.Sensor(state)
-    logging.debug('motion sensor running')
+    logging.debug('motion sensor connected')
     sensor_state.value = 1   # init flag
     while True:
         if sensor_state.value == 2:  # to be calibrated flag
-            logging.debug('Calibrating sensor..')
+            logging.info('Calibrating sensor..')
             motion_sensor.calibrate()
             while not motion_sensor.is_calibrated:
                 time.sleep(0.1)

@@ -6,19 +6,19 @@ import pybinsim
 from experiment.misc import meta_motion
 from hrtf.processing.hrtf2wav import *
 logging.getLogger().setLevel('INFO')
-pybinsim.logger.setLevel(logging.WARNING)
+pybinsim.logger.setLevel(logging.ERROR)
 
 # filename ='KU100_HRIR_L2702'
 filename ='single_notch'
 data_dir = Path.cwd() / 'data' / 'hrtf'
 
-target_size = 3
+target_size = 5
 target_time = 1
 az_range = (-45, 45)
 ele_range = (-35, 35)
 min_dist = 30
-game_time  = 90
-trial_time = 10
+game_time  = 180
+trial_time = 20
 loudness_scaling = .5
 
 # main functions
@@ -110,7 +110,6 @@ def play_session(game_time, trial_time, target_size, target_time, az_range, ele_
     pulse_worker.join()
     tracking_worker.join()
 
-
 # ----- sub processes ----- #
 def binsim_stream():
     binsim = pybinsim.BinSim(data_dir / 'wav' / filename / f'{filename}_training_settings.txt')
@@ -125,17 +124,23 @@ def pulse_maker(pulse_interval, pulse_state):
             ramp(osc_client, direction='down')
             playing = False
         elif pulse_state.value == 2:  # play sound with given interval
+            if not playing:
+                ramp(osc_client, direction='up')
             interval = pulse_interval.value
-            logging.debug(f'pulse stream: got interval value {interval}')
+            logging.info(f'pulse stream: got interval value {interval}')
             if interval == 0 and not playing:
-                ramp(osc_client, direction='up')
-                playing = True
+                # send soundfile
+                set_soundfile('pinknoise.wav', osc_client)
+
+                # ramp(osc_client, direction='up')
             elif interval != 0:  # pulse sound
-                ramp(osc_client, direction='up')
+                # ramp(osc_client, direction='up')
+                set_soundfile('single_pulse.wav', osc_client)
+                time.sleep(.3)  # wait for playback
                 time.sleep(interval / 1000)
-                ramp(osc_client, direction='down')
-                time.sleep(interval / 1000)
-                playing = False
+                # ramp(osc_client, direction='down')
+                # time.sleep(interval / 1000)
+            playing = True
         time.sleep(0.01)   # these intervals mainly determines CPU load
 
 def head_tracking(distance, target, sensor_state):
@@ -156,8 +161,8 @@ def head_tracking(distance, target, sensor_state):
             sensor_state.value = 1
         elif sensor_state.value == 3:  # head tracking flag
             pose = motion_sensor.get_pose()
-            pose_raw = numpy.array((motion_sensor.state.pose.yaw, motion_sensor.state.pose.roll))
-            logging.info(f'raw head pose: {pose_raw}')
+            # pose_raw = numpy.array((motion_sensor.state.pose.yaw, motion_sensor.state.pose.roll))
+            # logging.info(f'raw head pose: {pose_raw}')
             # set distance for play_session
             relative_coords = target[:] - pose
             distance.value = numpy.linalg.norm(relative_coords)
@@ -174,6 +179,10 @@ def head_tracking(distance, target, sensor_state):
         time.sleep(0.01)    # these intervals mainly determines CPU load
 
 # ------- helpers ----- #
+def set_soundfile(soundfile, osc_client):
+    logging.debug(f'Setting soundfile: {soundfile}')
+    osc_client.send_message('/pyBinSimFile', str(data_dir / 'wav' / filename / 'sounds' / soundfile))
+
 def play_sound(wav_name, pulse_state):
     logging.debug(f'playing sound file: {wav_name}')
     pulse_state.value = 1  # mute binsim
@@ -195,18 +204,20 @@ def ramp(osc_client, direction='up', duration=0.05, n_steps=20):
         osc_client.send_message('/pyBinSimLoudness', level * loudness_scaling)
         time.sleep(duration / n_steps)
 
-def distance_to_interval(distance):  # todo fix
-    max_interval = 250  # interval duration at max distance in ms
-    max_distance = numpy.linalg.norm(numpy.subtract([0, 0], [az_range[0], ele_range[0]]))  # max distance in degrees
+def distance_to_interval(distance):
+    max_interval = 250  # max interval duration in ms
+    min_interval = 30  # min interval duration before entering target window
     steepness = 50  # controls how the interval duration increases
+    max_distance = numpy.linalg.norm(numpy.subtract([0, 0], [az_range[0], ele_range[0]]))  # max possible distance
     if distance <= target_size:
-        interval = 0
-    else:
-        norm_dist = (distance - target_size) / (max_distance - target_size)
-        norm_dist = numpy.clip(norm_dist, 0, 1)  # Keep in range [0, 1]
-        interval = int(max_interval * (numpy.log1p(steepness * norm_dist) / numpy.log1p(steepness)))
-    interval = max(0, interval)  # ensure non-negative interval
-    return interval
+        return 0  # fully inside target window → silent
+    # Normalize distance: [target_size → max_distance] → [0 → 1]
+    norm_dist = (distance - target_size) / (max_distance - target_size)
+    norm_dist = numpy.clip(norm_dist, 0, 1)
+    # Logarithmic interpolation between min_interval and max_interval
+    scale = numpy.log1p(steepness * norm_dist) / numpy.log1p(steepness)
+    interval = (min_interval + (max_interval - min_interval) * scale).astype(int)
+    return int(interval)
 
 def make_osc_client(port):
     host = '127.0.0.1'
@@ -237,9 +248,6 @@ if __name__ == "__main__":
     play_session(game_time, trial_time, target_size, target_time, tuple(az_range), tuple(ele_range))
 
 
-
-
-
     # parser = argparse.ArgumentParser(description="Run the auditory training experiment.")
     # parser.add_argument("--game_time", type=int, default=90, help="Total session duration in seconds")
     # parser.add_argument("--trial_time", type=int, default=10, help="Time limit per trial in seconds")
@@ -263,3 +271,25 @@ if __name__ == "__main__":
 #     time.sleep(slab.Sound.read(fpath).duration)
 #     osc_client.send_message('/pyBinSimFile', str(data_dir / 'wav' / filename / 'sounds' / 'pinknoise.wav'))
 #     pulse_state.value = 1  # mute
+
+# def pulse_maker(pulse_interval, pulse_state):
+#     osc_client = make_osc_client(port=10003)
+#     playing = False
+#     while True:
+#         # logging.debug(f'playing: {playing}')
+#         if pulse_state.value == 1 and playing:  # Mute sound, stop updating interval
+#             ramp(osc_client, direction='down')
+#             playing = False
+#         elif pulse_state.value == 2:  # play sound with given interval
+#             interval = pulse_interval.value
+#             logging.debug(f'pulse stream: got interval value {interval}')
+#             if interval == 0 and not playing:
+#                 ramp(osc_client, direction='up')
+#                 playing = True
+#             elif interval != 0:  # pulse sound
+#                 ramp(osc_client, direction='up')
+#                 time.sleep(interval / 1000)
+#                 ramp(osc_client, direction='down')
+#                 time.sleep(interval / 1000)
+#                 playing = False
+#         time.sleep(0.01)   # these intervals mainly determines CPU load

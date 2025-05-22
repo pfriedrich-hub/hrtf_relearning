@@ -124,7 +124,7 @@ def hrtf2wav(filename, n_bins=None):
             f'samplingRate {int(hrir.samplerate)}\n'
             f'enableCrossfading True\n'
             f'loudnessFactor 0\n'
-            f'loopSound True\n'
+            f'loopSound False\n'
             # convolver settings 
             f'torchConvolution[cpu/cuda] cpu\n'
             f'torchStorage[cpu/cuda] cpu\n'

@@ -30,8 +30,12 @@ def add_ild(hrtf, template_hrtf=None, band_stop=(6e3, 11e3)):
         if not template_hrtf:
             template_hrtf = slab.HRTF.kemar()  # load KEMAR as default
         for azimuth in numpy.unique(hrtf.sources.vertical_polar[:, 0]):
-            kemar_azimuth = copy.deepcopy(azimuth)
-            template_dtf_idx = template_hrtf.get_source_idx(azimuth=kemar_azimuth, elevation=0)[0]
+            # todo workaround: convert to psychophys. convention to use with kemar
+            azimuth_converted = copy.deepcopy(azimuth)
+            if azimuth > 180:
+                azimuth_converted = azimuth - 360
+            # get IR data of the template dtf (at spec. az and 0° elevation)
+            template_dtf_idx = template_hrtf.get_source_idx(azimuth_converted, 0)[0]
             ir_data = template_hrtf.data[template_dtf_idx].data
             # get low-res version of HRTF spectrum
             w, tf_data_l = numpy.abs(scipy.signal.freqz(ir_data[:, 0], worN=12, fs=hrtf.samplerate))
@@ -41,14 +45,13 @@ def add_ild(hrtf, template_hrtf=None, band_stop=(6e3, 11e3)):
             tf_data = scipy.signal.resample(tf_data, n_bins, axis=1)  # resample to hrtf samplerate
             w = numpy.linspace(0, w.max(), n_bins)  # frequency bins
             # avoid interference of interaural level spectrum with band stop region
-            # todo make
             tf_data[:, numpy.where((w > band_stop[0]) & (w < band_stop[1]))] = numpy.finfo(float).eps
             # ramp edges of bandstop region
             envelope = lambda t: numpy.sin(numpy.pi * t / 2) ** 2  # squared sine window
             multiplier = envelope(numpy.linspace(0.0, 1.0, 20))
             tf_data[:, numpy.where(w < band_stop[0])[0][-20:]] *= numpy.flip(multiplier)
             tf_data[:, numpy.where(w > band_stop[1])[0][:20]] *= multiplier
-            hrtf_idx = hrtf.get_source_idx(azimuth=azimuth).tolist()
+            hrtf_idx = hrtf.get_source_idx(azimuth=azimuth_converted).tolist()
             for id in hrtf_idx:
                 # todo workaround: mirror az to use with kemar
                 hrtf[id].data[:, 0] += tf_data[1]

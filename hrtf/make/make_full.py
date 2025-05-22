@@ -1,7 +1,7 @@
 from tempfile import template
 
 import matplotlib as mpl
-# mpl.use('Qt5Agg')
+mpl.use('Qt5Agg')
 import matplotlib.pyplot as plt
 import numpy
 import slab
@@ -17,7 +17,7 @@ sofa_path = Path.cwd() / 'data' / 'hrtf' / 'sofa'
 show=False
 write=True
 
-def make_hrtf(n_bins=256):
+def make_hrtf(n_bins=128):
     n_azimuths = 37
     n_elevations = 25
     azimuths = numpy.linspace(-90, 90, n_azimuths)
@@ -34,7 +34,7 @@ def make_hrtf(n_bins=256):
         dtfs_at_az = numpy.zeros((len(elevations), n_bins))
         for ele_idx, elevation in enumerate(elevations):
             tf = slab.Filter(numpy.ones(shape=(2, n_bins)), samplerate=44.1e3, fir='TF')
-            tf = add_ils(tf, azimuth, template_hrtf=kemar)
+            # tf = add_ils(tf, azimuth, template_hrtf=kemar)
 
             # tf = numpy.ones(n_bins)   # blank dtf - deprecated
 
@@ -111,7 +111,7 @@ def linear_notch_position(azimuth, elevation, X1, X2, Y):
     model = LinearRegression()
     model.fit(X, numpy.array(Y))
     data = numpy.array((azimuth, elevation))
-    mu = model.predict(data.reshape(1, -1))
+    mu = model.predict(data.reshape(1, -1))[0]
     return float(mu)
 
 def linear_notch_width(azimuth, elevation, X1, X2, Y):
@@ -124,7 +124,7 @@ def linear_notch_width(azimuth, elevation, X1, X2, Y):
     model = LinearRegression()
     model.fit(X, numpy.array(Y))
     data = numpy.array((azimuth, elevation))
-    sigma = model.predict(data.reshape(1, -1))
+    sigma = model.predict(data.reshape(1, -1))[0]
     if sigma <= 0:  # avoid negative notch width
         sigma = numpy.finfo(float).eps
     return float(sigma)
@@ -139,21 +139,20 @@ def linear_scaling_factor(azimuth, elevation, X1, X2, Y):
     model = LinearRegression()
     model.fit(X, numpy.array(Y))
     data = numpy.array((azimuth, elevation))
-    scaling = model.predict(data.reshape(1, -1))
+    scaling = model.predict(data.reshape(1, -1))[0]
     return float(scaling)
 
 # make
 hrtf = make_hrtf()
-hrtf = add_ild(hrtf, template_hrtf=None, band_stop=(6e3, 11e3))
 hrir = tf2ir(hrtf)
 hrir = add_itd(hrir)
 
 # plots
 # hrtf_animation([hrtf], (-180,180), (-60,60), 'left', 100,
 #                'average', 'waterfall', filename+'_L', write, show, figsize=(7,5))
-# hrtf_animation([hrtf], (-180,180), (-60,60), 'right', 100,
-#                'average', 'waterfall', filename+'wf_R', write, show, figsize=(7,5))
+hrtf_animation([hrtf], (-180,180), (-60,60), 'right', 100,
+               'average', 'waterfall', filename+'wf_R', write, show, figsize=(7,5))
 
-# convert to hrir, add interaural differences and save to sofa
-if write:
-    hrir.write_sofa(sofa_path / str(filename+'.sofa'))
+# # convert to hrir, add interaural differences and save to sofa
+# if write:
+#     hrir.write_sofa(sofa_path / str(filename+'.sofa'))

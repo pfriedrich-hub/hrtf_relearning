@@ -6,12 +6,18 @@ from hrtf.processing.average import hrtf_average
 from hrtf.analysis.feature_p import feature_p
 
 
-def hrtf_animation(hrtf_list, azimuth_range, elevation_range, ear='both', interval=100, map='feature_p', kind='image',
+def hrtf_animation(hrtf, azimuth_range, elevation_range, ear='both', interval=100, map='feature_p', kind='image',
           filename=None, write=None, show=True, figsize=(5,5)):
     global data, fig, ax, frequencies, azimuths, elevations, settings
     settings = {'map': map, 'kind': kind}
     # plots features for sources in range 0 / +50 azimuth across elevations
     # if axis == 'azimuth':
+    if type(hrtf).__name__ == 'HRTF':  # convert to list if a single hrtf is given
+        hrtf_list = [hrtf]
+    elif type(hrtf ) == list:
+        hrtf_list = hrtf
+    else:
+        raise ValueError('hrtf must be a HRTF object or a list of HRTF objects')
     if not len(hrtf_list) == 0:
         source_idx = hrtf_list[0].get_source_idx(azimuth=azimuth_range, elevation=elevation_range)
     else:

@@ -75,9 +75,10 @@ def hrtf2wav(filename, n_bins=None):
                        f' {fname}\n')
 
     # reverb tail:
-    # crop duration, interpolate to n_bins
+    # crop duration, interpolate to n_bins and rescale level
     reverb = slab.Sound(wav_path / dir_name / 'sounds' / 'reverb.wav').data
     duration = 0.1
+    level = 0.1
     fname = wav_path / dir_name / 'sounds' / 'reverb_IR.wav'
     reverb = reverb[:int(hrtf.samplerate * duration)]  # crop to 100 ms
     if not n_bins == reverb.shape[0]:  # interpolate bins if necessary
@@ -86,9 +87,8 @@ def hrtf2wav(filename, n_bins=None):
         reverb_interp = numpy.zeros((n_bins, 2))
         for idx in range(2):
             reverb_interp[:, idx] = numpy.interp(t_interp, t, reverb[:, idx])
-        slab.Sound(data=reverb_interp).write(fname)
-    else:
-        slab.Sound(data=reverb).write(fname)
+        reverb = reverb_interp * level / numpy.max(numpy.abs(reverb_interp))  # rescale
+    slab.Sound(data=reverb).write(fname)
     #  write IR and filter list entry
     with open(filter_list_fname, 'a') as file:
         file.write(f'LR'

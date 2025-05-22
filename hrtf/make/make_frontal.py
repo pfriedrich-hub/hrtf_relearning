@@ -1,4 +1,7 @@
 import numpy
+import matplotlib as mpl
+mpl.use('Qt5Agg')
+import matplotlib.pyplot as plt
 import slab
 from sklearn import linear_model
 reg = linear_model.LinearRegression()

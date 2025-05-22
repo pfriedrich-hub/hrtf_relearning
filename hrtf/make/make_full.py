@@ -1,3 +1,5 @@
+import matplotlib as mpl
+mpl.use('Qt5Agg')
 import matplotlib.pyplot as plt
 from pathlib import Path
 from sklearn.linear_model import LinearRegression

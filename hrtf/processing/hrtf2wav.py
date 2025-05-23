@@ -1,4 +1,7 @@
 from pathlib import Path
+import matplotlib as mpl
+mpl.use('Qt5Agg')
+import matplotlib.pyplot as plt
 import numpy
 import slab
 import time
@@ -78,8 +81,7 @@ def hrtf2wav(filename, n_bins=None):
     # crop duration, interpolate to n_bins and rescale level
     reverb = slab.Sound(wav_path / dir_name / 'sounds' / 'reverb.wav').data
     duration = 0.1
-    level = 0.1
-    fname = wav_path / dir_name / 'sounds' / 'reverb_IR.wav'
+    level = 10
     reverb = reverb[:int(hrtf.samplerate * duration)]  # crop to 100 ms
     if not n_bins == reverb.shape[0]:  # interpolate bins if necessary
         t = numpy.linspace(0, duration, reverb.shape[0])
@@ -87,8 +89,9 @@ def hrtf2wav(filename, n_bins=None):
         reverb_interp = numpy.zeros((n_bins, 2))
         for idx in range(2):
             reverb_interp[:, idx] = numpy.interp(t_interp, t, reverb[:, idx])
-        reverb = reverb_interp * level / numpy.max(numpy.abs(reverb_interp))  # rescale
-    slab.Sound(data=reverb).write(fname)
+        reverb = reverb_interp * level / numpy.max(numpy.abs(reverb_interp))  # rescale reverb level #todo rescale in pybinsim
+    fname = wav_path / dir_name / 'sounds' / 'reverb_IR.wav'
+    slab.Sound(data=reverb).write(fname)  # write reverb IR
     #  write IR and filter list entry
     with open(filter_list_fname, 'a') as file:
         file.write(f'LR'
@@ -136,7 +139,7 @@ def hrtf2wav(filename, n_bins=None):
     filename = f'{dir_name}_training_settings.txt'
     with open(wav_path / dir_name / filename, 'w') as file:
         file.write(
-            f'soundfile {str(wav_path / dir_name / "sounds" / "pinknoise.wav")}\n'
+            f'soundfile {str(wav_path / dir_name / "sounds" / "noise_pulse.wav")}\n'
             f'blockSize {int(hrir[0].n_samples / 2)}\n'  # low values reduce delay but increase cpu load.
             f'ds_filterSize {hrir[0].n_samples}\n'
             f'early_filterSize {hrir[0].n_samples}\n'

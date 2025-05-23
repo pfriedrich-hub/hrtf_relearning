@@ -9,17 +9,17 @@ from experiment.misc.plotting import *
 logging.getLogger().setLevel('INFO')
 pybinsim.logger.setLevel(logging.WARNING)
 
-filename ='KU100_HRIR_L2702'
-# filename ='single_notch'
+# filename ='KU100_HRIR_L2702'
+filename ='single_notch'
 
 target_size = 3
 target_time = 1
 az_range = (-45, 45)
-ele_range = (-20, 20)
+ele_range = (-1, 1)
 min_dist = 30
 game_time  = 180
-trial_time = 30
-gain = .1
+trial_time = 15
+gain = .5
 
 data_dir = Path.cwd() / 'data' / 'hrtf'
 hrtf = slab.HRTF(data_dir / 'sofa' / f'{filename}.sofa')
@@ -233,8 +233,7 @@ def set_target(az_range, ele_range, target, min_dist):
             break
 
 if __name__ == "__main__":
-    make_wav(filename)
-
+    make_wav(filename, overwrite=True)
     play_session(game_time, trial_time, target_size, target_time, tuple(az_range), tuple(ele_range))
 
 

@@ -22,8 +22,10 @@ def hrtf2wav(filename, n_bins=None):
     """
     Convert HRIR filters from a sofa file to wav files for use with pybinsim.
     """
-    ir_level = 55
-    reverb_level = 50
+    # set direct to reverb ratio
+    direct_level = 55
+    reverb_level = 45
+
     # create folder structure for HRTF
     dir_name = Path(filename).stem
     if not (wav_path / dir_name).exists():
@@ -65,7 +67,7 @@ def hrtf2wav(filename, n_bins=None):
             fir_coefs = hrir[source_idx].data
         fname = wav_path / dir_name / 'IR_data' / f'{coordinates[0]}_{coordinates[1]}.wav'
         directional_ir = (slab.Sound(data=fir_coefs))
-        directional_ir.level = ir_level
+        directional_ir.level = direct_level
         directional_ir.write(filename=fname, normalise=False)
         # write to filter_list.txt
         filter_list_fname = wav_path / dir_name / f"filter_list_{dir_name}.txt"

@@ -1,7 +1,4 @@
 from pathlib import Path
-import matplotlib as mpl
-mpl.use('Qt5Agg')
-import matplotlib.pyplot as plt
 import numpy
 import slab
 import time
@@ -25,6 +22,8 @@ def hrtf2wav(filename, n_bins=None):
     """
     Convert HRIR filters from a sofa file to wav files for use with pybinsim.
     """
+    ir_level = 60
+    reverb_level = 10
     # create folder structure for HRTF
     dir_name = Path(filename).stem
     if not (wav_path / dir_name).exists():
@@ -65,7 +64,9 @@ def hrtf2wav(filename, n_bins=None):
         else:
             fir_coefs = hrir[source_idx].data
         fname = wav_path / dir_name / 'IR_data' / f'{coordinates[0]}_{coordinates[1]}.wav'
-        slab.Sound(data=fir_coefs).write(filename=fname)
+        dir_ir = (slab.Sound(data=fir_coefs))
+        dir_ir.level = ir_level
+        dir_ir.write(filename=fname)
         # write to filter_list.txt
         filter_list_fname = wav_path / dir_name / f"filter_list_{dir_name}.txt"
         with open(filter_list_fname, 'a') as file:
@@ -81,7 +82,7 @@ def hrtf2wav(filename, n_bins=None):
     # crop duration, interpolate to n_bins and rescale level
     reverb = slab.Sound(wav_path / dir_name / 'sounds' / 'reverb.wav').data
     duration = 0.1
-    level = 10
+    fname = wav_path / dir_name / 'sounds' / 'reverb_IR.wav'
     reverb = reverb[:int(hrtf.samplerate * duration)]  # crop to 100 ms
     if not n_bins == reverb.shape[0]:  # interpolate bins if necessary
         t = numpy.linspace(0, duration, reverb.shape[0])
@@ -89,9 +90,10 @@ def hrtf2wav(filename, n_bins=None):
         reverb_interp = numpy.zeros((n_bins, 2))
         for idx in range(2):
             reverb_interp[:, idx] = numpy.interp(t_interp, t, reverb[:, idx])
-        reverb = reverb_interp * level / numpy.max(numpy.abs(reverb_interp))  # rescale reverb level #todo rescale in pybinsim
-    fname = wav_path / dir_name / 'sounds' / 'reverb_IR.wav'
-    slab.Sound(data=reverb).write(fname)  # write reverb IR
+    # reverb = reverb_interp * level / numpy.max(numpy.abs(reverb_interp))  # rescale
+    reverb = slab.Sound(data=reverb_interp)
+    reverb.level = reverb_level
+    reverb.write(fname)
     #  write IR and filter list entry
     with open(filter_list_fname, 'a') as file:
         file.write(f'LR'

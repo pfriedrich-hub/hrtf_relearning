@@ -22,8 +22,8 @@ def hrtf2wav(filename, n_bins=None):
     """
     Convert HRIR filters from a sofa file to wav files for use with pybinsim.
     """
-    ir_level = 10  # todo has no effect as of now - maybe the wav file writing overrides levels?
-    reverb_level = 10
+    ir_level = 55
+    reverb_level = 50
     # create folder structure for HRTF
     dir_name = Path(filename).stem
     if not (wav_path / dir_name).exists():
@@ -66,7 +66,7 @@ def hrtf2wav(filename, n_bins=None):
         fname = wav_path / dir_name / 'IR_data' / f'{coordinates[0]}_{coordinates[1]}.wav'
         directional_ir = (slab.Sound(data=fir_coefs))
         directional_ir.level = ir_level
-        directional_ir.write(filename=fname)
+        directional_ir.write(filename=fname, normalise=False)
         # write to filter_list.txt
         filter_list_fname = wav_path / dir_name / f"filter_list_{dir_name}.txt"
         with open(filter_list_fname, 'a') as file:
@@ -81,9 +81,9 @@ def hrtf2wav(filename, n_bins=None):
     # reverb tail:
     # crop duration, interpolate to n_bins and rescale level
     reverb = slab.Sound(wav_path / dir_name / 'sounds' / 'reverb.wav').data
-    # duration = 0.1
+    duration = 0.1
     fname = wav_path / dir_name / 'sounds' / 'reverb_IR.wav'
-    # reverb = reverb[:int(hrtf.samplerate * duration)]  # crop to 100 ms
+    reverb = reverb[:int(hrtf.samplerate * duration)]  # crop to 100 ms
     if not n_bins == reverb.shape[0]:  # interpolate bins if necessary
         t = numpy.linspace(0, 1, reverb.shape[0])
         t_interp = numpy.linspace(0, 1, n_bins)
@@ -93,7 +93,7 @@ def hrtf2wav(filename, n_bins=None):
     # reverb = reverb_interp * level / numpy.max(numpy.abs(reverb_interp))  # rescale
     reverb = slab.Sound(data=reverb_interp)
     reverb.level = reverb_level
-    reverb.write(fname)
+    reverb.write(fname, normalise=False)
     #  write IR and filter list entry
     with open(filter_list_fname, 'a') as file:
         file.write(f'LR'
@@ -103,6 +103,38 @@ def hrtf2wav(filename, n_bins=None):
                    f' 0 0 0'  # Value 10 - 12: source position[x, y, z]
                    f' 0 0 0'  # Value 13 - 15: custom values[a, b, c]
                    f' {fname}\n')
+
+    filename = f'{dir_name}_training_settings.txt'
+    with open(wav_path / dir_name / filename, 'w') as file:
+        file.write(
+            f'soundfile {str(wav_path / dir_name / "sounds" / "noise_pulse.wav")}\n'
+            f'blockSize {int(hrir[0].n_samples / 2)}\n'  # low values reduce delay but increase cpu load.
+            f'ds_filterSize {hrir[0].n_samples}\n'
+            f'early_filterSize {hrir[0].n_samples}\n'
+            f'late_filterSize {hrir[0].n_samples}\n'  # reverb filter
+            f'headphone_filterSize {hrir[0].n_samples}\n'  # headphone equalizer
+            f'filterSource[mat/wav] wav\n'
+            f'filterList {filter_list_fname}\n'
+            f'maxChannels 1\n'
+            f'samplingRate {int(hrir.samplerate)}\n'
+            f'enableCrossfading True\n'
+            f'loudnessFactor 0\n'
+            f'loopSound False\n'
+            # convolver settings 
+            f'torchConvolution[cpu/cuda] cpu\n'
+            f'torchStorage[cpu/cuda] cpu\n'
+            f'pauseConvolution False\n'
+            f'pauseAudioPlayback False\n'
+            f'useHeadphoneFilter False\n'
+            f'ds_convolverActive True\n'
+            f'early_convolverActive False\n'
+            f'late_convolverActive True\n'
+            # osc receiver settings
+            f'recv_type osc\n'
+            f'recv_protocol udp\n'
+            f'recv_ip 127.0.0.1\n'
+            f'recv_port 10000\n'
+            )
 
     # write settings.txt for training and testing:
     logging.info(f'Writing {dir_name}_settings.txt ...')
@@ -137,36 +169,3 @@ def hrtf2wav(filename, n_bins=None):
         f'recv_ip 127.0.0.1\n'
         f'recv_port 10000\n'
         )
-
-    filename = f'{dir_name}_training_settings.txt'
-    with open(wav_path / dir_name / filename, 'w') as file:
-        file.write(
-            f'soundfile {str(wav_path / dir_name / "sounds" / "noise_pulse.wav")}\n'
-            f'blockSize {int(hrir[0].n_samples / 2)}\n'  # low values reduce delay but increase cpu load.
-            f'ds_filterSize {hrir[0].n_samples}\n'
-            f'early_filterSize {hrir[0].n_samples}\n'
-            f'late_filterSize {hrir[0].n_samples}\n'  # reverb filter
-            f'headphone_filterSize {hrir[0].n_samples}\n'  # headphone equalizer
-            f'filterSource[mat/wav] wav\n'
-            f'filterList {filter_list_fname}\n'
-            f'maxChannels 1\n'
-            f'samplingRate {int(hrir.samplerate)}\n'
-            f'enableCrossfading True\n'
-            f'loudnessFactor 0\n'
-            f'loopSound False\n'
-            # convolver settings 
-            f'torchConvolution[cpu/cuda] cpu\n'
-            f'torchStorage[cpu/cuda] cpu\n'
-            f'pauseConvolution False\n'
-            f'pauseAudioPlayback False\n'
-            f'useHeadphoneFilter False\n'
-            f'ds_convolverActive True\n'
-            f'early_convolverActive False\n'
-            f'late_convolverActive True\n'
-            # osc receiver settings
-            f'recv_type osc\n'
-            f'recv_protocol udp\n'
-            f'recv_ip 127.0.0.1\n'
-            f'recv_port 10000\n'
-        )
-

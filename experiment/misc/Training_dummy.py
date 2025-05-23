@@ -5,6 +5,7 @@ from pythonosc import udp_client
 import pybinsim
 from experiment.misc import meta_motion
 from hrtf.processing.hrtf2wav import *
+# from experiment.misc.plotting import *
 logging.getLogger().setLevel('INFO')
 pybinsim.logger.setLevel(logging.WARNING)
 
@@ -14,10 +15,10 @@ filename ='single_notch'
 target_size = 3
 target_time = 1
 az_range = (-45, 45)
-ele_range = (-35, 35)
+ele_range = (-20, 20)
 min_dist = 30
-game_time  = 90
-trial_time = 10
+game_time  = 180
+trial_time = 5
 gain = .5
 
 data_dir = Path.cwd() / 'data' / 'hrtf'
@@ -26,18 +27,63 @@ slab.set_default_samplerate(hrtf.samplerate)
 sound_dir = data_dir / 'wav' / filename / 'sounds'
 
 # main functions
+def play_session(game_time, trial_time, target_size, target_time, az_range, ele_range):
+    """
+    Play trials until game time is up.
+    """
+    # shared variables
+    global osc_client
+    osc_client = make_osc_client(port=10003)  # binsim communication
+    sensor_state = mp.Value("i", 0)  # sensor_tracking flag: 1-initialized / calibrated, 2-calibrate, 3-start tracking
+    pulse_state = mp.Value("i", 0)  # pulse_stream flag: 0-mute, 1-idle, 2-play pulse with current interval
+    target = mp.Array("i", [0, 0])  # get_target sets target - used by sensor_tracking
+    distance = mp.Value("f", 0)  # sensor_tracking updates distance and sends to play_trial
+    pulse_interval = mp.Value("f", 0) # play_trial updates interval and sends to pulse_stream
+    # start head tracker
+    tracking_worker = mp.Process(target=head_tracker, args=(distance, target, sensor_state))
+    tracking_worker.start()
+    # init pybinsim
+    binsim_worker = mp.Process(target=binsim_stream, args=())
+    binsim_worker.start()
+    # start pulse maker (muted)
+    pulse_worker = mp.Process(target=pulse_maker, args=(pulse_interval, pulse_state))
+    pulse_worker.start()
+    # wait for sensor init
+    while not sensor_state.value == 1:  # wait for sensor
+        time.sleep(.1)
+    while True:  # loop over games
+        scores = []
+        game_timer = 0  # set game timer
+        while game_timer < game_time:        # play trials until game time is up
+            set_target(az_range, ele_range, target, min_dist)
+            game_timer, score = play_trial(distance, pulse_interval, pulse_state, sensor_state,
+                       trial_time, game_time, game_timer, target_size, target_time)  # play trial and update game timer
+            scores.append(score)
+        # end
+        pulse_state.value = 1  # stop pulse
+        play_soundfile('buzzer.wav', osc_client)  # play end sound
+        logging.info(f'Game Over! Total Score: {sum(scores)}')
+        if input('Go again? (y/n): ') == 'n':
+            break
+    logging.info(f'Ending')
+    binsim_worker.join()
+    pulse_worker.join()
+    tracking_worker.join()
+
 def play_trial(distance, pulse_interval, pulse_state, sensor_state,
                trial_time, game_time, game_timer, target_size, target_time):
-    logging.debug('run "play_trial"')
+    """
+    Play a single trial.
+    """
     # trial variables
     score = 0
     trial_timer = 0
     time_on_target = 0
     count_down = False
     time.sleep(.1)
-    input("Press Enter to play.")
+    # input("Press Enter to play.")
     sensor_state.value = 2   # calibrate sensor
-    time.sleep(.01) # wait until calbration is complete
+    time.sleep(.1) # wait until calbration is complete
     while not sensor_state.value == 3: # make sure tracking is running
         sensor_state.value = 3  # start tracking
         time.sleep(.1)
@@ -56,7 +102,8 @@ def play_trial(distance, pulse_interval, pulse_state, sensor_state,
                 time_on_target, count_down = time.time(), True
         else:
             time_on_target, count_down = time.time(), False
-        if count_down and time.time() > time_on_target + target_time:        # goal condition
+        if count_down and time.time() > time_on_target + target_time:  # goal condition
+            pulse_state.value = 1  # stop pulse
             if trial_timer <= 3:
                 play_soundfile('coins.wav', osc_client)
                 score += 2
@@ -64,52 +111,12 @@ def play_trial(distance, pulse_interval, pulse_state, sensor_state,
                 play_soundfile('coin.wav', osc_client)
                 score = 1
             break
-        time.sleep(0.01)   # these intervals determine CPU load
+        time.sleep(.01)   # these intervals determine CPU load
     logging.info(f'Trial complete: {score} points')
     game_timer += trial_timer  # update game timer
-    time.sleep(1) # wait for coin to finish playing
-    pulse_state.value = 1  # stop audio stream
+    pulse_state.value = 0  # mute sound
     sensor_state.value = 1  # stop sensor tracking
     return game_timer, score
-
-def play_session(game_time, trial_time, target_size, target_time, az_range, ele_range):
-    # shared variables
-    global osc_client
-    osc_client = make_osc_client(port=10003)  # binsim communication
-    sensor_state = mp.Value("i", 0)  # sensor_tracking control, 1-initialized / calibrated, 2-calibrate, 3-start tracking
-    pulse_state = mp.Value("i", 1)  # pulse_stream control, 1-mute, 2-play pulse (with current interval)
-    target = mp.Array("i", [0, 0])  # get_target sets target - used by sensor_tracking
-    distance = mp.Value("f", 0)  # sensor_tracking updates distance and sends to play_trial
-    pulse_interval = mp.Value("f", 0) # play_trial updates interval and sends to pulse_stream
-    # init sensor
-    tracking_worker = mp.Process(target=head_tracker, args=(distance, target, sensor_state))
-    tracking_worker.start()
-    # init pybinsim
-    binsim_worker = mp.Process(target=binsim_stream, args=())
-    binsim_worker.start()
-    # start pulse stream (muted)
-    pulse_worker = mp.Process(target=pulse_maker, args=(pulse_interval, pulse_state))
-    pulse_worker.start()
-    # wait for sensor init
-    while not sensor_state.value == 1:  # wait for sensor
-        time.sleep(.1)
-    while True:  # loop over games
-        scores = []
-        game_timer = 0  # set game timer
-        while game_timer < game_time:        # play trials until game time is up
-            set_target(az_range, ele_range, target, min_dist)
-            game_timer, score = play_trial(distance, pulse_interval, pulse_state, sensor_state,
-                       trial_time, game_time, game_timer, target_size, target_time)  # play trial and update game timer
-            scores.append(score)
-        # end
-        play_soundfile('buzzer.wav', osc_client)
-        logging.info(f'Game Over! Total Score: {sum(scores)}')
-        if input('Go again? (y/n): ') == 'n':
-            break
-    logging.info(f'Ending')
-    binsim_worker.join()
-    pulse_worker.join()
-    tracking_worker.join()
 
 # ----- sub processes ----- #
 
@@ -119,24 +126,26 @@ def binsim_stream():
 
 def pulse_maker(pulse_interval, pulse_state):
     osc_client = make_osc_client(port=10003)
-    playing = False
     while True:
-        logging.debug(f'playing: {playing}')
-        if pulse_state.value == 1 and playing:  # Mute sound, stop updating interval
+        if pulse_state.value == 0:  # Mute sound, stop updating interval
             osc_client.send_message('/pyBinSimLoudness', 0)
-            playing = False
+            target_sound = False  # flag for playing continuous noise
+        elif pulse_state.value == 1:  # idle (eg to play game sounds)
+            continue
+            target_sound = False  # flag for playing continuous noise
         elif pulse_state.value == 2:  # play sound with given interval
             osc_client.send_message('/pyBinSimLoudness', gain)
             interval = pulse_interval.value
             logging.debug(f'pulse stream: got interval value {interval}')
-            if interval == 0 and not playing:  # play continuous
-                slab.Sound.pinknoise(duration=float(target_time)).write(sound_dir / 'pulse.wav')
-                play_soundfile('pulse.wav', osc_client)
-                playing = True
+            if interval == 0 and not target_sound:  # play continuous
+                make_noise(duration=float(target_time))
+                play_soundfile('noise_pulse.wav', osc_client, sleep=False)
+                target_sound = True
             elif interval != 0:  # pulse sound
-                slab.Sound.pinknoise(duration=interval).write(sound_dir / 'pulse.wav')
-                play_soundfile('pulse.wav', osc_client)
-                time.sleep(2*interval)
+                make_noise(duration=interval)
+                play_soundfile('noise_pulse.wav', osc_client)  # play pulse of interval duration
+                time.sleep(interval)  # wait for interval duration
+                target_sound = False  # flag for playing continuous noise
         time.sleep(0.01)   # these intervals mainly determines CPU load
 
 def head_tracker(distance, target, sensor_state):
@@ -147,8 +156,8 @@ def head_tracker(distance, target, sensor_state):
     while True:
         if sensor_state.value == 2:  # to be calibrated flag
             logging.debug('Calibrating dummy motion sensor..')
-            step_size = .1
-            pose = numpy.array([-45, 35])
+            step_size = 0
+            pose = numpy.array([0, 0])
             sensor_state.value = 1
         elif sensor_state.value == 3:  # head tracking dummy flag - start approaching target
             direction = (target - pose)
@@ -171,22 +180,29 @@ def head_tracker(distance, target, sensor_state):
 
 # ------- helpers ----- #
 
-def play_soundfile(soundfile, osc_client):
-    logging.info(f'Setting soundfile: {soundfile}')
+def play_soundfile(soundfile, osc_client, sleep=True):
+    logging.debug(f'Setting soundfile: {soundfile}')
     osc_client.send_message('/pyBinSimFile', str(sound_dir / soundfile))
+    if sleep:  # wait for sound to finish playing
+        time.sleep(slab.Sound(sound_dir / soundfile).duration)
+
+def make_noise(duration):
+    slab.Sound.pinknoise(duration).ramp().write(sound_dir / 'noise_pulse.wav')
 
 def distance_to_interval(distance):
-    max_interval = 250  # interval duration at max distance in ms
-    max_distance = numpy.linalg.norm(numpy.subtract([0, 0], [az_range[0], ele_range[0]]))  # max distance in degrees
-    steepness = 50  # controls how the interval duration increases
+    max_interval = 250  # max interval duration in ms
+    min_interval = 50  # min interval duration before entering target window
+    steepness = 5  # controls how the interval duration decreases when approaching the target window
+    max_distance = numpy.linalg.norm(numpy.subtract([0, 0], [az_range[0], ele_range[0]]))  # max possible distance
     if distance <= target_size:
-        interval = 0
-    else:
-        norm_dist = (distance - target_size) / (max_distance - target_size)
-        norm_dist = numpy.clip(norm_dist, 0, 1)  # Keep in range [0, 1]
-        interval = int(max_interval * (numpy.log1p(steepness * norm_dist) / numpy.log1p(steepness)))
-    interval = max(0, interval)  # ensure non-negative interval
-    return interval / 1000  # convert to seconds
+        return 0  # fully inside target window → silent
+    # Normalize distance: [target_size → max_distance] → [0 → 1]
+    norm_dist = (distance - target_size) / (max_distance - target_size)
+    norm_dist = numpy.clip(norm_dist, 0, 1)
+    # Logarithmic interpolation between min_interval and max_interval
+    scale = numpy.log1p(steepness * norm_dist) / numpy.log1p(steepness)
+    interval = (min_interval + (max_interval - min_interval) * scale).astype(int)
+    return int(interval) / 1000  # convert to seconds
 
 def make_osc_client(port):
     host = '127.0.0.1'
@@ -212,54 +228,5 @@ def set_target(az_range, ele_range, target, min_dist):
             break
 
 if __name__ == "__main__":
-    make_wav(filename)
+    make_wav(filename, overwrite=True)
     play_session(game_time, trial_time, target_size, target_time, tuple(az_range), tuple(ele_range))
-
-
-
-
-
-    # parser = argparse.ArgumentParser(description="Run the auditory training experiment.")
-    # parser.add_argument("--game_time", type=int, default=90, help="Total session duration in seconds")
-    # parser.add_argument("--trial_time", type=int, default=10, help="Time limit per trial in seconds")
-    # parser.add_argument("--target_size", type=int, default=2, help="Size of the target zone")
-    # parser.add_argument("--target_time", type=float, default=1, help="Time required to hold gaze on target")
-    # parser.add_argument("--az_range", type=int, nargs=2, default=[-45, 45], help="Azimuth range for target selection")
-    # parser.add_argument("--ele_range", type=int, nargs=2, default=[-45, 45], help="Elevation range for target selection")
-    # parser.add_argument("--filename", type=str, default='KU100_HRIR_L2702', help="HRTF filename for PyBinSim")
-    # args = parser.parse_args()
-    #
-
-# deprecated
-# def ramp(osc_client, direction='up', duration=0.05, n_steps=20):
-#     global playing
-#     logging.info(f'ramping: {direction}')
-#     envelope = lambda t: numpy.sin(numpy.pi * t / 2) ** 2  # squared sine window
-#     multiplier = envelope(numpy.reshape(numpy.linspace(0.0, 1, n_steps), (n_steps, 1)))
-#     for level in multiplier:
-#         if direction == 'up':
-#             level *= 0.5
-#             playing = True
-#         elif direction == 'down':
-#             level = 0.5 * (1 - level)
-#             playing = False
-#         osc_client.send_message('/pyBinSimLoudness', level * loudness_scaling)
-#         time.sleep(duration / n_steps)
-
-# def play_sound(wav_name, pulse_interval, pulse_state):
-#     logging.info(f'playing sound file: {wav_name}')
-#     pulse_interval.value = 0  # stop pulsing to play game sound
-#     pulse_state.value = 1
-#     fpath = str(data_dir / 'wav' / filename / 'sounds' / f'{wav_name}.wav')
-#     osc_client.send_message('/pyBinSimFile', fpath)  # load new sound
-#     time.sleep(.1)
-#     pulse_state.value = 2  # play
-#     time.sleep(slab.Sound.read(fpath).duration)
-#     osc_client.send_message('/pyBinSimFile', str(data_dir / 'wav' / filename / 'sounds' / 'noise_pulse.wav'))
-#     pulse_state.value = 1  # mute
-
-# def play_sound(wav_name, pulse_state):
-#     logging.debug(f'playing sound file: {wav_name}')
-#     pulse_state.value = 1  # mute binsim
-#     fpath = str(sound_dir / f'{wav_name}.wav')
-#     slab.Sound.read(fpath).play()

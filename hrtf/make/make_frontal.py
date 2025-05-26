@@ -6,7 +6,6 @@ import slab
 from sklearn import linear_model
 reg = linear_model.LinearRegression()
 
-
 def add_feature(tf, freq_bins, mu, sigma, scaling):
     """
     add a scaled inverse gaussian 'feature' to a dtf

@@ -1,4 +1,6 @@
 from pathlib import Path
+import matplotlib as mpl
+mpl.use('Qt5Agg')
 import numpy
 import slab
 import time
@@ -23,7 +25,7 @@ def hrtf2wav(filename, n_bins=None):
     Convert HRIR filters from a sofa file to wav files for use with pybinsim.
     """
     # set DRR (direct to reverb ratio expressed in relative sound intensity)
-    drr = 5
+    drr = 10
 
     # create folder structure for HRTF
     dir_name = Path(filename).stem

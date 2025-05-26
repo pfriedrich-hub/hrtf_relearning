@@ -18,7 +18,7 @@ az_range = (-45, 45)
 ele_range = (-20, 20)
 min_dist = 30
 game_time  = 180
-trial_time = 5
+trial_time = 10
 gain = .5
 
 data_dir = Path.cwd() / 'data' / 'hrtf'
@@ -81,7 +81,7 @@ def play_trial(distance, pulse_interval, pulse_state, sensor_state,
     time_on_target = 0
     count_down = False
     time.sleep(.1)
-    # input("Press Enter to play.")
+    input("Press Enter to play.")
     sensor_state.value = 2   # calibrate sensor
     time.sleep(.1) # wait until calbration is complete
     while not sensor_state.value == 3: # make sure tracking is running
@@ -156,7 +156,7 @@ def head_tracker(distance, target, sensor_state):
     while True:
         if sensor_state.value == 2:  # to be calibrated flag
             logging.debug('Calibrating dummy motion sensor..')
-            step_size = 0
+            step_size = .1
             pose = numpy.array([0, 0])
             sensor_state.value = 1
         elif sensor_state.value == 3:  # head tracking dummy flag - start approaching target

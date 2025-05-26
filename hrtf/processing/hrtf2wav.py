@@ -22,9 +22,8 @@ def hrtf2wav(filename, n_bins=None):
     """
     Convert HRIR filters from a sofa file to wav files for use with pybinsim.
     """
-    # set direct to reverb ratio
-    direct_level = 55
-    reverb_level = 45
+    # set DRR (direct to reverb ratio expressed in relative sound intensity)
+    drr = 5
 
     # create folder structure for HRTF
     dir_name = Path(filename).stem
@@ -37,7 +36,7 @@ def hrtf2wav(filename, n_bins=None):
 
     # convert to TF to IR
     if hrtf.datatype == 'TF':
-        hrir = tf2ir(hrtf)
+        hrir = hrtf2hrir(hrtf)
     elif hrtf.datatype == 'FIR':
         hrir = hrtf
     else: raise ValueError('Unknown datatype.')
@@ -53,10 +52,12 @@ def hrtf2wav(filename, n_bins=None):
         sound = slab.Sound.read(file)
         sound.resample(hrir.samplerate).write(wav_path / dir_name / 'sounds' / file.name)
 
-    # write IR to wav and coordinates to filter_list.txt
+    # zero pad and write IR to wav and coordinates to filter_list.txt
     logging.info(f'Writing {filename} to wav files and filter_list.txt ...')
+    ir_level = []
     for source_idx in range(hrtf.n_sources):
         coordinates = hrir.sources.vertical_polar[source_idx]
+        fname = wav_path / dir_name / 'IR_data' / f'{coordinates[0]}_{coordinates[1]}.wav'
         if not n_bins == hrir[source_idx].n_taps:  # interpolate bins if necessary
             t = numpy.linspace(0, hrir[source_idx].duration, hrir[source_idx].n_taps)
             t_interp = numpy.linspace(0, t[-1], n_bins)
@@ -65,9 +66,11 @@ def hrtf2wav(filename, n_bins=None):
                 fir_coefs[:, idx] = numpy.interp(t_interp, t, hrir[source_idx].data[:, idx])
         else:
             fir_coefs = hrir[source_idx].data
-        fname = wav_path / dir_name / 'IR_data' / f'{coordinates[0]}_{coordinates[1]}.wav'
+        # zero pad to n_bins X 2
+        fir_coefs = numpy.concatenate((fir_coefs, numpy.zeros((n_bins, 2))), axis=0)
+        # fir_coefs = fir_coefs * direct_level / numpy.max(numpy.abs(fir_coefs))  # rescale
         directional_ir = (slab.Sound(data=fir_coefs))
-        directional_ir.level = direct_level
+        ir_level.append(directional_ir.level)
         directional_ir.write(filename=fname, normalise=False)
         # write to filter_list.txt
         filter_list_fname = wav_path / dir_name / f"filter_list_{dir_name}.txt"
@@ -81,7 +84,7 @@ def hrtf2wav(filename, n_bins=None):
                        f' {fname}\n')
 
     # reverb tail:
-    # crop duration, interpolate to n_bins and rescale level
+    # crop duration, interpolate to n_bins, and zero pad
     reverb = slab.Sound(wav_path / dir_name / 'sounds' / 'reverb.wav').data
     duration = 0.1
     fname = wav_path / dir_name / 'sounds' / 'reverb_IR.wav'
@@ -92,11 +95,13 @@ def hrtf2wav(filename, n_bins=None):
         reverb_interp = numpy.zeros((n_bins, 2))
         for idx in range(2):
             reverb_interp[:, idx] = numpy.interp(t_interp, t, reverb[:, idx])
-    # reverb = reverb_interp * level / numpy.max(numpy.abs(reverb_interp))  # rescale
-    reverb = slab.Sound(data=reverb_interp)
-    reverb.level = reverb_level
+    # zero pad to nbins x 2
+    reverb = numpy.concatenate((numpy.zeros((n_bins, 2)), reverb_interp), axis=0)
+    # reverb = reverb * reverb_level / numpy.max(numpy.abs(reverb))  # rescale
+    reverb = slab.Sound(data=reverb)
+    reverb.level = numpy.mean(ir_level) - drr  # adjust reverb level
     reverb.write(fname, normalise=False)
-    #  write IR and filter list entry
+    #  write reverb IR and filter list entry
     with open(filter_list_fname, 'a') as file:
         file.write(f'LR'
                    f' 0 0 0'  # Value 1 - 3: listener orientation[yaw, pitch, roll]
@@ -106,14 +111,16 @@ def hrtf2wav(filename, n_bins=None):
                    f' 0 0 0'  # Value 13 - 15: custom values[a, b, c]
                    f' {fname}\n')
 
+    # write settings.txt for training and testing:
+    logging.info(f'Writing {dir_name}_settings.txt ...')
     filename = f'{dir_name}_training_settings.txt'
     with open(wav_path / dir_name / filename, 'w') as file:
         file.write(
             f'soundfile {str(wav_path / dir_name / "sounds" / "noise_pulse.wav")}\n'
             f'blockSize {int(hrir[0].n_samples / 2)}\n'  # low values reduce delay but increase cpu load.
-            f'ds_filterSize {hrir[0].n_samples}\n'
-            f'early_filterSize {hrir[0].n_samples}\n'
-            f'late_filterSize {hrir[0].n_samples}\n'  # reverb filter
+            f'ds_filterSize {hrir[0].n_samples*2}\n'
+            f'early_filterSize {hrir[0].n_samples*2}\n'
+            f'late_filterSize {hrir[0].n_samples*2}\n'  # reverb filter
             f'headphone_filterSize {hrir[0].n_samples}\n'  # headphone equalizer
             f'filterSource[mat/wav] wav\n'
             f'filterList {filter_list_fname}\n'
@@ -138,8 +145,6 @@ def hrtf2wav(filename, n_bins=None):
             f'recv_port 10000\n'
             )
 
-    # write settings.txt for training and testing:
-    logging.info(f'Writing {dir_name}_settings.txt ...')
     filename = f'{dir_name}_test_settings.txt'
     with open(wav_path / dir_name / filename, 'w') as file:
         file.write(

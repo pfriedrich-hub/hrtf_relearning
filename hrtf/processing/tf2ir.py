@@ -20,6 +20,7 @@ def hrtf2hrir(hrtf):
             # frequency, gain = filt.tf(channels=ch_idx, show=False)  # get magnitude in dB?
             # ir.append(slab.Filter.band(kind='hp', frequency=frequency.tolist(), gain=gain[:, 0].tolist(),
             #                            samplerate=filt.samplerate, length=filt.n_samples, fir='IR'))
+
         input[src_idx] = slab.Filter(data=ir, samplerate=hrtf.samplerate, fir='IR')
         # shift to make causal
         # (path differences between the origin and the ear are usually

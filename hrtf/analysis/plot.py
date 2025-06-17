@@ -1,5 +1,8 @@
 from pathlib import Path
 data_path = Path.cwd() / 'data' / 'hrtf' / 'sofa'
+import matplotlib as mpl
+mpl.use('Qt5Agg')
+import matplotlib.pyplot as plt
 # ----- plots feature probability map across database
 
 # database_path =  data_path / 'aachen_database'

@@ -1,3 +1,8 @@
+import matplotlib
+from sympy.codegen.ast import continue_
+
+matplotlib.use('Qt5Agg')
+from matplotlib import pyplot as plt
 from pathlib import Path
 import numpy
 import slab
@@ -11,14 +16,11 @@ sofa_path = Path.cwd() / 'data' / 'hrtf' / 'sofa'
 sound_path = Path.cwd() / 'data' / 'sounds'
 
 # wrapper for hrtf2wav
-def make_wav(filename, overwrite=False):
-    if overwrite:
-        hrtf2wav(f'{filename}.sofa')
-    else:
-        if not (wav_path / filename).exists():
-            hrtf2wav(f'{filename}.sofa')
+def make_wav(filename, overwrite=False, show=False):
+    if not (wav_path / filename).exists() or overwrite:
+        hrtf2wav(f'{filename}.sofa', show)
 
-def hrtf2wav(filename, n_bins=None):
+def hrtf2wav(filename, show, n_bins=None):
     """
     Convert HRIR filters from a sofa file to wav files for use with pybinsim.
     """
@@ -41,18 +43,21 @@ def hrtf2wav(filename, n_bins=None):
     else: raise ValueError('Unknown datatype.')
     hrir.name = filename
 
-    logging.info(f'Resampling sounds from sounds directory ...')
+    logging.info(f'Resampling sounds from sounds directory')
     for file in sound_path.glob('*.wav'):
         sound = slab.Sound.read(file)
         sound.resample(hrir.samplerate).write(wav_path / dir_name / 'sounds' / file.name)
 
+    # write direct sound filters from hrtf
     write_ds_filter(hrir)
-
-    write_lr_filter()
+    # write reverb
+    write_lr_filter(drr=20, show=show)
+    # write pybinsim settings
+    write_settings()
 
 def write_ds_filter(hrir):
     # zero pad and write IR to wav and coordinates to filter_list.txt
-    logging.info(f'Writing {hrir.name} to wav files and filter_list.txt ...')
+    logging.info(f'Writing {hrir.name} to wav files and filter_list.txt')
     n_bins = hrir[0].n_taps
     ir_level = []
     for source_idx in range(hrir.n_sources):
@@ -83,7 +88,8 @@ def write_ds_filter(hrir):
                        f' {fname}\n')
 
 
-def write_lr_filter(drr=5):
+def write_lr_filter(drr=5, show=False):
+    logging.info(f'Writing reverb (DRR = {drr} dB) to wav file and add late reverb to filter_list.txt')
     # reverb tail:
     # crop duration, interpolate to n_bins, and zero pad
     n_bins = hrir[0].n_taps
@@ -110,7 +116,7 @@ def write_lr_filter(drr=5):
     # todo move reverb closer
     # zero pad to nbins x 2
     reverb = numpy.concatenate((numpy.zeros((n_bins, 2)), reverb), axis=0)
-    # pad = (int(n_bins/2), int(n_bins/2))
+    # pad = (int(n_bins/8*7), int(n_bins/8))
     # reverb = numpy.concatenate((numpy.zeros((pad[0], 2)), reverb, numpy.zeros((pad[1], 2))), axis=0)
 
     # todo scale reverb
@@ -128,9 +134,21 @@ def write_lr_filter(drr=5):
                    f' 0 0 0'  # Value 10 - 12: source position[x, y, z]
                    f' 0 0 0'  # Value 13 - 15: custom values[a, b, c]
                    f' {fname}\n')
+    if show:
+        fig, axis = plt.subplots(nrows=1, ncols=1)
+        idx = hrir.get_source_idx((85,95),(-1,1))[0]
+        ir = numpy.concatenate((hrir[idx].data, numpy.zeros((n_bins, 2))), axis=0)
+        sum = ir + reverb.data
+        sum = 20.0 * numpy.log10(numpy.abs(sum) / 2e-5)  # convert to dB
+        times = numpy.linspace(0, len(sum) / hrir.samplerate, len(sum))
+        axis.plot(times, sum)
+        axis.set_xlabel('Time (s)')
+        axis.set_ylabel('Amplitude (dB)')
+        fig.show()
 
+def write_settings():
     # write settings.txt for training and testing:
-    logging.info(f'Writing {dir_name}_settings.txt ...')
+    logging.info(f'Writing {dir_name}_settings.txt')
     filename = f'{dir_name}_training_settings.txt'
     with open(wav_path / dir_name / filename, 'w') as file:
         file.write(

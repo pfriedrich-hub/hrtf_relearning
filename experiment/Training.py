@@ -14,8 +14,8 @@ filename ='KU100_HRIR_L2702'
 # filename ='single_notch'
 
 # select wav file for the training stimulus, None will default to pink noise
-# soundfile = None
-soundfile='c_chord_guitar.wav'
+soundfile = None
+# soundfile='c_chord_guitar.wav'
 
 target_size = 3
 target_time = 1
@@ -244,7 +244,7 @@ def set_target(az_range, ele_range, target, min_dist):
             break
 
 if __name__ == "__main__":
-    make_wav(filename, overwrite=True)
+    make_wav(filename, overwrite=True, show=False)
     play_session(game_time, trial_time, target_size, target_time, tuple(az_range), tuple(ele_range))
 
 

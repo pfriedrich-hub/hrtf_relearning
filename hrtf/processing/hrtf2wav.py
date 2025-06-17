@@ -23,13 +23,13 @@ def hrtf2wav(filename, n_bins=None):
     Convert HRIR filters from a sofa file to wav files for use with pybinsim.
     """
     # create folder structure for HRTF wav files
+    global dir_name, filter_list_fname, hrir
     dir_name = Path(filename).stem
     if not (wav_path / dir_name).exists():
         (wav_path / dir_name).mkdir(exist_ok=True)
         (wav_path / dir_name / 'IR_data').mkdir(exist_ok=True)
         (wav_path / dir_name / 'sounds').mkdir(exist_ok=True)
     filter_list_fname = wav_path / dir_name / f"filter_list_{dir_name}.txt"
-    global dir_name, filter_list_fname
 
     # load HRTF, convert to IR and interpolate if necessary
     hrtf = slab.HRTF(sofa_path / filename)
@@ -40,7 +40,6 @@ def hrtf2wav(filename, n_bins=None):
         hrir = hrtf
     else: raise ValueError('Unknown datatype.')
     hrir.name = filename
-    global hrir
 
     logging.info(f'Resampling sounds from sounds directory ...')
     for file in sound_path.glob('*.wav'):
@@ -50,6 +49,7 @@ def hrtf2wav(filename, n_bins=None):
     write_ds_filter(hrir)
 
     write_lr_filter()
+
 def write_ds_filter(hrir):
     # zero pad and write IR to wav and coordinates to filter_list.txt
     logging.info(f'Writing {hrir.name} to wav files and filter_list.txt ...')

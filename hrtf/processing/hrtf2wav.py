@@ -22,43 +22,44 @@ def hrtf2wav(filename, n_bins=None):
     """
     Convert HRIR filters from a sofa file to wav files for use with pybinsim.
     """
-    # set DRR (direct to reverb ratio expressed in relative sound intensity)
-    drr = 5
-
-    # create folder structure for HRTF
+    # create folder structure for HRTF wav files
     dir_name = Path(filename).stem
     if not (wav_path / dir_name).exists():
         (wav_path / dir_name).mkdir(exist_ok=True)
         (wav_path / dir_name / 'IR_data').mkdir(exist_ok=True)
         (wav_path / dir_name / 'sounds').mkdir(exist_ok=True)
+    filter_list_fname = wav_path / dir_name / f"filter_list_{dir_name}.txt"
+    global dir_name, filter_list_fname
+
+    # load HRTF, convert to IR and interpolate if necessary
     hrtf = slab.HRTF(sofa_path / filename)
     slab.set_default_samplerate(hrtf.samplerate)
-
-    # convert to TF to IR
     if hrtf.datatype == 'TF':
         hrir = hrtf2hrir(hrtf)
     elif hrtf.datatype == 'FIR':
         hrir = hrtf
     else: raise ValueError('Unknown datatype.')
-
-    if n_bins is None:
-        n_bins = hrir[0].n_taps
-    else:
-        print(f'interpolating IR to {n_bins} bins.')
-        # todo
+    hrir.name = filename
+    global hrir
 
     logging.info(f'Resampling sounds from sounds directory ...')
     for file in sound_path.glob('*.wav'):
         sound = slab.Sound.read(file)
         sound.resample(hrir.samplerate).write(wav_path / dir_name / 'sounds' / file.name)
 
+    write_ds_filter(hrir)
+
+    write_lr_filter()
+def write_ds_filter(hrir):
     # zero pad and write IR to wav and coordinates to filter_list.txt
-    logging.info(f'Writing {filename} to wav files and filter_list.txt ...')
+    logging.info(f'Writing {hrir.name} to wav files and filter_list.txt ...')
+    n_bins = hrir[0].n_taps
     ir_level = []
-    for source_idx in range(hrtf.n_sources):
+    for source_idx in range(hrir.n_sources):
         coordinates = hrir.sources.vertical_polar[source_idx]
         fname = wav_path / dir_name / 'IR_data' / f'{coordinates[0]}_{coordinates[1]}.wav'
         if not n_bins == hrir[source_idx].n_taps:  # interpolate bins if necessary
+            logging.info(f'Interpolating IR to {n_bins} bins.')
             t = numpy.linspace(0, hrir[source_idx].duration, hrir[source_idx].n_taps)
             t_interp = numpy.linspace(0, t[-1], n_bins)
             fir_coefs = numpy.zeros((n_bins, 2))
@@ -70,10 +71,8 @@ def hrtf2wav(filename, n_bins=None):
         fir_coefs = numpy.concatenate((fir_coefs, numpy.zeros((n_bins, 2))), axis=0)
         # fir_coefs = fir_coefs * direct_level / numpy.max(numpy.abs(fir_coefs))  # rescale
         directional_ir = (slab.Sound(data=fir_coefs))
-        ir_level.append(directional_ir.level)
         directional_ir.write(filename=fname, normalise=False)
         # write to filter_list.txt
-        filter_list_fname = wav_path / dir_name / f"filter_list_{dir_name}.txt"
         with open(filter_list_fname, 'a') as file:
             file.write(f'DS'
                        f' 0 0 0'  # Value 1 - 3: listener orientation[yaw, pitch, roll]
@@ -83,25 +82,44 @@ def hrtf2wav(filename, n_bins=None):
                        f' 0 0 0'  # Value 13 - 15: custom values[a, b, c]
                        f' {fname}\n')
 
+
+def write_lr_filter(drr=5):
     # reverb tail:
     # crop duration, interpolate to n_bins, and zero pad
+    n_bins = hrir[0].n_taps
+    # get mean level across HRIRs in the sofa file to set reverb level [DRR] dB lower
+    ir_level = numpy.mean(
+                [20.0 * numpy.log10(numpy.sqrt(numpy.mean(numpy.square(hrir[idx].data))) / 2e-5)
+                for idx in range(hrir.n_sources)])
     reverb = slab.Sound(wav_path / dir_name / 'sounds' / 'reverb.wav').data
     duration = 0.1
     fname = wav_path / dir_name / 'sounds' / 'reverb_IR.wav'
-    reverb = reverb[:int(hrtf.samplerate * duration)]  # crop to 100 ms
+    reverb = reverb[:int(hrir.samplerate * duration)]  # crop to 100 ms
     if not n_bins == reverb.shape[0]:  # interpolate bins if necessary
         t = numpy.linspace(0, 1, reverb.shape[0])
         t_interp = numpy.linspace(0, 1, n_bins)
         reverb_interp = numpy.zeros((n_bins, 2))
         for idx in range(2):
             reverb_interp[:, idx] = numpy.interp(t_interp, t, reverb[:, idx])
+        reverb = reverb_interp
+
+    #todo work on reverb  to match dolby example
+    # ramp reverb
+    reverb = slab.Sound(reverb).ramp(duration=0.0002).data  # add reverb onset ramp
+
+    # todo move reverb closer
     # zero pad to nbins x 2
-    reverb = numpy.concatenate((numpy.zeros((n_bins, 2)), reverb_interp), axis=0)
-    # reverb = reverb * reverb_level / numpy.max(numpy.abs(reverb))  # rescale
+    reverb = numpy.concatenate((numpy.zeros((n_bins, 2)), reverb), axis=0)
+    # pad = (int(n_bins/2), int(n_bins/2))
+    # reverb = numpy.concatenate((numpy.zeros((pad[0], 2)), reverb, numpy.zeros((pad[1], 2))), axis=0)
+
+    # todo scale reverb
+    #reverb = reverb * reverb_level / numpy.max(numpy.abs(reverb))  # rescale
     reverb = slab.Sound(data=reverb)
     reverb.level = numpy.mean(ir_level) - drr  # adjust reverb level
-    reverb.write(fname, normalise=False)
+
     #  write reverb IR and filter list entry
+    reverb.write(fname, normalise=False)
     with open(filter_list_fname, 'a') as file:
         file.write(f'LR'
                    f' 0 0 0'  # Value 1 - 3: listener orientation[yaw, pitch, roll]

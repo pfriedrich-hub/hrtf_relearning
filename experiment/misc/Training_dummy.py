@@ -3,22 +3,26 @@ import logging
 import multiprocessing as mp
 from pythonosc import udp_client
 import pybinsim
-from experiment.misc import meta_motion
 from hrtf.processing.hrtf2wav import *
-# from experiment.misc.plotting import *
-logging.getLogger().setLevel('INFO')
+from experiment.misc.plotting import *
+logging.getLogger().setLevel('DEBUG')
 pybinsim.logger.setLevel(logging.WARNING)
 
-# filename ='KU100_HRIR_L2702'
-filename ='single_notch'
+# select HRIR
+filename ='KU100_HRIR_L2702'
+# filename ='single_notch'
+
+# select wav file for the training stimulus, None will default to pink noise
+soundfile = None
+# soundfile='c_chord_guitar.wav'
 
 target_size = 3
 target_time = 1
 az_range = (-45, 45)
-ele_range = (-20, 20)
+ele_range = (-25, 25)
 min_dist = 30
 game_time  = 180
-trial_time = 10
+trial_time = 15
 gain = .5
 
 data_dir = Path.cwd() / 'data' / 'hrtf'
@@ -61,7 +65,7 @@ def play_session(game_time, trial_time, target_size, target_time, az_range, ele_
             scores.append(score)
         # end
         pulse_state.value = 1  # stop pulse
-        play_soundfile('buzzer.wav', osc_client)  # play end sound
+        play_sound(osc_client, soundfile='buzzer.wav', duration=None, sleep=True)
         logging.info(f'Game Over! Total Score: {sum(scores)}')
         if input('Go again? (y/n): ') == 'n':
             break
@@ -105,10 +109,10 @@ def play_trial(distance, pulse_interval, pulse_state, sensor_state,
         if count_down and time.time() > time_on_target + target_time:  # goal condition
             pulse_state.value = 1  # stop pulse
             if trial_timer <= 3:
-                play_soundfile('coins.wav', osc_client)
+                play_sound(osc_client, soundfile='coins.wav', duration=None, sleep=True)
                 score += 2
             else:
-                play_soundfile('coin.wav', osc_client)
+                play_sound(osc_client, soundfile='coin.wav', duration=None, sleep=True)
                 score = 1
             break
         time.sleep(.01)   # these intervals determine CPU load
@@ -125,8 +129,11 @@ def binsim_stream():
     binsim.stream_start()  # run binsim loop
 
 def pulse_maker(pulse_interval, pulse_state):
+    import logging
+    logging.getLogger().setLevel('DEBUG')
     osc_client = make_osc_client(port=10003)
     while True:
+        logging.debug(f'pulse stream: state {pulse_state.value}')
         if pulse_state.value == 0:  # Mute sound, stop updating interval
             osc_client.send_message('/pyBinSimLoudness', 0)
             target_sound = False  # flag for playing continuous noise
@@ -138,21 +145,21 @@ def pulse_maker(pulse_interval, pulse_state):
             interval = pulse_interval.value
             logging.debug(f'pulse stream: got interval value {interval}')
             if interval == 0 and not target_sound:  # play continuous
-                make_noise(duration=float(target_time))
-                play_soundfile('noise_pulse.wav', osc_client, sleep=False)
+                play_sound(osc_client, soundfile=soundfile, duration=float(target_time), sleep=False)
                 target_sound = True
             elif interval != 0:  # pulse sound
-                make_noise(duration=interval)
-                play_soundfile('noise_pulse.wav', osc_client)  # play pulse of interval duration
+                play_sound(osc_client, soundfile=soundfile, duration=float(interval), sleep=True)
                 time.sleep(interval)  # wait for interval duration
                 target_sound = False  # flag for playing continuous noise
         time.sleep(0.01)   # these intervals mainly determines CPU load
 
 def head_tracker(distance, target, sensor_state):
+    import logging
+    logging.getLogger().setLevel('INFO')
     osc_client = make_osc_client(port=10000)
     hrtf_sources = hrtf.sources.vertical_polar
     logging.debug('dummy motion sensor running')
-    sensor_state.value = 1   # init flag
+    sensor_state.value = 1  # init flag
     while True:
         if sensor_state.value == 2:  # to be calibrated flag
             logging.debug('Calibrating dummy motion sensor..')
@@ -168,30 +175,42 @@ def head_tracker(distance, target, sensor_state):
             distance.value = numpy.linalg.norm(relative_coords)
             logging.debug(f'head tracking: set distance value {distance.value}')
             # find the closest filter idx and send to pybinsim
-            relative_coords[0] = (-relative_coords[0] + 360) % 360 # mirror and convert to HRTF convetion [0 < az < 360]
+            relative_coords[0] = (-relative_coords[
+                0] + 360) % 360  # mirror and convert to HRTF convetion [0 < az < 360]
             rel_target = numpy.array((relative_coords[0], relative_coords[1], hrtf_sources[0, 2]))
-            filter_idx = numpy.argmin(numpy.linalg.norm(rel_target-hrtf_sources, axis=1))
+            filter_idx = numpy.argmin(numpy.linalg.norm(rel_target - hrtf_sources, axis=1))
             rel_hrtf_coords = hrtf_sources[filter_idx]
             osc_client.send_message('/pyBinSim_ds_Filter', [0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                                                             float(rel_hrtf_coords[0]), float(rel_hrtf_coords[1]), 0,
                                                             0, 0, 0])
             logging.debug(f'head tracking: filter coords: {rel_hrtf_coords}')
-            time.sleep(0.01)    # these intervals mainly determines CPU load
+            time.sleep(0.01)  # these intervals mainly determines CPU load
+
 
 # ------- helpers ----- #
 
-def play_soundfile(soundfile, osc_client, sleep=True):
+def play_sound(osc_client, soundfile=None, duration=None, sleep=False):
+    """ serves as a wrapper and passes the soundfile to pybinsim """
+    import logging
+    logging.getLogger().setLevel('INFO')
+    if duration:
+        if soundfile:  # read a soundfile and crop to pulse duration
+            sound = slab.Sound.read(sound_dir / soundfile)
+            soundfile = 'cropped_' + soundfile
+            slab.Sound(sound.data[:int(hrtf.samplerate * duration)]).ramp(duration=.03).write(sound_dir / soundfile)
+        else:  # generate noise with pulse duration
+            soundfile = 'noise_pulse.wav'
+            slab.Sound.pinknoise(duration).ramp(duration=.03).write(sound_dir / soundfile)
+    else:
+        duration = slab.Sound(sound_dir / soundfile).duration  # get duration of the soundfile
     logging.debug(f'Setting soundfile: {soundfile}')
-    osc_client.send_message('/pyBinSimFile', str(sound_dir / soundfile))
+    osc_client.send_message('/pyBinSimFile', str(sound_dir / soundfile))  # play
     if sleep:  # wait for sound to finish playing
-        time.sleep(slab.Sound(sound_dir / soundfile).duration)
-
-def make_noise(duration):
-    slab.Sound.pinknoise(duration).ramp().write(sound_dir / 'noise_pulse.wav')
+        time.sleep(duration)
 
 def distance_to_interval(distance):
-    max_interval = 250  # max interval duration in ms
-    min_interval = 50  # min interval duration before entering target window
+    max_interval = 350  # max interval duration in ms
+    min_interval = 75  # min interval duration before entering target window
     steepness = 5  # controls how the interval duration decreases when approaching the target window
     max_distance = numpy.linalg.norm(numpy.subtract([0, 0], [az_range[0], ele_range[0]]))  # max possible distance
     if distance <= target_size:
@@ -228,5 +247,5 @@ def set_target(az_range, ele_range, target, min_dist):
             break
 
 if __name__ == "__main__":
-    make_wav(filename, overwrite=True)
+    make_wav(filename, overwrite=True, show=False)
     play_session(game_time, trial_time, target_size, target_time, tuple(az_range), tuple(ele_range))

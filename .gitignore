@@ -1,4 +1,8 @@
-**/legacy
+**/legacy/MSc/data/experiment
+**/legacy/MSc/data/pilot
+**/legacy/MSc/data/sounds
+**/legacy/JASA_revision/zotero_data
+
 **misc.xml
 **/hrtf_relearning.iml
 **/E1CD49190819.json

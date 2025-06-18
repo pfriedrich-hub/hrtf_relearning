@@ -28,30 +28,6 @@ def hrtf2hrir(hrtf):
     input.datatype = 'FIR'
     return input
 
-def tf2ir(tf):
-    """
-    Takes a slab.Filter of type TF as input and converts it to FIR
-    """
-    #todo
-    for src_idx, filt in enumerate(tf.data):
-        ir = []
-        for ch_idx in range(tf.n_channels):
-            # frequency sampling function
-            # magnitude = filt.channel(ch_idx).data  # get raw power spectrum
-            ir.append(fsamp(magnitude = tf.channel(ch_idx).data))
-            # slab filter method
-            # frequency, gain = filt.tf(channels=ch_idx, show=False)  # get magnitude in dB?
-            # ir.append(slab.Filter.band(kind='hp', frequency=frequency.tolist(), gain=gain[:, 0].tolist(),
-            #                            samplerate=filt.samplerate, length=filt.n_samples, fir='IR'))
-        slab.Filter(data=ir, samplerate=tf.samplerate, fir='IR')
-        # shift to make causal
-        # (path differences between the origin and the ear are usually
-        # smaller than 30 cm but numerical HRIRs show stringer pre-ringing)
-        # hrir = np.roll(hrir, n_shift, axis=-1)
-    ir.datatype = 'FIR'
-    return ir
-
-
 def fsamp(magnitude):
     """
     Use the frequency sampling method to design an FIR filter to match the frequency
@@ -89,6 +65,29 @@ def fsamp(magnitude):
     ww = scipy.signal.windows.hamming(M)
     h = h[I:I+M] * ww
     return h
+
+def tf2ir(tf):
+    """
+    Takes a slab.Filter of type TF as input and converts it to FIR
+    """
+    #todo
+    for src_idx, filt in enumerate(tf.data):
+        ir = []
+        for ch_idx in range(tf.n_channels):
+            # frequency sampling function
+            # magnitude = filt.channel(ch_idx).data  # get raw power spectrum
+            ir.append(fsamp(magnitude = tf.channel(ch_idx).data))
+            # slab filter method
+            # frequency, gain = filt.tf(channels=ch_idx, show=False)  # get magnitude in dB?
+            # ir.append(slab.Filter.band(kind='hp', frequency=frequency.tolist(), gain=gain[:, 0].tolist(),
+            #                            samplerate=filt.samplerate, length=filt.n_samples, fir='IR'))
+        slab.Filter(data=ir, samplerate=tf.samplerate, fir='IR')
+        # shift to make causal
+        # (path differences between the origin and the ear are usually
+        # smaller than 30 cm but numerical HRIRs show stringer pre-ringing)
+        # hrir = np.roll(hrir, n_shift, axis=-1)
+    ir.datatype = 'FIR'
+    return ir
 
 
 

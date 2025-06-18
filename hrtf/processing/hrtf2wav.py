@@ -1,7 +1,5 @@
 import matplotlib
-from sympy.codegen.ast import continue_
-
-matplotlib.use('Qt5Agg')
+# matplotlib.use('Qt5Agg')
 from matplotlib import pyplot as plt
 from pathlib import Path
 import numpy
@@ -20,12 +18,12 @@ def make_wav(filename, overwrite=False, show=False):
     if not (wav_path / filename).exists() or overwrite:
         hrtf2wav(f'{filename}.sofa', show)
 
-def hrtf2wav(filename, show, n_bins=None):
+def hrtf2wav(filename, show):
     """
     Convert HRIR filters from a sofa file to wav files for use with pybinsim.
     """
     # create folder structure for HRTF wav files
-    global dir_name, filter_list_fname, hrir
+    global dir_name, filter_list_fname, hrir, blocksize
     dir_name = Path(filename).stem
     if not (wav_path / dir_name).exists():
         (wav_path / dir_name).mkdir(exist_ok=True)
@@ -42,6 +40,7 @@ def hrtf2wav(filename, show, n_bins=None):
         hrir = hrtf
     else: raise ValueError('Unknown datatype.')
     hrir.name = filename
+    blocksize = int(hrir[0].n_taps / 2)
 
     logging.info(f'Resampling sounds from sounds directory')
     for file in sound_path.glob('*.wav'):
@@ -58,23 +57,20 @@ def hrtf2wav(filename, show, n_bins=None):
 def write_ds_filter(hrir):
     # zero pad and write IR to wav and coordinates to filter_list.txt
     logging.info(f'Writing {hrir.name} to wav files and filter_list.txt')
-    n_bins = hrir[0].n_taps
-    ir_level = []
     for source_idx in range(hrir.n_sources):
         coordinates = hrir.sources.vertical_polar[source_idx]
         fname = wav_path / dir_name / 'IR_data' / f'{coordinates[0]}_{coordinates[1]}.wav'
-        if not n_bins == hrir[source_idx].n_taps:  # interpolate bins if necessary
-            logging.info(f'Interpolating IR to {n_bins} bins.')
-            t = numpy.linspace(0, hrir[source_idx].duration, hrir[source_idx].n_taps)
-            t_interp = numpy.linspace(0, t[-1], n_bins)
-            fir_coefs = numpy.zeros((n_bins, 2))
-            for idx in range(2):
-                fir_coefs[:, idx] = numpy.interp(t_interp, t, hrir[source_idx].data[:, idx])
-        else:
-            fir_coefs = hrir[source_idx].data
-        # zero pad to n_bins X 2
-        fir_coefs = numpy.concatenate((fir_coefs, numpy.zeros((n_bins, 2))), axis=0)
-        # fir_coefs = fir_coefs * direct_level / numpy.max(numpy.abs(fir_coefs))  # rescale
+        fir_coefs = hrir[source_idx].data
+        # n_bins = hrir[0].n_taps
+        # if not n_bins == hrir[source_idx].n_taps:  # interpolate bins if necessary
+        #     logging.info(f'Interpolating IR to {n_bins} bins.')
+        #     t = numpy.linspace(0, hrir[source_idx].duration, hrir[source_idx].n_taps)
+        #     t_interp = numpy.linspace(0, t[-1], n_bins)
+        #     fir_coefs = numpy.zeros((n_bins, 2))
+        #     for idx in range(2):
+        #         fir_coefs[:, idx] = numpy.interp(t_interp, t, hrir[source_idx].data[:, idx])
+        # else:
+        #     fir_coefs = hrir[source_idx].data
         directional_ir = (slab.Sound(data=fir_coefs))
         directional_ir.write(filename=fname, normalise=False)
         # write to filter_list.txt
@@ -87,43 +83,26 @@ def write_ds_filter(hrir):
                        f' 0 0 0'  # Value 13 - 15: custom values[a, b, c]
                        f' {fname}\n')
 
-
-def write_lr_filter(drr=5, show=False):
+def write_lr_filter(drr=20, show=False):
+    global reverb_n_samples
     logging.info(f'Writing reverb (DRR = {drr} dB) to wav file and add late reverb to filter_list.txt')
-    # reverb tail:
-    # crop duration, interpolate to n_bins, and zero pad
-    n_bins = hrir[0].n_taps
-    # get mean level across HRIRs in the sofa file to set reverb level [DRR] dB lower
+    fname = wav_path / dir_name / 'sounds' / 'reverb_IR.wav'
+    reverb = slab.Sound(wav_path / dir_name / 'sounds' / 'reverb.wav').data
+    # crop to 100 ms and multiple of block size (hrir taps / 2)
+    cropped_len = int((int(hrir.samplerate * 0.1) // blocksize) * blocksize)
+    reverb = reverb[:cropped_len]
+    reverb_n_samples = len(reverb)
+    # ramp reverb tail at the max impulse response
+    reverb = slab.Sound(reverb).ramp(duration=0.005, when='onset').data  # ramp reverb onset
+    mean_ir_onset = int(numpy.mean(  # average onset time of the direct IR
+                [numpy.where(hrir[idx].data == (hrir[idx].data).max())[0][0] for idx in range(hrir.n_sources)]))
+    reverb = numpy.concatenate((numpy.zeros((mean_ir_onset, 2)), reverb[:-mean_ir_onset]), axis=0)
+    # adjust reverb level to DRR
     ir_level = numpy.mean(
                 [20.0 * numpy.log10(numpy.sqrt(numpy.mean(numpy.square(hrir[idx].data))) / 2e-5)
-                for idx in range(hrir.n_sources)])
-    reverb = slab.Sound(wav_path / dir_name / 'sounds' / 'reverb.wav').data
-    duration = 0.1
-    fname = wav_path / dir_name / 'sounds' / 'reverb_IR.wav'
-    reverb = reverb[:int(hrir.samplerate * duration)]  # crop to 100 ms
-    if not n_bins == reverb.shape[0]:  # interpolate bins if necessary
-        t = numpy.linspace(0, 1, reverb.shape[0])
-        t_interp = numpy.linspace(0, 1, n_bins)
-        reverb_interp = numpy.zeros((n_bins, 2))
-        for idx in range(2):
-            reverb_interp[:, idx] = numpy.interp(t_interp, t, reverb[:, idx])
-        reverb = reverb_interp
-
-    #todo work on reverb  to match dolby example
-    # ramp reverb
-    reverb = slab.Sound(reverb).ramp(duration=0.0002).data  # add reverb onset ramp
-
-    # todo move reverb closer
-    # zero pad to nbins x 2
-    reverb = numpy.concatenate((numpy.zeros((n_bins, 2)), reverb), axis=0)
-    # pad = (int(n_bins/8*7), int(n_bins/8))
-    # reverb = numpy.concatenate((numpy.zeros((pad[0], 2)), reverb, numpy.zeros((pad[1], 2))), axis=0)
-
-    # todo scale reverb
-    #reverb = reverb * reverb_level / numpy.max(numpy.abs(reverb))  # rescale
+                for idx in range(hrir.n_sources)]) # get mean ir level to apply DRR
     reverb = slab.Sound(data=reverb)
-    reverb.level = numpy.mean(ir_level) - drr  # adjust reverb level
-
+    reverb.level = numpy.mean(ir_level) - drr
     #  write reverb IR and filter list entry
     reverb.write(fname, normalise=False)
     with open(filter_list_fname, 'a') as file:
@@ -134,14 +113,14 @@ def write_lr_filter(drr=5, show=False):
                    f' 0 0 0'  # Value 10 - 12: source position[x, y, z]
                    f' 0 0 0'  # Value 13 - 15: custom values[a, b, c]
                    f' {fname}\n')
-    if show:
+    if show:  # plot example IR and reverb envelope
         fig, axis = plt.subplots(nrows=1, ncols=1)
         idx = hrir.get_source_idx((85,95),(-1,1))[0]
-        ir = numpy.concatenate((hrir[idx].data, numpy.zeros((n_bins, 2))), axis=0)
-        sum = ir + reverb.data
-        sum = 20.0 * numpy.log10(numpy.abs(sum) / 2e-5)  # convert to dB
-        times = numpy.linspace(0, len(sum) / hrir.samplerate, len(sum))
-        axis.plot(times, sum)
+        ds = numpy.concatenate((hrir[idx].data, numpy.zeros((len(reverb) - hrir[idx].n_taps, 2))), axis=0)
+        ds_lr = ds + reverb.data
+        ds_lr = 20.0 * numpy.log10(numpy.abs(ds_lr) / 2e-5)  # convert to dB
+        times = numpy.linspace(0, len(ds_lr) / hrir.samplerate, len(ds_lr))
+        axis.plot(times, ds_lr)
         axis.set_xlabel('Time (s)')
         axis.set_ylabel('Amplitude (dB)')
         fig.show()
@@ -153,10 +132,10 @@ def write_settings():
     with open(wav_path / dir_name / filename, 'w') as file:
         file.write(
             f'soundfile {str(wav_path / dir_name / "sounds" / "noise_pulse.wav")}\n'
-            f'blockSize {int(hrir[0].n_samples / 2)}\n'  # low values reduce delay but increase cpu load.
-            f'ds_filterSize {hrir[0].n_samples*2}\n'
-            f'early_filterSize {hrir[0].n_samples*2}\n'
-            f'late_filterSize {hrir[0].n_samples*2}\n'  # reverb filter
+            f'blockSize {blocksize}\n'  # low values reduce delay but increase cpu load.
+            f'ds_filterSize {hrir[0].n_samples}\n'
+            f'early_filterSize {hrir[0].n_samples}\n'
+            f'late_filterSize {reverb_n_samples}\n'  # reverb filter
             f'headphone_filterSize {hrir[0].n_samples}\n'  # headphone equalizer
             f'filterSource[mat/wav] wav\n'
             f'filterList {filter_list_fname}\n'
@@ -185,10 +164,10 @@ def write_settings():
     with open(wav_path / dir_name / filename, 'w') as file:
         file.write(
         f'soundfile {str(wav_path / dir_name / "sounds" / "localization.wav")}\n'
-        f'blockSize {int(hrir[0].n_samples / 2)}\n' # low values reduce delay but increase cpu load.
+        f'blockSize {blocksize}\n'  # low values reduce delay but increase cpu load.
         f'ds_filterSize {hrir[0].n_samples}\n'
         f'early_filterSize {hrir[0].n_samples}\n'
-        f'late_filterSize {hrir[0].n_samples}\n'  # reverb filter
+        f'late_filterSize {reverb_n_samples}\n'  # reverb filter
         f'headphone_filterSize {hrir[0].n_samples}\n'  # headphone equalizer
         f'filterSource[mat/wav] wav\n'
         f'filterList {filter_list_fname}\n'

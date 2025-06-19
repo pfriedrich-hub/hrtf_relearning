@@ -22,6 +22,54 @@ def localization_accuracy(sequence):
     az_sd, ele_sd = variability[0], variability[1]
     return elevation_gain, ele_rmse, ele_sd, azimuth_gain, az_rmse, az_sd
 
+def target_p(sequence, show=False, axis=None):
+    # calculate target probabilities depending on polar error in the trial sequence
+    # retrieve data
+    loc_data = numpy.asarray(sequence.data)
+    loc_data = loc_data.reshape(loc_data.shape[0], 2, 2)
+    targets = loc_data[:, 1]  # [az, ele]
+    responses = loc_data[:, 0]
+    response_errors = numpy.zeros((len(sequence.sector_centers), 3))
+    for idx, center in enumerate(sequence.sector_centers):
+        in_sector = numpy.where(        # Get indices of targets in this sector
+            (targets[:, 0] >= center[0] - sequence.sector_size[0] / 2)
+            & (targets[:, 0] < center[0] + sequence.sector_size[0] / 2) &
+            (targets[:, 1] >= center[1] - sequence.sector_size[1] / 2)
+            & (targets[:, 1] < center[1] + sequence.sector_size[1] / 2))[0]
+        rmse = numpy.sqrt(numpy.mean(numpy.square(targets[in_sector] - responses[in_sector]), axis=0))
+        polar_error = rmse[1]  # use only polar error to calculate target probabilities
+        response_errors[idx] = numpy.array((center[0], center[1], polar_error))
+    target_p = response_errors[:, 2] / numpy.sum(response_errors[:, 2])
+    response_errors = numpy.hstack((response_errors, numpy.expand_dims(target_p, axis=1)))
+    if show:
+        azimuths = numpy.unique(response_errors[:, 0])
+        elevations = numpy.unique(response_errors[:, 1])
+        if not axis:
+            fig, axis = plt.subplots()
+        p_grid = numpy.zeros((len(azimuths), len(elevations)))        # Create an empty z-grid
+        for row in response_errors:        # Fill the z-grid by matching (x, y) to z
+            x_idx = numpy.where(azimuths == row[0])[0][0]
+            y_idx = numpy.where(elevations == row[1])[0][0]
+            p_grid[y_idx, x_idx] = row[3]
+        contour = axis.pcolormesh(azimuths, elevations, p_grid)
+        cbar_levels = numpy.linspace(0, 0.1, 10)
+        cax_pos = list(axis.get_position().bounds)  # (x0, y0, width, height)
+        cax_pos[0] += 0.8  # x0
+        cax_pos[2] = 0.012  # width
+        cax = fig.add_axes(cax_pos)
+        cbar = fig.colorbar(contour, cax, orientation="vertical", ticks=numpy.linspace(0, 0.1, 5))
+        cax.set_title('Probability')
+        axis.set_xlabel('Azimuth')
+        axis.set_ylabel('Elevation')
+        az_ticks = numpy.array((azimuths - sequence.sector_size[0] / 2, azimuths + sequence.sector_size[0] / 2)).T
+        ele_ticks = numpy.array((elevations - sequence.sector_size[1] / 2, elevations + sequence.sector_size[1] / 2)).T
+        axis.set_yticks(az_ticks)
+        axis.set_xticks(ele_ticks)
+        # axis.set_ylim(numpy.min(elevations) - 15, numpy.max(elevations) + 15)
+        # axis.set_xlim(numpy.min(azimuths) - 15, numpy.max(azimuths) + 15)
+        # localization_accuracy(sequence, show=True, plot_dim=2, binned=True)
+    return response_errors
+
 def compute_sector_precision(targets, responses, sector_centers, sector_size):
     """
     Estimates response precision per sector by aligning targets and measuring

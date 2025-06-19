@@ -4,13 +4,17 @@ import multiprocessing as mp
 from pythonosc import udp_client
 import pybinsim
 from hrtf.processing.hrtf2wav import *
-from experiment.misc.plotting import *
-logging.getLogger().setLevel('DEBUG')
+from experiment.Subject import Subject
+logging.getLogger().setLevel('INFO')
 pybinsim.logger.setLevel(logging.WARNING)
 
+# get subject data
+id = ''
+subject = Subject(id)
+
 # select HRIR
-filename ='KU100_HRIR_L2702'
-# filename ='single_notch'
+# filename ='KU100_HRIR_L2702'
+filename ='single_notch'
 
 # select wav file for the training stimulus, None will default to pink noise
 soundfile = None
@@ -59,7 +63,8 @@ def play_session(game_time, trial_time, target_size, target_time, az_range, ele_
         scores = []
         game_timer = 0  # set game timer
         while game_timer < game_time:        # play trials until game time is up
-            set_target(az_range, ele_range, target, min_dist)
+            # set_target(az_range, ele_range, target, min_dist
+            set_target(target, min_dist)
             game_timer, score = play_trial(distance, pulse_interval, pulse_state, sensor_state,
                        trial_time, game_time, game_timer, target_size, target_time)  # play trial and update game timer
             scores.append(score)
@@ -130,7 +135,7 @@ def binsim_stream():
 
 def pulse_maker(pulse_interval, pulse_state):
     import logging
-    logging.getLogger().setLevel('DEBUG')
+    logging.getLogger().setLevel('INFO')
     osc_client = make_osc_client(port=10003)
     while True:
         logging.debug(f'pulse stream: state {pulse_state.value}')
@@ -186,7 +191,6 @@ def head_tracker(distance, target, sensor_state):
             logging.debug(f'head tracking: filter coords: {rel_hrtf_coords}')
             time.sleep(0.01)  # these intervals mainly determines CPU load
 
-
 # ------- helpers ----- #
 
 def play_sound(osc_client, soundfile=None, duration=None, sleep=False):
@@ -235,10 +239,24 @@ def make_osc_client(port):
     args = parser.parse_args()
     return udp_client.SimpleUDPClient(args.ip, args.port)
 
-def set_target(az_range, ele_range, target, min_dist):
+# def set_target(az_range, ele_range, target, min_dist):
+#     logging.debug(f'Setting target...')
+#     while True:
+#         prev_tar = target[:]
+#         next_tar = [numpy.random.randint(az_range[0], az_range[1]),
+#                   numpy.random.randint(ele_range[0], ele_range[1])]
+#         if numpy.linalg.norm(numpy.subtract(prev_tar, next_tar)) >= min_dist:
+#             target[:] = next_tar
+#             logging.info(f'Set Target to {next_tar}.')
+#             break
+
+def set_target(target, min_dist):
     logging.debug(f'Setting target...')
     while True:
         prev_tar = target[:]
+        sequence = subject.localization()  #todo append probabilities to localization data after each loc test
+        #retrieve here, select sector based on probabilities and assign random target within the sector
+
         next_tar = [numpy.random.randint(az_range[0], az_range[1]),
                   numpy.random.randint(ele_range[0], ele_range[1])]
         if numpy.linalg.norm(numpy.subtract(prev_tar, next_tar)) >= min_dist:
@@ -247,5 +265,6 @@ def set_target(az_range, ele_range, target, min_dist):
             break
 
 if __name__ == "__main__":
-    make_wav(filename, overwrite=True, show=False)
+    make_wav(filename, overwrite=False, show=False)
     play_session(game_time, trial_time, target_size, target_time, tuple(az_range), tuple(ele_range))
+

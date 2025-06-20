@@ -1,23 +1,30 @@
 import argparse
 import multiprocessing as mp
-from analysis.localization_analysis import *
+import pybinsim
+import datetime
 from pythonosc import udp_client
 from experiment.misc import meta_motion
+from analysis.localization_analysis import *
 from experiment.misc.make_sequence import *
 from hrtf.processing.hrtf2wav import *
-logging.getLogger().setLevel('INFO')
-import pybinsim
-pybinsim.logger.setLevel(logging.INFO)
-import datetime
-date = datetime.datetime.now()
-date = f'{date.strftime("%d")}_{date.strftime("%m")}'
-data_dir = Path.cwd() / 'data'
 from experiment.Subject import Subject
+date = datetime.datetime.now()
+date = f'{date.strftime("%d")}.{date.strftime("%m")}.{date.strftime("%H")}:{date.strftime("%M")}'
+logging.getLogger().setLevel('INFO')
+pybinsim.logger.setLevel(logging.WARNING)
+data_dir = Path.cwd() / 'data'
 
-subject_id = 'test'
-hrtf_name ='KU100_HRIR_L2702'
+subject = 'PF'
+
+# hrtf_name ='KU100_HRIR_L2702'
+hrtf_name ='single_notch'
+subject_id = f'{subject}_{hrtf_name}'
 
 class Localization:
+    """
+    Localization test:
+        Test localization at uniformly random positions within sectors
+    """
     def __init__(self, subject_id, hrtf_name):
         # make trial sequence and write to subject
         azimuth_range = (-40, 40)
@@ -25,7 +32,7 @@ class Localization:
         sector_size = (20, 20)
         targets_per_sector = 3
         min_distance = 20
-        self.loudness = .5
+        self.gain = .5
         self.subject = Subject(subject_id)
         self.filename = subject_id + '_loc_' + date
         self.subject.localization[self.filename] = make_sequence(azimuth_range, elevation_range, sector_size, # (azimuth_size, elevation_size)
@@ -49,11 +56,13 @@ class Localization:
         time.sleep(.2)
 
     def run(self):
-        # enable audio
-        for self.target in self.subject.localization[self.filename]:
-            logging.info(f'Target: {self.target}')
+        sequence = self.subject.localization[self.filename]
+        # for self.target in self.subject.localization[self.filename]:
+        for self.target in sequence:
+            progress = sequence.this_n / len(sequence.conditions) * 100
+            logging.info(f'{progress}% | Target: {self.target}')
             # calibrate sensor
-            input('Look at the Center and press Enter\n')
+            input('Look at the Center and press Enter')
             self.motion_sensor.calibrate()
             # generate and play stim, get pose response
             self.play_trial()
@@ -70,15 +79,12 @@ class Localization:
                                    silence, noise, silence, noise)
         stim.ramp('both', 0.01)
         stim.write(self.stim_path)
-
         # play stim
         self.play_sound()
         time.sleep(stim.duration)
-
         # get response
-        input('Aim at Sound and press Enter to confirm.')
+        input('Aim at Sound and press Enter to confirm\n')
         response = self.motion_sensor.get_pose()
-        # todo check if beep is neccessary
         time.sleep(.25)
         self.subject.localization[self.filename].add_response(numpy.array((response, self.target)))
 
@@ -97,7 +103,7 @@ class Localization:
                                                         0, 0, 0])
         logging.debug(f'set filter for {self.hrtf_sources[filter_idx]}')
         # play
-        self.osc_client_2.send_message('/pyBinSimLoudness', 0.5 * self.loudness)
+        self.osc_client_2.send_message('/pyBinSimLoudness', self.gain)
         self.osc_client_2.send_message('/pyBinSimFile', str(self.stim_path))
         time.sleep(.5)
         self.osc_client_2.send_message('/pyBinSimLoudness', 0)
@@ -125,11 +131,9 @@ class Localization:
         state = meta_motion.State(device)
         return meta_motion.Sensor(state)
 
-
 if __name__ == "__main__":
     make_wav(hrtf_name)
     loc_test = Localization(subject_id, hrtf_name)
     loc_test.run()
-
     sequence = Subject(subject_id).localization[loc_test.filename]
     plot_localization(sequence)

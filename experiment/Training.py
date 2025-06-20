@@ -5,7 +5,6 @@ from pythonosc import udp_client
 import pybinsim
 from experiment.misc import meta_motion
 from hrtf.processing.hrtf2wav import *
-from experiment.misc.plotting import *
 logging.getLogger().setLevel('INFO')
 pybinsim.logger.setLevel(logging.WARNING)
 
@@ -14,13 +13,16 @@ filename ='KU100_HRIR_L2702'
 # filename ='single_notch'
 
 # select wav file for the training stimulus, None will default to pink noise
-soundfile = None
+# soundfile = None
 # soundfile='c_chord_guitar.wav'
+# soundfile='uso_225ms_9_.wav'
+
+ear='both'
 
 target_size = 3
 target_time = 1
 az_range = (-45, 45)
-ele_range = (-25, 25)
+ele_range = (-30, 30)
 min_dist = 30
 game_time  = 180
 trial_time = 15
@@ -86,6 +88,7 @@ def play_trial(distance, pulse_interval, pulse_state, sensor_state,
     time_on_target = 0
     count_down = False
     time.sleep(.1)
+    # input("Press Enter to play.")
     input("Press Enter to play.")
     sensor_state.value = 2   # calibrate sensor
     time.sleep(.1) # wait until calbration is complete
@@ -116,8 +119,8 @@ def play_trial(distance, pulse_interval, pulse_state, sensor_state,
                 play_sound(osc_client, soundfile='coin.wav', duration=None, sleep=True)
                 score = 1
             break
+            logging.info(f'Score: {score}!')
         time.sleep(.01)   # these intervals determine CPU load
-    logging.info(f'Trial complete: {score} points')
     game_timer += trial_timer  # update game timer
     pulse_state.value = 0  # mute sound
     sensor_state.value = 1  # stop sensor tracking
@@ -187,7 +190,6 @@ def head_tracker(distance, target, sensor_state):
         time.sleep(0.01)    # these intervals mainly determines CPU load
 
 # ------- helpers ----- #
-
 def play_sound(osc_client, soundfile=None, duration=None, sleep=False):
     """ serves as a wrapper and passes the soundfile to pybinsim """
     if duration:
@@ -244,10 +246,8 @@ def set_target(az_range, ele_range, target, min_dist):
             break
 
 if __name__ == "__main__":
-    make_wav(filename, overwrite=True, show=False)
+    make_wav(filename, overwrite=False, show=False)
     play_session(game_time, trial_time, target_size, target_time, tuple(az_range), tuple(ele_range))
-
-
 
 
 
@@ -277,21 +277,3 @@ if __name__ == "__main__":
 #             playing = False
 #         osc_client.send_message('/pyBinSimLoudness', level * loudness_scaling)
 #         time.sleep(duration / n_steps)
-
-# def play_sound(wav_name, pulse_interval, pulse_state):
-#     logging.info(f'playing sound file: {wav_name}')
-#     pulse_interval.value = 0  # stop pulsing to play game sound
-#     pulse_state.value = 1
-#     fpath = str(data_dir / 'wav' / filename / 'sounds' / f'{wav_name}.wav')
-#     osc_client.send_message('/pyBinSimFile', fpath)  # load new sound
-#     time.sleep(.1)
-#     pulse_state.value = 2  # play
-#     time.sleep(slab.Sound.read(fpath).duration)
-#     osc_client.send_message('/pyBinSimFile', str(data_dir / 'wav' / filename / 'sounds' / 'noise_pulse.wav'))
-#     pulse_state.value = 1  # mute
-
-# def play_sound(wav_name, pulse_state):
-#     logging.debug(f'playing sound file: {wav_name}')
-#     pulse_state.value = 1  # mute binsim
-#     fpath = str(sound_dir / f'{wav_name}.wav')
-#     slab.Sound.read(fpath).play()

@@ -1,8 +1,5 @@
-import matplotlib
 import slab
-# matplotlib.use("QtAgg")
 # matplotlib.use("TkAgg")
-import matplotlib.pyplot as plt
 import numpy as np
 import random
 
@@ -70,39 +67,39 @@ def make_sequence(
     sequence.sector_centers = sector_centers
     sequence.sector_size = sector_size
     return sequence
-#
-#
-# def plot_random_points(points, selected_sectors, azimuth_range, elevation_range, sector_size):
-#     """Plots the generated random points and sector boundaries with grid lines."""
-#     azimuth_size, elevation_size = sector_size
-#     fig, ax = plt.subplots(figsize=(8, 6))
-#     ax.set_xlim(azimuth_range)
-#     ax.set_ylim(elevation_range)
-#     ax.set_xlabel("Azimuth (°)")
-#     ax.set_ylabel("Elevation (°)")
-#     ax.set_title("Random Points in Sectors with Minimum Distance Constraint")
-#
-#     # Plot sector boundaries
-#     for sec in selected_sectors:
-#         rect = plt.Rectangle(
-#             (sec[0] - azimuth_size / 2, sec[1] - elevation_size / 2),
-#             azimuth_size, elevation_size, edgecolor='gray', facecolor='none', linestyle="--"
-#         )
-#         ax.add_patch(rect)
-#
-#     # Plot grid lines
-#     azimuth_ticks = np.arange(azimuth_range[0], azimuth_range[1] + azimuth_size, azimuth_size)
-#     elevation_ticks = np.arange(elevation_range[0], elevation_range[1] + elevation_size, elevation_size)
-#     ax.set_xticks(azimuth_ticks)
-#     ax.set_yticks(elevation_ticks)
-#     ax.grid(True, linestyle="--", linewidth=0.5)
-#
-#     # Plot points
-#     azimuths, elevations = zip(*points)
-#     ax.scatter(azimuths, elevations, color='red', label="Random Points")
-#
-#     ax.legend()
-#     plt.show()
+
+
+def plot_random_points(points, selected_sectors, azimuth_range, elevation_range, sector_size):
+    """Plots the generated random points and sector boundaries with grid lines."""
+    azimuth_size, elevation_size = sector_size
+    fig, ax = plt.subplots(figsize=(8, 6))
+    ax.set_xlim(azimuth_range)
+    ax.set_ylim(elevation_range)
+    ax.set_xlabel("Azimuth (°)")
+    ax.set_ylabel("Elevation (°)")
+    ax.set_title("Random Points in Sectors with Minimum Distance Constraint")
+
+    # Plot sector boundaries
+    for sec in selected_sectors:
+        rect = plt.Rectangle(
+            (sec[0] - azimuth_size / 2, sec[1] - elevation_size / 2),
+            azimuth_size, elevation_size, edgecolor='gray', facecolor='none', linestyle="--"
+        )
+        ax.add_patch(rect)
+
+    # Plot grid lines
+    azimuth_ticks = np.arange(azimuth_range[0], azimuth_range[1] + azimuth_size, azimuth_size)
+    elevation_ticks = np.arange(elevation_range[0], elevation_range[1] + elevation_size, elevation_size)
+    ax.set_xticks(azimuth_ticks)
+    ax.set_yticks(elevation_ticks)
+    ax.grid(True, linestyle="--", linewidth=0.5)
+
+    # Plot points
+    azimuths, elevations = zip(*points)
+    ax.scatter(azimuths, elevations, color='red', label="Random Points")
+
+    ax.legend()
+    plt.show()
 
 # Example usage
 # azimuth_range = (-50, 50)

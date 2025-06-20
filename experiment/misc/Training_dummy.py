@@ -191,6 +191,7 @@ def head_tracker(distance, target, sensor_state):
             logging.debug(f'head tracking: filter coords: {rel_hrtf_coords}')
             time.sleep(0.01)  # these intervals mainly determines CPU load
 
+
 # ------- helpers ----- #
 
 def play_sound(osc_client, soundfile=None, duration=None, sleep=False):
@@ -267,4 +268,3 @@ def set_target(target, min_dist):
 if __name__ == "__main__":
     make_wav(filename, overwrite=False, show=False)
     play_session(game_time, trial_time, target_size, target_time, tuple(az_range), tuple(ele_range))
-

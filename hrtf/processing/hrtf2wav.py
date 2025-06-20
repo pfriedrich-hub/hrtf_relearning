@@ -1,5 +1,5 @@
 import matplotlib
-# matplotlib.use('Qt5Agg')
+matplotlib.use('Qt5Agg')
 from matplotlib import pyplot as plt
 from pathlib import Path
 import numpy
@@ -125,6 +125,10 @@ def write_lr_filter(drr=20, show=False):
         axis.set_ylabel('Amplitude (dB)')
         fig.show()
 
+def write_hp_filter(mute_ear='left'):
+    return
+
+
 def write_settings():
     # write settings.txt for training and testing:
     logging.info(f'Writing {dir_name}_settings.txt')
@@ -184,7 +188,7 @@ def write_settings():
         f'useHeadphoneFilter False\n'
         f'ds_convolverActive True\n'
         f'early_convolverActive False\n'
-        f'late_convolverActive False\n'
+        f'late_convolverActive True\n'
         # osc receiver settings
         f'recv_type osc\n'
         f'recv_protocol udp\n'

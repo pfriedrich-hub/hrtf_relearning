@@ -1,11 +1,11 @@
-import legacy.MSc.analysis.build_dataframe as build_df
+import legacy as build_df
 import numpy
 import slab
 from copy import deepcopy
 from matplotlib import pyplot as plt
 from pathlib import Path
-from legacy.MSc.misc.unit_conversion import cm2in
-from matplotlib import font_manager
+from legacy import cm2in
+
 
 def response_evolution(to_plot='average', axis=None, figsize=(14,8), path=Path.cwd() / 'MSc' / 'data' / 'experiment' / 'master'):
     """ plot localization free, 1st vs last day of molds and persistence """

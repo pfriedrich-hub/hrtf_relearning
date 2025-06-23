@@ -1,4 +1,4 @@
-import legacy.MSc.analysis.build_dataframe as get_df
+import legacy as get_df
 from pathlib import Path
 from matplotlib import pyplot as plt
 import numpy

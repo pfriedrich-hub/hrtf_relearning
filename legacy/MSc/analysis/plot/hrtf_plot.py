@@ -1,14 +1,13 @@
-import legacy.MSc.analysis.hrtf_analysis as hrtf_analysis
-import legacy.MSc.analysis.processing.hrtf_processing as hrtf_processing
-import legacy.MSc.analysis.statistics.stats_df as stats_df
+import legacy as hrtf_analysis
+import legacy as hrtf_processing
+import legacy as stats_df
 import numpy
-from matplotlib import font_manager
 import matplotlib.colors as colors
 import matplotlib.patheffects as pe
 from matplotlib import pyplot as plt
 import copy
 import scipy
-from legacy.MSc.misc.unit_conversion import cm2in
+from legacy import cm2in
 
 def plot_mean_vsi_across_bands(hrtf_df, condition='Ears Free', bands=None, axis=None, ear_idx=[0], figsize=(9, 9),
                                show_spectral_strength=False):

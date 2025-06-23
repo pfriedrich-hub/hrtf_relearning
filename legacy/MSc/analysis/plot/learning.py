@@ -1,4 +1,4 @@
-import legacy.MSc.analysis.localization_analysis as loc_analysis
+import legacy as loc_analysis
 import numpy
 from matplotlib import pyplot as plt
 from pathlib import Path

@@ -2,11 +2,9 @@ import numpy
 import scipy
 import math
 from matplotlib import pyplot as plt
-from scipy.interpolate import BPoly
 
-import legacy.MSc.analysis.statistics.stats_df as stats_df
-from matplotlib import markers
-from legacy.MSc.misc.unit_conversion import cm2in
+import legacy as stats_df
+from legacy import cm2in
 
 measures = ['EG', 'vertical RMSE', 'vertical SD', 'horizontal RMSE', 'horizontal SD']
 """ plot """

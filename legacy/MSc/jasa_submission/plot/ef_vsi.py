@@ -1,8 +1,9 @@
 from matplotlib import pyplot as plt
-import legacy.MSc.analysis.plot.hrtf_plot as hrtf_plot
-from legacy.MSc.misc.unit_conversion import cm2in
-import legacy.MSc.analysis.plot.spectral_behavior_collection as sp_beh_plot
-import legacy.MSc.analysis.statistics.stats_df as stats_df
+import legacy as hrtf_plot
+from legacy import cm2in
+import legacy as sp_beh_plot
+import legacy as stats_df
+
 
 def ef_vsi(hrtf_df, main_df, figsize):
     plt.rcParams.update({'font.family':'Helvetica',

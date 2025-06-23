@@ -1,5 +1,5 @@
-import legacy.MSc.analysis.processing.hrtf_processing as hrtf_processing
-import legacy.MSc.analysis.hrtf_analysis as hrtf_analysis
+import legacy as hrtf_processing
+import legacy as hrtf_analysis
 import numpy
 from pathlib import Path
 path = Path.cwd() / 'legacy' / 'MSc' / 'data' / 'experiment' / 'master'

@@ -1,10 +1,11 @@
-import legacy.MSc.analysis.statistics.stats_df as stats_df
-import legacy.MSc.analysis.build_dataframe as build_df
+import legacy as stats_df
+import legacy as build_df
 from pathlib import Path
 import scipy.stats
 import pandas
 import numpy
-import legacy.MSc.analysis.build_dataframe as get_df
+import legacy as get_df
+
 pandas.set_option('display.max_rows', None, 'display.max_columns', None, 'display.precision', 5,
                   'display.expand_frame_repr', False)
 path = Path.cwd() / 'data' / 'experiment' / 'master'

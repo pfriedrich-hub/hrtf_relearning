@@ -1,4 +1,4 @@
-import legacy.MSc.analysis.processing.hrtf_processing as hrtf_processing
+import legacy as hrtf_processing
 from pathlib import Path
 data_path = path=Path.cwd() / 'data' / 'experiment'
 conditions = ['Ears Free', 'Earmolds Week 1', 'Earmolds Week 2']

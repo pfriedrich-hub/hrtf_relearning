@@ -1,7 +1,7 @@
-import legacy.MSc.analysis.statistics.stats_df as stats_df
-import legacy.MSc.analysis.plot.hrtf_plot as hrtf_plot
-import legacy.MSc.analysis.plot.spectral_behavior_collection as stats_plot
-import legacy.MSc.analysis.build_dataframe as build_df
+import legacy as stats_df
+import legacy as hrtf_plot
+import legacy as stats_plot
+import legacy as build_df
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 from pathlib import Path

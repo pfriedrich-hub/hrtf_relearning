@@ -1,6 +1,6 @@
-from legacy.MSc.analysis.plot import spectral_behavior_collection as stats_plot
-import legacy.MSc.analysis.statistics.stats_df as stats_df
-import legacy.MSc.analysis.build_dataframe as get_df
+from legacy import spectral_behavior_collection as stats_plot
+import legacy as stats_df
+import legacy as get_df
 from matplotlib import pyplot as plt
 from pathlib import Path
 

@@ -1,7 +1,7 @@
 from matplotlib import pyplot as plt
-from legacy.MSc.misc import rcparams
+from legacy import rcparams
 import numpy
-from legacy.MSc.misc.unit_conversion import cm2in
+from legacy import cm2in
 
 
 def plot_time_course(figsize=(14, 7)):

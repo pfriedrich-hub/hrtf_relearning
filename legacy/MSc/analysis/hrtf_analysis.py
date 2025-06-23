@@ -1,7 +1,8 @@
-import legacy.MSc.analysis.plot.hrtf_plot as hrtf_plot
-import legacy.MSc.analysis.processing.hrtf_processing as hrtf_processing
+import legacy as hrtf_plot
+import legacy as hrtf_processing
 import warnings
-import legacy.MSc.analysis.build_dataframe as build_df
+import legacy as build_df
+
 warnings.simplefilter(action='ignore', category=FutureWarning)
 # matplotlib.use('TkAgg')
 from matplotlib import pyplot as plt

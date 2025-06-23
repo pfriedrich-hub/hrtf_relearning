@@ -1,9 +1,9 @@
-import legacy.MSc.analysis.localization_analysis as loc_analysis
+import legacy as loc_analysis
 import numpy
 from matplotlib.lines import Line2D
 from matplotlib import pyplot as plt
 from pathlib import Path
-from legacy.MSc.misc.unit_conversion import cm2in
+from legacy import cm2in
 
 def learning_plot(to_plot='average', path=Path.cwd() / 'data' / 'experiment' / 'master', w2_exclude = ['cs', 'lm', 'lk']
                   , figsize=(30, 15)):

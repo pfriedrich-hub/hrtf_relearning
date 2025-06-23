@@ -6,7 +6,7 @@ import random
 fs = 48828
 slab.set_default_samplerate(fs)
 input_folder = Path.cwd().parent / 'mitsu_sounds' / 'mitsubishi wavs'
-output_folder = Path.cwd() / 'final_data' / 'sounds' / 'uso'
+output_folder = Path.cwd() / 'sounds' / 'uso'
 
 def combine_sounds(duration=0.225, base=0, n_sounds=5):
     bases = ['dryer', 'particl2', 'spray', 'shaver', 'tear', 'crumple', 'coffmill']

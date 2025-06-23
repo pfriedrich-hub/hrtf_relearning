@@ -1,5 +1,5 @@
 from pathlib import Path
-import legacy.MSc.analysis.localization_analysis as localization
+import legacy as localization
 import numpy
 from copy import deepcopy
 from matplotlib import pyplot as plt

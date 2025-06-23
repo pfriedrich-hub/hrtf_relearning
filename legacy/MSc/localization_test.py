@@ -5,7 +5,7 @@ import datetime
 date = datetime.datetime.now()
 from matplotlib import pyplot as plt
 from pathlib import Path
-from legacy.MSc.analysis.localization_analysis import localization_accuracy
+from legacy import localization_accuracy
 fs = 48828
 slab.set_default_samplerate(fs)
 

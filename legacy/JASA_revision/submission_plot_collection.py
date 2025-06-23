@@ -1,14 +1,10 @@
-import legacy.MSc.analysis.build_dataframe as build_df
-import legacy.MSc.analysis.build_dataframe as get_df
-import legacy.MSc.analysis.plot.hrtf_plot as hrtf_plot
-import legacy.MSc.analysis.plot.localization_plot as loc_plot
-import legacy.MSc.analysis.plot.hrtf_plot as hrtf_plot
-import legacy.JASA_revision.plot.time_course as time_course
-import legacy.JASA_revision.plot.elevation_learning as ele_learning
-from legacy.JASA_revision.plot.ef_vsi import ef_vsi
-from legacy.JASA_revision.plot.mold_vsi import mold_vsi
-from legacy.JASA_revision.plot.acoustic_behavior import acoustic_behavior
-from legacy.JASA_revision.plot.stim_response import stim_response_plot
+import legacy as build_df
+import legacy as get_df
+import legacy as ele_learning
+from legacy import ef_vsi
+from legacy import mold_vsi
+from legacy import acoustic_behavior
+from legacy import stim_response_plot
 
 
 from matplotlib import pyplot as plt

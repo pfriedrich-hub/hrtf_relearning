@@ -1,10 +1,11 @@
-import legacy.MSc.analysis.plot.localization_plot as loc_plot
+import legacy as loc_plot
 from pathlib import Path
 import scipy.stats
 import pandas
 import numpy
 from matplotlib import pyplot as plt
-import legacy.MSc.analysis.build_dataframe as get_df
+import legacy as get_df
+
 pandas.set_option('display.max_rows', None, 'display.max_columns', None, 'display.precision', 5,
                   'display.expand_frame_repr', False)
 

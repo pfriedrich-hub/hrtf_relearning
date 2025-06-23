@@ -1,12 +1,12 @@
 import matplotlib
 matplotlib.use('tkagg')
-import legacy.MSc.analysis.localization_analysis as loc_analysis
+import legacy as loc_analysis
 import numpy
 import scipy
 from matplotlib import pyplot as plt
 from pathlib import Path
-from legacy.MSc.misc.unit_conversion import cm2in
-from legacy.MSc.misc.rcparams import set_rcParams
+from legacy import cm2in
+from legacy import set_rcParams
 
 def stim_response_plot(sub_id='vk', figsize=(14, 7), conditions = ['Ears Free', 'Earmolds Week 1'],
                        path=Path.cwd() / 'legacy' / 'Msc' / 'data' / 'experiment' / 'master'):

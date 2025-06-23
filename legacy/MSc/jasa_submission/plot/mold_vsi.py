@@ -1,8 +1,8 @@
-import legacy.MSc.analysis.statistics.stats_df as stats_df
+import legacy as stats_df
 from matplotlib import pyplot as plt
-from legacy.MSc.misc.unit_conversion import cm2in
-import legacy.MSc.analysis.plot.spectral_behavior_collection as sp_beh_plot
-from legacy.MSc.misc.rcparams import set_rcParams
+from legacy import cm2in
+import legacy as sp_beh_plot
+from legacy import set_rcParams
 
 
 def mold_vsi(main_df, figsize):

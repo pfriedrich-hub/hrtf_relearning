@@ -1,8 +1,9 @@
 from pathlib import Path
-import legacy.MSc.misc.helper_functions as helper
+import legacy as helper
 import pandas
 import slab
-import legacy.MSc.analysis.plot.hrtf_plot as hrtf_plot
+import legacy as hrtf_plot
+
 wav_path = Path.cwd() / 'data' / 'experiment' / 'master'
 
 signal = helper.hrtf_signal()

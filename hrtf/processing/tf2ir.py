@@ -93,7 +93,6 @@ def tf2ir(tf):
 
 
 """
-
     # workaround for when only an amplitude spectrum is provided (no complex valued fourier coefs available):
     # maybe see Kramers-Kronig or Bode
 

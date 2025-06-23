@@ -13,11 +13,9 @@ filename ='KU100_HRIR_L2702'
 # filename ='single_notch'
 
 # select wav file for the training stimulus, None will default to pink noise
-# soundfile = None
+soundfile = None
 # soundfile='c_chord_guitar.wav'
 # soundfile='uso_225ms_9_.wav'
-
-ear='both'
 
 target_size = 3
 target_time = 1
@@ -245,8 +243,22 @@ def set_target(az_range, ele_range, target, min_dist):
             logging.info(f'Set Target to {next_tar}.')
             break
 
+# def set_target(target, min_dist):
+#     logging.debug(f'Setting target...')
+#     while True:
+#         prev_tar = target[:]
+#         sequence = subject.localization()  #todo append probabilities to localization data after each loc test
+#         #retrieve here, select sector based on probabilities and assign random target within the sector
+#
+#         next_tar = [numpy.random.randint(az_range[0], az_range[1]),
+#                   numpy.random.randint(ele_range[0], ele_range[1])]
+#         if numpy.linalg.norm(numpy.subtract(prev_tar, next_tar)) >= min_dist:
+#             target[:] = next_tar
+#             logging.info(f'Set Target to {next_tar}.')
+#             break
+
 if __name__ == "__main__":
-    make_wav(filename, overwrite=False, show=False)
+    make_wav(filename, overwrite=False, ear='left', show=False)
     play_session(game_time, trial_time, target_size, target_time, tuple(az_range), tuple(ele_range))
 
 

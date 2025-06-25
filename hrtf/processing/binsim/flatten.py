@@ -1,16 +1,19 @@
 import numpy
 import copy
+import logging
 
-def flatten_dtf(hrir, ear='left'):
+def flatten_dtf(hrir, ear):
     """
     Flatten the TF of a channel in the HRIR (only works on IR)
     """
-    logging.info(f'Flattening dtfs of the {ear} ear.')
     out = copy.deepcopy(hrir)
     if ear == 'left':
         ear_idx = 0
     elif ear == 'right':
         ear_idx = 1
+    else: return out
+    logging.info(f'Flattening dtfs for the {ear} ear.')
+
     for source_idx in range(hrir.n_sources):
         flat_ir = numpy.zeros_like(hrir[0].data[:, 0])  # flat ir
         # flat_ir = fsamp(numpy.ones_like(hrir[0].data[:,0]))  # 3 sample wide peak

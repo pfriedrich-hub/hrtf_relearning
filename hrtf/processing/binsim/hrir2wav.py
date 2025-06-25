@@ -1,66 +1,42 @@
-import matplotlib
-matplotlib.use('Qt5Agg')
-from matplotlib import pyplot as plt
-from pathlib import Path
+# import matplotlib
+# matplotlib.use('Qt5Agg')
 import numpy
 import slab
-import time
 import logging
-from hrtf.processing.tf2ir import *
-from hrtf.processing.flatten_hrir import *
-
+from matplotlib import pyplot as plt
+from pathlib import Path
 
 wav_path = Path.cwd() / 'data' / 'hrtf' / 'wav'
 sofa_path = Path.cwd() / 'data' / 'hrtf' / 'sofa'
 sound_path = Path.cwd() / 'data' / 'sounds'
 
-# wrapper for hrtf2wav
-def make_wav(filename, overwrite=False, ear=None, show=False):
-    if not (wav_path / filename).exists() or overwrite:
-        hrtf2wav(filename, ear, show)
-
-def hrtf2wav(filename, ear, show):
+def hrir2wav(hrir, overwrite, show):
     """
     Convert HRIR filters from a sofa file to wav files for use with pybinsim.
     Args:
-        filename (str): HRIR sofa file
-        ear (str, optional): flatten DTFs at specified Ear (and keep ITD / ILD)
+        hrir: (slab HRTF object): HRIR to convert to wav files. Each directional IR is written to a wav file.
+        overwrite (bool, optional): overwrite existing wav files
         show (bool, optional): whether to show a plot of a final IR with reverb tail
     """
-    global hrir, blocksize
 
-    # load and process HRTF (convert to HRIR, interpolate, flatten ...)
-    hrtf = slab.HRTF(sofa_path / f'{filename}.sofa')
-    slab.set_default_samplerate(hrtf.samplerate)
-    if hrtf.datatype == 'TF':
-        hrir = hrtf2hrir(hrtf)
-    elif hrtf.datatype == 'FIR':  # convert to IR
-        hrir = hrtf
-    else: raise ValueError('Unknown datatype.')
-    if ear:  # flatten DTFs of specified channel
-        logging.info(f'Flatten DTFs at the {ear} ear')
-        hrir = flatten_dtf(hrir, ear=ear)
-        filename += f'_{ear[0]}_flat'
-    hrir.name = filename
-    blocksize = int(hrir[0].n_taps / 2)
 
     # create folder structure for HRTF wav files
-    if not (wav_path / filename).exists():
-        (wav_path / filename / 'IR_data').mkdir(parents=True, exist_ok=True)
-        (wav_path / filename / 'sounds').mkdir(exist_ok=True)
+    (wav_path / hrir.name / 'IR_data').mkdir(parents=True, exist_ok=True)
+    (wav_path / hrir.name / 'sounds').mkdir(exist_ok=True)
 
     # write files
     write_ds_filter(hrir)  # write direct sound filters from hrtf
     for file in sound_path.glob('*.wav'): # resample sound files
         sound = slab.Sound.read(file)
-        sound.resample(hrir.samplerate).write(wav_path / filename / 'sounds' / file.name)
-    write_lr_filter(drr=20, show=show)  # write reverb
+        sound.resample(hrir.samplerate).write(wav_path / hrir.name / 'sounds' / file.name)
+    write_lr_filter(hrir, drr=20, show=show)  # write reverb
     # write_hp_filter(mute_ear='left')
-    write_settings()  # write pybinsim settings
+    write_settings(hrir)  # write pybinsim settings
+    return hrir
 
 def write_ds_filter(hrir):
     # zero pad and write IR to wav and coordinates to filter_list.txt
-    logging.info(f'Writing {hrir.name} to wav files and filter_list.txt')
+    logging.info(f'Writing IR wav files and filter_list for {hrir.name}')
     for source_idx in range(hrir.n_sources):
         coordinates = hrir.sources.vertical_polar[source_idx]
         fname = wav_path / hrir.name / 'IR_data' / f'{coordinates[0]}_{coordinates[1]}.wav'
@@ -76,13 +52,13 @@ def write_ds_filter(hrir):
                        f' 0 0 0'  # Value 13 - 15: custom values[a, b, c]
                        f' {fname}\n')
 
-def write_lr_filter(drr=20, show=False):
+def write_lr_filter(hrir, drr=20, show=False):
     global reverb_n_samples
-    logging.info(f'Writing reverb (DRR = {drr} dB) to wav file and add late reverb to filter_list.txt')
+    logging.info(f'Writing reverb wav file (DRR = {drr} dB)')
     fname = wav_path / hrir.name / 'sounds' / 'reverb_IR.wav'
     reverb = slab.Sound(wav_path / hrir.name / 'sounds' / 'reverb.wav').data  # load reverb ir
     # crop to 100 ms and multiple of block size (hrir taps / 2)
-    cropped_len = int((int(hrir.samplerate * 0.1) // blocksize) * blocksize)
+    cropped_len = int((int(hrir.samplerate * 0.1) // int(hrir[0].n_taps / 2)) * int(hrir[0].n_taps / 2))
     reverb = reverb[:cropped_len]
     reverb_n_samples = len(reverb)
     # ramp up reverb tail starting at the max impulse response
@@ -118,7 +94,74 @@ def write_lr_filter(drr=20, show=False):
         axis.set_ylabel('Amplitude (dB)')
         fig.show()
 
-def write_hp_filter(mute_ear=None):
+def write_settings(hrir):
+    # write settings.txt for training and testing:
+    logging.info(f'Writing {hrir.name}_settings.txt')
+    filename = f'{hrir.name}_training_settings.txt'
+    with open(wav_path / hrir.name / filename, 'w') as file:
+        file.write(
+            f'soundfile {str(wav_path / hrir.name / "sounds" / "noise_pulse.wav")}\n'
+            f'blockSize {int(hrir[0].n_taps / 2)}\n'  # low values reduce delay but increase cpu load.
+            f'ds_filterSize {hrir[0].n_samples}\n'
+            f'early_filterSize {hrir[0].n_samples}\n'
+            f'late_filterSize {reverb_n_samples}\n'  # reverb filter
+            f'headphone_filterSize {hrir[0].n_samples}\n'  # headphone equalizer
+            f'filterSource[mat/wav] wav\n'
+            f'filterList {wav_path / hrir.name / f"filter_list_{hrir.name}.txt"}\n'
+            f'maxChannels 1\n'
+            f'samplingRate {int(hrir.samplerate)}\n'
+            f'enableCrossfading True\n'
+            f'loudnessFactor 0\n'
+            f'loopSound False\n'
+            # convolver settings 
+            f'torchConvolution[cpu/cuda] cpu\n'
+            f'torchStorage[cpu/cuda] cpu\n'
+            f'pauseConvolution False\n'
+            f'pauseAudioPlayback False\n'
+            f'useHeadphoneFilter False\n'
+            f'ds_convolverActive True\n'
+            f'early_convolverActive False\n'
+            f'late_convolverActive True\n'
+            # osc receiver settings
+            f'recv_type osc\n'
+            f'recv_protocol udp\n'
+            f'recv_ip 127.0.0.1\n'
+            f'recv_port 10000\n'
+            )
+
+    filename = f'{hrir.name}_test_settings.txt'
+    with open(wav_path / hrir.name / filename, 'w') as file:
+        file.write(
+        f'soundfile {str(wav_path / hrir.name / "sounds" / "localization.wav")}\n'
+        f'blockSize {int(hrir[0].n_taps / 2)}\n'  # low values reduce delay but increase cpu load.
+        f'ds_filterSize {hrir[0].n_samples}\n'
+        f'early_filterSize {hrir[0].n_samples}\n'
+        f'late_filterSize {reverb_n_samples}\n'  # reverb filter
+        f'headphone_filterSize {hrir[0].n_samples}\n'  # headphone equalizer
+        f'filterSource[mat/wav] wav\n'
+        f'filterList {wav_path / hrir.name / f"filter_list_{hrir.name}.txt"}\n'
+        f'maxChannels 1\n'
+        f'samplingRate {int(hrir.samplerate)}\n'
+        f'enableCrossfading True\n'
+        f'loudnessFactor 0\n'
+        f'loopSound False\n'
+        # convolver settings 
+        f'torchConvolution[cpu/cuda] cpu\n'
+        f'torchStorage[cpu/cuda] cpu\n'
+        f'pauseConvolution False\n'
+        f'pauseAudioPlayback False\n'
+        f'useHeadphoneFilter False\n'
+        f'ds_convolverActive True\n'
+        f'early_convolverActive False\n'
+        f'late_convolverActive True\n'
+        # osc receiver settings
+        f'recv_type osc\n'
+        f'recv_protocol udp\n'
+        f'recv_ip 127.0.0.1\n'
+        f'recv_port 10000\n'
+        )
+
+def write_hp_filter(hrir, mute_ear=None):
     """
     Apply headphone filter to mute a channel
     Arguments:
@@ -136,70 +179,3 @@ def write_hp_filter(mute_ear=None):
     hp_filter.write(fname, normalise=False)  # write hp filter to wav
     with open(wav_path / hrir.name / f"filter_list_{hrir.name}.txt", 'a') as file:  # write filename to filter list
         file.write(f'HP {fname}\n')
-
-def write_settings():
-    # write settings.txt for training and testing:
-    logging.info(f'Writing {hrir.name}_settings.txt')
-    filename = f'{hrir.name}_training_settings.txt'
-    with open(wav_path / hrir.name / filename, 'w') as file:
-        file.write(
-            f'soundfile {str(wav_path / hrir.name / "sounds" / "noise_pulse.wav")}\n'
-            f'blockSize {blocksize}\n'  # low values reduce delay but increase cpu load.
-            f'ds_filterSize {hrir[0].n_samples}\n'
-            f'early_filterSize {hrir[0].n_samples}\n'
-            f'late_filterSize {reverb_n_samples}\n'  # reverb filter
-            f'headphone_filterSize {hrir[0].n_samples}\n'  # headphone equalizer
-            f'filterSource[mat/wav] wav\n'
-            f'filterList {wav_path / hrir.name / f"filter_list_{hrir.name}.txt"}\n'
-            f'maxChannels 1\n'
-            f'samplingRate {int(hrir.samplerate)}\n'
-            f'enableCrossfading True\n'
-            f'loudnessFactor 0\n'
-            f'loopSound False\n'
-            # convolver settings 
-            f'torchConvolution[cpu/cuda] cpu\n'
-            f'torchStorage[cpu/cuda] cpu\n'
-            f'pauseConvolution False\n'
-            f'pauseAudioPlayback False\n'
-            f'useHeadphoneFilter True\n'
-            f'ds_convolverActive True\n'
-            f'early_convolverActive False\n'
-            f'late_convolverActive True\n'
-            # osc receiver settings
-            f'recv_type osc\n'
-            f'recv_protocol udp\n'
-            f'recv_ip 127.0.0.1\n'
-            f'recv_port 10000\n'
-            )
-
-    filename = f'{hrir.name}_test_settings.txt'
-    with open(wav_path / hrir.name / filename, 'w') as file:
-        file.write(
-        f'soundfile {str(wav_path / hrir.name / "sounds" / "localization.wav")}\n'
-        f'blockSize {blocksize}\n'  # low values reduce delay but increase cpu load.
-        f'ds_filterSize {hrir[0].n_samples}\n'
-        f'early_filterSize {hrir[0].n_samples}\n'
-        f'late_filterSize {reverb_n_samples}\n'  # reverb filter
-        f'headphone_filterSize {hrir[0].n_samples}\n'  # headphone equalizer
-        f'filterSource[mat/wav] wav\n'
-        f'filterList {wav_path / hrir.name / f"filter_list_{hrir.name}.txt"}\n'
-        f'maxChannels 1\n'
-        f'samplingRate {int(hrir.samplerate)}\n'
-        f'enableCrossfading True\n'
-        f'loudnessFactor 0\n'
-        f'loopSound False\n'
-        # convolver settings 
-        f'torchConvolution[cpu/cuda] cpu\n'
-        f'torchStorage[cpu/cuda] cpu\n'
-        f'pauseConvolution False\n'
-        f'pauseAudioPlayback False\n'
-        f'useHeadphoneFilter True\n'
-        f'ds_convolverActive True\n'
-        f'early_convolverActive False\n'
-        f'late_convolverActive True\n'
-        # osc receiver settings
-        f'recv_type osc\n'
-        f'recv_protocol udp\n'
-        f'recv_ip 127.0.0.1\n'
-        f'recv_port 10000\n'
-        )

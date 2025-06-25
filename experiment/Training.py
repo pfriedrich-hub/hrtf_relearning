@@ -1,38 +1,50 @@
-import argparse
+import matplotlib
+matplotlib.use('Qt5Agg')
+import numpy
+import slab
+import time
 import logging
+import pybinsim
+import argparse
+from pathlib import Path
 import multiprocessing as mp
 from pythonosc import udp_client
-import pybinsim
+from hrtf.processing.hrtf2binsim import hrtf2binsim
 from experiment.misc import meta_motion
-from hrtf.processing.hrtf2wav import *
 logging.getLogger().setLevel('INFO')
 pybinsim.logger.setLevel(logging.WARNING)
 
-# select HRIR
-filename ='KU100_HRIR_L2702'
+# select sofa file
+sofa_name ='KU100_HRIR_L2702'
 # filename ='single_notch'
 
-# select wav file for the training stimulus, None will default to pink noise
+# specify ear for unilateral training, None defaults to binaural training
+ear = 'left'
+
+# select file from the sounds dir for the training stimulus, None defaults to pink noise
 soundfile = None
 # soundfile='c_chord_guitar.wav'
 # soundfile='uso_225ms_9_.wav'
 
-target_size = 3
-target_time = 1
-az_range = (-45, 45)
-ele_range = (-30, 30)
-min_dist = 30
-game_time  = 180
-trial_time = 15
-gain = .5
+# training game settings
+settings = dict(
+    target_size = 3,
+    target_time = 1,
+    az_range = (-45, 45),
+    ele_range = (-30, 30),
+    min_dist = 30,
+    game_time  = 180,
+    trial_time = 15,
+    gain = .5
+    )
 
-data_dir = Path.cwd() / 'data' / 'hrtf'
-hrtf = slab.HRTF(data_dir / 'sofa' / f'{filename}.sofa')
-slab.set_default_samplerate(hrtf.samplerate)
-sound_dir = data_dir / 'wav' / filename / 'sounds'
+# load and process HRIR
+hrir = hrtf2binsim(sofa_name, ear, overwrite=False)
+slab.set_default_samplerate(hrir.samplerate)
+hrir_dir = Path.cwd() / 'data' / 'hrtf' / 'wav' / hrir.name
 
 # main functions
-def play_session(game_time, trial_time, target_size, target_time, az_range, ele_range):
+def play_session(): #, game_time, trial_time, target_size, target_time, az_range, ele_range):
     """
     Play trials until game time is up.
     """
@@ -59,10 +71,11 @@ def play_session(game_time, trial_time, target_size, target_time, az_range, ele_
     while True:  # loop over games
         scores = []
         game_timer = 0  # set game timer
-        while game_timer < game_time:        # play trials until game time is up
-            set_target(az_range, ele_range, target, min_dist)
+        while game_timer < settings['game_time']:        # play trials until game time is up
+            set_target(settings['az_range'], settings['ele_range'], target, settings['min_dist'])
             game_timer, score = play_trial(distance, pulse_interval, pulse_state, sensor_state,
-                       trial_time, game_time, game_timer, target_size, target_time)  # play trial and update game timer
+                       settings['trial_time'], settings['game_time'], game_timer,
+                        settings['target_size'], settings['target_time'])  # play trial and update game timer
             scores.append(score)
         # end
         pulse_state.value = 1  # stop pulse
@@ -127,7 +140,7 @@ def play_trial(distance, pulse_interval, pulse_state, sensor_state,
 # ----- sub processes ----- #
 
 def binsim_stream():
-    binsim = pybinsim.BinSim(data_dir / 'wav' / filename / f'{filename}_training_settings.txt')
+    binsim = pybinsim.BinSim(hrir_dir / f'{hrir.name}_training_settings.txt')
     binsim.stream_start()  # run binsim loop
 
 def pulse_maker(pulse_interval, pulse_state):
@@ -154,7 +167,7 @@ def pulse_maker(pulse_interval, pulse_state):
 
 def head_tracker(distance, target, sensor_state):
     osc_client = make_osc_client(port=10000)
-    hrtf_sources = slab.HRTF(data_dir / 'sofa' / f'{filename}.sofa').sources.vertical_polar
+    sources = hrir.sources.vertical_polar
     # init motion sensor
     device = meta_motion.get_device()
     state = meta_motion.State(device)
@@ -178,9 +191,9 @@ def head_tracker(distance, target, sensor_state):
             logging.debug(f'head tracking: set distance value {distance.value}')
             # find the closest filter idx and send to pybinsim
             relative_coords[0] = (-relative_coords[0] + 360) % 360 # mirror and convert to HRTF convetion [0 < az < 360]
-            rel_target = numpy.array((relative_coords[0], relative_coords[1], hrtf_sources[0, 2]))
-            filter_idx = numpy.argmin(numpy.linalg.norm(rel_target-hrtf_sources, axis=1))
-            rel_hrtf_coords = hrtf_sources[filter_idx]
+            rel_target = numpy.array((relative_coords[0], relative_coords[1], sources[0, 2]))
+            filter_idx = numpy.argmin(numpy.linalg.norm(rel_target-sources, axis=1))
+            rel_hrtf_coords = sources[filter_idx]
             osc_client.send_message('/pyBinSim_ds_Filter', [0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                                                             float(rel_hrtf_coords[0]), float(rel_hrtf_coords[1]), 0,
                                                             0, 0, 0])
@@ -189,19 +202,20 @@ def head_tracker(distance, target, sensor_state):
 
 # ------- helpers ----- #
 def play_sound(osc_client, soundfile=None, duration=None, sleep=False):
-    """ serves as a wrapper and passes the soundfile to pybinsim """
+    """ serves as a wrapper and passes the soundfile to pybinsim """  # todo clunky (might cause the lag?)
     if duration:
         if soundfile:  # read a soundfile and crop to pulse duration
-            sound = slab.Sound.read(sound_dir / soundfile)
+            sound = slab.Sound.read(hrir_dir / 'sounds' / soundfile)
             soundfile = 'cropped_' + soundfile
-            slab.Sound(sound.data[:int(hrtf.samplerate * duration)]).ramp(duration=.03).write(sound_dir / soundfile)
+            (slab.Sound(sound.data[:int(hrir.samplerate * duration)]).ramp(duration=.03)
+             .write(hrir_dir / 'sounds' / soundfile))
         else:  # generate noise with pulse duration
             soundfile = 'noise_pulse.wav'
-            slab.Sound.pinknoise(duration).ramp(duration=.03).write(sound_dir / soundfile)
+            slab.Sound.pinknoise(duration).ramp(duration=.03).write(hrir_dir / 'sounds' / soundfile)
     else:
-        duration = slab.Sound(sound_dir / soundfile).duration  # get duration of the soundfile
+        duration = slab.Sound(hrir_dir / 'sounds' / soundfile).duration  # get duration of the soundfile
     logging.debug(f'Setting soundfile: {soundfile}')
-    osc_client.send_message('/pyBinSimFile', str(sound_dir / soundfile))  # play
+    osc_client.send_message('/pyBinSimFile', str(hrir_dir / 'sounds' / soundfile))  # play
     if sleep:  # wait for sound to finish playing
         time.sleep(duration)
 
@@ -209,11 +223,11 @@ def distance_to_interval(distance):
     max_interval = 350  # max interval duration in ms
     min_interval = 75  # min interval duration before entering target window
     steepness = 5  # controls how the interval duration decreases when approaching the target window
-    max_distance = numpy.linalg.norm(numpy.subtract([0, 0], [az_range[0], ele_range[0]]))  # max possible distance
-    if distance <= target_size:
+    max_distance = numpy.linalg.norm(numpy.subtract([0, 0], [settings['az_range'][0], settings['ele_range'][0]]))  # max possible distance
+    if distance <= settings['target_size']:
         return 0  # fully inside target window → silent
     # Normalize distance: [target_size → max_distance] → [0 → 1]
-    norm_dist = (distance - target_size) / (max_distance - target_size)
+    norm_dist = (distance - settings['target_size']) / (max_distance - settings['target_size'])
     norm_dist = numpy.clip(norm_dist, 0, 1)
     # Logarithmic interpolation between min_interval and max_interval
     scale = numpy.log1p(steepness * norm_dist) / numpy.log1p(steepness)
@@ -258,9 +272,7 @@ def set_target(az_range, ele_range, target, min_dist):
 #             break
 
 if __name__ == "__main__":
-    make_wav(filename, overwrite=False, ear='left', show=False)
-    play_session(game_time, trial_time, target_size, target_time, tuple(az_range), tuple(ele_range))
-
+    play_session()
 
 
     # parser = argparse.ArgumentParser(description="Run the auditory training experiment.")

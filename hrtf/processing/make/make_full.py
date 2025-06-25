@@ -1,11 +1,10 @@
 import matplotlib as mpl
 mpl.use('Qt5Agg')
-import matplotlib.pyplot as plt
 from pathlib import Path
 from sklearn.linear_model import LinearRegression
 from hrtf.analysis.animation import hrtf_animation
-from hrtf.processing.tf2ir import *
-from hrtf.processing.add_interaural import *
+from hrtf.processing.binsim.tf2ir import *
+from hrtf.processing.make.add_interaural import *
 filename = 'single_notch'
 sofa_path = Path.cwd() / 'data' / 'hrtf' / 'sofa'
 

@@ -2,15 +2,17 @@ import slab
 import numpy
 import copy
 import scipy
+import logging
 
 def hrtf2hrir(hrtf):
     """
     takes a slab.HRTF of type TF and converts it to IR
     """
-    if not hrtf.datatype == 'TF':
-        raise ValueError('Input datatype must be TF.')
-    input = copy.deepcopy(hrtf)
-    for src_idx, filt in enumerate(input.data):
+    if hrtf.datatype == 'FIR':
+        return hrtf  # return HRIR
+    logging.info(f'Converting HRTF to HRIR')
+    hrir = copy.deepcopy(hrtf)
+    for src_idx, filt in enumerate(hrir.data):
         ir = []
         for ch_idx in range(filt.n_channels):
             # frequency sampling function
@@ -20,13 +22,13 @@ def hrtf2hrir(hrtf):
             # frequency, gain = filt.tf(channels=ch_idx, show=False)  # get magnitude in dB?
             # ir.append(slab.Filter.band(kind='hp', frequency=frequency.tolist(), gain=gain[:, 0].tolist(),
             #                            samplerate=filt.samplerate, length=filt.n_samples, fir='IR'))
-        input[src_idx] = slab.Filter(data=ir, samplerate=hrtf.samplerate, fir='IR')
+        hrir[src_idx] = slab.Filter(data=ir, samplerate=hrtf.samplerate, fir='IR')
         # shift to make causal
         # (path differences between the origin and the ear are usually
         # smaller than 30 cm but numerical HRIRs show stringer pre-ringing)
         # hrir = np.roll(hrir, n_shift, axis=-1)
-    input.datatype = 'FIR'
-    return input
+    hrir.datatype = 'FIR'
+    return hrir
 
 def fsamp(magnitude):
     """

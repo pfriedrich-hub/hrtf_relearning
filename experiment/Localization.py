@@ -6,7 +6,7 @@ from pythonosc import udp_client
 from experiment.misc import meta_motion
 from analysis.localization_analysis import *
 from experiment.misc.make_sequence import *
-from hrtf.processing.hrtf2wav import *
+from hrtf.processing.binsim.hrir2wav import *
 from experiment.Subject import Subject
 date = datetime.datetime.now()
 date = f'{date.strftime("%d")}.{date.strftime("%m")}.{date.strftime("%H")}:{date.strftime("%M")}'

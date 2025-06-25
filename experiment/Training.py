@@ -16,9 +16,9 @@ pybinsim.logger.setLevel(logging.WARNING)
 
 # --- HRTF settings ----
 # --- select sofa file
-sofa_name ='KU100_HRIR_L2702'
+# sofa_name ='KU100_HRIR_L2702'
 # sofa_name ='single_notch'
-# sofa_name ='kemar'
+sofa_name ='kemar'
 # ---- specify ear for unilateral training, None defaults to binaural training
 # ear = None
 ear = 'left'

@@ -7,4 +7,5 @@
 **/hrtf_relearning.iml
 **/E1CD49190819.json
 /misc.xml
-**/data/hrtf/wav
+/data/hrtf/wav/**/IR_data/
+/data/hrtf/wav/**/sounds/

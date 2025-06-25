@@ -14,36 +14,39 @@ from experiment.misc import meta_motion
 logging.getLogger().setLevel('INFO')
 pybinsim.logger.setLevel(logging.WARNING)
 
-# select sofa file
+# --- HRTF settings ----
+# --- select sofa file
 sofa_name ='KU100_HRIR_L2702'
-# filename ='single_notch'
-
-# specify ear for unilateral training, None defaults to binaural training
+# sofa_name ='single_notch'
+# sofa_name ='kemar'
+# ---- specify ear for unilateral training, None defaults to binaural training
+# ear = None
 ear = 'left'
-
-# select file from the sounds dir for the training stimulus, None defaults to pink noise
-soundfile = None
-# soundfile='c_chord_guitar.wav'
-# soundfile='uso_225ms_9_.wav'
-
-# training game settings
-settings = dict(
-    target_size = 3,
-    target_time = 1,
-    az_range = (-45, 45),
-    ele_range = (-30, 30),
-    min_dist = 30,
-    game_time  = 180,
-    trial_time = 15,
-    gain = .5
-    )
-
-# load and process HRIR
+# --- load and process HRIR
 hrir = hrtf2binsim(sofa_name, ear, overwrite=False)
 slab.set_default_samplerate(hrir.samplerate)
 hrir_dir = Path.cwd() / 'data' / 'hrtf' / 'wav' / hrir.name
 
-# main functions
+
+# --- game settings ----
+# --- select file from the sounds dir for the training stimulus, None defaults to pink noise
+soundfile = None
+# soundfile='c_chord_guitar.wav'
+# soundfile='uso_225ms_9_.wav'
+# --- training game settings
+settings = dict(
+    target_size = 5,        # size of target area in degrees
+    target_time = 1,        # required time on target to score
+    az_range = (-45, 45),   # target azimuth range
+    ele_range = (-30, 30),  # target elevation range
+    min_dist = 30,          # minimal distance between successive targets in degrees
+    game_time  = 180,       # time per session
+    trial_time = 15,        # time per trial
+    gain = .5               # loudness
+    )
+
+
+# --- main functions
 def play_session(): #, game_time, trial_time, target_size, target_time, az_range, ele_range):
     """
     Play trials until game time is up.
@@ -153,11 +156,11 @@ def pulse_maker(pulse_interval, pulse_state):
             continue
             target_sound = False  # flag for playing continuous noise
         elif pulse_state.value == 2:  # play sound with given interval
-            osc_client.send_message('/pyBinSimLoudness', gain)
+            osc_client.send_message('/pyBinSimLoudness', settings['gain'])
             interval = pulse_interval.value
             logging.debug(f'pulse stream: got interval value {interval}')
             if interval == 0 and not target_sound:  # play continuous
-                play_sound(osc_client, soundfile=soundfile, duration=float(target_time), sleep=False)
+                play_sound(osc_client, soundfile=soundfile, duration=float(settings['target_time']), sleep=False)
                 target_sound = True
             elif interval != 0:  # pulse sound
                 play_sound(osc_client, soundfile=soundfile, duration=float(interval), sleep=True)

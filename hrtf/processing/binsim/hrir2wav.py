@@ -1,16 +1,14 @@
-# import matplotlib
-# matplotlib.use('Qt5Agg')
+from hrtf.analysis.plot import plot_reverb
 import numpy
 import slab
 import logging
-from matplotlib import pyplot as plt
 from pathlib import Path
 
 wav_path = Path.cwd() / 'data' / 'hrtf' / 'wav'
 sofa_path = Path.cwd() / 'data' / 'hrtf' / 'sofa'
 sound_path = Path.cwd() / 'data' / 'sounds'
 
-def hrir2wav(hrir, overwrite, show):
+def hrir2wav(hrir):
     """
     Convert HRIR filters from a sofa file to wav files for use with pybinsim.
     Args:
@@ -18,18 +16,12 @@ def hrir2wav(hrir, overwrite, show):
         overwrite (bool, optional): overwrite existing wav files
         show (bool, optional): whether to show a plot of a final IR with reverb tail
     """
-
-
-    # create folder structure for HRTF wav files
-    (wav_path / hrir.name / 'IR_data').mkdir(parents=True, exist_ok=True)
-    (wav_path / hrir.name / 'sounds').mkdir(exist_ok=True)
-
     # write files
     write_ds_filter(hrir)  # write direct sound filters from hrtf
     for file in sound_path.glob('*.wav'): # resample sound files
         sound = slab.Sound.read(file)
         sound.resample(hrir.samplerate).write(wav_path / hrir.name / 'sounds' / file.name)
-    write_lr_filter(hrir, drr=20, show=show)  # write reverb
+    write_lr_filter(hrir, drr=20)  # write reverb
     # write_hp_filter(mute_ear='left')
     write_settings(hrir)  # write pybinsim settings
     return hrir
@@ -52,7 +44,7 @@ def write_ds_filter(hrir):
                        f' 0 0 0'  # Value 13 - 15: custom values[a, b, c]
                        f' {fname}\n')
 
-def write_lr_filter(hrir, drr=20, show=False):
+def write_lr_filter(hrir, drr=20):
     global reverb_n_samples
     logging.info(f'Writing reverb wav file (DRR = {drr} dB)')
     fname = wav_path / hrir.name / 'sounds' / 'reverb_IR.wav'
@@ -82,17 +74,7 @@ def write_lr_filter(hrir, drr=20, show=False):
                    f' 0 0 0'  # Value 10 - 12: source position[x, y, z]
                    f' 0 0 0'  # Value 13 - 15: custom values[a, b, c]
                    f' {fname}\n')
-    if show:  # plot example IR and reverb envelope
-        fig, axis = plt.subplots(nrows=1, ncols=1)
-        idx = hrir.get_source_idx((85,95),(-1,1))[0]
-        ds = numpy.concatenate((hrir[idx].data, numpy.zeros((len(reverb) - hrir[idx].n_taps, 2))), axis=0)
-        ds_lr = ds + reverb.data
-        ds_lr = 20.0 * numpy.log10(numpy.abs(ds_lr) / 2e-5)  # convert to dB
-        times = numpy.linspace(0, len(ds_lr) / hrir.samplerate, len(ds_lr))
-        axis.plot(times, ds_lr)
-        axis.set_xlabel('Time (s)')
-        axis.set_ylabel('Amplitude (dB)')
-        fig.show()
+    plot_reverb(hrir, reverb)
 
 def write_settings(hrir):
     # write settings.txt for training and testing:

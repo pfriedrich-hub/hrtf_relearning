@@ -1,9 +1,8 @@
 import argparse
-import logging
 import multiprocessing as mp
 from pythonosc import udp_client
 import pybinsim
-from hrtf.processing.hrtf2wav import *
+from hrtf.processing.binsim.hrir2wav import *
 from experiment.Subject import Subject
 logging.getLogger().setLevel('INFO')
 pybinsim.logger.setLevel(logging.WARNING)

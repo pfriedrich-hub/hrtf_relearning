@@ -13,8 +13,6 @@ def hrir2wav(hrir):
     Convert HRIR filters from a sofa file to wav files for use with pybinsim.
     Args:
         hrir: (slab HRTF object): HRIR to convert to wav files. Each directional IR is written to a wav file.
-        overwrite (bool, optional): overwrite existing wav files
-        show (bool, optional): whether to show a plot of a final IR with reverb tail
     """
     # write files
     write_ds_filter(hrir)  # write direct sound filters from hrtf

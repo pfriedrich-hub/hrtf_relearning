@@ -277,7 +277,6 @@ def set_target(az_range, ele_range, target, min_dist):
 if __name__ == "__main__":
     play_session()
 
-
     # parser = argparse.ArgumentParser(description="Run the auditory training experiment.")
     # parser.add_argument("--game_time", type=int, default=90, help="Total session duration in seconds")
     # parser.add_argument("--trial_time", type=int, default=10, help="Time limit per trial in seconds")

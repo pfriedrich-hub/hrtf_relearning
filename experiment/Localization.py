@@ -2,6 +2,7 @@ import argparse
 import multiprocessing as mp
 import pybinsim
 import datetime
+import time
 from pythonosc import udp_client
 from experiment.misc import meta_motion
 from analysis.localization_analysis import *
@@ -27,11 +28,11 @@ class Localization:
     """
     def __init__(self, subject_id, hrtf_name):
         # make trial sequence and write to subject
-        azimuth_range = (-40, 40)
-        elevation_range = (-40, 40)
-        sector_size = (20, 20)
+        azimuth_range = (-30, 30)
+        elevation_range = (-30, 30)
+        sector_size = (10, 10)
         targets_per_sector = 3
-        min_distance = 20
+        min_distance = 30
         self.gain = .5
         self.subject = Subject(subject_id)
         self.filename = subject_id + '_loc_' + date
@@ -132,7 +133,7 @@ class Localization:
         return meta_motion.Sensor(state)
 
 if __name__ == "__main__":
-    make_wav(hrtf_name)
+    hrir2wav(hrtf_name)
     loc_test = Localization(subject_id, hrtf_name)
     loc_test.run()
     sequence = Subject(subject_id).localization[loc_test.filename]

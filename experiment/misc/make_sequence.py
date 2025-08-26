@@ -1,12 +1,14 @@
-import slab
+import matplotlib
 # matplotlib.use("TkAgg")
+from matplotlib import pyplot as plt
+import slab
 import numpy as np
 import random
 
 def make_sequence(
-        azimuth_range=(-60, 60),
-        elevation_range=(-50, 50),
-        sector_size=(20, 20),  # (azimuth_size, elevation_size)
+        azimuth_range=(-30, 30),
+        elevation_range=(-30, 30),
+        sector_size=(10, 10),  # (azimuth_size, elevation_size)
         points_per_sector=3,
         min_sector_distance=30
 ):

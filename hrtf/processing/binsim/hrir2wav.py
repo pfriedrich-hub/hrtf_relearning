@@ -15,7 +15,7 @@ def hrir2wav(hrir):
         hrir: (slab HRTF object): HRIR to convert to wav files. Each directional IR is written to a wav file.
     """
     # write files
-    write_ds_filter(hrir)  # write direct sound filters from hrtf
+    write_ds_filter(hrir)  # write direct sound filters from HRIR
     for file in sound_path.glob('*.wav'): # resample sound files
         sound = slab.Sound.read(file)
         sound.resample(hrir.samplerate).write(wav_path / hrir.name / 'sounds' / file.name)

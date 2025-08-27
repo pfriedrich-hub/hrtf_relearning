@@ -7,10 +7,12 @@ import slab
 data_dir = Path.cwd() / 'data' / 'hrtf'
 
 def hrtf2binsim(sofa_name, ear=None, overwrite=False):
-    hrtf = slab.HRTF(data_dir / 'sofa' / f'{sofa_name}.sofa')  # get original HRTF/HRIR from sofa file
-    hrtf.name = sofa_name
-    hrir = hrtf2hrir(hrtf)  # convert to IR if necessary
-    if ear:
+    hrir = slab.HRTF(data_dir / 'sofa' / f'{sofa_name}.sofa')  # read original sofa file
+    hrir.name = sofa_name
+    if hrir.datatype != 'FIR':  # convert to IR if necessary
+        hrir = hrtf2hrir(hrir)
+    if ear:  # flatten DTF at specified ear (modifies .name)
+        hrir = flatten_dtf(hrir, ear)
         hrir.name += f'_{(ear[0]).upper()}_flat'
     if (data_dir / 'wav' / hrir.name).exists() and not overwrite:
         return hrir  # dont create wav files
@@ -18,8 +20,7 @@ def hrtf2binsim(sofa_name, ear=None, overwrite=False):
     (data_dir / 'wav' / hrir.name / 'IR_data').mkdir(parents=True, exist_ok=True)
     (data_dir / 'wav' / hrir.name / 'sounds').mkdir(exist_ok=True)
     (data_dir / 'wav' / hrir.name / 'plot').mkdir(exist_ok=True)
-    plot(hrir, title=f'{hrtf.name} raw')  # plot raw
-    hrir = flatten_dtf(hrir, ear)  # flatten DTF at specified ear (modifies hrir.name)
     hrir = hrir2wav(hrir)  # write to wav files for use with pybinsim
+    plot(hrir, title=f'{hrir.name} raw')  # plot raw
     return hrir
 

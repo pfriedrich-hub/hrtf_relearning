@@ -1,5 +1,5 @@
 import matplotlib
-# matplotlib.use('Qt5Agg')
+matplotlib.use('Qt5Agg')
 import numpy
 import slab
 import time
@@ -14,36 +14,43 @@ from experiment.misc import meta_motion
 logging.getLogger().setLevel('INFO')
 pybinsim.logger.setLevel(logging.WARNING)
 
+# --- Subject ID ----
+subject = 'PF'
+
 # --- HRTF settings ----
+
 # --- select sofa file
-# sofa_name ='KU100_HRIR_L2702'
+sofa_name ='KU100_HRIR_L2702'
 # sofa_name ='single_notch'
-sofa_name ='kemar'
+# sofa_name ='kemar'
+
 # ---- specify ear for unilateral training, None defaults to binaural training
-ear = None
-# ear = 'left'
+# ear = None
+ear = 'left'
+
 # --- load and process HRIR
-hrir = hrtf2binsim(sofa_name, ear, overwrite=True)
+hrir = hrtf2binsim(sofa_name, ear, overwrite=False)
 slab.set_default_samplerate(hrir.samplerate)
 hrir_dir = Path.cwd() / 'data' / 'hrtf' / 'wav' / hrir.name
 
-
 # --- game settings ----
-# --- select file from the sounds dir for the training stimulus, None defaults to pink noise
+# --- select soundfile for the training stimulus, None defaults to pink noise
 soundfile = None
 # soundfile='c_chord_guitar.wav'
 # soundfile='uso_225ms_9_.wav'
-# --- training game settings
+
+# --- training settings
 settings = dict(
     target_size = 5,        # size of target area in degrees
     target_time = 1,        # required time on target to score
     az_range = (-45, 45),   # target azimuth range
-    ele_range = (-30, 30),  # target elevation range
+    ele_range = (-1, 1),  # target elevation range
     min_dist = 30,          # minimal distance between successive targets in degrees
     game_time  = 180,       # time per session
     trial_time = 15,        # time per trial
     gain = .5               # loudness
     )
+
 
 # --- main functions
 def play_session(): #, game_time, trial_time, target_size, target_time, az_range, ele_range):
@@ -142,6 +149,7 @@ def play_trial(distance, pulse_interval, pulse_state, sensor_state,
 # ----- sub processes ----- #
 
 def binsim_stream():
+    logging.info(f'Loading {hrir.name}')
     binsim = pybinsim.BinSim(hrir_dir / f'{hrir.name}_training_settings.txt')
     binsim.stream_start()  # run binsim loop
 
@@ -257,24 +265,9 @@ def set_target(az_range, ele_range, target, min_dist):
             logging.info(f'Set Target to {next_tar}.')
             break
 
-# def set_target(target, min_dist):
-#     logging.debug(f'Setting target...')
-#     while True:
-#         prev_tar = target[:]
-#         sequence = subject.localization()  #todo append probabilities to localization data after each loc test
-#         #retrieve here, select sector based on probabilities and assign random target within the sector
-#
-#         next_tar = [numpy.random.randint(az_range[0], az_range[1]),
-#                   numpy.random.randint(ele_range[0], ele_range[1])]
-#         if numpy.linalg.norm(numpy.subtract(prev_tar, next_tar)) >= min_dist:
-#             target[:] = next_tar
-#             logging.info(f'Set Target to {next_tar}.')
-#             break
 
 if __name__ == "__main__":
-
     play_session()
-
 
 
 # tracker dummy: replace head_tracker() with this function to simulate gaze response on mac

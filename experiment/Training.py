@@ -246,7 +246,7 @@ def distance_to_interval(distance):
 def make_osc_client(port, ip='127.0.0.1'):
     return udp_client.SimpleUDPClient(ip, port)
 
-def set_target(az_range, ele_range, target, min_dist):
+def set_target(target, min_dist):
     logging.debug(f'Setting target...')
     sources = hrir.sources.vertical_polar
     az_range = settings['az_range']
@@ -260,7 +260,7 @@ def set_target(az_range, ele_range, target, min_dist):
         raise RuntimeError("No HRIR positions within the given ranges!")
     while True:
         prev_tar = target[:]
-        next_tar = [numpy.random.choice(candidates[:, 0]), numpy.random.choice(candidates[:, 1])]
+        next_tar = [numpy.random.choice(candidates)]
         if numpy.linalg.norm(numpy.subtract(prev_tar, next_tar)) >= min_dist:
             target[:] = next_tar
             logging.info("Set Target to [%.1f, %.1f]" % (next_tar[0], next_tar[1]))
@@ -279,6 +279,9 @@ def set_target(az_range, ele_range, target, min_dist):
 #             target[:] = next_tar
 #             logging.info(f'Set Target to {next_tar}.')
 #             break
+#
+# def plot():
+#     # todo plot current hrtfs for left and right ear
 
 if __name__ == "__main__":
     play_session()

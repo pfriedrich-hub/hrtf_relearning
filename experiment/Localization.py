@@ -30,8 +30,8 @@ sofa_name ='KU100_HRIR_L2702'
 # sofa_name ='kemar'
 
 # ---- specify ear for unilateral testing, None defaults to binaural testing
-# ear = None
-ear = 'left'
+ear = None
+# ear = 'left'
 
 # --- load and process HRIR
 hrir = hrtf2binsim(sofa_name, ear, overwrite=False)
@@ -45,17 +45,10 @@ class Localization:
     """
     def __init__(self, subject, hrir):
         # make trial sequence and write to subject
-        azimuth_range = (-30, 0)
-        elevation_range = (-30, 30)
-        sector_size = (10, 10)
-        targets_per_sector = 3
-        min_distance = 30
-        self.gain = .5
+        self.settings = {'azimuth_range': (-30, 30), 'elevation_range': (-30, 30), 'sector_size': (30, 30),
+                         'targets_per_sector': 3, 'min_distance': 30, 'gain': .5}
         self.subject = subject
         self.filename = subject.id + f'_{hrir.name}_' + '_loc_' + date
-        self.subject.localization[self.filename] = make_sequence(azimuth_range, elevation_range, sector_size, # (azimuth_size, elevation_size)
-            targets_per_sector, min_distance)
-        self.subject.write()
 
         # metadata
         slab.set_default_samplerate(hrir.samplerate)
@@ -64,27 +57,31 @@ class Localization:
         self.target = None
 
         # init pybinsim
-        self.osc_client_1 = self._init_osc_client(port=10000)
-        self.osc_client_2 = self._init_osc_client(port=10003)
-        mp.Process(target=self.binsim_stream, args=(hrir.name,)).start()
+        self.osc_client_1 = self._make_osc_client(port=10000)
+        self.osc_client_2 = self._make_osc_client(port=10003)
+        self.binsim_worker = mp.Process(target=self._binsim_stream, args=(hrir.name,))
+        self.binsim_worker.start()
 
         # init motion sensor
         self.motion_sensor = self.init_sensor()
         time.sleep(.2)
 
+    def write(self):
+        self.subject.localization[self.filename] = self.sequence
+        self.subject.write()
+
     def run(self):
-        sequence = self.subject.localization[self.filename]
+        self.sequence = make_sequence(self.settings)
+        self.write()
         # for self.target in self.subject.localization[self.filename]:
-        for self.target in sequence:
-            progress = sequence.this_n / len(sequence.conditions) * 100
+        for self.target in self.sequence:
+            progress = self.sequence.this_n / len(self.sequence.conditions) * 100
             logging.info(f'{progress}% | Target: {self.target}')
-            # calibrate sensor
-            input('Look at the Center and press Enter')
+            input('Look at the Center and press Enter')  # calibrate sensor
             self.motion_sensor.calibrate()
-            # generate and play stim, get pose response
-            self.play_trial()
-            # write to file
-            self.subject.write()
+            self.play_trial()  # generate and play stim, get pose response
+            self.write()  # write to file
+        logging.info('Finished.')
         return
 
     def play_trial(self):
@@ -120,26 +117,17 @@ class Localization:
                                                         0, 0, 0])
         logging.debug(f'set filter for {self.hrir_sources[filter_idx]}')
         # play
-        self.osc_client_2.send_message('/pyBinSimLoudness', self.gain)
+        self.osc_client_2.send_message('/pyBinSimLoudness', self.settings['gain'])
         self.osc_client_2.send_message('/pyBinSimFile', str(self.stim_path))
         time.sleep(.5)
         self.osc_client_2.send_message('/pyBinSimLoudness', 0)
 
     @staticmethod
-    def _init_osc_client(port):
-        host = '127.0.0.1'
-        mode = 'client'
-        ip = '127.0.0.1'
-        parser = argparse.ArgumentParser()
-        parser.add_argument("--host", default=host)
-        parser.add_argument("--mode", default=mode)
-        parser.add_argument("--ip", default=ip, help="The ip of the OSC server")
-        parser.add_argument("--port", type=int, default=port, help="The port the OSC server is listening on")
-        args = parser.parse_args()
-        return udp_client.SimpleUDPClient(args.ip, args.port)
+    def _make_osc_client(port, ip='127.0.0.1'):
+        return udp_client.SimpleUDPClient(ip, port)
 
     @staticmethod
-    def binsim_stream(hrir_name):
+    def _binsim_stream(hrir_name):
         binsim = pybinsim.BinSim(data_dir / 'hrtf' / 'wav' / hrir_name / f'{hrir_name}_test_settings.txt')
         binsim.stream_start()  # run binsim loop
 
@@ -154,3 +142,6 @@ if __name__ == "__main__":
     loc_test.run()
     sequence = subject.localization[loc_test.filename]
     plot_localization(sequence)
+
+    #todo make sequence from hrir sources
+    #todo add target p

@@ -5,13 +5,7 @@ import slab
 import numpy as np
 import random
 
-def make_sequence(
-        azimuth_range=(-30, 30),
-        elevation_range=(-30, 30),
-        sector_size=(10, 10),  # (azimuth_size, elevation_size)
-        points_per_sector=3,
-        min_sector_distance=30
-):
+def make_sequence(settings):
     """
     Generates uniformly random points within sectors while ensuring a minimum distance between successive sectors.
 
@@ -19,13 +13,18 @@ def make_sequence(
     - azimuth_range: tuple (min_azimuth, max_azimuth)
     - elevation_range: tuple (min_elevation, max_elevation)
     - sector_size: tuple (azimuth_size, elevation_size) in degrees
-    - min_sector_distance: minimum distance between successive sectors in sequence
-    - points_per_sector: number of points per sector
+    - min_distance: minimum distance between successive sectors in sequence
+    - targets_per_sector: number of points per sector
 
     Returns:
     - points: List of (azimuth, elevation) tuples
     - selected_sectors: List of selected sector centers
     """
+    azimuth_range = settings['azimuth_range']
+    elevation_range = settings['elevation_range']
+    sector_size = settings['sector_size']  # (azimuth_size, elevation_size)
+    targets_per_sector = settings['targets_per_sector']
+    min_distance = settings['min_distance']
     azimuth_size, elevation_size = sector_size
     num_azimuth_sectors = (azimuth_range[1] - azimuth_range[0]) // azimuth_size
     num_elevation_sectors = (elevation_range[1] - elevation_range[0]) // elevation_size
@@ -48,7 +47,7 @@ def make_sequence(
             last_sector = selected_sectors[-1]
             valid_sectors = [
                 sec for sec in remaining_sectors
-                if np.linalg.norm(np.array(sec) - np.array(last_sector)) >= min_sector_distance
+                if np.linalg.norm(np.array(sec) - np.array(last_sector)) >= min_distance
             ]
             if valid_sectors:
                 selected_sector = valid_sectors.pop(0)
@@ -63,7 +62,7 @@ def make_sequence(
             np.random.uniform(sector[0] - azimuth_size / 2, sector[0] + azimuth_size / 2),
             np.random.uniform(sector[1] - elevation_size / 2, sector[1] + elevation_size / 2)
         )
-        for sector in selected_sectors for _ in range(points_per_sector)
+        for sector in selected_sectors for _ in range(targets_per_sector)
     ]
     sequence = slab.Trialsequence(points)
     sequence.sector_centers = sector_centers
@@ -107,11 +106,11 @@ def plot_random_points(points, selected_sectors, azimuth_range, elevation_range,
 # azimuth_range = (-50, 50)
 # elevation_range = (-40, 40)
 # sector_size = (10, 10)  # (azimuth_size, elevation_size)
-# min_sector_distance = 30
-# points_per_sector = 3
+# min_distance = 30
+# targets_per_sector = 3
 #
 # _, points, selected_sectors = make_sequence(
-#     azimuth_range, elevation_range, sector_size, min_sector_distance, points_per_sector
+#     azimuth_range, elevation_range, sector_size, min_distance, targets_per_sector
 # )
 # plot_random_points(points, selected_sectors, azimuth_range, elevation_range, sector_size)
 

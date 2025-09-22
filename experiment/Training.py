@@ -11,7 +11,7 @@ from pythonosc import udp_client
 from hrtf.processing.hrtf2binsim import hrtf2binsim
 from experiment.misc import meta_motion
 logging.getLogger().setLevel('INFO')
-pybinsim.logger.setLevel(logging.WARNING)
+pybinsim.logger.setLevel(logging.ERROR)
 
 # --- Subject ID ----
 subject = 'PF'
@@ -19,13 +19,13 @@ subject = 'PF'
 # --- HRTF settings ----
 
 # --- select sofa file
-sofa_name ='KU100_HRIR_L2702'
-# sofa_name ='single_notch'
+# sofa_name ='KU100_HRIR_L2702'
+sofa_name ='single_notch'
 # sofa_name ='kemar'
 
 # ---- specify ear for unilateral training, None defaults to binaural training
-# ear = None
-ear = 'left'
+ear = None
+# ear = 'left'
 
 # --- load and process HRIR
 hrir = hrtf2binsim(sofa_name, ear, overwrite=False)
@@ -43,7 +43,7 @@ settings = dict(
     target_size = 5,        # size of target area in degrees
     target_time = 1,        # required time on target to score
     az_range = (-45, 45),   # target azimuth range
-    ele_range = (-5, 5),  # target elevation range
+    ele_range = (-1, 1),  # target elevation range
     min_dist = 30,          # minimal distance between successive targets in degrees
     game_time  = 180,       # time per session
     trial_time = 15,        # time per trial
@@ -80,7 +80,7 @@ def play_session(): #, game_time, trial_time, target_size, target_time, az_range
         scores = []
         game_timer = 0  # set game timer
         while game_timer < settings['game_time']:        # play trials until game time is up
-            set_target(settings['az_range'], settings['ele_range'], target, settings['min_dist'])
+            set_target(target, settings['min_dist'])
             game_timer, score = play_trial(distance, pulse_interval, pulse_state, sensor_state,
                        settings['trial_time'], settings['game_time'], game_timer,
                         settings['target_size'], settings['target_time'])  # play trial and update game timer
@@ -258,13 +258,14 @@ def set_target(target, min_dist):
     candidates = sources[az_mask & el_mask, :2]
     if candidates.shape[0] == 0:
         raise RuntimeError("No HRIR positions within the given ranges!")
+    prev_tar = target[:]
     while True:
-        prev_tar = target[:]
-        next_tar = [numpy.random.choice(candidates)]
+        next_tar = candidates[numpy.random.randint(len(candidates))]
         if numpy.linalg.norm(numpy.subtract(prev_tar, next_tar)) >= min_dist:
-            target[:] = next_tar
-            logging.info("Set Target to [%.1f, %.1f]" % (next_tar[0], next_tar[1]))
             break
+    next_tar[0] = (next_tar[0] + 180) % 360 - 180
+    target[:] = next_tar
+    logging.info("Set Target to [%.1f, %.1f]" % (next_tar[0], next_tar[1]))
 
 # def set_target(target, min_dist):
 #     logging.debug(f'Setting target...')

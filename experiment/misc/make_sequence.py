@@ -2,8 +2,9 @@ import matplotlib
 # matplotlib.use("TkAgg")
 from matplotlib import pyplot as plt
 import slab
-import numpy as np
+import numpy
 import random
+import logging
 
 def make_sequence(settings):
     """
@@ -27,15 +28,23 @@ def make_sequence(settings):
     min_distance = settings['min_distance']
     azimuth_size, elevation_size = sector_size
     num_azimuth_sectors = (azimuth_range[1] - azimuth_range[0]) // azimuth_size
-    num_elevation_sectors = (elevation_range[1] - elevation_range[0]) // elevation_size
-    num_sectors = num_azimuth_sectors * num_elevation_sectors
 
-    # Compute sector centers
-    sector_centers = [
-        (azimuth_range[0] + (i + 0.5) * azimuth_size, elevation_range[0] + (j + 0.5) * elevation_size)
-        for i in range(num_azimuth_sectors) for j in range(num_elevation_sectors)
-    ]
-    random.shuffle(sector_centers)
+    if elevation_range == (0,0):  # only plce targets on the horizontal plane
+        sector_centers = [
+            (azimuth_range[0] + (i + 0.5) * azimuth_size, 0)
+            for i in range(num_azimuth_sectors)
+        ]
+        random.shuffle(sector_centers)
+        num_sectors = num_azimuth_sectors
+    else:
+        # Compute sector centers
+        num_elevation_sectors = (elevation_range[1] - elevation_range[0]) // elevation_size
+        num_sectors = num_azimuth_sectors * num_elevation_sectors
+        sector_centers = [
+            (azimuth_range[0] + (i + 0.5) * azimuth_size, elevation_range[0] + (j + 0.5) * elevation_size)
+            for i in range(num_azimuth_sectors) for j in range(num_elevation_sectors)
+        ]
+        random.shuffle(sector_centers)
 
     # Select sectors ensuring minimum distance constraint
     selected_sectors = []
@@ -47,23 +56,26 @@ def make_sequence(settings):
             last_sector = selected_sectors[-1]
             valid_sectors = [
                 sec for sec in remaining_sectors
-                if np.linalg.norm(np.array(sec) - np.array(last_sector)) >= min_distance
+                if numpy.linalg.norm(numpy.array(sec) - numpy.array(last_sector)) >= min_distance
             ]
             if valid_sectors:
                 selected_sector = valid_sectors.pop(0)
                 selected_sectors.append(selected_sector)
                 remaining_sectors.remove(selected_sector)
             else:
+                logging.error('Can not create target sequence with given settings. '
+                              'Check min distance and target range.')
                 break  # Stop if no valid sector is found
 
+
     # Generate random points within each selected sector
-    points = [
+    points = numpy.float16([
         (
-            np.random.uniform(sector[0] - azimuth_size / 2, sector[0] + azimuth_size / 2),
-            np.random.uniform(sector[1] - elevation_size / 2, sector[1] + elevation_size / 2)
+            numpy.random.uniform(sector[0] - azimuth_size / 2, sector[0] + azimuth_size / 2),
+            numpy.random.uniform(sector[1] - elevation_size / 2, sector[1] + elevation_size / 2)
         )
-        for sector in selected_sectors for _ in range(targets_per_sector)
-    ]
+        for _ in range(targets_per_sector) for sector in selected_sectors
+    ])
     sequence = slab.Trialsequence(points)
     sequence.sector_centers = sector_centers
     sequence.sector_size = sector_size
@@ -89,8 +101,8 @@ def plot_random_points(points, selected_sectors, azimuth_range, elevation_range,
         ax.add_patch(rect)
 
     # Plot grid lines
-    azimuth_ticks = np.arange(azimuth_range[0], azimuth_range[1] + azimuth_size, azimuth_size)
-    elevation_ticks = np.arange(elevation_range[0], elevation_range[1] + elevation_size, elevation_size)
+    azimuth_ticks = numpy.arange(azimuth_range[0], azimuth_range[1] + azimuth_size, azimuth_size)
+    elevation_ticks = numpy.arange(elevation_range[0], elevation_range[1] + elevation_size, elevation_size)
     ax.set_xticks(azimuth_ticks)
     ax.set_yticks(elevation_ticks)
     ax.grid(True, linestyle="--", linewidth=0.5)

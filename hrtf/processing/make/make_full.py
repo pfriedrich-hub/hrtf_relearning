@@ -139,8 +139,8 @@ hrir = hrtf2hrir(hrtf)
 hrir = add_itd(hrir)
 
 # plots
-hrtf_animation([hrtf], (-180,180), (-60,60), 'left', 100,
-               'average', 'waterfall', filename+'_L', write, show, figsize=(7,5))
+hrtf_animation(hrtf=[hrtf], azimuth_range=(-180,180), elevation_range=(-60,60), ear='left', interval=100,
+               map='average', kind='waterfall', filename=filename+'_L', write=write, show=show, figsize=(7,5))
 hrtf_animation([hrtf], (-180,180), (-60,60), 'right', 100,
                'average', 'waterfall', filename+'R', write, show, figsize=(7,5))
 

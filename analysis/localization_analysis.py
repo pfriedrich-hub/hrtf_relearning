@@ -118,7 +118,7 @@ def compute_sector_precision(targets, responses, sector_centers, sector_size):
 
     return mean_std
 
-def plot_localization(sequence):
+def plot_localization(sequence, report_stats=['elevation', 'azimuth']):
     """
     Plots representative mean responses by aligning targets,
     connects them in a grid, and shows trimmed sector center lines only across actual field.
@@ -136,7 +136,7 @@ def plot_localization(sequence):
     mean_responses = []
     center_grid = {}
 
-    eg, rmse, sd, *_ = localization_accuracy(sequence)
+    eg, ele_rmse, ele_sd, ag, az_rmse, az_sd = localization_accuracy(sequence)
 
     for center in sector_centers:
         az_min = center[0] - az_size / 2
@@ -164,10 +164,10 @@ def plot_localization(sequence):
     # Axis setup
     az_vals = sorted(set([c[0] for c in sector_centers]))
     el_vals = sorted(set([c[1] for c in sector_centers]))
-    az_min = min(az_vals) - az_size / 2
-    az_max = max(az_vals) + az_size / 2
-    el_min = min(el_vals) - el_size / 2
-    el_max = max(el_vals) + el_size / 2
+    az_min = min(az_vals) - az_size - 5
+    az_max = max(az_vals) + az_size + 5
+    el_min = min(el_vals) - el_size - 5
+    el_max = max(el_vals) + el_size + 5
 
     # Plot
     fig, ax = plt.subplots(figsize=(8, 6))
@@ -176,7 +176,12 @@ def plot_localization(sequence):
     ax.set_ylim(el_min, el_max)
     ax.set_xlabel("Azimuth (°)")
     ax.set_ylabel("Elevation (°)")
-    ax.set_title(f"EG: {eg:.2f}, RMSE: {rmse:.2f}, SD: {sd:.2f}")
+    title = ''
+    if 'elevation' in report_stats:
+        title += f"EG: {eg:.2f}, RMSE: {ele_rmse:.2f}, SD: {ele_sd:.2f}"
+    if 'azimuth' in report_stats:
+        title += f"\n AG: {ag:.2f}, az RMSE: {az_rmse:.2f}, az SD: {az_sd:.2f}"
+    ax.set_title(title)
     ax.grid(False)
 
     # Draw trimmed sector center lines

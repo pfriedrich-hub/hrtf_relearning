@@ -1,11 +1,11 @@
-soundfile C:\Users\pf18fixi\Projects\hrtf_relearning\data\hrtf\wav\single_notch_L_flat\sounds\noise_pulse.wav
+soundfile C:\Users\pf18fixi\Projects\hrtf_relearning\data\hrtf\wav\single_notch\sounds\noise_pulse.wav
 blockSize 64
 ds_filterSize 128
 early_filterSize 128
 late_filterSize 4352
 headphone_filterSize 128
 filterSource[mat/wav] wav
-filterList C:\Users\pf18fixi\Projects\hrtf_relearning\data\hrtf\wav\single_notch_L_flat\filter_list_single_notch_L_flat.txt
+filterList C:\Users\pf18fixi\Projects\hrtf_relearning\data\hrtf\wav\single_notch\filter_list_single_notch.txt
 maxChannels 1
 samplingRate 44100
 enableCrossfading True

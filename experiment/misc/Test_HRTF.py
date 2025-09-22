@@ -25,8 +25,8 @@ sofa_name ='KU100_HRIR_L2702'
 # sofa_name ='kemar'
 
 # ---- specify ear for unilateral training, None defaults to binaural training
-# ear = None
-ear = 'left'
+ear = None
+# ear = 'left'
 
 # --- load and process HRIR
 hrir = hrtf2binsim(sofa_name, ear, overwrite=False)
@@ -41,13 +41,13 @@ soundfile = None
 
 # --- training settings
 settings = dict(
-    target_size = 5,        # size of target area in degrees
-    target_time = 1,        # required time on target to score
-    az_range = (-30, 30),   # target azimuth range
-    ele_range = (-30, 30),  # target elevation range
-    min_dist = 30,          # minimal distance between successive targets in degrees
-    game_time  = 180,       # time per session
-    trial_time = 15,        # time per trial
+    target_size = 1,        # size of target area in degrees
+    target_time = 360,        # required time on target to score
+    az_range = (-1, 1),   # target azimuth range
+    ele_range = (-1, 1),  # target elevation range
+    min_dist = 0,          # minimal distance between successive targets in degrees
+    game_time  = 360,       # time per session
+    trial_time = 360,        # time per trial
     gain = .5               # loudness
     )
 
@@ -210,7 +210,7 @@ def head_tracker(distance, target, sensor_state):
             osc_client.send_message('/pyBinSim_ds_Filter', [0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                                                             float(rel_hrtf_coords[0]), float(rel_hrtf_coords[1]), 0,
                                                             0, 0, 0])
-            logging.debug(f'head tracking: filter coords: {rel_hrtf_coords}')
+            logging.info(f'head tracking: filter coords: {rel_hrtf_coords}')
         time.sleep(0.01)    # these intervals mainly determines CPU load
 
 # ------- helpers ----- #

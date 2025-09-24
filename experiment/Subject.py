@@ -30,5 +30,5 @@ class Subject:
             logging.debug('Updating subject file.')
         else: logging.info('Creating subject file.')
         with open(self.file_path, 'wb') as subj_file:
-            pickle.dump(self, subj_file, pickle.HIGHEST_PROTOCOL)
+            pickle.dump(self, subj_file)  # highest protocol dumping -> numpy error while loading on mac
 

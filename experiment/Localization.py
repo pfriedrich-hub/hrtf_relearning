@@ -1,4 +1,3 @@
-import argparse
 import multiprocessing as mp
 import pybinsim
 import datetime

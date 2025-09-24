@@ -1,5 +1,3 @@
-import matplotlib
-matplotlib.use('Qt5Agg')
 from matplotlib import pyplot as plt
 import numpy
 from pathlib import Path

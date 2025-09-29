@@ -19,14 +19,14 @@ def hrir2wav(hrir):
     for file in sound_path.glob('*.wav'): # resample sound files
         sound = slab.Sound.read(file)
         sound.resample(hrir.samplerate).write(wav_path / hrir.name / 'sounds' / file.name)
-    write_lr_filter(hrir, drr=20)  # write reverb
+    write_lr_filter(hrir, drr=20)  # write reverb, larger drr results in weaker reverb
     # write_hp_filter(mute_ear='left')
     write_settings(hrir)  # write pybinsim settings
     return hrir
 
 def write_ds_filter(hrir):
     # zero pad and write IR to wav and coordinates to filter_list.txt
-    logging.info(f'Writing IR wav files and filter_list for {hrir.name}')
+    logging.info(f'Writing IR filter wavs and filter_list for {hrir.name}')
     for source_idx in range(hrir.n_sources):
         coordinates = hrir.sources.vertical_polar[source_idx]
         fname = wav_path / hrir.name / 'IR_data' / f'{coordinates[0]}_{coordinates[1]}.wav'

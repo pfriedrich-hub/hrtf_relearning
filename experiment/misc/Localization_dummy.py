@@ -1,10 +1,6 @@
-import multiprocessing as mp
-import pybinsim
 import datetime
 import time
 from pathlib import Path
-import logging
-from pythonosc import udp_client
 from experiment.misc import meta_motion
 from analysis.localization_analysis import *
 from experiment.misc.make_sequence import *
@@ -13,7 +9,6 @@ from experiment.Subject import Subject
 date = datetime.datetime.now()
 date = f'{date.strftime("%d")}.{date.strftime("%m")}.{date.strftime("%H")}:{date.strftime("%M")}'
 logging.getLogger().setLevel('INFO')
-pybinsim.logger.setLevel(logging.ERROR)
 data_dir = Path.cwd() / 'data'
 
 
@@ -52,16 +47,9 @@ class Localization:
 
         # metadata
         slab.set_default_samplerate(hrir.samplerate)
+        self.hrir = hrir
         self.hrir_sources = hrir.sources.vertical_polar
-        self.stim_path = data_dir / 'hrtf' / 'wav' / hrir.name / 'sounds' / 'localization.wav'
         self.target = None
-        # self.stim = self.make_stim()  # use the same stimulus across trials
-
-        # init pybinsim
-        self.osc_client_1 = self._make_osc_client(port=10000)
-        self.osc_client_2 = self._make_osc_client(port=10003)
-        self.binsim_worker = mp.Process(target=self._binsim_stream, args=(hrir.name,))
-        self.binsim_worker.start()
 
         # init motion sensor
         self.motion_sensor = self.init_sensor()
@@ -73,7 +61,6 @@ class Localization:
 
     def run(self):
         self.sequence = make_sequence(self.settings)
-        self.sequence.name = self.filename
         self.write()
         # for self.target in self.subject.localization[self.filename]:
         for self.target in self.sequence:
@@ -87,7 +74,6 @@ class Localization:
     def play_trial(self):
         # generate stimulus
         self.stim = self.make_stim()  # generate a new stim each trial
-        self.stim.write(self.stim_path)
         # play stim
         self.play_sound()
         time.sleep(self.stim.duration)
@@ -107,25 +93,8 @@ class Localization:
         relative_coords[0] = (-relative_coords[0] + 360) % 360  # mirror and convert to HRTF convention [0 < az < 360]
         rel_target = numpy.array((relative_coords[0], relative_coords[1], self.hrir_sources[0, 2]))
         filter_idx = numpy.argmin(numpy.linalg.norm(rel_target - self.hrir_sources, axis=1))
-        rel_hrtf_coords = self.hrir_sources[filter_idx]
-        self.osc_client_1.send_message('/pyBinSim_ds_Filter', [0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                                                        float(rel_hrtf_coords[0]), float(rel_hrtf_coords[1]), 0,
-                                                        0, 0, 0])
-        logging.info(f'Set filter for {self.hrir_sources[filter_idx]}')
-        # play
-        self.osc_client_2.send_message('/pyBinSimLoudness', self.settings['gain'])
-        self.osc_client_2.send_message('/pyBinSimFile', str(self.stim_path))
-        time.sleep(.5)
-        self.osc_client_2.send_message('/pyBinSimLoudness', 0)
-
-    @staticmethod
-    def _make_osc_client(port, ip='127.0.0.1'):
-        return udp_client.SimpleUDPClient(ip, port)
-
-    @staticmethod
-    def _binsim_stream(hrir_name):
-        binsim = pybinsim.BinSim(data_dir / 'hrtf' / 'wav' / hrir_name / f'{hrir_name}_test_settings.txt')
-        binsim.stream_start()  # run binsim loop
+        self.hrir[filter_idx].apply(self.stim).play()
+        time.sleep(self.stim.duration)
 
     def init_sensor(self):
         # init motion sensor
@@ -135,13 +104,6 @@ class Localization:
 
     @staticmethod
     def make_stim():
-        # noise = slab.Sound.pinknoise(duration=0.025, level=90)
-        # noise = noise.ramp(when='both', duration=0.01)
-        # silence = slab.Sound.silence(duration=0.025)
-        # stim = slab.Sound.sequence(noise, silence, noise, silence, noise,
-        #                            silence, noise, silence, noise)
-        # stim.ramp('both', 0.01)
-
         noise = slab.Sound.pinknoise(duration=0.1, level=90)
         noise = noise.ramp(when='both', duration=0.01)
         silence = slab.Sound.silence(duration=0.025)

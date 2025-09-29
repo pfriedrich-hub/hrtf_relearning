@@ -1,13 +1,16 @@
 import slab
+from pathlib import Path
+sofa_path = Path.cwd() / 'data' / 'hrtf' / 'sofa'
 
-hrir = slab.HRTF('/Users/paulfriedrich/projects/hrtf_relearning/data/hrtf/sofa/KU100_HRIR_L2702.sofa')
-hrir = slab.HRTF('/Users/paulfriedrich/projects/hrtf_relearning/data/hrtf/sofa/kemar.sofa')
-hrir = slab.HRTF('/Users/paulfriedrich/projects/hrtf_relearning/data/hrtf/sofa/single_notch.sofa')
+hrir = slab.HRTF(sofa_path / 'KU100_HRIR_L2702.sofa')
+hrir = slab.HRTF(sofa_path / 'kemar.sofa')
+hrir = slab.HRTF(sofa_path / 'single_notch.sofa')
 
 # compute itd / ild of all filters on the horizontal plane
 src_idx = hrir.cone_sources(0, True, 'elevation', .01)
 sound = slab.Binaural.pinknoise(samplerate=hrir.samplerate)
 sound = slab.Binaural.tone(samplerate=hrir.samplerate, frequency=4000)
+
 
 # ils = slab.Binaural.make_interaural_level_spectrum(hrir)
 for id in src_idx:

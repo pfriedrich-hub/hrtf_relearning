@@ -1,8 +1,8 @@
 import matplotlib
 matplotlib.use('tkagg')
+from matplotlib import pyplot as plt
 import numpy
 import scipy
-from matplotlib import pyplot as plt
 
 def localization_accuracy(sequence):
     if sequence.this_n == -1 or sequence.n_remaining == len(sequence.data) or not sequence.data:
@@ -118,7 +118,7 @@ def compute_sector_precision(targets, responses, sector_centers, sector_size):
 
     return mean_std
 
-def plot_localization(sequence, report_stats=['elevation', 'azimuth']):
+def plot_localization(sequence, report_stats=['elevation', 'azimuth'], filepath=None):
     """
     Plots representative mean responses by aligning targets,
     connects them in a grid, and shows trimmed sector center lines only across actual field.
@@ -206,3 +206,6 @@ def plot_localization(sequence, report_stats=['elevation', 'azimuth']):
 
     plt.tight_layout()
     plt.show()
+    if filepath:
+        filename = list(subject.localization.keys())[-1]
+        plt.savefig(f'{filepath} / {sequence.name}.png')

@@ -4,12 +4,13 @@ from pathlib import Path
 wav_path = Path.cwd() / 'data' / 'hrtf' / 'wav'
 
 def plot(hrir, title):
-    src_idx = hrir.get_source_idx((85, 95), (-5, 5))[0]
-    src = hrir.sources.vertical_polar[src_idx]  # pick a source 90° to the right
-    az = src[0]
-    ele = src[1]
+    az = 90
+    ele = 0
+    src_idx = hrir.get_source_idx(az, ele)[0]
     fig, ax = plt.subplots()
-    ax.plot(hrir[src_idx], label=['left', 'right'])
+    times = numpy.linspace(0, hrir[src_idx].n_samples/hrir.samplerate,  hrir[src_idx].n_samples)
+    ax.plot(times, hrir[src_idx], label=['left', 'right'])
+    ax.set_xlabel('Time [s]')
     ax.legend()
     ax.set_title(f'{title} at ({az:.2f}, {ele:.1f})')
     plt.savefig(wav_path / hrir.name / 'plot' / f'{hrir.name}_{title}.png')

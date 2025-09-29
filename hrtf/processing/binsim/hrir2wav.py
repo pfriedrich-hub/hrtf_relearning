@@ -31,7 +31,7 @@ def write_ds_filter(hrir):
         coordinates = hrir.sources.vertical_polar[source_idx]
         fname = wav_path / hrir.name / 'IR_data' / f'{coordinates[0]}_{coordinates[1]}.wav'
         fir_coefs = hrir[source_idx].data
-        directional_ir = (slab.Sound(data=fir_coefs))
+        directional_ir = (slab.Sound(data=fir_coefs, samplerate=hrir.samplerate))
         directional_ir.write(filename=fname, normalise=False)  # write IR to wav
         with open(wav_path / hrir.name / f"filter_list_{hrir.name}.txt", 'a') as file:  # write to filter_list.txt
             file.write(f'DS'

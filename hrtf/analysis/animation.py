@@ -6,8 +6,8 @@ from hrtf.processing.average import hrtf_average
 from hrtf.analysis.feature_p import feature_p
 
 
-def hrtf_animation(hrtf, azimuth_range, elevation_range, ear='both', interval=100, map='feature_p', kind='image',
-          filename=None, write=None, show=True, figsize=(5,5)):
+def hrtf_animation(hrtf, azimuth_range=(-180,180), elevation_range=(-60,60), ear='left', interval=100,
+                   map='feature_p', kind='image', filename=None, write=None, show=True, figsize=(5,5)):
     global data, fig, ax, frequencies, azimuths, elevations, settings
     settings = {'map': map, 'kind': kind}
     # plots features for sources in range 0 / +50 azimuth across elevations
@@ -20,6 +20,7 @@ def hrtf_animation(hrtf, azimuth_range, elevation_range, ear='both', interval=10
         raise ValueError('hrtf must be a HRTF object or a list of HRTF objects')
     if not len(hrtf_list) == 0:
         source_idx = hrtf_list[0].get_source_idx(azimuth=azimuth_range, elevation=elevation_range)
+        sources = hrtf_list[0].sources.vertical_polar
     else:
         raise ValueError('hrtf list empty')
     azimuths = numpy.unique(hrtf_list[0].sources.vertical_polar[source_idx, 0])
@@ -28,11 +29,12 @@ def hrtf_animation(hrtf, azimuth_range, elevation_range, ear='both', interval=10
     data = []
     for i, az in enumerate(azimuths):
         print(f'Azimuth: {az}')
-        source_idx = hrtf_list[0].get_source_idx(azimuth=az,elevation=(elevations.min(), elevations.max()))
+        # _src_idx = numpy.where(sources[source_idx, 0] == az)
+        source_idx = hrtf_list[0].get_source_idx(azimuth=az,elevation=(elevations.min(), elevations.max()), tolerance=.03)
         # sort by ascending elevation
         sources = hrtf_list[0].sources.vertical_polar[source_idx]
         sorting_idx = numpy.argsort(sources, axis=0, kind=None, order=None)[:,1]
-        source_idx = source_idx[sorting_idx]
+        source_idx = numpy.array(source_idx)[sorting_idx]
         if settings['map'] == 'feature_p':
             map, frequencies = feature_p(hrtf_list, source_idx, thresholds=None, bandwidth=bandwidth, ear=ear)
             map = map.reshape(map.shape[:2])

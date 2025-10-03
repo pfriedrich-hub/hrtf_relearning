@@ -191,7 +191,11 @@ def plot_localization(sequence, report_stats=['elevation', 'azimuth'], filepath=
         if len(col) > 1:
             ax.plot([p[0] for p in col], [p[1] for p in col], 'k-', linewidth=2)
 
+
+    if filepath:
+        if not filepath.exists():
+            filepath.mkdir(parents=True, exist_ok=True)
+        plt.savefig(filepath / f'{sequence.name}.png')
+
     plt.tight_layout()
     plt.show()
-    if filepath:
-        plt.savefig(f'{filepath} / {sequence.name}.png')

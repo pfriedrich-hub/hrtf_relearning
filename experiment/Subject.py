@@ -11,7 +11,6 @@ results_dir = Path.cwd() / 'data' / 'results'
 class Subject:
     def __init__(self, id):
         self.file_path = results_dir / f'{id}.pkl'
-
         # check if subject exists in data folder and laod the data
         if (self.file_path).exists():
             logging.info('Loading subject data.')

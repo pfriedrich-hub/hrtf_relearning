@@ -4,7 +4,6 @@ import numpy
 import slab
 import time
 import logging
-import pybinsim
 import argparse
 from pathlib import Path
 import multiprocessing as mp
@@ -12,7 +11,7 @@ from pythonosc import udp_client
 from hrtf.processing.hrtf2binsim import hrtf2binsim
 from experiment.misc import meta_motion
 logging.getLogger().setLevel('INFO')
-pybinsim.logger.setLevel(logging.WARNING)
+binsim_logging_level = logging.WARNING
 
 # --- Subject ID ----
 subject = 'PF'
@@ -20,8 +19,8 @@ subject = 'PF'
 # --- HRTF settings ----
 
 # --- select sofa file
-sofa_name ='KU100_HRIR_L2702'
-# sofa_name ='single_notch'
+# sofa_name ='KU100_HRIR_L2702'
+sofa_name ='single_notch'
 # sofa_name ='kemar'
 
 # ---- specify ear for unilateral training, None defaults to binaural training
@@ -43,7 +42,7 @@ soundfile = None
 settings = dict(
     target_size = 1,        # size of target area in degrees
     target_time = 360,        # required time on target to score
-    az_range = (15, 16),   # target azimuth range
+    az_range = (-1, 1),   # target azimuth range
     ele_range = (-1, 1),  # target elevation range
     min_dist = 0,          # minimal distance between successive targets in degrees
     game_time  = 360,       # time per session
@@ -152,6 +151,8 @@ def play_trial(distance, pulse_interval, pulse_state, sensor_state,
 # ----- sub processes ----- #
 
 def binsim_stream():
+    import pybinsim
+    pybinsim.logger.setLevel(binsim_logging_level)
     logging.info(f'Loading {hrir.name}')
     binsim = pybinsim.BinSim(hrir_dir / f'{hrir.name}_training_settings.txt')
     binsim.stream_start()  # run binsim loop
@@ -210,7 +211,7 @@ def head_tracker(distance, target, sensor_state):
             osc_client.send_message('/pyBinSim_ds_Filter', [0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                                                             float(rel_hrtf_coords[0]), float(rel_hrtf_coords[1]), 0,
                                                             0, 0, 0])
-            logging.info(f'head tracking: filter coords: {rel_hrtf_coords}')
+            logging.info(f'head tracking: filter coords: {rel_hrtf_coords[0]:.1f} {rel_hrtf_coords[1]:.1f}')
         time.sleep(0.01)    # these intervals mainly determines CPU load
 
 # ------- helpers ----- #

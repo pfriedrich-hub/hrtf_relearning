@@ -7,7 +7,7 @@ from experiment.misc.make_sequence import *
 from hrtf.processing.hrtf2binsim import hrtf2binsim
 from experiment.Subject import Subject
 date = datetime.datetime.now()
-date = f'{date.strftime("%d")}.{date.strftime("%m")}.{date.strftime("%H")}:{date.strftime("%M")}'
+date = f'{date.strftime("%d")}.{date.strftime("%m")}_{date.strftime("%H")}.{date.strftime("%M")}'
 logging.getLogger().setLevel('INFO')
 data_dir = Path.cwd() / 'data'
 
@@ -21,8 +21,8 @@ subject = Subject(id)
 # --- HRTF settings ---- #
 
 # --- select sofa file
-# sofa_name ='KU100_HRIR_L2702'
-sofa_name ='single_notch'
+sofa_name ='KU100_HRIR_L2702'
+# sofa_name ='single_notch'
 # sofa_name ='kemar'
 
 # ---- specify ear for unilateral testing, None defaults to binaural testing
@@ -41,11 +41,10 @@ class Localization:
     """
     def __init__(self, subject, hrir):
         # make trial sequence and write to subject
-        # todo make sure targets are from hrtf sources and are separated correctly
-        self.settings = {'azimuth_range': (-35, 35), 'elevation_range': (-1, 1), 'sector_size': (14, 2),
-                         'targets_per_sector': 2, 'min_distance': 10, 'gain': .5}
+        self.settings = {'azimuth_range': (-35, 35), 'elevation_range': (-14, 14), 'sector_size': (14, 14),
+                         'targets_per_sector': 3, 'min_distance': 10, 'gain': .5}
         self.subject = subject
-        self.filename = subject.id + f'_{hrir.name}' + '_loc_' + date
+        self.filename = subject.id + f'_{hrir.name}' + date
 
         # metadata
         slab.set_default_samplerate(hrir.samplerate)
@@ -62,7 +61,7 @@ class Localization:
         self.subject.write()
 
     def run(self):
-        self.sequence = make_sequence(self.settings)
+        self.sequence = make_sequence_from_sources(self.settings, self.hrir_sources)
         self.sequence.name = self.filename
         self.write()
         # for self.target in self.subject.localization[self.filename]:
@@ -120,7 +119,7 @@ if __name__ == "__main__":
     loc_test = Localization(subject, hrir)
     loc_test.run()
     sequence = subject.localization[loc_test.filename]
-    plot_localization(sequence, report_stats=['elevation', 'azimuth'], filepath=None)
+    plot_localization(sequence, report_stats=['elevation', 'azimuth'],
+                      filepath=data_dir / 'results' / 'plot' / subject.id)
 
-    #todo make sequence from hrir sources
     #todo add target p

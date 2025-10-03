@@ -7,7 +7,7 @@ from pathlib import Path
 import logging
 from pythonosc import udp_client
 from experiment.misc import meta_motion
-from analysis.localization_analysis import *
+from analysis.localization import *
 from experiment.misc.make_sequence import *
 from hrtf.processing.hrtf2binsim import hrtf2binsim
 from experiment.Subject import Subject

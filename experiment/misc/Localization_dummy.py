@@ -2,7 +2,7 @@ import datetime
 import time
 from pathlib import Path
 from experiment.misc import meta_motion
-from analysis.localization_analysis import *
+from analysis.localization import *
 from experiment.misc.make_sequence import *
 from hrtf.processing.hrtf2binsim import hrtf2binsim
 from experiment.Subject import Subject
@@ -11,12 +11,14 @@ date = f'{date.strftime("%d")}.{date.strftime("%m")}.{date.strftime("%H")}:{date
 logging.getLogger().setLevel('INFO')
 data_dir = Path.cwd() / 'data'
 
-
+"""
+A test version of the localization using slab instead of pybinsim.
+"""
 # --- Load Subject ----
 id = 'PF'
 subject = Subject(id)
 
-# --- HRTF settings ----
+# --- HRTF settings ---- #
 
 # --- select sofa file
 # sofa_name ='KU100_HRIR_L2702'
@@ -61,6 +63,7 @@ class Localization:
 
     def run(self):
         self.sequence = make_sequence(self.settings)
+        self.sequence.name = self.filename
         self.write()
         # for self.target in self.subject.localization[self.filename]:
         for self.target in self.sequence:
@@ -93,6 +96,7 @@ class Localization:
         relative_coords[0] = (-relative_coords[0] + 360) % 360  # mirror and convert to HRTF convention [0 < az < 360]
         rel_target = numpy.array((relative_coords[0], relative_coords[1], self.hrir_sources[0, 2]))
         filter_idx = numpy.argmin(numpy.linalg.norm(rel_target - self.hrir_sources, axis=1))
+        # --- use slab to filter and play the sound --- #
         self.hrir[filter_idx].apply(self.stim).play()
         time.sleep(self.stim.duration)
 
@@ -104,7 +108,7 @@ class Localization:
 
     @staticmethod
     def make_stim():
-        noise = slab.Sound.pinknoise(duration=0.1, level=90)
+        noise = slab.Sound.pinknoise(duration=0.05, level=90)
         noise = noise.ramp(when='both', duration=0.01)
         silence = slab.Sound.silence(duration=0.025)
         stim = slab.Sound.sequence(noise, silence, noise, silence, noise,
@@ -116,7 +120,7 @@ if __name__ == "__main__":
     loc_test = Localization(subject, hrir)
     loc_test.run()
     sequence = subject.localization[loc_test.filename]
-    plot_localization(sequence, report_stats=['elevation', 'azimuth'])
+    plot_localization(sequence, report_stats=['elevation', 'azimuth'], filepath=None)
 
     #todo make sequence from hrir sources
     #todo add target p

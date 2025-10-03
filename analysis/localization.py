@@ -22,6 +22,47 @@ def localization_accuracy(sequence):
     az_sd, ele_sd = variability[0], variability[1]
     return elevation_gain, ele_rmse, ele_sd, azimuth_gain, az_rmse, az_sd
 
+
+def compute_sector_precision(targets, responses, sector_centers, sector_size):
+    """
+    Estimates response precision per sector by aligning targets and measuring
+    the spread (std) of aligned responses, then averaging over sectors.
+
+    Parameters:
+    - targets: Nx2 array (azimuth, elevation)
+    - responses: Nx2 array (azimuth, elevation)
+    - sector_centers: Mx2 array of sector center coordinates
+    - sector_size: tuple (az_size, el_size)
+
+    Returns:
+    - per_sector_std: list of (azimuth_std, elevation_std) for each sector
+    - mean_std: tuple of (mean_azimuth_std, mean_elevation_std)
+    """
+    az_size, el_size = sector_size
+    per_sector_std = []
+    for center in sector_centers:
+        # Define bounds of the current sector
+        az_min = center[0] - az_size / 2
+        az_max = center[0] + az_size / 2
+        el_min = center[1] - el_size / 2
+        el_max = center[1] + el_size / 2
+        # Get indices of targets in this sector
+        in_sector = numpy.where((targets[:, 0] >= az_min) & (targets[:, 0] < az_max) &
+            (targets[:, 1] >= el_min) & (targets[:, 1] < el_max))[0]
+        if len(in_sector) >= 2:
+            # Shift targets and responses so that all targets align at origin
+            response_shift = responses[in_sector] - targets[in_sector]
+            az_std = numpy.std(response_shift[:, 0])
+            el_std = numpy.std(response_shift[:, 1])
+            per_sector_std.append((az_std, el_std))
+    # Compute mean std across sectors
+    if per_sector_std:
+        per_sector_std = numpy.array(per_sector_std)
+        mean_std = tuple(numpy.mean(per_sector_std, axis=0))
+    else:
+        mean_std = (numpy.nan, numpy.nan)
+    return mean_std
+
 def target_p(sequence, show=False, axis=None):
     # calculate target probabilities depending on polar error in the trial sequence
     # retrieve data
@@ -70,54 +111,6 @@ def target_p(sequence, show=False, axis=None):
         # localization_accuracy(sequence, show=True, plot_dim=2, binned=True)
     return response_errors
 
-def compute_sector_precision(targets, responses, sector_centers, sector_size):
-    """
-    Estimates response precision per sector by aligning targets and measuring
-    the spread (std) of aligned responses, then averaging over sectors.
-
-    Parameters:
-    - targets: Nx2 array (azimuth, elevation)
-    - responses: Nx2 array (azimuth, elevation)
-    - sector_centers: Mx2 array of sector center coordinates
-    - sector_size: tuple (az_size, el_size)
-
-    Returns:
-    - per_sector_std: list of (azimuth_std, elevation_std) for each sector
-    - mean_std: tuple of (mean_azimuth_std, mean_elevation_std)
-    """
-    az_size, el_size = sector_size
-    per_sector_std = []
-
-    for center in sector_centers:
-        # Define bounds of the current sector
-        az_min = center[0] - az_size / 2
-        az_max = center[0] + az_size / 2
-        el_min = center[1] - el_size / 2
-        el_max = center[1] + el_size / 2
-
-        # Get indices of targets in this sector
-        in_sector = numpy.where(
-            (targets[:, 0] >= az_min) & (targets[:, 0] < az_max) &
-            (targets[:, 1] >= el_min) & (targets[:, 1] < el_max)
-        )[0]
-
-        if len(in_sector) >= 2:
-            # Shift targets and responses so that all targets align at origin
-            response_shift = responses[in_sector] - targets[in_sector]
-
-            az_std = numpy.std(response_shift[:, 0])
-            el_std = numpy.std(response_shift[:, 1])
-            per_sector_std.append((az_std, el_std))
-
-    # Compute mean std across sectors
-    if per_sector_std:
-        per_sector_std = numpy.array(per_sector_std)
-        mean_std = tuple(numpy.mean(per_sector_std, axis=0))
-    else:
-        mean_std = (numpy.nan, numpy.nan)
-
-    return mean_std
-
 def plot_localization(sequence, report_stats=['elevation', 'azimuth'], filepath=None):
     """
     Plots representative mean responses by aligning targets,
@@ -131,31 +124,25 @@ def plot_localization(sequence, report_stats=['elevation', 'azimuth'], filepath=
     targets = loc_data[:, 1]  # [az, ele]
     responses = loc_data[:, 0]
     sector_centers = sequence.sector_centers
-    sector_size = sequence.sector_size
-    az_size, el_size = sector_size
-    mean_responses = []
-    center_grid = {}
-
+    az_size, el_size = sequence.sector_size
     eg, ele_rmse, ele_sd, ag, az_rmse, az_sd = localization_accuracy(sequence)
 
+    mean_responses = []
+    center_grid = {}
+    # get targets and responses in each sector
     for center in sector_centers:
         az_min = center[0] - az_size / 2
         az_max = center[0] + az_size / 2
         el_min = center[1] - el_size / 2
         el_max = center[1] + el_size / 2
-
-        in_sector = numpy.where(
-            (targets[:, 0] >= az_min) & (targets[:, 0] < az_max) &
-            (targets[:, 1] >= el_min) & (targets[:, 1] < el_max)
-        )[0]
-
+        in_sector = numpy.where((targets[:, 0] >= az_min) & (targets[:, 0] < az_max) &
+            (targets[:, 1] >= el_min) & (targets[:, 1] < el_max))[0]
         if len(in_sector) == 0:
             continue
-
+        # for each sector, calculate mean vector across target-response pairs
         response_shift = responses[in_sector] - targets[in_sector]
         mean_shift = numpy.mean(response_shift, axis=0)
         representative_response = center + mean_shift
-
         mean_responses.append(representative_response)
         center_grid[tuple(center)] = representative_response
 
@@ -207,5 +194,4 @@ def plot_localization(sequence, report_stats=['elevation', 'azimuth'], filepath=
     plt.tight_layout()
     plt.show()
     if filepath:
-        filename = list(subject.localization.keys())[-1]
         plt.savefig(f'{filepath} / {sequence.name}.png')

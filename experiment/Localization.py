@@ -6,7 +6,7 @@ from pathlib import Path
 import logging
 from pythonosc import udp_client
 from experiment.misc import meta_motion
-from analysis.localization_analysis import *
+from analysis.localization import *
 from experiment.misc.make_sequence import *
 from hrtf.processing.hrtf2binsim import hrtf2binsim
 from experiment.Subject import Subject
@@ -148,13 +148,14 @@ class Localization:
         # stim = slab.Sound.sequence(noise, silence, noise, silence, noise,
         #                            silence, noise, silence, noise)
         # stim.ramp('both', 0.01)
+
         return stim
 
 if __name__ == "__main__":
     loc_test = Localization(subject, hrir)
     loc_test.run()
     sequence = subject.localization[loc_test.filename]
-    plot_localization(sequence, report_stats=['elevation', 'azimuth'])
+    plot_localization(sequence, report_stats=['elevation', 'azimuth'], filepath=None)
 
     #todo make sequence from hrir sources
     #todo add target p

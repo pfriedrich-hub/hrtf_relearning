@@ -1,8 +1,8 @@
-import legacy as loc_analysis
+import legacy.MSc.analysis.localization_analysis as loc_analysis
 import numpy
 from matplotlib import pyplot as plt
-from legacy import cm2in
-from legacy import set_rcParams
+from legacy.MSc.misc.unit_conversion import cm2in
+from legacy.MSc.misc.rcparams import set_rcParams
 
 
 def learning_plot(to_plot, path, w2_exclude, figsize):

@@ -45,8 +45,8 @@ class Localization:
     def __init__(self, subject, hrir):
         # make trial sequence and write to subject
         # todo make sure targets are from hrtf sources and are separated correctly
-        self.settings = {'azimuth_range': (-35, 35), 'elevation_range': (-1, 1), 'sector_size': (14, 2),
-                         'targets_per_sector': 2, 'min_distance': 10, 'gain': .5}
+        self.settings = {'azimuth_range': (-35, 35), 'elevation_range': (-35, 35), 'sector_size': (14, 14),
+                         'targets_per_sector': 3, 'min_distance': 30, 'gain': .5}
         self.subject = subject
         self.filename = subject.id + f'_{hrir.name}' + '_loc_' + date
 
@@ -111,7 +111,7 @@ class Localization:
         self.osc_client_1.send_message('/pyBinSim_ds_Filter', [0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                                                         float(rel_hrtf_coords[0]), float(rel_hrtf_coords[1]), 0,
                                                         0, 0, 0])
-        logging.info(f'Set filter for {self.hrir_sources[filter_idx]}')
+        logging.debug(f'Set filter for {self.hrir_sources[filter_idx]}')
         # play
         self.osc_client_2.send_message('/pyBinSimLoudness', self.settings['gain'])
         self.osc_client_2.send_message('/pyBinSimFile', str(self.stim_path))
@@ -135,19 +135,19 @@ class Localization:
 
     @staticmethod
     def make_stim():
-        # noise = slab.Sound.pinknoise(duration=0.025, level=90)
-        # noise = noise.ramp(when='both', duration=0.01)
-        # silence = slab.Sound.silence(duration=0.025)
-        # stim = slab.Sound.sequence(noise, silence, noise, silence, noise,
-        #                            silence, noise, silence, noise)
-        # stim.ramp('both', 0.01)
-
-        noise = slab.Sound.pinknoise(duration=0.1, level=90)
+        noise = slab.Sound.pinknoise(duration=0.025, level=90)
         noise = noise.ramp(when='both', duration=0.01)
         silence = slab.Sound.silence(duration=0.025)
         stim = slab.Sound.sequence(noise, silence, noise, silence, noise,
                                    silence, noise, silence, noise)
         stim.ramp('both', 0.01)
+
+        # noise = slab.Sound.pinknoise(duration=0.1, level=90)
+        # noise = noise.ramp(when='both', duration=0.01)
+        # silence = slab.Sound.silence(duration=0.025)
+        # stim = slab.Sound.sequence(noise, silence, noise, silence, noise,
+        #                            silence, noise, silence, noise)
+        # stim.ramp('both', 0.01)
         return stim
 
 if __name__ == "__main__":

@@ -9,9 +9,9 @@ def flatten_dtf(hrir, ear):
     """
     out = copy.deepcopy(hrir)
     if ear == 'left':
-        ear_idx = 0
+        ear_idx = 1 # keep the left and flatten the right ear
     elif ear == 'right':
-        ear_idx = 1
+        ear_idx = 0
     else: return out
     logging.debug(f'Flattening DTFs for the {ear} ear.')
     for source_idx in range(hrir.n_sources):

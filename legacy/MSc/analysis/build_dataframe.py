@@ -1,4 +1,4 @@
-import legacy as loc_analysis
+import legacy.MSc.analysis.localization_analysis as loc_analysis
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 import pandas

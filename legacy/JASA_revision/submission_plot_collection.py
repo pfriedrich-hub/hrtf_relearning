@@ -1,4 +1,4 @@
-import legacy as build_df
+import legacy.MSc.analysis.build_dataframe as build_df
 import legacy as get_df
 import legacy as ele_learning
 from legacy import ef_vsi
@@ -13,7 +13,7 @@ from pathlib import Path
 data_path = Path.cwd() / 'legacy' / 'MSc' / 'data' / 'experiment' / 'master'
 plot_path = Path('/Users/paulfriedrich/Desktop/PhD/Jasa/revision/Manuscript/figures')
 hrtf_df = build_df.get_hrtf_df(data_path, processed=True)
-main_df = get_df.main_dataframe(data_path, processed_hrtf=True)
+main_df = build_df.main_dataframe(data_path, processed_hrtf=True)
 
 ## time course
 # time_course.plot_time_course(figsize=(13, 5.3))

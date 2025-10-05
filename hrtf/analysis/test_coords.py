@@ -2,7 +2,7 @@ import slab
 from pathlib import Path
 sofa_path = Path.cwd() / 'data' / 'hrtf' / 'sofa'
 
-hrir = slab.HRTF(sofa_path / 'KU100_HRIR_L2702.sofa')
+hrir = slab.HRTF(sofa_path / 'KU100.sofa')
 hrir = slab.HRTF(sofa_path / 'kemar.sofa')
 hrir = slab.HRTF(sofa_path / 'single_notch.sofa')
 
@@ -34,7 +34,7 @@ for id in src_idx:
 # play sources at 0 elevation around the listener from slab filter and wav
 from pathlib import Path
 import slab
-sofa_name = Path('KU100_HRIR_L2702.sofa')
+sofa_name = Path('KU100.sofa')
 sofa_name = Path('single_notch.sofa')
 hrtf_path = Path.cwd() / 'data' / 'hrtf'
 hrir = slab.HRTF(hrtf_path / 'sofa' / sofa_name)

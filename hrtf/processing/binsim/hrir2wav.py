@@ -133,7 +133,7 @@ def write_settings(hrir):
         f'useHeadphoneFilter False\n'
         f'ds_convolverActive True\n'
         f'early_convolverActive False\n'
-        f'late_convolverActive False\n'
+        f'late_convolverActive True\n'
         # osc receiver settings
         f'recv_type osc\n'
         f'recv_protocol udp\n'

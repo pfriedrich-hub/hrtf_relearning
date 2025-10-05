@@ -21,13 +21,13 @@ subject = Subject(id)
 # --- HRTF settings ----
 
 # --- select sofa file
-# sofa_name ='KU100_HRIR_L2702'
+sofa_name ='KU100'
 # sofa_name ='single_notch'
-sofa_name ='kemar'
+# sofa_name ='kemar'
 
 # ---- specify ear for unilateral testing, None defaults to binaural testing
-ear = None
-# ear = 'left'
+# ear = None
+ear = 'left'
 
 # --- load and process HRIR
 hrir = hrtf2binsim(sofa_name, ear, overwrite=False)
@@ -41,10 +41,10 @@ class Localization:
     """
     def __init__(self, subject, hrir):
         # make trial sequence and write to subject
-        # self.settings = {'azimuth_range': (-35, 35), 'elevation_range': (-35, 35), 'sector_size': (14, 14),
-        #                  'targets_per_sector': 3, 'min_distance': 30, 'gain': .5}
-        self.settings = {'azimuth_range': (-35, 35), 'elevation_range': (-14, 14), 'sector_size': (14, 14),
-                         'targets_per_sector': 3, 'min_distance': 10, 'gain': .5}
+        self.settings = {'azimuth_range': (-35, 35), 'elevation_range': (-35, 35), 'sector_size': (14, 14),
+                         'targets_per_sector': 3, 'min_distance': 30, 'gain': .5}
+        # self.settings = {'azimuth_range': (-35, 35), 'elevation_range': (-14, 14), 'sector_size': (14, 14),
+        #                  'targets_per_sector': 3, 'min_distance': 10, 'gain': .5}
         self.subject = subject
         self.filename = subject.id + f'_{hrir.name}' + '_loc_' + date
 

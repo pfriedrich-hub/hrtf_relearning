@@ -163,11 +163,11 @@ def plot_localization(sequence, report_stats=['elevation', 'azimuth'], filepath=
     ax.set_ylim(el_min, el_max)
     ax.set_xlabel("Azimuth (°)")
     ax.set_ylabel("Elevation (°)")
-    title = ''
+    title = sequence.name
     if 'elevation' in report_stats:
-        title += f"EG: {eg:.2f}, RMSE: {ele_rmse:.2f}, SD: {ele_sd:.2f}"
+        title += f"\nEG: {eg:.2f}, RMSE: {ele_rmse:.2f}, SD: {ele_sd:.2f}"
     if 'azimuth' in report_stats:
-        title += f"\n AG: {ag:.2f}, az RMSE: {az_rmse:.2f}, az SD: {az_sd:.2f}"
+        title += f"\nAG: {ag:.2f}, az RMSE: {az_rmse:.2f}, az SD: {az_sd:.2f}"
     ax.set_title(title)
     ax.grid(False)
 
@@ -190,12 +190,10 @@ def plot_localization(sequence, report_stats=['elevation', 'azimuth'], filepath=
         col = [sector_lookup[(az, el)] for el in el_vals if (az, el) in sector_lookup]
         if len(col) > 1:
             ax.plot([p[0] for p in col], [p[1] for p in col], 'k-', linewidth=2)
-
-
+    plt.tight_layout()
     if filepath:
         if not filepath.exists():
             filepath.mkdir(parents=True, exist_ok=True)
         plt.savefig(filepath / f'{sequence.name}.png')
 
-    plt.tight_layout()
     plt.show()

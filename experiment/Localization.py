@@ -141,6 +141,7 @@ class Localization:
         stim = slab.Sound.sequence(noise[0], silence, noise[1], silence, noise[2],
                                    silence, noise[3], silence, noise[4])
 
+
         # noise = slab.Sound.pinknoise(duration=0.025, level=90)
         # noise = noise.ramp(when='both', duration=0.01)
         # silence = slab.Sound.silence(duration=0.025)

@@ -135,20 +135,18 @@ class Localization:
 
     @staticmethod
     def make_stim():
+        noise = slab.Precomputed(lambda: slab.Sound.pinknoise(duration=0.025, level=90)
+                                 .ramp(when='both', duration=0.01), n=5)
+        silence = slab.Sound.silence(duration=0.025)
+        stim = slab.Sound.sequence(noise[0], silence, noise[1], silence, noise[2],
+                                   silence, noise[3], silence, noise[4])
+
         # noise = slab.Sound.pinknoise(duration=0.025, level=90)
         # noise = noise.ramp(when='both', duration=0.01)
         # silence = slab.Sound.silence(duration=0.025)
         # stim = slab.Sound.sequence(noise, silence, noise, silence, noise,
         #                            silence, noise, silence, noise)
         # stim.ramp('both', 0.01)
-
-        noise = slab.Sound.pinknoise(duration=0.05, level=90)
-        noise = noise.ramp(when='both', duration=0.01)
-        silence = slab.Sound.silence(duration=0.025)
-        stim = slab.Sound.sequence(noise, silence, noise, silence, noise,
-                                   silence, noise, silence, noise)
-        stim.ramp('both', 0.01)
-
         return stim
 
 if __name__ == "__main__":

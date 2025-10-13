@@ -41,10 +41,10 @@ class Localization:
     """
     def __init__(self, subject, hrir):
         # make trial sequence and write to subject
-        self.settings = {'azimuth_range': (-35, 35), 'elevation_range': (-35, 35), 'sector_size': (14, 14),
-                         'targets_per_sector': 3, 'min_distance': 30, 'gain': .5}
-        # self.settings = {'azimuth_range': (-35, 35), 'elevation_range': (-14, 14), 'sector_size': (14, 14),
-        #                  'targets_per_sector': 3, 'min_distance': 10, 'gain': .5}
+        self.settings = {'azimuth_range': (-35, 0), 'elevation_range': (-35, 35), 'sector_size': (7, 14),
+                         'targets_per_sector': 2, 'min_distance': 20, 'gain': .5}
+        # self.settings = {'azimuth_range': (-1, 0), 'elevation_range': (-1, 0), 'sector_size': (1, 1),
+        #                  'targets_per_sector': 15, 'min_distance': 0, 'gain': .5}
         self.subject = subject
         self.filename = subject.id + f'_{hrir.name}' + '_loc_' + date
 
@@ -53,7 +53,6 @@ class Localization:
         self.hrir_sources = hrir.sources.vertical_polar
         self.stim_path = data_dir / 'hrtf' / 'wav' / hrir.name / 'sounds' / 'localization.wav'
         self.target = None
-        # self.stim = self.make_stim()  # use the same stimulus across trials
 
         # init pybinsim
         self.osc_client_1 = self._make_osc_client(port=10000)
@@ -71,9 +70,9 @@ class Localization:
 
     def run(self):
         self.sequence = make_sequence_from_sources(self.settings, self.hrir_sources)
+        # self.sequence = make_sequence(self.settings)
         self.sequence.name = self.filename
         self.write()
-        # for self.target in self.subject.localization[self.filename]:
         for self.target in self.sequence:
             input('Look at the Center and press Enter')  # calibrate sensor
             self.motion_sensor.calibrate()
@@ -94,7 +93,6 @@ class Localization:
         response = self.motion_sensor.get_pose()
         progress = self.sequence.this_n / len(self.sequence.conditions) * 100
         logging.info(f'{progress:.1f}% | Target: {self.target} | Response: {response}')
-        # logging.debug(f'got response: {response}')
         time.sleep(.25)
         self.subject.localization[self.filename].add_response(numpy.array((response, self.target)))
 
@@ -135,19 +133,37 @@ class Localization:
 
     @staticmethod
     def make_stim():
-        noise = slab.Precomputed(lambda: slab.Sound.pinknoise(duration=0.025, level=90)
-                                 .ramp(when='both', duration=0.01), n=5)
-        silence = slab.Sound.silence(duration=0.025)
-        stim = slab.Sound.sequence(noise[0], silence, noise[1], silence, noise[2],
-                                   silence, noise[3], silence, noise[4])
+        #25ms unique noise bursts
+        # noise = slab.Precomputed(lambda: slab.Sound.pinknoise(duration=0.025, level=90)
+        #                          .ramp(when='both', duration=0.01), n=5)
+        # silence = slab.Sound.silence(duration=0.025)
+        # stim = slab.Sound.sequence(noise[0], silence, noise[1], silence, noise[2],
+        #                            silence, noise[3], silence, noise[4])
 
 
+        #25ms identical noise burst
         # noise = slab.Sound.pinknoise(duration=0.025, level=90)
         # noise = noise.ramp(when='both', duration=0.01)
         # silence = slab.Sound.silence(duration=0.025)
         # stim = slab.Sound.sequence(noise, silence, noise, silence, noise,
         #                            silence, noise, silence, noise)
         # stim.ramp('both', 0.01)
+
+        # static 225ms noise interrupted
+        stim = slab.Sound.pinknoise(duration=0.225, level=90).ramp(when='both', duration=0.01)
+        n_silent = (numpy.arange(25,221,25).reshape(4,2) * stim.samplerate / 1000).astype(int)
+        ramp_len = int(.005 * stim.samplerate)
+        for start, end in n_silent:
+            ramp_up = 0.5 * (1 - numpy.cos(numpy.linspace(0, numpy.pi, ramp_len)))
+            ramp_down = 0.5 * (1 - numpy.cos(numpy.linspace(numpy.pi, 0, ramp_len)))
+            ramp_up = ramp_up[:, numpy.newaxis]
+            ramp_down = ramp_down[:, numpy.newaxis]
+            # Apply ramps at the edges of the silent region
+            stim.data[start: start + ramp_len] *= (1 - ramp_up)
+            stim.data[end - ramp_len: end] *= (1 - ramp_down)
+            # Silence the center completely
+            stim.data[start + ramp_len: end - ramp_len] = 0
+        # todo move half ramp into stimulus
         return stim
 
 if __name__ == "__main__":

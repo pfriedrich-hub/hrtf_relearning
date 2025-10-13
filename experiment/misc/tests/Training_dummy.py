@@ -10,7 +10,7 @@ from pathlib import Path
 import multiprocessing as mp
 from pythonosc import udp_client
 from hrtf.processing.hrtf2binsim import hrtf2binsim
-from experiment.misc import meta_motion
+
 logging.getLogger().setLevel('INFO')
 pybinsim.logger.setLevel(logging.WARNING)
 

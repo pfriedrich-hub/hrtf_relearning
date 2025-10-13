@@ -1,14 +1,12 @@
-import argparse
 import multiprocessing as mp
 import pybinsim
 import datetime
 import time
 from pathlib import Path
-import logging
 from pythonosc import udp_client
-from experiment.misc import meta_motion
+from experiment.misc.helpers import meta_motion
 from analysis.localization import *
-from experiment.misc.make_sequence import *
+from experiment.misc.helpers.make_sequence import *
 from hrtf.processing.hrtf2binsim import hrtf2binsim
 from experiment.Subject import Subject
 date = datetime.datetime.now()

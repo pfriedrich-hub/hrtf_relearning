@@ -10,8 +10,9 @@ import multiprocessing as mp
 from pythonosc import udp_client
 from experiment.Subject import Subject
 from hrtf.processing.hrtf2binsim import hrtf2binsim
-from experiment.misc.training_targets import set_target_probabilistic
-from experiment.misc import meta_motion
+from experiment.misc.helpers.training_targets import set_target_probabilistic
+from experiment.misc.helpers import meta_motion
+
 logging.getLogger().setLevel('INFO')
 
 # --- Subject ID ----
@@ -20,7 +21,7 @@ id = 'PF'
 sofa_name ='KU100'
 # sofa_name ='single_notch'
 # sofa_name ='kemar'
-# ---- for unilateral training specify the side to train on, None defaults to binaural training
+# ---- for unilateral training specify the side to flatten, None defaults to binaural training
 ear = None
 # ear = 'left'
 
@@ -111,7 +112,6 @@ def play_trial(distance, pulse_interval, pulse_state, sensor_state,
     time_on_target = 0
     count_down = False
     time.sleep(.1)
-    # input("Press Enter to play.")
     input("Press Enter to play.")
     sensor_state.value = 2   # calibrate sensor
     time.sleep(.1) # wait until calbration is complete
@@ -148,6 +148,7 @@ def play_trial(distance, pulse_interval, pulse_state, sensor_state,
     pulse_state.value = 0  # mute sound
     sensor_state.value = 1  # stop sensor tracking
     return game_timer, score
+
 
 # ----- sub processes ----- #
 
@@ -301,8 +302,6 @@ def distance_to_interval(distance):
 
 def make_osc_client(port, ip='127.0.0.1'):
     return udp_client.SimpleUDPClient(ip, port)
-
-#     # todo dynamically plot current hrtfs for left and right ear
 
 if __name__ == "__main__":
     play_session()

@@ -26,8 +26,8 @@ subject_id = 'PF'
 sequence = Subject(subject_id).last_sequence  # must contain .settings and .data
 
 # HRTF selection
-sofa_name = 'KU100'
-# sofa_name = 'single_notch'
+# sofa_name = 'KU100'
+sofa_name = 'single_notch'
 # sofa_name = 'kemar'
 
 # unilateral vs. binaural
@@ -61,7 +61,7 @@ hrir_dir = Path.cwd() / 'data' / 'hrtf' / 'wav' / hrir.name
 
 # ------------------------ LIVE TF PLOTTER ------------------------
 
-def plot_current_tf(filter_idx_shared, redraw_interval_s=0.05):
+def plot_current_tf(filter_idx_shared, redraw_interval_s=0.05, kind='IR'):
     """
     Lives in its own process. Opens a Qt figure and plots the TF of the
     current HRTF (hrir[filter_idx]) whenever the filter index changes.
@@ -85,7 +85,11 @@ def plot_current_tf(filter_idx_shared, redraw_interval_s=0.05):
             try:
                 ax.cla()
                 # slab's helper draws into the provided axis
-                hrir[idx].tf(show=True, axis=ax)
+                if kind == 'TF':
+                    hrir[idx].tf(show=True, axis=ax)
+                elif kind == 'IR':
+                    times = numpy.linspace(0, hrir[idx].n_samples / hrir.samplerate, hrir[idx].n_samples)
+                    ax.plot(times, hrir[idx].data)
                 az0, el0 = sources[idx, 0], sources[idx, 1]
                 az180 = (az0 + 180) % 360 - 180
                 ax.set_title(f"TF idx {idx}  |  az={az180:.1f}°, el={el0:.1f}°")

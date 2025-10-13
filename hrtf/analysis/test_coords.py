@@ -9,13 +9,14 @@ hrir = slab.HRTF(sofa_path / 'single_notch.sofa')
 # compute itd / ild of all filters on the horizontal plane
 src_idx = hrir.cone_sources(0, True, 'elevation', .01)
 sound = slab.Binaural.pinknoise(samplerate=hrir.samplerate)
-sound = slab.Binaural.tone(samplerate=hrir.samplerate, frequency=4000)
+sound = slab.Binaural.tone(samplerate=hrir.samplerate, frequency=1500, level=65)
 
 
 # ils = slab.Binaural.make_interaural_level_spectrum(hrir)
 for id in src_idx:
     print(f'Source {hrir.sources.vertical_polar[id, 0]}')
     _s = hrir.apply(id, sound)
+    _s.play()
     print(f'ITD {-slab.Binaural.itd_to_azimuth(_s.itd() / _s.samplerate)}')
     # print(f'ILD {-slab.Binaural.ild_to_azimuth(_s.ild(), frequency=4000, ils=None)}')
     # print(f'ILD {_s.ild()}')

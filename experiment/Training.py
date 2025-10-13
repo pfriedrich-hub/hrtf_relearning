@@ -18,12 +18,12 @@ logging.getLogger().setLevel('INFO')
 # --- Subject ID ----
 id = 'PF'
 # --- sofa file
-sofa_name ='KU100'
-# sofa_name ='single_notch'
+# sofa_name ='KU100'
+sofa_name ='single_notch'
 # sofa_name ='kemar'
 # ---- for unilateral training specify the side to flatten, None defaults to binaural training
-ear = None
-# ear = 'left'
+# ear = None
+ear = 'left'
 
 # meta data
 hrir = hrtf2binsim(sofa_name, ear, overwrite=False)  # load and process HRIR
@@ -223,7 +223,7 @@ def head_tracker(distance, target, sensor_state, plot_filter_idx):
 
         time.sleep(0.01)    # these intervals mainly determines CPU load
 
-def plot_current_tf(filter_idx_shared, redraw_interval_s=0.05):
+def plot_current_tf(filter_idx_shared, redraw_interval_s=0.05, kind='TF'):
     """
     Lives in its own process. Opens a Qt figure and plots the TF of the
     current HRTF (hrir[filter_idx]) whenever the filter index changes.
@@ -231,12 +231,10 @@ def plot_current_tf(filter_idx_shared, redraw_interval_s=0.05):
     # Reuse global `hrir` and its sources
     global hrir
     sources = hrir.sources.vertical_polar  # (N,3), az in [0..360), el linear
-
     plt.ion()
     fig, ax = plt.subplots(figsize=(7, 4))
     ax.set_title("Current HRTF Transfer Function")
     fig.canvas.manager.set_window_title("Live HRTF TF")
-
     last_idx = -1
     while True:
         idx = filter_idx_shared.value
@@ -246,7 +244,11 @@ def plot_current_tf(filter_idx_shared, redraw_interval_s=0.05):
                 # Clear and replot using slab's built-in viz
                 ax.cla()
                 # slab.HRTF slice → .tf(show=True, axis=ax) will draw on provided axis
-                hrir[idx].tf(show=True, axis=ax)  # slab handles magnitude/dB formatting
+                if kind == 'TF':
+                    hrir[idx].tf(show=True, axis=ax)
+                elif kind == 'IR':
+                    times = numpy.linspace(0, hrir[idx].n_samples / hrir.samplerate, hrir[idx].n_samples)
+                    ax.plot(times, hrir[idx].data)
                 # Add some context (az, el)
                 az0, el0 = sources[idx, 0], sources[idx, 1]
                 az180 = (az0 + 180) % 360 - 180  # to (-180,180]

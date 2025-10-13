@@ -1,6 +1,3 @@
-import matplotlib
-matplotlib.use('TkAgg')
-from matplotlib import pyplot as plt
 import slab
 import numpy
 from pathlib import Path
@@ -10,18 +7,7 @@ def get_hrtf_list(database_name='aachen_database'):
     database_path = Path.cwd() / 'data' / 'hrtf' / 'sofa' / database_name
     return [slab.HRTF(sofa_path) for sofa_path in list(database_path.glob('*.sofa'))]
 
-def find_threshold(hrtf_list):
-    """
-    Find a threshold to detect spectral features for each HRTF.
-    Define thresholds at the lower and upper quartiles of spectral power across sources to mark spectral features.
-    """
-    tf_data = []
-    for i, hrtf in enumerate(hrtf_list):
-        print(f"{i / len(hrtf_list) * 100} %")
-        tf_data.append(hrtf.tfs_from_sources(sources=range(len(hrtf.sources.vertical_polar)), ear='both'))
-    return numpy.percentile(tf_data, 25), numpy.percentile(tf_data, 75)
-
-def make_avg_hrtf(database_name, threshold=None):
+def make_avg_hrtf():
     """
     Construct a new HRTF from a list of existing HRTFs.
     Computes the probability of peaks and notches for each source and frequency bin across HRTFs in the list.
@@ -32,8 +18,24 @@ def make_avg_hrtf(database_name, threshold=None):
         threshold (tuple): upper and lower threshold in dB for feature detection
     """
     hrtf_list = get_hrtf_list()
+    hrtf = hrtf_list[0]
+    w, _ = hrtf[0].tf(show=False)
+    in_freq = w > 4000
     data = []
+    thr = []
     for i, hrtf in enumerate(hrtf_list):
+        tfs = hrtf.tfs_from_sources(sources=range(len(hrtf.sources.vertical_polar)), n_bins=None, ear='both')
+        tfs = tfs[:, in_freq]
+        thr.append((numpy.percentile(tfs, 25), numpy.percentile(tfs, 75)))
+        print(numpy.percentile(tfs, 25), numpy.percentile(tfs, 75))
+        data.append(hrtf.tfs_from_sources(sources=range(len(hrtf.sources.vertical_polar)), n_bins=None, ear='both'))
+
+    data = numpy.asarray(data)
+    threshold = numpy.percentile(data, 25), numpy.percentile(data, 75)
+    #todo find a better measure than thresholding,
+    # for example take the jnd spectral notch width and depth in dB
+    print(f"Thresholds; lower: {threshold[0]}, upper: {threshold[1]}")
+    # compute probability map of spectral peaks and notches across frequencies and sources
         print(f"Retrieving TF data from database: {i / len(hrtf_list) * 100:.2f} %")
         dtfs = []
         for filter in hrtf:
@@ -49,6 +51,15 @@ def make_avg_hrtf(database_name, threshold=None):
         print(f"Thresholds; lower: {threshold[0]}, upper: {threshold[1]}")
     notch_map = (data < threshold[0]) * -1 # binary map of notches across hrtfs, sources, frequencies
     peak_map = (data > threshold[1]) # binary map of peaks across hrtfs, sources, frequencies
+    p_map = numpy.mean(notch_map + peak_map, axis=0)
+    # rescale to dB
+
+
+    hrtf = copy.deepcopy(hrtf_list[0])  # new HRTF
+    for i, tf in enumerate(p_map):  # reconstruct filters from feature probability
+        tf = (tf + 1) * 0.5 * (threshold[1] - threshold[0]) + threshold[0]  # rescale probabilities between thresholds
+        hrtf[i].data = slab.Filter(data=tf, samplerate=hrtf_list[0].samplerate, fir='TF')
+    # return numpy.sum(numpy.array(feature_maps), axis=0) / len(feature_maps), frequencies[freq_idx]  # average
     feature_map = numpy.sum(notch_map + peak_map, axis=0) / len(data)
     # rescale probabilities to thresholds
     dtfs = (feature_map + 1) * 0.5 * (threshold[1] - threshold[0]) + threshold[0]

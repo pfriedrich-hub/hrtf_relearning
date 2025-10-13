@@ -139,29 +139,6 @@ def make_sequence_from_sources(settings, hrir_sources=None):
 
     # Build (az, el) points from unique picks
     points = numpy.column_stack([src_az[chosen_indices], src_el[chosen_indices]])
-
-    # old
-    # # Check availability and sample without replacement per sector
-    # chosen_indices = []
-    # for (caz, cel) in selected_sectors:
-    #     idx = sources_in_sector(caz, cel)
-    #     if idx.size < targets_per_sector:
-    #         logging.error(
-    #             f'Not enough sources in sector centered at (az={caz:.2f}, el={cel:.2f}). '
-    #             f'Required {targets_per_sector}, found {idx.size}. '
-    #             'Consider enlarging sector_size, adjusting ranges, or lowering targets_per_sector.'
-    #         )
-    #         raise ValueError('Insufficient sources in one or more sectors for requested targets_per_sector.')
-    #     # sample without replacement
-    #     pick = numpy.random.choice(idx, size=targets_per_sector, replace=False)
-    #     chosen_indices.extend(pick.tolist())
-    #
-    # # reshape to (num_sectors, T) so each row = one sector's picks
-    # arr = numpy.asarray(chosen_indices, dtype=int).reshape(len(selected_sectors), targets_per_sector)
-    # # round-robin interleave: S1[0], S2[0], ..., SS[0], S1[1], S2[1], ...
-    # chosen_indices = arr.T.reshape(-1).tolist()
-    # points = numpy.column_stack([src_az[chosen_indices], src_el[chosen_indices]])
-
     points = numpy.round(points, 2)  # only keep 2nd decimal
     points[:, 0] = (points[:, 0] + 180) % 360 - 180  # wrap to (-180,180)
     sequence = slab.Trialsequence(points)

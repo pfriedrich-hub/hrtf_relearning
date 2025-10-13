@@ -1,3 +1,6 @@
+import matplotlib
+matplotlib.use('TkAgg')
+from matplotlib import pyplot as plt
 import slab
 import numpy
 from pathlib import Path
@@ -28,26 +31,29 @@ def make_avg_hrtf(database_name, threshold=None):
                                 HRTFs in the folder must have uniform source space and filters.
         threshold (tuple): upper and lower threshold in dB for feature detection
     """
-    hrtf_list = get_hrtf_list(database_name)
+    hrtf_list = get_hrtf_list()
     data = []
     for i, hrtf in enumerate(hrtf_list):
-        print(f"Retrieving TF data from database: {i / len(hrtf_list) * 100}.2f %")
-        tfs = []
-        for tf in hrtf:
-            tfs.append(tf.data)
-        data.append(tfs)
-        # _data.append(hrtf.tfs_from_sources(sources=range(len(hrtf.sources.vertical_polar)), n_bins=None, ear='both'))
+        print(f"Retrieving TF data from database: {i / len(hrtf_list) * 100:.2f} %")
+        dtfs = []
+        for filter in hrtf:
+            w, h = filter.tf(n_bins=None, show=False)
+            dtfs.append(h)
+        # thresh = [numpy.percentile(tfs, 25), numpy.percentile(tfs, 75)]  # local threshold
+        data.append(dtfs)
+    del hrtf_list
+    data = numpy.array(data)
+    freq_mask = numpy.where(w > 4000)  # disregard torso shadow for cue threshold estimation
     if threshold is None:
-        threshold = numpy.percentile(data, 25), numpy.percentile(data, 75)
+        threshold = numpy.percentile(data[:, :, freq_mask], 25), numpy.percentile(data[:, :, freq_mask], 75)  # global threshold
         print(f"Thresholds; lower: {threshold[0]}, upper: {threshold[1]}")
     notch_map = (data < threshold[0]) * -1 # binary map of notches across hrtfs, sources, frequencies
     peak_map = (data > threshold[1]) # binary map of peaks across hrtfs, sources, frequencies
-    feature_map = notch_map + peak_map
-    feature_map = numpy.sum(feature_map, axis=0) / len(feature_map)
-    hrtf = copy.deepcopy(hrtf_list[0])  # new HRTF
-    for i, tf in enumerate(feature_map):  # reconstruct filters from feature probability
-        tf = (tf + 1) * 0.5 * (threshold[1] - threshold[0]) + threshold[0]  # rescale probabilities between thresholds
-        hrtf[i].data = slab.Filter(data=tf, samplerate=hrtf_list[0].samplerate, fir='TF')
+    feature_map = numpy.sum(notch_map + peak_map, axis=0) / len(data)
+    # rescale probabilities to thresholds
+    dtfs = (feature_map + 1) * 0.5 * (threshold[1] - threshold[0]) + threshold[0]
+    for i, tf in enumerate(dtfs):  # reconstruct filters from feature probability
+        hrtf[i].data = slab.Filter(data=tf, samplerate=hrtf.samplerate, fir='TF')
 
 # return numpy.sum(numpy.array(feature_maps), axis=0) / len(feature_maps), frequencies[freq_idx]  # average
 

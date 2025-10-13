@@ -4,14 +4,12 @@ import numpy
 import slab
 import time
 import logging
-import pybinsim
 from pathlib import Path
 import multiprocessing as mp
 from pythonosc import udp_client
 from hrtf.processing.hrtf2binsim import hrtf2binsim
 from experiment.misc import meta_motion
 logging.getLogger().setLevel('INFO')
-pybinsim.logger.setLevel(logging.ERROR)
 
 # --- Subject ID ----
 subject = 'PF'
@@ -19,13 +17,13 @@ subject = 'PF'
 # --- HRTF settings ----
 
 # --- select sofa file
-# sofa_name ='KU100_HRIR_L2702'
-sofa_name ='single_notch'
+sofa_name ='KU100'
+# sofa_name ='single_notch'
 # sofa_name ='kemar'
 
 # ---- specify ear for unilateral training, None defaults to binaural training
-ear = None
-# ear = 'left'
+# ear = None
+ear = 'left'
 
 # --- load and process HRIR
 hrir = hrtf2binsim(sofa_name, ear, overwrite=False)
@@ -40,16 +38,15 @@ soundfile = None
 
 # --- training settings
 settings = dict(
-    target_size = 5,        # size of target area in degrees
-    target_time = 1,        # required time on target to score
-    az_range = (-45, 45),   # target azimuth range
-    ele_range = (-1, 1),  # target elevation range
+    target_size = 3,        # size of target area in degrees
+    target_time = .5,        # required time on target to score
+    az_range = (-35, 0),   # target azimuth range
+    ele_range = (-35, 35),  # target elevation range
     min_dist = 30,          # minimal distance between successive targets in degrees
     game_time  = 180,       # time per session
     trial_time = 15,        # time per trial
-    gain = .5               # loudness
+    gain = .2               # loudness
     )
-
 
 # --- main functions
 def play_session(): #, game_time, trial_time, target_size, target_time, az_range, ele_range):
@@ -148,6 +145,8 @@ def play_trial(distance, pulse_interval, pulse_state, sensor_state,
 # ----- sub processes ----- #
 
 def binsim_stream():
+    import pybinsim
+    pybinsim.logger.setLevel(logging.ERROR)
     logging.info(f'Loading {hrir.name}')
     binsim = pybinsim.BinSim(hrir_dir / f'{hrir.name}_training_settings.txt')
     binsim.stream_start()  # run binsim loop

@@ -21,7 +21,7 @@ subject = Subject(id)
 # --- HRTF settings ---- #
 
 # --- select sofa file
-sofa_name ='KU100_HRIR_L2702'
+sofa_name ='KU100'
 # sofa_name ='single_notch'
 # sofa_name ='kemar'
 
@@ -43,6 +43,8 @@ class Localization:
         # make trial sequence and write to subject
         self.settings = {'azimuth_range': (-35, 35), 'elevation_range': (-14, 14), 'sector_size': (14, 14),
                          'targets_per_sector': 3, 'min_distance': 10, 'gain': .5}
+        # self.settings = {'azimuth_range': (-1, 0), 'elevation_range': (-1, 0), 'sector_size': (1, 1),
+        #                  'targets_per_sector': 15, 'min_distance': 0, 'gain': .5}
         self.subject = subject
         self.filename = subject.id + f'_{hrir.name}' + date
 
@@ -62,6 +64,7 @@ class Localization:
 
     def run(self):
         self.sequence = make_sequence_from_sources(self.settings, self.hrir_sources)
+        # self.sequence = make_sequence(self.settings)
         self.sequence.name = self.filename
         self.write()
         # for self.target in self.subject.localization[self.filename]:

@@ -24,6 +24,10 @@ class Subject:
             self.id = id
             self.localization = dict()
 
+        if list(self.localization.keys()):  # get the last localization sequence
+            self.last_sequence = self.localization[list(self.localization.keys())[-1]]
+        else: self.last_sequence = None
+
     def write(self):
         if (self.file_path).exists():
             logging.debug('Updating subject file.')

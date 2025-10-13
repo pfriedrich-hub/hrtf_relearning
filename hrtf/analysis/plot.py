@@ -9,7 +9,7 @@ def plot(hrir, title):
     src_idx = hrir.get_source_idx(az, ele)[0]
     fig, ax = plt.subplots()
     times = numpy.linspace(0, hrir[src_idx].n_samples/hrir.samplerate,  hrir[src_idx].n_samples)
-    ax.plot(times, 20 * numpy.log10(hrir[src_idx]), label=['left', 'right'])  # convert to dB
+    ax.plot(times, (hrir[src_idx]), label=['left', 'right'])  # convert to dB
     ax.set_xlabel('Time [s]')
     ax.set_ylabel('Amplitude [dB]')
     ax.legend()

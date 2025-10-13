@@ -72,6 +72,7 @@ def make_sequence_from_sources(settings, hrir_sources=None):
     # pick random targets from the hrir sources within each selected sector
     src_az = numpy.asarray(hrir_sources[:, 0], dtype=float)
     src_el = numpy.asarray(hrir_sources[:, 1], dtype=float)
+
     def _wrap_diff(a, b):
         """Smallest signed difference a-b on a 360° circle, result in [-180, 180)."""
         d = (a - b + 180.0) % 360.0 - 180.0
@@ -143,7 +144,7 @@ def make_sequence_from_sources(settings, hrir_sources=None):
     points[:, 0] = (points[:, 0] + 180) % 360 - 180  # wrap to (-180,180)
     sequence = slab.Trialsequence(points)
     sequence.sector_centers = sector_centers
-    sequence.sector_size = sector_size
+    sequence.settings = settings  # ← store all parameters here
     return sequence
 
 def make_sequence(settings):
@@ -222,36 +223,63 @@ def make_sequence(settings):
     sequence.sector_size = sector_size
     return sequence
 
-def plot_random_points(points, selected_sectors, azimuth_range, elevation_range, sector_size):
-    """Plots the generated random points and sector boundaries with grid lines."""
-    azimuth_size, elevation_size = sector_size
+def plot_sequence_targets(sequence, title="Recorded targets over sectors"):
+    """
+    Plot target coordinates from sequence.data over the sector grid.
+    Uses sequence.settings to retrieve az/el ranges and sector size.
+    """
+    if not hasattr(sequence, "settings"):
+        raise AttributeError("sequence must have a 'settings' attribute (dict).")
+    if not hasattr(sequence, "sector_centers"):
+        raise AttributeError("sequence must have 'sector_centers' attribute.")
+
+    settings = sequence.settings
+    sector_centers = list(sequence.sector_centers)
+    az_size, el_size = settings['sector_size']
+    az_range = settings['azimuth_range']
+    el_range = settings['elevation_range']
+
+    # --- extract target coordinates (2nd row) from sequence.data ---
+    points = []
+    for entry in sequence.data:
+        arr = entry
+        while isinstance(arr, (list, tuple)) and len(arr) == 1:
+            arr = arr[0]
+        arr = numpy.asarray(arr)
+        if arr.ndim != 2 or arr.shape[1] != 2:
+            raise ValueError(f"Unexpected shape in sequence.data entry: {arr.shape}")
+        points.append(arr[1])  # target row
+    points = numpy.asarray(points, dtype=float)
+    points[:, 0] = (points[:, 0] + 180) % 360 - 180  # wrap azimuth
+
+    # --- plotting ---
     fig, ax = plt.subplots(figsize=(8, 6))
-    ax.set_xlim(azimuth_range)
-    ax.set_ylim(elevation_range)
+    ax.set_xlim(az_range)
+    ax.set_ylim(el_range)
     ax.set_xlabel("Azimuth (°)")
     ax.set_ylabel("Elevation (°)")
-    ax.set_title("Random Points in Sectors with Minimum Distance Constraint")
+    ax.set_title(title)
 
-    # Plot sector boundaries
-    for sec in selected_sectors:
-        rect = plt.Rectangle(
-            (sec[0] - azimuth_size / 2, sec[1] - elevation_size / 2),
-            azimuth_size, elevation_size, edgecolor='gray', facecolor='none', linestyle="--"
+    # sector rectangles
+    for (caz, cel) in sector_centers:
+        rect = matplotlib.patches.Rectangle(
+            (caz - az_size / 2.0, cel - el_size / 2.0),
+            az_size, el_size,
+            fill=False, linestyle="--", linewidth=1.0
         )
         ax.add_patch(rect)
 
-    # Plot grid lines
-    azimuth_ticks = numpy.arange(azimuth_range[0], azimuth_range[1] + azimuth_size, azimuth_size)
-    elevation_ticks = numpy.arange(elevation_range[0], elevation_range[1] + elevation_size, elevation_size)
-    ax.set_xticks(azimuth_ticks)
-    ax.set_yticks(elevation_ticks)
+    # grid
+    az_ticks = numpy.arange(az_range[0], az_range[1] + az_size, az_size)
+    el_ticks = numpy.arange(el_range[0], el_range[1] + el_size, el_size)
+    ax.set_xticks(az_ticks)
+    ax.set_yticks(el_ticks)
     ax.grid(True, linestyle="--", linewidth=0.5)
 
-    # Plot points
-    azimuths, elevations = zip(*points)
-    ax.scatter(azimuths, elevations, color='red', label="Random Points")
-
-    ax.legend()
+    # scatter
+    ax.scatter(points[:, 0], points[:, 1], s=25, color="red", label="Targets")
+    ax.legend(loc="best")
+    plt.tight_layout()
     plt.show()
 
 # Example usage

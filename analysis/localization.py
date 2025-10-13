@@ -3,6 +3,7 @@ matplotlib.use('tkagg')
 from matplotlib import pyplot as plt
 import numpy
 import scipy
+import logging
 
 def localization_accuracy(sequence):
     if sequence.this_n == -1 or sequence.n_remaining == len(sequence.data) or not sequence.data:
@@ -18,7 +19,7 @@ def localization_accuracy(sequence):
     azimuth_gain, n = scipy.stats.linregress(targets[:, 0], responses[:, 0])[:2]
     rmse = numpy.sqrt(numpy.mean(numpy.square(targets - responses), axis=0))
     az_rmse, ele_rmse = rmse[0], rmse[1]
-    variability = compute_sector_precision(targets, responses, sequence.sector_centers, sequence.sector_size)
+    variability = compute_sector_precision(targets, responses, sequence.sector_centers, sequence.settings['sector_size'])
     az_sd, ele_sd = variability[0], variability[1]
     return elevation_gain, ele_rmse, ele_sd, azimuth_gain, az_rmse, az_sd
 
@@ -63,53 +64,119 @@ def compute_sector_precision(targets, responses, sector_centers, sector_size):
         mean_std = (numpy.nan, numpy.nan)
     return mean_std
 
+
+def _wrap_diff_deg(a, b):
+    """Smallest signed difference a-b on a 360° circle, result in [-180, 180)."""
+    return (numpy.asarray(a) - numpy.asarray(b) + 180.0) % 360.0 - 180.0
+
+
 def target_p(sequence, show=False, axis=None):
-    # calculate target probabilities depending on polar error in the trial sequence
-    # retrieve data
+    """
+    Compute per-sector error and target probabilities from a localization run.
+
+    Returns
+    -------
+    response_errors : (N_sectors, 4) array
+        columns: [sector_center_az, sector_center_el, polar_error, probability]
+    """
+    if not sequence:
+        logging.debug('No sequence found')
+        return None
+    if not hasattr(sequence, "settings"):
+        raise AttributeError("sequence must have a 'settings' dict.")
+    if not hasattr(sequence, "sector_centers"):
+        raise AttributeError("sequence must have 'sector_centers'.")
+
+    settings = sequence.settings
+    az_size, el_size = settings['sector_size']
+    half_az, half_el = az_size / 2.0, el_size / 2.0
+    centers = numpy.asarray(sequence.sector_centers, dtype=float)  # (N,2)
+    # --- unpack data (targets = 2nd row, responses = 1st row) ---
     loc_data = numpy.asarray(sequence.data)
     loc_data = loc_data.reshape(loc_data.shape[0], 2, 2)
     targets = loc_data[:, 1]  # [az, ele]
     responses = loc_data[:, 0]
-    response_errors = numpy.zeros((len(sequence.sector_centers), 3))
-    for idx, center in enumerate(sequence.sector_centers):
-        in_sector = numpy.where(        # Get indices of targets in this sector
-            (targets[:, 0] >= center[0] - sequence.sector_size[0] / 2)
-            & (targets[:, 0] < center[0] + sequence.sector_size[0] / 2) &
-            (targets[:, 1] >= center[1] - sequence.sector_size[1] / 2)
-            & (targets[:, 1] < center[1] + sequence.sector_size[1] / 2))[0]
-        rmse = numpy.sqrt(numpy.mean(numpy.square(targets[in_sector] - responses[in_sector]), axis=0))
-        polar_error = rmse[1]  # use only polar error to calculate target probabilities
-        response_errors[idx] = numpy.array((center[0], center[1], polar_error))
-    target_p = response_errors[:, 2] / numpy.sum(response_errors[:, 2])
-    response_errors = numpy.hstack((response_errors, numpy.expand_dims(target_p, axis=1)))
+    # --- assign each target to exactly one sector (nearest center within box) ---
+    # Compute deltas of each target to every center
+    d_az = _wrap_diff_deg(targets[:, None, 0], centers[None, :, 0])  # (T,N)
+    d_el = targets[:, None, 1] - centers[None, :, 1]                # (T,N)
+    # inside rectangular box?
+    inside = (numpy.abs(d_az) <= half_az) & (numpy.abs(d_el) <= half_el)  # (T,N)
+    # If multiple sectors match (edge cases), pick the nearest; if none match,
+    # pick the nearest anyway (prevents drops due to rounding).
+    rect_dist = numpy.stack([numpy.abs(d_az) / half_az, numpy.abs(d_el) / half_el], axis=-1)  # (T,N,2)
+    rect_dist = numpy.linalg.norm(rect_dist, axis=-1)  # normalized rectangular distance (T,N)
+    # Prefer valid-inside sectors; if none, fall back to absolute nearest
+    big = 1e6
+    choice_inside = numpy.where(inside, rect_dist, big)
+    idx_inside = numpy.argmin(choice_inside, axis=1)  # (T,)
+    none_inside = ~inside.any(axis=1)
+    if numpy.any(none_inside):
+        # fall back to nearest by rect_dist for those
+        idx_fallback = numpy.argmin(rect_dist[none_inside], axis=1)
+        idx_inside[none_inside] = idx_fallback
+    # Now we have, for each trial, the chosen sector index
+    T = targets.shape[0]
+    N = centers.shape[0]
+    # --- aggregate per-sector errors ---
+    response_errors = numpy.zeros((N, 3), dtype=float)
+    # Prepare lists of trial indices per sector
+    trials_per_sector = [[] for _ in range(N)]
+    for t in range(T):
+        s = int(idx_inside[t])
+        trials_per_sector[s].append(t)
+    # Compute RMSE in az/el, then use polar (el) RMSE as your training metric
+    for s, center in enumerate(centers):
+        idxs = trials_per_sector[s]
+        if len(idxs) == 0:
+            rmse_el = 0.0
+        else:
+            tgt_s = targets[idxs]        # (#,2)
+            rsp_s = responses[idxs]      # (#,2)
+            # Polar (elevation) error only, per your definition
+            el_err = tgt_s[:, 1] - rsp_s[:, 1]
+            rmse_el = float(numpy.sqrt(numpy.mean(el_err ** 2)))
+        response_errors[s, :] = [center[0], center[1], rmse_el]
+    # --- probabilities proportional to polar error (handle all-zero safely) ---
+    pe = response_errors[:, 2]
+    total = float(pe.sum())
+    if total <= 0:
+        probs = numpy.full_like(pe, 1.0 / len(pe))
+    else:
+        probs = pe / total
+    response_errors = numpy.column_stack([response_errors, probs])  # (N,4)
+    # --- optional heatmap ---
     if show:
-        azimuths = numpy.unique(response_errors[:, 0])
-        elevations = numpy.unique(response_errors[:, 1])
-        if not axis:
-            fig, axis = plt.subplots()
-        p_grid = numpy.zeros((len(azimuths), len(elevations)))        # Create an empty z-grid
-        for row in response_errors:        # Fill the z-grid by matching (x, y) to z
-            x_idx = numpy.where(azimuths == row[0])[0][0]
-            y_idx = numpy.where(elevations == row[1])[0][0]
-            p_grid[y_idx, x_idx] = row[3]
-        contour = axis.pcolormesh(azimuths, elevations, p_grid)
-        cbar_levels = numpy.linspace(0, 0.1, 10)
-        cax_pos = list(axis.get_position().bounds)  # (x0, y0, width, height)
-        cax_pos[0] += 0.8  # x0
-        cax_pos[2] = 0.012  # width
-        cax = fig.add_axes(cax_pos)
-        cbar = fig.colorbar(contour, cax, orientation="vertical", ticks=numpy.linspace(0, 0.1, 5))
-        cax.set_title('Probability')
-        axis.set_xlabel('Azimuth')
-        axis.set_ylabel('Elevation')
-        az_ticks = numpy.array((azimuths - sequence.sector_size[0] / 2, azimuths + sequence.sector_size[0] / 2)).T
-        ele_ticks = numpy.array((elevations - sequence.sector_size[1] / 2, elevations + sequence.sector_size[1] / 2)).T
-        axis.set_yticks(az_ticks)
-        axis.set_xticks(ele_ticks)
-        # axis.set_ylim(numpy.min(elevations) - 15, numpy.max(elevations) + 15)
-        # axis.set_xlim(numpy.min(azimuths) - 15, numpy.max(azimuths) + 15)
-        # localization_accuracy(sequence, show=True, plot_dim=2, binned=True)
+        # make regular grids of unique az/el from centers
+        az_vals = numpy.unique(centers[:, 0])
+        el_vals = numpy.unique(centers[:, 1])
+        # map each sector to its grid cell
+        P = numpy.zeros((len(el_vals), len(az_vals)))
+        for row in response_errors:
+            az, el, _, p = row
+            xi = numpy.where(az_vals == az)[0][0]
+            yi = numpy.where(el_vals == el)[0][0]
+            P[yi, xi] = p
+        if axis is None:
+            fig, axis = plt.subplots(figsize=(7, 5))
+        mesh = axis.pcolormesh(az_vals, el_vals, P, shading='auto')
+        cbar = plt.colorbar(mesh, ax=axis)
+        cbar.set_label('Probability')
+        # ticks aligned to sector edges
+        axis.set_xlabel('Azimuth (°)')
+        axis.set_ylabel('Elevation (°)')
+        axis.set_xticks(az_vals)
+        axis.set_yticks(el_vals)
+        axis.grid(True, linestyle='--', linewidth=0.4)
+        # optional: draw sector boxes lightly
+        for (caz, cel) in centers:
+            axis.add_patch(
+                plt.Rectangle((caz - half_az, cel - half_el),
+                              az_size, el_size, fill=False, linestyle='--', linewidth=0.6, alpha=0.7)
+            )
+        axis.set_title('Per-sector training probability (from polar RMSE)')
     return response_errors
+
 
 def plot_localization(sequence, report_stats=['elevation', 'azimuth'], filepath=None):
     """
@@ -124,7 +191,7 @@ def plot_localization(sequence, report_stats=['elevation', 'azimuth'], filepath=
     targets = loc_data[:, 1]  # [az, ele]
     responses = loc_data[:, 0]
     sector_centers = sequence.sector_centers
-    az_size, el_size = sequence.sector_size
+    az_size, el_size = sequence.settings['sector_size']
     eg, ele_rmse, ele_sd, ag, az_rmse, az_sd = localization_accuracy(sequence)
 
     mean_responses = []

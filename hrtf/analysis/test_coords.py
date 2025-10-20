@@ -5,6 +5,10 @@ sofa_path = Path.cwd() / 'data' / 'hrtf' / 'sofa'
 hrir = slab.HRTF(sofa_path / 'KU100.sofa')
 hrir = slab.HRTF(sofa_path / 'kemar.sofa')
 hrir = slab.HRTF(sofa_path / 'single_notch.sofa')
+hrir = slab.HRTF(sofa_path / 'pf.sofa')
+hrir = slab.HRTF(sofa_path / 'pf_just_itd.sofa')
+
+
 
 # compute itd / ild of all filters on the horizontal plane
 src_idx = hrir.cone_sources(0, True, 'elevation', .01)

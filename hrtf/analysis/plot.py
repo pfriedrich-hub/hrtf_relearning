@@ -4,9 +4,12 @@ from pathlib import Path
 wav_path = Path.cwd() / 'data' / 'hrtf' / 'wav'
 
 def plot(hrir, title):
-    az = 90
-    ele = 0
-    src_idx = hrir.get_source_idx(az, ele)[0]
+    try:
+        az = 90
+        ele = 0
+        src_idx = hrir.get_source_idx(az, ele)[0]
+    except IndexError:
+        src_idx = -1
     fig, ax = plt.subplots()
     times = numpy.linspace(0, hrir[src_idx].n_samples/hrir.samplerate,  hrir[src_idx].n_samples)
     ax.plot(times, (hrir[src_idx]), label=['left', 'right'])  # convert to dB
@@ -19,8 +22,12 @@ def plot(hrir, title):
 
 def plot_reverb(hrir, reverb):
     fig, axis = plt.subplots(nrows=1, ncols=1)
-    src_idx = hrir.get_source_idx((85, 95), (-5, 5))[0]
-    src = hrir.sources.vertical_polar[src_idx]  # pick a source 90° to the right
+    try:
+        src_idx = hrir.get_source_idx((85, 95), (-5, 5))[0]
+        src = hrir.sources.vertical_polar[src_idx]  # pick a source 90° to the right
+    except IndexError:
+        src_idx = -1
+        src = hrir.sources.vertical_polar[src_idx]  # pick a random source instead
     az = src[0]
     ele = src[1]
     ds = numpy.concatenate((hrir[src_idx].data, numpy.zeros((len(reverb) - hrir[src_idx].n_taps, 2))), axis=0)

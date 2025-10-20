@@ -19,14 +19,16 @@ logging.getLogger().setLevel('INFO')
 id = 'PF'
 # --- sofa file
 # sofa_name ='KU100'
-sofa_name ='single_notch'
+# sofa_name ='single_notch'
 # sofa_name ='kemar'
+sofa_name = 'pf'
 # ---- for unilateral training specify the side to flatten, None defaults to binaural training
-# ear = None
-ear = 'left'
+ear = None
+# ear = 'left'
+reverb = True
 
 # meta data
-hrir = hrtf2binsim(sofa_name, ear, overwrite=False)  # load and process HRIR
+hrir = hrtf2binsim(sofa_name, ear, reverb, overwrite=False)  # load and process HRIR
 slab.set_default_samplerate(hrir.samplerate)
 hrir_dir = Path.cwd() / 'data' / 'hrtf' / 'wav' / hrir.name
 sequence = Subject(id).last_sequence  # last localization sequence

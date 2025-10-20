@@ -21,7 +21,6 @@ def hrir2wav(hrir):
         sound.resample(hrir.samplerate).write(wav_path / hrir.name / 'sounds' / file.name)
     write_lr_filter(hrir, drr=20)  # write reverb, larger drr results in weaker reverb
     # write_hp_filter(mute_ear='left')
-    write_settings(hrir)  # write pybinsim settings
     return hrir
 
 def write_ds_filter(hrir):
@@ -45,7 +44,6 @@ def write_ds_filter(hrir):
                        f' {fname}\n')
 
 def write_lr_filter(hrir, drr=20):
-    global reverb_n_samples
     logging.info(f'Writing reverb wav file (DRR = {drr} dB)')
     fname = wav_path / hrir.name / 'sounds' / 'reverb_IR.wav'
     reverb = slab.Sound(wav_path / hrir.name / 'sounds' / 'reverb.wav').data  # load reverb ir
@@ -75,73 +73,6 @@ def write_lr_filter(hrir, drr=20):
                    f' 0 0 0'  # Value 13 - 15: custom values[a, b, c]
                    f' {fname}\n')
     plot_reverb(hrir, reverb)
-
-def write_settings(hrir):
-    # write settings.txt for training and testing:
-    logging.info(f'Writing {hrir.name}_settings.txt')
-    filename = f'{hrir.name}_training_settings.txt'
-    with open(wav_path / hrir.name / filename, 'w') as file:
-        file.write(
-            f'soundfile {str(wav_path / hrir.name / "sounds" / "noise_pulse.wav")}\n'
-            f'blockSize {int(hrir[0].n_taps / 2)}\n'  # low values reduce delay but increase cpu load.
-            f'ds_filterSize {hrir[0].n_samples}\n'
-            f'early_filterSize {hrir[0].n_samples}\n'
-            f'late_filterSize {reverb_n_samples}\n'  # reverb filter
-            f'headphone_filterSize {hrir[0].n_samples}\n'  # headphone equalizer
-            f'filterSource[mat/wav] wav\n'
-            f'filterList {wav_path / hrir.name / f"filter_list_{hrir.name}.txt"}\n'
-            f'maxChannels 1\n'
-            f'samplingRate {int(hrir.samplerate)}\n'
-            f'enableCrossfading True\n'
-            f'loudnessFactor 0\n'
-            f'loopSound False\n'
-            # convolver settings 
-            f'torchConvolution[cpu/cuda] cpu\n'
-            f'torchStorage[cpu/cuda] cpu\n'
-            f'pauseConvolution False\n'
-            f'pauseAudioPlayback False\n'
-            f'useHeadphoneFilter False\n'
-            f'ds_convolverActive True\n'
-            f'early_convolverActive False\n'
-            f'late_convolverActive True\n'
-            # osc receiver settings
-            f'recv_type osc\n'
-            f'recv_protocol udp\n'
-            f'recv_ip 127.0.0.1\n'
-            f'recv_port 10000\n'
-            )
-
-    filename = f'{hrir.name}_test_settings.txt'
-    with open(wav_path / hrir.name / filename, 'w') as file:
-        file.write(
-        f'soundfile {str(wav_path / hrir.name / "sounds" / "localization.wav")}\n'
-        f'blockSize {int(hrir[0].n_taps / 2)}\n'  # low values reduce delay but increase cpu load.
-        f'ds_filterSize {hrir[0].n_samples}\n'
-        f'early_filterSize {hrir[0].n_samples}\n'
-        f'late_filterSize {reverb_n_samples}\n'  # reverb filter
-        f'headphone_filterSize {hrir[0].n_samples}\n'  # headphone equalizer
-        f'filterSource[mat/wav] wav\n'
-        f'filterList {wav_path / hrir.name / f"filter_list_{hrir.name}.txt"}\n'
-        f'maxChannels 1\n'
-        f'samplingRate {int(hrir.samplerate)}\n'
-        f'enableCrossfading True\n'
-        f'loudnessFactor 0\n'
-        f'loopSound False\n'
-        # convolver settings 
-        f'torchConvolution[cpu/cuda] cpu\n'
-        f'torchStorage[cpu/cuda] cpu\n'
-        f'pauseConvolution False\n'
-        f'pauseAudioPlayback False\n'
-        f'useHeadphoneFilter False\n'
-        f'ds_convolverActive True\n'
-        f'early_convolverActive False\n'
-        f'late_convolverActive True\n'
-        # osc receiver settings
-        f'recv_type osc\n'
-        f'recv_protocol udp\n'
-        f'recv_ip 127.0.0.1\n'
-        f'recv_port 10000\n'
-        )
 
 def write_hp_filter(hrir, mute_ear=None):
     """

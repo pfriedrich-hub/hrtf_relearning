@@ -18,18 +18,17 @@ id = 'PF'
 subject = Subject(id)
 
 # --- HRTF settings ----
-
-# --- select sofa file
-sofa_name ='KU100'
-# sofa_name ='single_notch'
-# sofa_name ='kemar'
+# sofa_name ='KU100'
+sofa_name ='single_notch'
+# sofa_name = 'pf'
 
 # ---- specify ear for unilateral testing, None defaults to binaural testing
-# ear = None
-ear = 'left'
+ear = None
+# ear = 'left'
+reverb = True
 
 # --- load and process HRIR
-hrir = hrtf2binsim(sofa_name, ear, overwrite=False)
+hrir = hrtf2binsim(sofa_name, ear, reverb, overwrite=False)
 slab.set_default_samplerate(hrir.samplerate)
 hrir_dir = Path.cwd() / 'data' / 'hrtf' / 'wav' / hrir.name
 
@@ -40,10 +39,12 @@ class Localization:
     """
     def __init__(self, subject, hrir):
         # make trial sequence and write to subject
-        self.settings = {'azimuth_range': (-35, 0), 'elevation_range': (-35, 35), 'sector_size': (7, 14),
-                         'targets_per_sector': 3, 'min_distance': 15, 'gain': .5}
+        # self.settings = {'azimuth_range': (-35, 0), 'elevation_range': (-35, 35), 'sector_size': (7, 14),
+        #                  'targets_per_sector': 3, 'min_distance': 15, 'gain': .5}
         # self.settings = {'azimuth_range': (-35, 35), 'elevation_range': (-3, 3), 'sector_size': (14, 6),
-        #                  'targets_per_sector': 3, 'min_distance': 20, 'gain': .5}
+        #                  'targets_per_sector': 3, 'min_distance': 20, 'gain': .5}  # azimuth test
+        self.settings = {'azimuth_range': (-40, 40), 'elevation_range': (-30, 30), 'sector_size': (20, 20),
+                         'targets_per_sector': 3, 'min_distance': 20, 'gain': .5}  # ff HRTF
         self.subject = subject
         self.filename = subject.id + f'_{hrir.name}' + '_loc_' + date
 
@@ -77,7 +78,7 @@ class Localization:
             self.motion_sensor.calibrate()
             self.play_trial()  # generate and play stim, get pose response
             self.write()  # write to file
-        self.sequence.response_errors = target_p(sequence, show=False)
+        self.sequence.response_errors = target_p(self.sequence, show=False)
         self.write()
         logging.info('Finished.')
         return

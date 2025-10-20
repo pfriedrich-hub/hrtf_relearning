@@ -1,6 +1,17 @@
 import numpy
 from scipy.signal import sosfiltfilt, butter
 
+
+"""
+from fabian:
+import pyfar as pf # pyfar v0.7.2
+import numpy as np
+
+sg = pf.samplings.sph_gaussian(sh_order=7)
+azimuth = np.sort(np.unique(np.round(sg.azimuth / np.pi * 180, 1)))
+print(azimuth)
+"""
+
 def to_log_mag(hrtf_complex):
     return numpy.log(numpy.maximum(numpy.abs(hrtf_complex), 1e-12))
 

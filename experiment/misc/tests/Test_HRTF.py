@@ -146,7 +146,7 @@ def play_session():
 
         while game_timer < settings['game_time']:
             # use your probabilistic targeting (depends on last localization sequence)
-            set_target_probabilistic(target, settings, sequence, hrir)
+            set_target_probabilistic(target, settings, sequence=None, hrir=hrir)
             game_timer, score = play_trial(
                 distance, pulse_interval, pulse_state, sensor_state,
                 settings['trial_time'], settings['game_time'], game_timer,

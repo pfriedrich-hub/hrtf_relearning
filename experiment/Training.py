@@ -272,7 +272,7 @@ def plot_current_tf(filter_idx_shared, redraw_interval_s=0.05, kind='TF'):
 # ------- helpers ----- #
 
 def play_sound(osc_client, soundfile=None, duration=None, sleep=False):
-    """ serves as a wrapper and passes the soundfile to pybinsim """  # todo clunky (might cause the lag?)
+    """ serves as a wrapper and passes the soundfile to pybinsim """
     if duration:
         if soundfile:  # read a soundfile and crop to pulse duration
             sound = slab.Sound.read(hrir_dir / 'sounds' / soundfile)

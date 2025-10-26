@@ -25,11 +25,6 @@ subject = Subject(id)
 # --- select sofa file
 # sofa_name ='KU100_HRIR_L2702'
 sofa_name ='single_notch'
-#todo figure out why different azimuth sounds like different elevation filters for single notch sofa
-# its not in the original hrir, as apply method results in equal spectra for different az
-# its not the late reverb (disabled it and still sounds different on diff azimuths
-# its not the head tracking (disabled it and still the same)
-# its not slight elevation shifts, keep elevation at 0 and still the same effect
 
 # sofa_name ='kemar'
 
@@ -164,8 +159,7 @@ if __name__ == "__main__":
     sequence = subject.localization[loc_test.filename]
     plot_localization(sequence, report_stats=['elevation', 'azimuth'])
 
-    #todo make sequence from hrir sources
-    #todo add target p
+
 #
 # for i in range(-40, 40, 10):
 #     noise = slab.Sound.pinknoise(duration=0.025, level=90)

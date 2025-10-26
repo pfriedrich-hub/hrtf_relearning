@@ -206,7 +206,7 @@ def plot_localization(sequence, report_stats=['elevation', 'azimuth'], filepath=
             (targets[:, 1] >= el_min) & (targets[:, 1] < el_max))[0]
         if len(in_sector) == 0:
             continue
-        # for each sector, calculate mean vector across target-response pairs
+        # for each sector, calculate mean vector across target-response pairs #todo test this
         response_shift = responses[in_sector] - targets[in_sector]
         mean_shift = numpy.mean(response_shift, axis=0)
         representative_response = center + mean_shift

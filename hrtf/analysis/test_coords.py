@@ -12,6 +12,9 @@ hrir = slab.HRTF(sofa_path / 'pf_just_itd.sofa')
 
 # compute itd / ild of all filters on the horizontal plane
 src_idx = hrir.cone_sources(0, True, 'elevation', .01)
+# sound = slab.Binaural.pinknoise(samplerate=hrir.samplerate)
+sound = slab.Binaural.tone(samplerate=hrir.samplerate, frequency=500, duration=60.0)
+_s = sound.itd(30)
 sound = slab.Binaural.pinknoise(samplerate=hrir.samplerate)
 sound = slab.Binaural.tone(samplerate=hrir.samplerate, frequency=1500, level=65)
 

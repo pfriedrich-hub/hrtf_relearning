@@ -125,4 +125,3 @@ if __name__ == "__main__":
     plot_localization(sequence, report_stats=['elevation', 'azimuth'],
                       filepath=data_dir / 'results' / 'plot' / subject.id)
 
-    #todo add target p

@@ -60,7 +60,7 @@ def add_ils(hrtf, template_hrtf=None, band_stop=(6e3, 11e3)):
         tf_coefs.data += h
         out[source_idx].data = tf_coefs
 
-    return hrtf  # todo see if this is necessary for azimuth percept
+    return hrtf
 
 # deprecated
 # def add_ild(hrtf, template_hrtf=None, band_stop=(6e3, 11e3)):
@@ -72,7 +72,6 @@ def add_ils(hrtf, template_hrtf=None, band_stop=(6e3, 11e3)):
 #         if not template_hrtf:
 #             template_hrtf = slab.HRTF.kemar()  # load KEMAR as default
 #         for azimuth in numpy.unique(hrtf.sources.vertical_polar[:, 0]):
-#             # todo workaround: convert to psychophys. convention to use with kemar
 #             azimuth_converted = copy.deepcopy(azimuth)
 #             if azimuth > 180:
 #                 azimuth_converted = azimuth - 360
@@ -95,7 +94,6 @@ def add_ils(hrtf, template_hrtf=None, band_stop=(6e3, 11e3)):
 #             tf_data[:, numpy.where(w > band_stop[1])[0][:20]] *= multiplier
 #             hrtf_idx = hrtf.get_source_idx(azimuth=azimuth_converted).tolist()
 #             for id in hrtf_idx:
-#                 # todo workaround: mirror az to use with kemar
 #                 hrtf[id].data[:, 0] += tf_data[1]
 #                 hrtf[id].data[:, 1] += tf_data[0]
 #         return hrtf

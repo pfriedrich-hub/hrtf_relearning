@@ -16,7 +16,7 @@ from experiment.misc.helpers import meta_motion
 logging.getLogger().setLevel('INFO')
 
 # --- Subject ID ----
-id = 'PF'
+id = 'KM'
 # --- sofa file
 sofa_name ='KU100'
 # sofa_name ='single_notch'
@@ -41,15 +41,15 @@ soundfile = None
 # soundfile='uso_225ms_9_.wav'
 # --- set training area, target size and time
 settings = dict(
-    target_size = 3,        # size of target area in degrees
+    target_size = 5,        # size of target area in degrees
     target_time = .5,        # required time on target to score
     az_range = sequence.settings['azimuth_range'],   # target azimuth range
     ele_range = sequence.settings['elevation_range'],  # target elevation range
     # az_range = (-35, 0),   # target azimuth range
     # ele_range = (-35, 35),  # target elevation range
     min_dist = 30,          # minimal distance between successive targets in degrees
-    game_time  = 180,       # time per session
-    trial_time = 15,        # time per trial
+    game_time  = 90,       # time per session
+    trial_time = 10,        # time per trial
     gain = .2               # loudness
     )
 show = True  # whether to show transfer functions during training
@@ -91,7 +91,7 @@ def play_session(): #, game_time, trial_time, target_size, target_time, az_range
             try:
                 set_target_probabilistic(target, settings, sequence, hrir)
             except AttributeError:
-                logging.info('Could not load target probabilities')
+                logging.debug('Could not load target probabilities')
             game_timer, score = play_trial(distance, pulse_interval, pulse_state, sensor_state,
                        settings['trial_time'], settings['game_time'], game_timer,
                         settings['target_size'], settings['target_time'])  # play trial and update game timer

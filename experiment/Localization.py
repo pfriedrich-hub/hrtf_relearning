@@ -15,11 +15,11 @@ logging.getLogger().setLevel('INFO')
 data_dir = Path.cwd() / 'data'
 
 # --- Load Subject ----
-id = 'PF'
+id = 'KM'
 subject = Subject(id)
 
 # --- HRTF settings ----
-sofa_name ='KU100'
+sofa_name='KU100'
 # sofa_name ='single_notch'
 # sofa_name = 'pf_just_itd'
 # sofa_name = 'pf'

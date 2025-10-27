@@ -1,5 +1,5 @@
-import matplotlib
-matplotlib.use('Qt5Agg')
+# import matplotlib
+# matplotlib.use('Qt5Agg')
 import matplotlib.pyplot as plt
 import numpy
 import slab
@@ -18,13 +18,14 @@ logging.getLogger().setLevel('INFO')
 # --- Subject ID ----
 id = 'PF'
 # --- sofa file
-# sofa_name ='KU100'
+sofa_name ='KU100'
 # sofa_name ='single_notch'
 # sofa_name ='kemar'
-sofa_name = 'pf'
+# sofa_name = 'pf'
+
 # ---- for unilateral training specify the side to flatten, None defaults to binaural training
-ear = None
-# ear = 'left'
+# ear = None
+ear = 'left'
 reverb = True
 
 # meta data
@@ -87,7 +88,10 @@ def play_session(): #, game_time, trial_time, target_size, target_time, az_range
         scores = []
         game_timer = 0  # set game timer
         while game_timer < settings['game_time']:        # play trials until game time is up
-            set_target_probabilistic(target, settings, sequence, hrir)
+            try:
+                set_target_probabilistic(target, settings, sequence, hrir)
+            except AttributeError:
+                logging.info('Could not load target probabilities')
             game_timer, score = play_trial(distance, pulse_interval, pulse_state, sensor_state,
                        settings['trial_time'], settings['game_time'], game_timer,
                         settings['target_size'], settings['target_time'])  # play trial and update game timer

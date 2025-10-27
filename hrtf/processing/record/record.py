@@ -1,7 +1,4 @@
-# todo clean up
-
-
-# record from in-ear microphones
+"""record hrir from in-ear microphones"""
 import numpy
 from pathlib import Path
 import slab
@@ -9,20 +6,22 @@ import freefield
 import datetime
 import matplotlib
 import matplotlib.pyplot as plt
-matplotlib.use("Qt5Agg")
 import pyfar as pf
 import time
 import os
 import pickle
-
 date = datetime.datetime.now()
 from copy import deepcopy
-fs = 48828  # 97656, 195312.5
+fs = 48828
 slab.set_default_samplerate(fs)
+from experiment.Subject import Subject
+data_dir = Path.cwd() / 'data' / 'hrtf'
 
-conditions = "mems_long_full_15_10" # how high is the gain, how long is the sweep
-path = f"{conditions}.pkl"
-with open(path, 'rb') as dat:
+id = 'PF'
+subject = Subject(id)
+
+# load reference recording
+with open(data_dir / 'rec' / 'reference' / 'mems_long_full_15_10.pkl', 'rb') as dat:
     mics = pickle.load(dat)
 
 # file settings

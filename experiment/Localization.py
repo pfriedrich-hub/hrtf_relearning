@@ -1,13 +1,14 @@
+from analysis.localization import *  # also set mpl backend
 import multiprocessing as mp
 import datetime
 import time
 from pathlib import Path
 from pythonosc import udp_client
 from experiment.misc.helpers import meta_motion
-from analysis.localization import *
 from experiment.misc.helpers.make_sequence import *
 from hrtf.processing.hrtf2binsim import hrtf2binsim
 from experiment.Subject import Subject
+from pynput import keyboard
 date = datetime.datetime.now()
 date = f'{date.strftime("%d")}.{date.strftime("%m")}_{date.strftime("%H")}.{date.strftime("%M")}'
 logging.getLogger().setLevel('INFO')
@@ -18,18 +19,18 @@ id = 'PF'
 subject = Subject(id)
 
 # --- HRTF settings ----
-# sofa_name ='KU100'
-sofa_name ='single_notch'
+sofa_name ='KU100'
+# sofa_name ='single_notch'
+# sofa_name = 'pf_just_itd'
 # sofa_name = 'pf'
 
 # ---- specify ear for unilateral testing, None defaults to binaural testing
-ear = None
+ear = 'left'
 # ear = 'left'
 reverb = True
 
 # --- load and process HRIR
 hrir = hrtf2binsim(sofa_name, ear, reverb, overwrite=False)
-slab.set_default_samplerate(hrir.samplerate)
 hrir_dir = Path.cwd() / 'data' / 'hrtf' / 'wav' / hrir.name
 
 class Localization:
@@ -39,19 +40,19 @@ class Localization:
     """
     def __init__(self, subject, hrir):
         # make trial sequence and write to subject
-        # self.settings = {'azimuth_range': (-35, 0), 'elevation_range': (-35, 35), 'sector_size': (7, 14),
-        #                  'targets_per_sector': 3, 'min_distance': 15, 'gain': .5}
+        self.settings = {'azimuth_range': (-35, 0), 'elevation_range': (-35, 35), 'sector_size': (7, 14),
+                         'targets_per_sector': 3, 'min_distance': 15, 'gain': .5}
         # self.settings = {'azimuth_range': (-35, 35), 'elevation_range': (-3, 3), 'sector_size': (14, 6),
         #                  'targets_per_sector': 3, 'min_distance': 20, 'gain': .5}  # azimuth test
-        self.settings = {'azimuth_range': (-40, 40), 'elevation_range': (-30, 30), 'sector_size': (20, 20),
-                         'targets_per_sector': 3, 'min_distance': 20, 'gain': .5}  # ff HRTF
+        # self.settings = {'azimuth_range': (-40, 40), 'elevation_range': (-30, 30), 'sector_size': (20, 20),
+        #                  'targets_per_sector': 3, 'min_distance': 20, 'gain': .8}  # ff HRTF
         self.subject = subject
         self.filename = subject.id + f'_{hrir.name}' + '_loc_' + date
 
         # metadata
         slab.set_default_samplerate(hrir.samplerate)
         self.hrir_sources = hrir.sources.vertical_polar
-        self.stim_path = data_dir / 'hrtf' / 'wav' / hrir.name / 'sounds' / 'localization.wav'
+        self.sound_path = data_dir / 'hrtf' / 'wav' / hrir.name / 'sounds'
         self.target = None
 
         # init pybinsim
@@ -73,8 +74,9 @@ class Localization:
         # self.sequence = make_sequence(self.settings)
         self.sequence.name = self.filename
         self.write()
+        self.play_sound('beep')
         for self.target in self.sequence:
-            input('Look at the Center and press Enter')  # calibrate sensor
+            self.wait_for_button('Look at the Center and press Enter')
             self.motion_sensor.calibrate()
             self.play_trial()  # generate and play stim, get pose response
             self.write()  # write to file
@@ -86,19 +88,19 @@ class Localization:
     def play_trial(self):
         # generate stimulus
         self.stim = self.make_stim()  # generate a new stim each trial
-        self.stim.write(self.stim_path)
+        self.stim.write(self.sound_path / 'localization.wav')
         # play stim
-        self.play_sound()
+        self.play_stimulus()
         time.sleep(self.stim.duration)
         # get response
-        input('Aim at Sound and press Enter to confirm\n')
+        self.wait_for_button()
         response = self.motion_sensor.get_pose()
         progress = self.sequence.this_n / len(self.sequence.conditions) * 100
         logging.info(f'{progress:.1f}% | Target: {self.target} | Response: {response}')
         time.sleep(.25)
         self.subject.localization[self.filename].add_response(numpy.array((response, self.target)))
 
-    def play_sound(self):
+    def play_stimulus(self):
         pose = self.motion_sensor.get_pose()
         relative_coords = self.target - pose  # mimic freefield setup
         # find the closest filter idx and send to pybinsim
@@ -112,8 +114,17 @@ class Localization:
         logging.debug(f'Set filter for {self.hrir_sources[filter_idx]}')
         # play
         self.osc_client_2.send_message('/pyBinSimLoudness', self.settings['gain'])
-        self.osc_client_2.send_message('/pyBinSimFile', str(self.stim_path))
+        self.osc_client_2.send_message('/pyBinSimFile', str(self.sound_path / 'localization.wav'))
         time.sleep(.5)
+        self.osc_client_2.send_message('/pyBinSimLoudness', 0)
+
+    def play_sound(self, kind):
+        logging.info(f'Playing {kind} sound')
+        name = f'{kind}.wav'
+        duration = slab.Sound(self.sound_path / name).duration
+        self.osc_client_2.send_message('/pyBinSimLoudness', self.settings['gain'])
+        self.osc_client_2.send_message('/pyBinSimFile', str(self.sound_path / name))
+        time.sleep(duration)
         self.osc_client_2.send_message('/pyBinSimLoudness', 0)
 
     @staticmethod
@@ -127,7 +138,8 @@ class Localization:
         binsim = pybinsim.BinSim(data_dir / 'hrtf' / 'wav' / hrir_name / f'{hrir_name}_test_settings.txt')
         binsim.stream_start()  # run binsim loop
 
-    def init_sensor(self):
+    @staticmethod
+    def init_sensor():
         # init motion sensor
         device = meta_motion.get_device()  # Ensure this function initializes the hardware correctly
         state = meta_motion.State(device)
@@ -135,7 +147,6 @@ class Localization:
 
     @staticmethod
     def make_stim():
-        # static 225ms noise interrupted
         stim = slab.Sound.pinknoise(duration=0.225, level=90).ramp(when='both', duration=0.01)
         n_silent = (numpy.arange(25,221,25).reshape(4,2) * stim.samplerate / 1000).astype(int)
         ramp_len = int(.005 * stim.samplerate)
@@ -148,9 +159,24 @@ class Localization:
             # Apply ramps at the edges of the silent region
             stim.data[start - half_len: start + half_len] *= (1 - ramp_up)
             stim.data[end - half_len: end + half_len] *= (1 - ramp_down)
-            # Silence the center completely
+            # Silence the center
             stim.data[start + half_len: end - half_len] = 0
+        # noise = slab.Sound.pinknoise(duration=0.025, level=90)
+        # noise = noise.ramp(when='both', duration=0.01)
+        # silence = slab.Sound.silence(duration=0.025)
+        # stim = slab.Sound.sequence(noise, silence, noise, silence, noise,
+        #                            silence, noise, silence, noise)
+        stim.ramp('both', 0.01)
         return stim
+
+    @staticmethod
+    def wait_for_button(msg=None):
+        if msg: print(msg)
+        def on_press(key):
+            if key == keyboard.Key.enter:
+                listener.stop()  # stop listening once Enter is pressed
+        with keyboard.Listener(on_press=on_press) as listener:
+            listener.join()  # block until listener.stop() is called
 
 if __name__ == "__main__":
     loc_test = Localization(subject, hrir)

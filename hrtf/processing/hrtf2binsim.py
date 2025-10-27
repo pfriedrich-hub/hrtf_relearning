@@ -10,6 +10,7 @@ data_dir = Path.cwd() / 'data' / 'hrtf'
 def hrtf2binsim(sofa_name, ear=None, reverb=True, overwrite=False):
     hrir = slab.HRTF(data_dir / 'sofa' / f'{sofa_name}.sofa')  # read original sofa file
     hrir.name = sofa_name
+    slab.set_default_samplerate(hrir.samplerate)
     # convert to IR if necessary
     if hrir.datatype != 'FIR':
         hrir = hrtf2hrir(hrir)

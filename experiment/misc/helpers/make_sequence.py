@@ -241,14 +241,8 @@ def plot_sequence_targets(sequence, title="Recorded targets over sectors"):
 
     # --- extract target coordinates (2nd row) from sequence.data ---
     points = []
-    for entry in sequence.data:
-        arr = entry
-        while isinstance(arr, (list, tuple)) and len(arr) == 1:
-            arr = arr[0]
-        arr = numpy.asarray(arr)
-        if arr.ndim != 2 or arr.shape[1] != 2:
-            raise ValueError(f"Unexpected shape in sequence.data entry: {arr.shape}")
-        points.append(arr[1])  # target row
+    for entry in sequence.conditions:
+        points.append(entry)  # target row
     points = numpy.asarray(points, dtype=float)
     points[:, 0] = (points[:, 0] + 180) % 360 - 180  # wrap azimuth
 

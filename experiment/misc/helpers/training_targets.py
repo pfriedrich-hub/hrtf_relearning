@@ -93,10 +93,16 @@ def set_target_probabilistic(target, settings, sequence, hrir, max_sector_hops=1
     """
     min_dist = settings['min_dist']
     if not sequence:  # return default if no sequence was detected
+        logging.warning('Could not load target probabilities. Returning random target.')
         return set_target(target, settings, hrir)
 
     sources = hrir.sources.vertical_polar
-    sector_centers = sequence.response_errors[:, :2]
+    try:
+        sector_centers = sequence.response_errors[:, :2]
+    except AttributeError:
+        logging.warning('Could not load target probabilities. Returning random target.')
+        return set_target(target, settings, hrir)
+
     sector_size = sequence.settings['sector_size']
 
     # training ranges

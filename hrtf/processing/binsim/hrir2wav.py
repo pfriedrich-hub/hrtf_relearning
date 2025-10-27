@@ -19,7 +19,7 @@ def hrir2wav(hrir):
     for file in sound_path.glob('*.wav'): # resample sound files
         sound = slab.Sound.read(file)
         sound.resample(hrir.samplerate).write(wav_path / hrir.name / 'sounds' / file.name)
-    write_lr_filter(hrir, drr=20)  # write reverb, larger drr results in weaker reverb
+    write_lr_filter(hrir, drr=30)  # write reverb, larger drr results in weaker reverb
     # write_hp_filter(mute_ear='left')
     return hrir
 
@@ -50,7 +50,6 @@ def write_lr_filter(hrir, drr=20):
     # crop to 100 ms and multiple of block size (hrir taps / 2)
     cropped_len = int((int(hrir.samplerate * 0.1) // int(hrir[0].n_taps / 2)) * int(hrir[0].n_taps / 2))
     reverb = reverb[:cropped_len]
-    reverb_n_samples = len(reverb)
     # ramp up reverb tail starting at the max impulse response
     reverb = slab.Sound(reverb).ramp(duration=0.005, when='onset').data  # ramp reverb onset
     mean_ir_onset = int(numpy.mean(  # average onset time of the direct IR

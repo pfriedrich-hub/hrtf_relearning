@@ -1,5 +1,5 @@
 import matplotlib
-matplotlib.use('tkagg')
+# matplotlib.use('tkagg')
 import platform
 import pathlib
 if platform.system() == 'Darwin':  pathlib.WindowsPath = pathlib.PosixPath

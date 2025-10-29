@@ -15,11 +15,11 @@ logging.getLogger().setLevel('INFO')
 data_dir = Path.cwd() / 'data'
 
 # --- Load Subject ----
-id = 'KM'
+id = 'PF'
 subject = Subject(id)
 
 # --- HRTF settings ----
-sofa_name='KU100'
+sofa_name='pf_high_res_itd'
 # sofa_name ='single_notch'
 # sofa_name = 'pf_just_itd'
 # sofa_name = 'pf'
@@ -40,10 +40,10 @@ class Localization:
     """
     def __init__(self, subject, hrir):
         # make trial sequence and write to subject
-        self.settings = {'azimuth_range': (-35, 0), 'elevation_range': (-35, 35), 'sector_size': (7, 14),
-                         'targets_per_sector': 3, 'min_distance': 15, 'gain': .5}
-        # self.settings = {'azimuth_range': (-35, 35), 'elevation_range': (-3, 3), 'sector_size': (14, 6),
-        #                  'targets_per_sector': 3, 'min_distance': 20, 'gain': .5}  # azimuth test
+        # self.settings = {'azimuth_range': (-35, 0), 'elevation_range': (-35, 35), 'sector_size': (7, 14),
+        #                  'targets_per_sector': 3, 'min_distance': 15, 'gain': .5}
+        self.settings = {'azimuth_range': (-35, 35), 'elevation_range': (-50, 50), 'sector_size': (14, 20),
+                         'targets_per_sector': 3, 'min_distance': 35, 'gain': .5}  # azimuth test
         # self.settings = {'azimuth_range': (-40, 40), 'elevation_range': (-30, 30), 'sector_size': (20, 20),
         #                  'targets_per_sector': 3, 'min_distance': 20, 'gain': .8}  # ff HRTF
         self.subject = subject

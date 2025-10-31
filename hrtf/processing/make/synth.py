@@ -133,16 +133,18 @@ def linear_scaling_factor(azimuth, elevation, X1, X2, Y):
     scaling = model.predict(data.reshape(1, -1))[0]
     return float(scaling)
 
-# make
+# # make
 hrtf = make_hrtf()
 hrir = hrtf2hrir(hrtf)
 hrir = add_itd(hrir)
+hrir = add_ild(hrir)
 
-# plots
-hrtf_animation(hrtf=[hrtf], azimuth_range=(-180,180), elevation_range=(-60,60), ear='left', interval=100,
-               map='average', kind='waterfall', filename=filename+'_L', write=write, show=show, figsize=(7,5))
-hrtf_animation([hrtf], (-180,180), (-60,60), 'right', 100,
-               'average', 'waterfall', filename+'R', write, show, figsize=(7,5))
+
+# # plots
+# hrtf_animation(hrtf=[hrtf], azimuth_range=(-180,180), elevation_range=(-60,60), ear='left', interval=100,
+#                map='average', kind='waterfall', filename=filename+'_L', write=write, show=show, figsize=(7,5))
+# hrtf_animation([hrtf], (-180,180), (-60,60), 'right', 100,
+#                'average', 'waterfall', filename+'R', write, show, figsize=(7,5))
 
 # convert to hrir, add interaural differences and save to sofa
 if write:

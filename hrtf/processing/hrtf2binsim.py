@@ -19,9 +19,9 @@ def hrtf2binsim(sofa_name, ear=None, reverb=True, overwrite=False):
         hrir.name += f'_{ear}'
     if not (data_dir / 'wav' / hrir.name).exists() or overwrite: # create wav files
         # create folder structure for HRTF wav files
-        (data_dir / 'wav' / hrir.name / 'IR_data').mkdir(parents=True, exist_ok=True)
-        (data_dir / 'wav' / hrir.name / 'sounds').mkdir(exist_ok=True)
-        (data_dir / 'wav' / hrir.name / 'plot').mkdir(exist_ok=True)
+        (data_dir / 'binsim' / hrir.name / 'IR_data').mkdir(parents=True, exist_ok=True)
+        (data_dir / 'binsim' / hrir.name / 'sounds').mkdir(exist_ok=True)
+        (data_dir / 'binsim' / hrir.name / 'plot').mkdir(exist_ok=True)
         # write to wav files for pybinsim
         hrir = hrir2wav(hrir)
         plot(hrir, title=f'{hrir.name} raw')  # plot raw example IR at 90°
@@ -32,7 +32,7 @@ def write_settings(hrir, reverb):
     # write settings.txt for training and testing:
     logging.info(f'Writing {hrir.name}_settings.txt')
     filename = f'{hrir.name}_training_settings.txt'
-    wav_path = data_dir / 'wav'
+    wav_path = data_dir / 'binsim'
     reverb_n_samples = int((int(hrir.samplerate * 0.1) // int(hrir[0].n_taps / 2)) * int(hrir[0].n_taps / 2))
     with open(wav_path / hrir.name / filename, 'w') as file:
         file.write(

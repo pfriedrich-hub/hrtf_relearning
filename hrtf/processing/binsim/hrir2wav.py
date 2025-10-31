@@ -4,7 +4,7 @@ import slab
 import logging
 from pathlib import Path
 
-wav_path = Path.cwd() / 'data' / 'hrtf' / 'wav'
+wav_path = Path.cwd() / 'data' / 'hrtf' / 'binsim'
 sofa_path = Path.cwd() / 'data' / 'hrtf' / 'sofa'
 sound_path = Path.cwd() / 'data' / 'sounds'
 

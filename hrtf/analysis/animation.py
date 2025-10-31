@@ -68,7 +68,7 @@ def hrtf_animation(hrtf, azimuth_range=(-180,180), elevation_range=(-60,60), ear
     ani = animation.FuncAnimation(fig, animate, frames=len(data), interval=interval, blit=False)
     if write:
         writervideo = animation.FFMpegWriter(fps= int(1000/interval))
-        ani.save(Path.cwd() / 'data' / 'animations' / str(filename + '.mp4'), writer=writervideo)
+        ani.save(Path.cwd() / 'data' / 'plot' / 'animations' / str(filename + '.mp4'), writer=writervideo)
     if show:
         plt.show()
     else:

@@ -5,12 +5,13 @@ import slab
 import numpy
 import copy
 import scipy
+import logging
 
 def add_itd(hrir):
     """
     Add interaural time difference to HRIR (only works on IR)
     """
-    print('Adding interaural time differences for each azimuth.')
+    logging.info('Adding interaural time differences.')
     out = copy.deepcopy(hrir)
     for source_idx in range(hrir.n_sources):
         coordinates = hrir.sources.vertical_polar[source_idx]
@@ -35,15 +36,17 @@ def add_ild(hrir):
     """
     Add interaural level differences to HRIR (only works on IR)
     """
-    print('Adding interaural time differences for each azimuth.')
+    logging.info('Adding interaural level differences.')
     out = copy.deepcopy(hrir)
     ils = slab.Binaural.make_interaural_level_spectrum()
     for source_idx in range(hrir.n_sources):
         coordinates = hrir.sources.vertical_polar[source_idx]
         azimuth = ((coordinates[0] + 180) % 360) - 180  # convert to (-180, 180)
         ils_idx = numpy.argmin(abs(ils['azimuths']-azimuth))
-        levels = numpy.mean(ils['level_diffs'][:, :, ils_idx], axis=1)
-        out[source_idx].data += 10.0 ** (levels / 10.0)  # convert to linear intensity and add
+        ild_db = numpy.mean(ils['level_diffs'][:, :, ils_idx], axis=1)
+        # ild_db -= ild_db.mean()  # zero-mean → preserves ILD, keeps overall level stable
+        gains = 10.0 ** (ild_db / 20.0)  # amplitude gains
+        out[source_idx].data *= gains
     return out
 
 

@@ -21,13 +21,13 @@ subject = 'PF'
 
 # --- select sofa file
 # sofa_name ='KU100'
-# sofa_name ='single_notch'
+sofa_name ='single_notch'
 # sofa_name ='kemar'
-sofa_name = 'pf'
+# sofa_name = 'pf'
 
 # ---- specify ear for unilateral training, None defaults to binaural training
-# ear = None
-ear = 'left'
+ear = None
+# ear = 'left'
 
 # --- load and process HRIR
 hrir = hrtf2binsim(sofa_name, ear, overwrite=False)

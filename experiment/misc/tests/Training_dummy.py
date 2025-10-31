@@ -20,9 +20,10 @@ subject = 'PF'
 # --- HRTF settings ----
 
 # --- select sofa file
-sofa_name ='KU100_HRIR_L2702'
+# sofa_name ='KU100'
 # sofa_name ='single_notch'
 # sofa_name ='kemar'
+sofa_name = 'pf'
 
 # ---- specify ear for unilateral training, None defaults to binaural training
 # ear = None
@@ -41,14 +42,14 @@ soundfile = None
 
 # --- training settings
 settings = dict(
-    target_size = 5,        # size of target area in degrees
+    target_size = 3,        # size of target area in degrees
     target_time = 1,        # required time on target to score
     az_range = (-45, 45),   # target azimuth range
-    ele_range = (-1, 1),  # target elevation range
+    ele_range = (-45, 45),  # target elevation range
     min_dist = 30,          # minimal distance between successive targets in degrees
     game_time  = 180,       # time per session
     trial_time = 15,        # time per trial
-    gain = .5               # loudness
+    gain = .3               # loudness
     )
 
 

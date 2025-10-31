@@ -56,11 +56,11 @@ def write_lr_filter(hrir, drr=20):
                 [numpy.where(hrir[idx].data == (hrir[idx].data).max())[0][0] for idx in range(hrir.n_sources)]))
     reverb = numpy.concatenate((numpy.zeros((mean_ir_onset, 2)), reverb[:-mean_ir_onset]), axis=0)
     # adjust reverb level to DRR
-    ir_level = numpy.mean(
-                [20.0 * numpy.log10(numpy.sqrt(numpy.mean(numpy.square(hrir[idx].data))) / 2e-5)
-                for idx in range(hrir.n_sources)]) # get mean ir level to apply DRR
+    mean_ir_level = numpy.mean([20.0 * numpy.log10(numpy.maximum(
+        numpy.sqrt(numpy.mean(numpy.square(hrir[idx].data))), 1e-12))
+                for idx in range(hrir.n_sources)]) # get mean ir level of the impulse response in dB to apply DRR
     reverb = slab.Sound(data=reverb)
-    reverb.level = numpy.mean(ir_level) - drr
+    reverb.level = mean_ir_level - drr
     #  write reverb IR and filter list entry
     reverb.write(fname, normalise=False)
     with open(wav_path / hrir.name / f"filter_list_{hrir.name}.txt", 'a') as file:

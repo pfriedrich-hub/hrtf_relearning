@@ -4,8 +4,8 @@ import datetime
 import time
 from pathlib import Path
 from pythonosc import udp_client
-from experiment.misc.helpers import meta_motion
-from experiment.misc.helpers.make_sequence import *
+from experiment.misc import meta_motion
+from experiment.misc.make_sequence import *
 from hrtf.processing.hrtf2binsim import hrtf2binsim
 from experiment.Subject import Subject
 from pynput import keyboard
@@ -19,10 +19,10 @@ id = 'PF'
 subject = Subject(id)
 
 # --- HRTF settings ----
-sofa_name='pf_high_res_itd'
+# sofa_name='KU100'
 # sofa_name ='single_notch'
 # sofa_name = 'pf_just_itd'
-# sofa_name = 'pf'
+sofa_name = 'pf_high_res_itd'
 
 # ---- specify ear for unilateral testing, None defaults to binaural testing
 ear = 'left'
@@ -31,7 +31,7 @@ reverb = True
 
 # --- load and process HRIR
 hrir = hrtf2binsim(sofa_name, ear, reverb, overwrite=False)
-hrir_dir = Path.cwd() / 'data' / 'hrtf' / 'wav' / hrir.name
+hrir_dir = Path.cwd() / 'data' / 'hrtf' / 'binsim' / hrir.name
 
 class Localization:
     """
@@ -52,7 +52,7 @@ class Localization:
         # metadata
         slab.set_default_samplerate(hrir.samplerate)
         self.hrir_sources = hrir.sources.vertical_polar
-        self.sound_path = data_dir / 'hrtf' / 'wav' / hrir.name / 'sounds'
+        self.sound_path = data_dir / 'hrtf' / 'binsim' / hrir.name / 'sounds'
         self.target = None
 
         # init pybinsim
@@ -88,7 +88,7 @@ class Localization:
     def play_trial(self):
         # generate stimulus
         self.stim = self.make_stim()  # generate a new stim each trial
-        self.stim.write(self.sound_path / 'localization.wav')
+        self.stim.write(self.sound_path / 'localization.binsim')
         # play stim
         self.play_stimulus()
         time.sleep(self.stim.duration)
@@ -114,13 +114,13 @@ class Localization:
         logging.debug(f'Set filter for {self.hrir_sources[filter_idx]}')
         # play
         self.osc_client_2.send_message('/pyBinSimLoudness', self.settings['gain'])
-        self.osc_client_2.send_message('/pyBinSimFile', str(self.sound_path / 'localization.wav'))
+        self.osc_client_2.send_message('/pyBinSimFile', str(self.sound_path / 'localization.binsim'))
         time.sleep(.5)
         self.osc_client_2.send_message('/pyBinSimLoudness', 0)
 
     def play_sound(self, kind):
         logging.info(f'Playing {kind} sound')
-        name = f'{kind}.wav'
+        name = f'{kind}.binsim'
         duration = slab.Sound(self.sound_path / name).duration
         self.osc_client_2.send_message('/pyBinSimLoudness', self.settings['gain'])
         self.osc_client_2.send_message('/pyBinSimFile', str(self.sound_path / name))
@@ -135,7 +135,7 @@ class Localization:
     def _binsim_stream(hrir_name):
         import pybinsim
         pybinsim.logger.setLevel(logging.ERROR)
-        binsim = pybinsim.BinSim(data_dir / 'hrtf' / 'wav' / hrir_name / f'{hrir_name}_test_settings.txt')
+        binsim = pybinsim.BinSim(data_dir / 'hrtf' / 'binsim' / hrir_name / f'{hrir_name}_test_settings.txt')
         binsim.stream_start()  # run binsim loop
 
     @staticmethod

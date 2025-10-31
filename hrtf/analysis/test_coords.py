@@ -6,7 +6,7 @@ hrir = slab.HRTF(sofa_path / 'KU100.sofa')
 hrir = slab.HRTF(sofa_path / 'kemar.sofa')
 hrir = slab.HRTF(sofa_path / 'single_notch.sofa')
 hrir = slab.HRTF(sofa_path / 'pf.sofa')
-hrir = slab.HRTF(sofa_path / 'pf_just_itd.sofa')
+hrir = slab.HRTF(sofa_path / 'pf_itd.sofa')
 
 
 

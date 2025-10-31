@@ -21,13 +21,13 @@ def localization_test(subject_id, data_dir, condition, repetitions):
         freefield.initialize('dome', default='play_rec', sensor_tracking=True)
     freefield.load_equalization(Path.cwd() / 'data' / 'calibration' / 'calibration_dome_23.05')
     # load sounds
-    bell = slab.Sound.read(Path.cwd() / 'data' / 'sounds' / 'bell.wav')
+    bell = slab.Sound.read(Path.cwd() / 'data' / 'sounds' / 'bell.binsim')
     bell.level = 75
     tone = slab.Sound.tone(frequency=1000, duration=0.25, level=70)
     uso_dir = Path.cwd() / 'data' / 'sounds' / 'uso'
     uso_list = []
     for file_name in list(uso_dir.iterdir()):
-        if file_name.is_file() and file_name.suffix == '.wav':
+        if file_name.is_file() and file_name.suffix == '.binsim':
             uso_list.append(slab.Sound.read(file_name))
     # read list of speaker locations
     table_file = freefield.DIR / 'data' / 'tables' / Path(f'speakertable_dome.txt')

@@ -1,10 +1,11 @@
-**/legacy/MSc/data/experiment
-**/legacy/MSc/data/pilot
-**/legacy/MSc/data/sounds
-**/legacy/JASA_revision/zotero_data
+**/data/hrtf/binsim
+**/data/hrtf/rec/reference/mems_long_full_15_10.pkl
 
 **misc.xml
 **/hrtf_relearning.iml
 **/E1CD49190819.json
-/misc.xml
-**/data/hrtf/wav/
+
+**/legacy/MSc/data/experiment
+**/legacy/MSc/data/pilot
+**/legacy/MSc/data/sounds
+**/legacy/JASA_revision/zotero_data

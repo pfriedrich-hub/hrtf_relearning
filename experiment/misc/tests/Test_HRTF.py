@@ -14,8 +14,8 @@ from pythonosc import udp_client
 # your project imports
 from experiment.Subject import Subject
 from hrtf.processing.hrtf2binsim import hrtf2binsim
-from experiment.misc.helpers.training_targets import set_target_probabilistic
-from experiment.misc.helpers import meta_motion
+from experiment.misc.training_targets import set_target_probabilistic
+from experiment.misc import meta_motion
 
 logging.getLogger().setLevel('INFO')
 

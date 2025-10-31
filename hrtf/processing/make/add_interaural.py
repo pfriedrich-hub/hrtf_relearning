@@ -1,7 +1,6 @@
 import matplotlib
 matplotlib.use('Qt5Agg')
 from matplotlib import pyplot as plt
-
 import slab
 import numpy
 import copy
@@ -32,35 +31,52 @@ def add_itd(hrir):
         out[source_idx].data = numpy.array((fir_coefs_left, fir_coefs_right)).T
     return out
 
-def add_ils(hrtf, template_hrtf=None, band_stop=(6e3, 11e3)):
+def add_ild(hrir):
     """
-    Get a low-res version of a DTF (at 0° az and 0° elevation) from a recorded HRTF to externalize a synthetic HRTF
-    Takes DTFs of the left hemisphere and mirror for the right hemisphere.
+    Add interaural level differences to HRIR (only works on IR)
     """
-    print('Adding interaural level spectrum for each azimuth.')
-    n_bins = hrtf[0].n_samples
-    # if not template_hrtf:
-    #     template_hrtf = slab.HRTF.kemar()  # load Kemar as default
+    print('Adding interaural time differences for each azimuth.')
+    out = copy.deepcopy(hrir)
+    ils = slab.Binaural.make_interaural_level_spectrum()
+    for source_idx in range(hrir.n_sources):
+        coordinates = hrir.sources.vertical_polar[source_idx]
+        azimuth = ((coordinates[0] + 180) % 360) - 180  # convert to (-180, 180)
+        ils_idx = numpy.argmin(abs(ils['azimuths']-azimuth))
+        levels = numpy.mean(ils['level_diffs'][:, :, ils_idx], axis=1)
+        out[source_idx].data += 10.0 ** (levels / 10.0)  # convert to linear intensity and add
+    return out
 
-    azimuths = numpy.unique(hrtf.sources.vertical_polar[:,0])
 
-    template_dtf_idx = template_hrtf.get_source_idx(azimuth=azimuth, elevation=0)[0]
-    w, h = template_hrtf[template_dtf_idx].tf(n_bins=12, show=False)  # get low-res frequency response of HRIR
-    h = scipy.signal.resample(h, n_bins, axis=0)  # resample to HRTF samplerate
-    h = 10 ** (h / 20) # convert dB to linear values
-
-    out = copy.deepcopy(hrtf)
-    for source_idx in range(hrtf.n_sources):
-        coordinates = hrtf.sources.vertical_polar[source_idx]
-        template_dtf_idx = template_hrtf.get_source_idx(azimuth=coordinates[0], elevation=0)[0]
-        w, h = template_hrtf[template_dtf_idx].tf(n_bins=12, show=False)  # get low-res frequency response of HRIR
-        h = scipy.signal.resample(h, n_bins, axis=0)  # resample to HRTF samplerate
-        h = 10 ** (h / 20)  # convert dB to linear values
-        tf_coefs = hrtf[source_idx].data
-        tf_coefs.data += h
-        out[source_idx].data = tf_coefs
-
-    return hrtf
+# work in progress
+# def add_ils(hrtf, template_hrtf=None, band_stop=(6e3, 11e3)):
+#     """
+#     Get a low-res version of a DTF (at 0° az and 0° elevation) from a recorded HRTF to externalize a synthetic HRTF
+#     Takes DTFs of the left hemisphere and mirror for the right hemisphere.
+#     """
+#     print('Adding interaural level spectrum for each azimuth.')
+#     n_bins = hrtf[0].n_samples
+#     # if not template_hrtf:
+#     #     template_hrtf = slab.HRTF.kemar()  # load Kemar as default
+#
+#     azimuths = numpy.unique(hrtf.sources.vertical_polar[:,0])
+#
+#     template_dtf_idx = template_hrtf.get_source_idx(azimuth=azimuth, elevation=0)[0]
+#     w, h = template_hrtf[template_dtf_idx].tf(n_bins=12, show=False)  # get low-res frequency response of HRIR
+#     h = scipy.signal.resample(h, n_bins, axis=0)  # resample to HRTF samplerate
+#     h = 10 ** (h / 20) # convert dB to linear values
+#
+#     out = copy.deepcopy(hrtf)
+#     for source_idx in range(hrtf.n_sources):
+#         coordinates = hrtf.sources.vertical_polar[source_idx]
+#         template_dtf_idx = template_hrtf.get_source_idx(azimuth=coordinates[0], elevation=0)[0]
+#         w, h = template_hrtf[template_dtf_idx].tf(n_bins=12, show=False)  # get low-res frequency response of HRIR
+#         h = scipy.signal.resample(h, n_bins, axis=0)  # resample to HRTF samplerate
+#         h = 10 ** (h / 20)  # convert dB to linear values
+#         tf_coefs = hrtf[source_idx].data
+#         tf_coefs.data += h
+#         out[source_idx].data = tf_coefs
+#
+#     return hrtf
 
 # deprecated
 # def add_ild(hrtf, template_hrtf=None, band_stop=(6e3, 11e3)):

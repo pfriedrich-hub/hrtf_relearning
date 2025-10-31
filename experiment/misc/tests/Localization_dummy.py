@@ -1,9 +1,9 @@
 import datetime
 import time
 from pathlib import Path
-from experiment.misc.helpers import meta_motion
+from experiment.misc import meta_motion
 from analysis.localization import *
-from experiment.misc.helpers.make_sequence import *
+from experiment.misc.make_sequence import *
 from hrtf.processing.hrtf2binsim import hrtf2binsim
 from experiment.Subject import Subject
 date = datetime.datetime.now()
@@ -32,7 +32,7 @@ ear = None
 # --- load and process HRIR
 hrir = hrtf2binsim(sofa_name, ear, overwrite=False)
 slab.set_default_samplerate(hrir.samplerate)
-hrir_dir = Path.cwd() / 'data' / 'hrtf' / 'wav' / hrir.name
+hrir_dir = Path.cwd() / 'data' / 'hrtf' / 'binsim' / hrir.name
 
 class Localization:
     """

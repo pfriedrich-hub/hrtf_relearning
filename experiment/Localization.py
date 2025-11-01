@@ -19,10 +19,10 @@ id = 'PF'
 subject = Subject(id)
 
 # --- HRTF settings ----
-# sofa_name='KU100'
-# sofa_name ='single_notch'
-# sofa_name = 'pf_just_itd'
-sofa_name = 'pf_high_res_itd'
+# hrir='KU100'
+# hrir ='single_notch'
+# hrir = 'pf_just_itd'
+hrir = 'pf_high_res_itd'
 
 # ---- specify ear for unilateral testing, None defaults to binaural testing
 ear = 'left'
@@ -30,7 +30,7 @@ ear = 'left'
 reverb = True
 
 # --- load and process HRIR
-hrir = hrtf2binsim(sofa_name, ear, reverb, overwrite=False)
+hrir = hrtf2binsim(hrir, ear, reverb, overwrite=False)
 hrir_dir = Path.cwd() / 'data' / 'hrtf' / 'binsim' / hrir.name
 
 class Localization:

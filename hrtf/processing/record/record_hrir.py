@@ -1,7 +1,6 @@
 from hrtf.processing.record.in_ear_rec import *
 from hrtf.processing.record.rec2ir import *
 from hrtf.processing.make.add_interaural import *
-import pyfar
 # global parameters
 fs = 48828  # 97656, 195312.5
 slab.set_default_samplerate(fs)

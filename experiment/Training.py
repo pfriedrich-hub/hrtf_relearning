@@ -16,20 +16,20 @@ from experiment.misc import meta_motion
 logging.getLogger().setLevel('INFO')
 
 # --- Subject ID ----
-id = 'KM'
+id = 'PF'
 # --- sofa file
-sofa_name ='KU100'
-# sofa_name ='single_notch'
-# sofa_name ='kemar'
-# sofa_name = 'pf'
+# hrir ='KU100'
+hrir ='pf_hr_itld'
+# hrir ='kemar'
+# hrir = 'pf'
 
 # ---- for unilateral training specify the side to flatten, None defaults to binaural training
-# ear = None
-ear = 'left'
-reverb = True
+ear = None
+# ear = 'left'
+reverb = False
 
 # meta data
-hrir = hrtf2binsim(sofa_name, ear, reverb, overwrite=False)  # load and process HRIR
+hrir = hrtf2binsim(hrir, ear, reverb, overwrite=False)  # load and process HRIR
 slab.set_default_samplerate(hrir.samplerate)
 hrir_dir = Path.cwd() / 'data' / 'hrtf' / 'binsim' / hrir.name
 sequence = Subject(id).last_sequence  # last localization sequence

@@ -53,7 +53,7 @@ def rec2ir(recording, reference):
         reference = reference.resample(recording.samplerate)
     reference = pyfar.Signal(reference.data.T, fs)
     recording = pyfar.Signal(recording.data.T, fs)
-    recording.time -= numpy.mean(recording.time, axis=1, keepdims=True)  # todo ?
+    recording.time -= numpy.mean(recording.time, axis=1, keepdims=True)  # remove 0 hz (DC) component
     reference.time -= numpy.mean(reference.time, axis=1, keepdims=True)
     reference_inverted = pyfar.dsp.regularized_spectrum_inversion(reference, freq_range=(20, 18750))
     # 18000? over this frequency the magnitude in reference spectrum falls

@@ -31,7 +31,7 @@ reverb = True
 # meta data
 hrir = hrtf2binsim(sofa_name, ear, reverb, overwrite=False)  # load and process HRIR
 slab.set_default_samplerate(hrir.samplerate)
-hrir_dir = Path.cwd() / 'data' / 'hrtf' / 'wav' / hrir.name
+hrir_dir = Path.cwd() / 'data' / 'hrtf' / 'binsim' / hrir.name
 sequence = Subject(id).last_sequence  # last localization sequence
 
 # --- Game Settings ----
@@ -221,12 +221,10 @@ def head_tracker(distance, target, sensor_state, plot_filter_idx):
                                                             float(rel_hrtf_coords[0]), float(rel_hrtf_coords[1]), 0,
                                                             0, 0, 0])
             logging.debug(f'head tracking: filter coords: {rel_hrtf_coords}')
-
-            # NEW: publish to plotter if changed (debounced)
+            # publish to plotter if changed (debounced)
             if filter_idx != last_idx:
                 last_idx = filter_idx
                 plot_filter_idx.value = int(filter_idx)
-
         time.sleep(0.01)    # these intervals mainly determines CPU load
 
 def plot_current_tf(filter_idx_shared, redraw_interval_s=0.05, kind='TF'):
@@ -251,10 +249,16 @@ def plot_current_tf(filter_idx_shared, redraw_interval_s=0.05, kind='TF'):
                 ax.cla()
                 # slab.HRTF slice → .tf(show=True, axis=ax) will draw on provided axis
                 if kind == 'TF':
-                    hrir[idx].tf(show=True, axis=ax)
+                    hrir[idx].channel(0).tf(show=True, axis=ax)
+                    hrir[idx].channel(1).tf(show=True, axis=ax)
+                    ax.lines[0].set_label('left')
+                    ax.lines[1].set_label('right')
+                    ax.legend()
                 elif kind == 'IR':
                     times = numpy.linspace(0, hrir[idx].n_samples / hrir.samplerate, hrir[idx].n_samples)
-                    ax.plot(times, hrir[idx].data)
+                    ax.plot(times, hrir[idx].data[:, 0], label='left')
+                    ax.plot(times, hrir[idx].data[:, 1], label='right')
+                    ax.legend(loc='upper right')
                 # Add some context (az, el)
                 az0, el0 = sources[idx, 0], sources[idx, 1]
                 az180 = (az0 + 180) % 360 - 180  # to (-180,180]

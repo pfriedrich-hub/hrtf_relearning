@@ -1,7 +1,7 @@
 from matplotlib import pyplot as plt
 import numpy
 from pathlib import Path
-wav_path = Path.cwd() / 'data' / 'hrtf' / 'wav'
+wav_path = Path.cwd() / 'data' / 'hrtf' / 'binsim'
 
 def plot(hrir, title):
     try:
@@ -32,7 +32,7 @@ def plot_reverb(hrir, reverb):
     ele = src[1]
     ds = numpy.concatenate((hrir[src_idx].data, numpy.zeros((len(reverb) - hrir[src_idx].n_taps, 2))), axis=0)
     ds_lr = ds + reverb.data
-    ds_lr = 20.0 * numpy.log10(numpy.abs(ds_lr) / 2e-5)  # convert to dB
+    ds_lr =  20.0 * numpy.log10(numpy.maximum(numpy.abs(ds_lr), 1e-12))  # convert to dB
     times = numpy.linspace(0, len(ds_lr) / hrir.samplerate, len(ds_lr))
     axis.plot(times, ds_lr)
     axis.set_xlabel('Time (s)')

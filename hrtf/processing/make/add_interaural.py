@@ -20,12 +20,12 @@ def add_itd(hrir):
         itd = slab.Binaural.azimuth_to_itd(azimuth=azimuth, head_radius=8.75)  # head radius in cm
         # print(f'az: {azimuth}, itd: {itd}')
         delay_n_samples = numpy.abs(int(itd * hrir.samplerate))
-        if itd < 0:  # add left delay
-            fir_coefs_left = numpy.hstack((numpy.zeros(delay_n_samples), fir_coefs[:, 0]))[:-delay_n_samples]
-            fir_coefs_right = fir_coefs[:, 1]
-        elif itd > 0:  # add right delay
+        if itd < 0:  # add right delay
             fir_coefs_left = fir_coefs[:, 0]
             fir_coefs_right = numpy.hstack((numpy.zeros(delay_n_samples), fir_coefs[:, 1]))[:-delay_n_samples]
+        elif itd > 0:  # add left delay
+            fir_coefs_left = numpy.hstack((numpy.zeros(delay_n_samples), fir_coefs[:, 0]))[:-delay_n_samples]
+            fir_coefs_right = fir_coefs[:, 1]
         elif itd == 0:
             fir_coefs_left = fir_coefs[:, 0]
             fir_coefs_right = fir_coefs[:, 1]
@@ -41,14 +41,19 @@ def add_ild(hrir):
     ils = slab.Binaural.make_interaural_level_spectrum()
     for source_idx in range(hrir.n_sources):
         coordinates = hrir.sources.vertical_polar[source_idx]
-        azimuth = ((coordinates[0] + 180) % 360) - 180  # convert to (-180, 180)
+        azimuth = ((coordinates[0] + 180) % 360) - 180  # convert to counterclockwise (-180, 180) for use with kemar
         ils_idx = numpy.argmin(abs(ils['azimuths']-azimuth))
         ild_db = numpy.mean(ils['level_diffs'][:, :, ils_idx], axis=1)
         # ild_db -= ild_db.mean()  # zero-mean → preserves ILD, keeps overall level stable
         gains = 10.0 ** (ild_db / 20.0)  # amplitude gains
         out[source_idx].data *= gains
     return out
-
+#
+# plt.figure()
+# plt.plot(out[source_idx].data[:,0], label='left')
+# plt.plot(out[source_idx].data[:,1], label='right')
+# plt.legend()
+# plt.title(azimuth)
 
 # work in progress
 # def add_ils(hrtf, template_hrtf=None, band_stop=(6e3, 11e3)):

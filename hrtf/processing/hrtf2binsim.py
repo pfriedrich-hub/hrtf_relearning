@@ -17,7 +17,7 @@ def hrtf2binsim(sofa_name, ear=None, reverb=True, overwrite=False):
     if ear:        # flatten DTF at specified ear
         hrir = flatten_dtf(hrir, ear)
         hrir.name += f'_{ear}'
-    if not (data_dir / 'wav' / hrir.name).exists() or overwrite: # create wav files
+    if not (data_dir / 'binsim' / hrir.name).exists() or overwrite: # create wav files
         # create folder structure for HRTF wav files
         (data_dir / 'binsim' / hrir.name / 'IR_data').mkdir(parents=True, exist_ok=True)
         (data_dir / 'binsim' / hrir.name / 'sounds').mkdir(exist_ok=True)

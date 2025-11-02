@@ -1,7 +1,7 @@
 import datetime
 import time
 from pathlib import Path
-from experiment.misc import meta_motion
+from experiment.misc.training_helpers import meta_motion
 from analysis.localization import *
 from experiment.misc.make_sequence import *
 from hrtf.processing.hrtf2binsim import hrtf2binsim

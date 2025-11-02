@@ -10,8 +10,8 @@ import multiprocessing as mp
 from pythonosc import udp_client
 from experiment.Subject import Subject
 from hrtf.processing.hrtf2binsim import hrtf2binsim
-from experiment.misc.training_targets import set_target_probabilistic
-from experiment.misc import meta_motion
+from experiment.misc.training_helpers.training_targets import set_target_probabilistic
+from experiment.misc.training_helpers import meta_motion
 
 logging.getLogger().setLevel('INFO')
 

@@ -23,6 +23,7 @@ class Subject:
             logging.info('Creating new subject data.')
             self.id = id
             self.localization = dict()
+            self.trials = []
 
         if list(self.localization.keys()):  # get the last localization sequence
             self.last_sequence = self.localization[list(self.localization.keys())[-1]]
@@ -34,3 +35,4 @@ class Subject:
         else: logging.info('Creating subject file.')
         with open(self.file_path, 'wb') as subj_file:
             pickle.dump(self, subj_file)  # highest protocol dumping -> numpy error while loading on mac
+

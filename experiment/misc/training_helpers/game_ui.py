@@ -1,4 +1,3 @@
-# experiment/misc/game_ui.py
 from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
@@ -7,7 +6,6 @@ import math
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
-# Optional SVG support (preferred for crisp scaling)
 try:
     from PyQt5 import QtSvg
     HAS_QTSVG = True
@@ -26,20 +24,17 @@ class UIShared:
     last_goal_points: Any
     session_total: Any
     enter_pressed: Any
-    ui_state: Any
+    ui_state: Any    # 0=idle, 1=waiting to start trial, 2=running, 3=session over/prompt
     highscore: Any
 
 
-# ────────────────────────────────────────────────────────────────
-# Helpers / assets
-# ────────────────────────────────────────────────────────────────
 def fmt_time(seconds: float) -> str:
     s = max(0, int(seconds))
     m, s = divmod(s, 60)
     return f"{m:02d}:{s:02d}"
 
+
 def find_coin_path() -> Optional[Path]:
-    """Prefer SVG, fallback to PNG."""
     for p in (
         Path.cwd() / "data" / "img" / "ui" / "mario-coin.svg",
         Path.cwd() / "data" / "ui"  / "mario-coin.png",
@@ -50,7 +45,6 @@ def find_coin_path() -> Optional[Path]:
 
 
 class CoinGraphic:
-    """Render coin from SVG (via QSvgRenderer) or PNG (QPixmap)."""
     def __init__(self, path: Optional[Path]):
         self.renderer = None
         self.pixmap = None
@@ -74,9 +68,6 @@ class CoinGraphic:
             painter.drawPixmap(rect, self.pixmap)
 
 
-# ────────────────────────────────────────────────────────────────
-# Visual effects
-# ────────────────────────────────────────────────────────────────
 class CoinPopGraphic(QtWidgets.QWidget):
     """Mario-style coin: appears just above score, jumps higher, lingers, then vanishes instantly."""
     def __init__(self, anchor_label: QtWidgets.QLabel, parent: QtWidgets.QWidget, coin: CoinGraphic):
@@ -85,23 +76,18 @@ class CoinPopGraphic(QtWidgets.QWidget):
         self.coin = coin
         self._y_offset = 0
         self._visible = False
-
-        # Motion parameters
-        self.start_offset = -40      # px above score center at spawn
-        self.jump_height = 120       # upward travel (px)
-        self.jump_duration = 600     # ms
-        self.linger_time = 300       # ms visible before vanish
-
+        self.start_offset = -40
+        self.jump_height = 120
+        self.jump_duration = 600
+        self.linger_time = 300
         self.move = QtCore.QPropertyAnimation(self, b"yOffset", self)
         self.move.setEasingCurve(QtCore.QEasingCurve.OutCubic)
 
     def getYOffset(self) -> int: return int(self._y_offset)
-    def setYOffset(self, v: int) -> None:
-        self._y_offset = int(v); self.update()
+    def setYOffset(self, v: int) -> None: self._y_offset = int(v); self.update()
     yOffset = QtCore.pyqtProperty(int, fget=getYOffset, fset=setYOffset)
 
     def pop(self, count: int, on_pop: Optional[callable] = None):
-        """Play 1 or 2 pops. If 2, second starts at +300 ms. Calls on_pop at each pop start."""
         if count >= 2:
             QtCore.QTimer.singleShot(0,   lambda: self._one_pop(on_pop))
             QtCore.QTimer.singleShot(300, lambda: self._one_pop(on_pop))
@@ -111,20 +97,16 @@ class CoinPopGraphic(QtWidgets.QWidget):
     def _one_pop(self, on_pop: Optional[callable]):
         if not self.coin.valid() or self.anchor is None:
             return
-        # bump score text exactly when coin spawns
         if callable(on_pop):
             on_pop()
-
         self._visible = True
         self._y_offset = self.start_offset
         self.show(); self.raise_()
-
         self.move.stop()
         self.move.setDuration(self.jump_duration)
         self.move.setStartValue(self.start_offset)
         self.move.setEndValue(self.start_offset - self.jump_height)
         self.move.start()
-
         QtCore.QTimer.singleShot(self.jump_duration + self.linger_time, self._vanish)
 
     def _vanish(self):
@@ -152,7 +134,6 @@ class SparkleBurst(QtWidgets.QWidget):
         self._opacity = 0.0
         self.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents, True)
         self.setWindowFlags(QtCore.Qt.FramelessWindowHint)
-
         self.anim = QtCore.QPropertyAnimation(self, b"opacity", self)
         self.anim.setDuration(duration_ms)
         self.anim.setStartValue(0.0)
@@ -175,16 +156,11 @@ class SparkleBurst(QtWidgets.QWidget):
         p = QtGui.QPainter(self)
         p.setRenderHint(QtGui.QPainter.Antialiasing, True)
         p.setOpacity(self._opacity)
-
-        # Center around score
         c = self.anchor.mapTo(self.parentWidget(), self.anchor.rect().center())
         base = max(40, int(self.anchor.height() * 0.55))
-
         pen = QtGui.QPen(QtGui.QColor(255, 255, 255))
         pen.setWidth(4)
         p.setPen(pen)
-
-        # Draw 8 rays
         for angle_deg in (0, 45, 90, 135, 180, 225, 270, 315):
             r = base if angle_deg % 90 == 0 else int(base * 0.7)
             dx = int(r * math.cos(math.radians(angle_deg)))
@@ -192,12 +168,9 @@ class SparkleBurst(QtWidgets.QWidget):
             p.drawLine(c.x(), c.y(), c.x() + dx, c.y() + dy)
 
 
-# ────────────────────────────────────────────────────────────────
-# Main Window / HUD
-# ────────────────────────────────────────────────────────────────
 class GameWindow(QtWidgets.QMainWindow):
-    SPARKLE_DELAY_MS = 80  # after SFX start
-    POLL_INTERVAL_MS = 50  # UI polling
+    SPARKLE_DELAY_MS = 80
+    POLL_INTERVAL_MS = 50
 
     def __init__(self, shared: UIShared, highscore_path: Optional[Path] = None):
         super().__init__()
@@ -207,10 +180,9 @@ class GameWindow(QtWidgets.QMainWindow):
         self.coinpop: Optional[CoinPopGraphic] = None
         self.sparkle: Optional[SparkleBurst] = None
 
-        # Window setup
         self.setWindowTitle("HRTF Localization Training")
         pal = self.palette()
-        pal.setColor(QtGui.QPalette.Window, QtGui.QColor("#7EC8FF"))  # solid sky blue
+        pal.setColor(QtGui.QPalette.Window, QtGui.QColor("#7EC8FF"))
         self.setPalette(pal)
         self.setAutoFillBackground(True)
         self.showFullScreen()
@@ -218,27 +190,19 @@ class GameWindow(QtWidgets.QMainWindow):
         cw = QtWidgets.QWidget(self); self.setCentralWidget(cw)
         root = QtWidgets.QVBoxLayout(cw); root.setContentsMargins(40, 32, 40, 32); root.setSpacing(24)
 
-        # Top row: High Score (left, with coin icon) | Time Remaining (right)
+        # Top row
         top = QtWidgets.QHBoxLayout(); top.setSpacing(20); root.addLayout(top)
-
-        # High score block
         left = QtWidgets.QVBoxLayout(); left.setSpacing(0)
         self.lblHighCap = QtWidgets.QLabel("High Score")
         self.lblHighCap.setStyleSheet("font: 600 28px 'Inter'; color: #083c74;")
         high_row = QtWidgets.QHBoxLayout(); high_row.setSpacing(12)
-
-        self.coin_icon_lbl = QtWidgets.QLabel()
-        self.coin_icon_lbl.setFixedSize(72, 72)
-
-        self.lblHigh = QtWidgets.QLabel("0")
-        self.lblHigh.setStyleSheet("font: 700 96px 'Inter'; color: #003e9f;")
+        self.coin_icon_lbl = QtWidgets.QLabel(); self.coin_icon_lbl.setFixedSize(72, 72)
+        self.lblHigh = QtWidgets.QLabel("0"); self.lblHigh.setStyleSheet("font: 700 96px 'Inter'; color: #003e9f;")
         high_row.addWidget(self.coin_icon_lbl, 0, QtCore.Qt.AlignVCenter)
         high_row.addWidget(self.lblHigh,       0, QtCore.Qt.AlignVCenter)
-        left.addWidget(self.lblHighCap)
-        left.addLayout(high_row)
+        left.addWidget(self.lblHighCap); left.addLayout(high_row)
         top.addLayout(left, 1)
 
-        # Time block
         right = QtWidgets.QVBoxLayout(); right.setSpacing(0)
         self.lblTimeCap = QtWidgets.QLabel("Time Remaining")
         self.lblTimeCap.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignBottom)
@@ -246,13 +210,12 @@ class GameWindow(QtWidgets.QMainWindow):
         self.lblTime = QtWidgets.QLabel("00:00")
         self.lblTime.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignTop)
         self.lblTime.setStyleSheet("font: 700 96px 'Inter'; color: #003e9f;")
-        right.addWidget(self.lblTimeCap)
-        right.addWidget(self.lblTime)
+        right.addWidget(self.lblTimeCap); right.addWidget(self.lblTime)
         top.addLayout(right, 1)
 
         root.addStretch(1)
 
-        # Center score (slightly lower & large)
+        # Center score
         score_holder = QtWidgets.QWidget()
         score_layout = QtWidgets.QVBoxLayout(score_holder)
         score_layout.setContentsMargins(0, 60, 0, 0)
@@ -264,7 +227,7 @@ class GameWindow(QtWidgets.QMainWindow):
 
         root.addStretch(2)
 
-        # Start overlay (fixed space so score doesn't jump)
+        # Overlay (used for both start AND play-again)
         self.start_stack = QtWidgets.QStackedLayout()
         start_page = QtWidgets.QWidget()
         sp = QtWidgets.QVBoxLayout(start_page); sp.setContentsMargins(0, 0, 0, 0)
@@ -294,16 +257,13 @@ class GameWindow(QtWidgets.QMainWindow):
         holder.setFixedHeight(140)
         root.addWidget(holder, 0, QtCore.Qt.AlignHCenter)
 
-        # Shortcuts (return/enter/space)
         for key in (QtCore.Qt.Key_Return, QtCore.Qt.Key_Enter, QtCore.Qt.Key_Space):
             sc = QtWidgets.QShortcut(QtGui.QKeySequence(key), self)
             sc.setContext(QtCore.Qt.ApplicationShortcut)
             sc.activated.connect(self._on_enter_pressed)
 
-        # Overlays (coin pop + sparkle) after layout ready
         QtCore.QTimer.singleShot(0, self._init_overlays)
 
-        # Poll shared state
         self._prev_state = -1
         self._last_session_total = 0
         self._timer = QtCore.QTimer(self)
@@ -313,7 +273,6 @@ class GameWindow(QtWidgets.QMainWindow):
 
     def _init_overlays(self):
         cw = self.centralWidget()
-        # coin icon next to high score (render SVG/PNG into a pixmap of correct size)
         if self.coin_asset.valid():
             h = max(48, int(self.lblHigh.height()))
             self.coin_icon_lbl.setFixedSize(h, h)
@@ -322,14 +281,11 @@ class GameWindow(QtWidgets.QMainWindow):
             self.coin_asset.paint(painter, QtCore.QRect(0, 0, h, h))
             painter.end()
             self.coin_icon_lbl.setPixmap(pm)
-
-            # animated coin behind the score
             self.coinpop = CoinPopGraphic(self.lblScore, cw, self.coin_asset)
             self.coinpop.setGeometry(cw.rect())
             self.coinpop.lower()
             self.lblScore.raise_()
 
-        # sparkle overlay
         self.sparkle = SparkleBurst(self.lblScore, cw, duration_ms=140)
         self.sparkle.setGeometry(cw.rect())
         self.sparkle.lower()
@@ -343,12 +299,10 @@ class GameWindow(QtWidgets.QMainWindow):
         if cw and self.sparkle:
             self.sparkle.setGeometry(cw.rect())
 
-    # Input handling
     def _on_enter_pressed(self):
-        if int(self.shared.ui_state.value) == 1:
+        if int(self.shared.ui_state.value) in (1, 3):  # start or play-again prompt
             self.shared.enter_pressed.value = 1
 
-    # Main UI tick
     def _tick(self):
         session_total = int(self.shared.session_total.value)
         game_time = float(self.shared.game_time_left.value)
@@ -356,30 +310,36 @@ class GameWindow(QtWidgets.QMainWindow):
         state = int(self.shared.ui_state.value)
         last_goal = int(self.shared.last_goal_points.value)
 
+        # update top
         self.lblTime.setText(fmt_time(game_time))
         self.lblHigh.setText(str(highscore))
 
-        # keep score text in sync
+        # score
         self._last_session_total = session_total
         self.lblScore.setText(str(session_total))
 
-        # overlay visibility
-        self.start_stack.setCurrentIndex(0 if state == 1 else 1)
+        # overlay visibility + text depends on state (start vs play-again)
+        if state in (1, 3):
+            self.start_stack.setCurrentIndex(0)
+            if state == 1:
+                self.overlay_btn.setText("Press Enter to start")
+            else:
+                self.overlay_btn.setText("Session over — Press Enter to play again")
+        else:
+            self.start_stack.setCurrentIndex(1)
 
-        # goal → pop coin(s) + optional sparkle after 80 ms
+        # goal effects
         if last_goal in (1, 2):
             if self.coinpop:
                 def bump():
-                    # instant visual increment exactly when coin spawns
                     self._last_session_total += 1
                     self.lblScore.setText(str(self._last_session_total))
                 self.coinpop.pop(last_goal, on_pop=bump)
             if self.sparkle:
                 QtCore.QTimer.singleShot(self.SPARKLE_DELAY_MS, self.sparkle.trigger)
-            # reset trigger
             self.shared.last_goal_points.value = 0
 
-        # keep coin icon size aligned with highscore font height
+        # keep coin icon size aligned
         h = max(48, int(self.lblHigh.height()))
         if self.coin_icon_lbl.width() != h:
             self.coin_icon_lbl.setFixedSize(h, h)
@@ -393,9 +353,6 @@ class GameWindow(QtWidgets.QMainWindow):
             self._prev_state = state
 
 
-# ────────────────────────────────────────────────────────────────
-# UI entrypoint for the separate process
-# ────────────────────────────────────────────────────────────────
 def run_ui(shared: UIShared, highscore_path: Optional[Path] = None):
     import sys
     app = QtWidgets.QApplication(sys.argv)

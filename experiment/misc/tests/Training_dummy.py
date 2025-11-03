@@ -18,8 +18,8 @@ from experiment.misc.training_helpers import game_ui
 logging.getLogger().setLevel('INFO')
 
 # -------------------- Config --------------------
-SUBJECT_ID = "PF"
-HRIR_NAME = "pf_hr_itld"  # 'KU100', 'kemar', etc.
+SUBJECT_ID = "test"
+HRIR_NAME = "kemar_itld"  # 'KU100', 'kemar', etc.
 EAR = None              # or None for binaural (your unilateral training)
 REVERB = True
 
@@ -36,10 +36,10 @@ sequence = Subject(SUBJECT_ID).last_sequence  # last localization sequence (your
 settings = dict(
     target_size=3,
     target_time=0.5,
-    az_range=sequence.settings["azimuth_range"],
-    ele_range=sequence.settings["elevation_range"],
+    az_range=sequence.settings["azimuth_range"] if sequence else (-30,30),
+    ele_range=sequence.settings["elevation_range"] if sequence else (-30,30),
     min_dist=30,
-    game_time=10,
+    game_time=90,
     trial_time=10,
     gain=0.2,
 )

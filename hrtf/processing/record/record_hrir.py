@@ -44,8 +44,8 @@ def record_hrir():
     ir_dict = recordings2ir(recordings_dict, reference_dict)
     # add azimuth sources
     ir_dict = add_az_sources(ir_dict, az_range=(-35, 35))
-    ir_dict = dict(sorted(ir_dict.items(), key=lambda kv: (float(kv[0].rsplit("_", 2)[-1]),  # sort by elevation
-                                                           float(kv[0].rsplit("_", 2)[-2]))))    # and azimuth
+    ir_dict = dict(sorted(ir_dict.items(), key=lambda kv: (float(kv[0].rsplit("_", 2)[-2]),  # sort by azimuth
+                                                           float(kv[0].rsplit("_", 2)[-1]))))    # and elevation
     # construct HRIR
     data = numpy.array([filt.data for filt in list(ir_dict.values())])
     hrir = slab.HRTF(data=data, sources=get_sources(ir_dict), samplerate=fs, datatype='FIR')

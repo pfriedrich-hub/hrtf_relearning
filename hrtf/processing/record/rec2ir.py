@@ -75,3 +75,18 @@ def rec2ir(recording, reference):
     ir_final = pyfar.dsp.time_window(ir_extrapolated, (0, 255), 'boxcar',  # interval: (n_start,n_start + n_samples)
         crop='window')
     return slab.Filter(data=ir_final.time, samplerate=fs, fir='IR')
+
+
+def plot(ir_dict, kind='tf'):
+    from matplotlib import pyplot as plt
+    fig, ax = plt.subplots()
+    for id, ir in ir_dict.items():
+
+        if kind=='tf':
+            _ = ir.tf(show=True, axis=ax)
+        elif kind=='ir'.upper():
+            ax.plot(ir.data)
+        line = ax.lines[-1]
+        line.set_label(id)
+    plt.legend()
+

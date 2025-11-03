@@ -14,8 +14,9 @@ class Subject:
         # check if subject exists in data folder and laod the data
         if (self.file_path).exists():
             logging.info('Loading subject data.')
-            with open(self.file_path, 'rb') as subj_file:
-                subject = pickle.load(subj_file)
+            with open(self.file_path, "rb") as subj_file:
+                subject = _CompatiblePathUnpickler(subj_file).load()
+                subject = _normalize_paths(subject)
                 self.__dict__ = subject.__dict__.copy()
                 self.file_path = results_dir / f'{id}.pkl'  # overwrite Path to match current system for writing
 
@@ -36,3 +37,20 @@ class Subject:
         with open(self.file_path, 'wb') as subj_file:
             pickle.dump(self, subj_file)  # highest protocol dumping -> numpy error while loading on mac
 
+class _CompatiblePathUnpickler(pickle.Unpickler):
+    """Map OS-specific Path classes to the current OS's generic Path on load."""
+    def find_class(self, module, name):
+        if module == "pathlib" and name in ("PosixPath", "WindowsPath"):
+            return pathlib.Path  # normalize to current OS
+        return super().find_class(module, name)
+
+def _normalize_paths(obj):
+    """Recursively convert PurePath instances to OS-native Path objects."""
+    if isinstance(obj, pathlib.PurePath):
+        return pathlib.Path(str(obj))
+    elif isinstance(obj, dict):
+        return {k: _normalize_paths(v) for k, v in obj.items()}
+    elif isinstance(obj, (list, tuple, set)):
+        t = type(obj)
+        return t(_normalize_paths(x) for x in obj)
+    return obj

@@ -1,3 +1,5 @@
+import matplotlib
+matplotlib.use('tkagg')
 from pynput import keyboard
 from pathlib import Path
 import slab
@@ -7,7 +9,7 @@ import numpy
 import copy
 data_dir = Path.cwd() / 'data'
 
-def record_dome(n_samp=5, n_rec=20):
+def record_dome(n_samp=5, n_rec=20, fs=48828):
     """
     Play cross the central loudspeaker array and record from binaural in-ear microphones.
     Args:
@@ -16,9 +18,11 @@ def record_dome(n_samp=5, n_rec=20):
          the center speaker and the neighboring speaker above.
         n_rec (int): Number of recordings per speaker location to average across.
     """
-    freefield.initialize('dome', 'play_birec')
-    freefield.set_logger('warning')
-    signal = slab.Sound(data_dir / 'sounds' / 'log_sweep.wav')  # duration=0.2, level=80, from_frequency=20, to_frequency=fs/2
+    # slab.set_default_samplerate(fs)
+    if not freefield.PROCESSORS.mode == 'play_birec':
+        freefield.initialize('dome', 'play_birec')
+    # signal = slab.Sound(data_dir / 'sounds' / 'log_sweep.wav')  # duration=0.2, level=80, from_frequency=20, to_frequency=fs/2
+    signal = slab.Sound.chirp(duration=0.2, level=80, from_frequency=20, to_frequency=48828/2, samplerate=48828)
     speakers = get_speakers(speakers=freefield.read_speaker_table(), azimuth=0, elevation=None)
     res = abs(speakers[0].elevation - speakers[1].elevation) / n_samp  # resolution
     recordings_dict = dict()
@@ -29,11 +33,12 @@ def record_dome(n_samp=5, n_rec=20):
             speaker = copy.deepcopy(speaker)
             speaker.elevation = speaker.elevation - elevation_step  # set new elevation
             if speaker.elevation >= min([speaker.elevation for speaker in speakers]):  # lower elevation cut off
-                logging.info(f'Recording from Speaker index {speaker.index} at {speaker.elevation}')
-                recordings_dict[f'{speaker.index}_{speaker.azimuth}_{speaker.elevation}']=record_speaker(speaker, signal, n_rec)
+                logging.info(f'Recording from Speaker index {speaker.index} at {speaker.elevation}° elevation.')
+                recordings_dict[f'{speaker.index}_{speaker.azimuth}_{speaker.elevation}']\
+                    =record_speaker(speaker, signal, n_rec, fs)
     return recordings_dict
 
-def record_speaker(speaker, signal, n_rec):
+def record_speaker(speaker, signal, n_rec, fs):
     """
     Record n times from a specified speaker
     Args:
@@ -43,7 +48,8 @@ def record_speaker(speaker, signal, n_rec):
     """
     recordings = []
     for r in range(n_rec):  # record n_rec times and average
-        recordings.append(freefield.play_and_record(speaker, signal, equalize=False))  # todo check samplerate and equalize
+        # record with high samplerate for now (bi rec buf rcx is set to 100k fs)
+        recordings.append(freefield.play_and_record(speaker, signal, equalize=False, recording_samplerate=fs))# 97656
     return slab.Binaural(numpy.mean(recordings, axis=0))
 
 def recordings2wav(recordings_dict, path):
@@ -64,7 +70,10 @@ def wav2recordings(path):
     """
     recordings_dict = dict()
     for file in path.glob('*.wav'):
-        recordings_dict[file.stem] = slab.Binaural(file)
+        if file:
+            recordings_dict[file.stem] = slab.Binaural(file)
+        else:
+            logging.error(f'No .wav files found in {path}.')
     return recordings_dict
 
 def wait_for_button(msg=None):
@@ -111,13 +120,47 @@ def get_speakers(speakers, azimuth=None, elevation=None):
             out.append(spk)
     return out
 
-def record_reference(path):
+def record_reference():
     """
     Helper function to record the reference with free microphones.
     """
+    logging.info('Recording reference')
     # ref_dir = data_dir / 'hrtf' / 'rec' / 'reference' / fname
-    if not path.exists():  # create folder structure
-        path.mkdir(exist_ok=True, parents=True)
     reference_dict = record_dome(n_samp=1, n_rec=20)
-    recordings2wav(reference_dict, path)
     return reference_dict
+
+def plot_dict(data_dict, kind='tf'):
+    from matplotlib import pyplot as plt
+    fig, ax = plt.subplots()
+    ylim = []
+    for key, item in data_dict.items():
+        # --- Extract elevation (last number after underscores) ---
+        try:
+            elevation = float(key.split('_')[-1])
+        except (ValueError, IndexError):
+            elevation = 0.0
+        # --- Plot depending on object type ---
+        if isinstance(item, slab.Binaural):
+            item.spectrum(axis=ax)
+        elif isinstance(item, slab.Filter):
+            if kind.upper() == 'TF':
+                _ = item.tf(show=True, axis=ax)
+            elif kind.upper() == 'IR':
+                ax.plot(item.data)
+        ylim.append([item.data.min(), item.data.max()])
+        # --- Shift line vertically by elevation ---
+        line = ax.lines[-1]
+        x, y = line.get_xdata(), line.get_ydata()
+        line.set_ydata(y + elevation)  # use elevation as baseline offset
+        line.set_label(f"el={elevation:.1f}°")
+    # --- Cosmetics ---
+    ylim = numpy.mean(ylim, axis=0)
+    ax.set_ylim(-130, 20)
+    ax.set_xlim([2e3, 18e3])
+    ax.set_xscale('linear')
+    ax.legend(title="Elevation (°)")
+    ax.set_title(f"Filter dictionary ({kind.upper()})")
+    ax.set_xlabel("Frequency" if kind.upper() == 'TF' else "Samples")
+    ax.set_ylabel("Amplitude (offset by elevation)")
+    plt.legend()
+    plt.show()

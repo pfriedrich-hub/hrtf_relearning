@@ -5,12 +5,18 @@ from hrtf.processing.make.add_interaural import *
 fs = 48828  # 97656, 195312.5
 slab.set_default_samplerate(fs)
 hrtf_dir = Path.cwd() / 'data' / 'hrtf'
+freefield.set_logger('info')
 
-id = 'pf'
-# reference_file = 'mems_long_full_15_10.pkl'
-reference_dir = 'test'
+# todo calibrate setup and record new reference and test HRTF recording
 
-def record_hrir(id, overwrite):
+id = 'kemar_in_ear'
+overwrite = False
+reference = 'laras_reference'
+# reference = 'kemar_no_ears'
+n_samp = 1
+n_rec = 20
+
+def record_hrir():
     """
     Record from in-ear microphones and estimate the head related impulse response function.
     Arguments:
@@ -19,15 +25,21 @@ def record_hrir(id, overwrite):
             Automatically create new recordings if folder does not exist.
     """
     subject_dir = hrtf_dir / 'rec' / id
+    ref_dir = hrtf_dir / 'rec' / 'reference' / reference
     if not subject_dir.exists() or overwrite:  # record and write
         subject_dir.mkdir(exist_ok=True, parents=True)
         (subject_dir / 'wav').mkdir(exist_ok=True)
-        recordings_dict = record_dome(5, 20)  # record
+        recordings_dict = record_dome(n_samp, n_rec, fs)  # record  # todo equalize level
         recordings2wav(recordings_dict, subject_dir / 'wav')  # write
     else:  # load existing recordings
         recordings_dict = wav2recordings(path=subject_dir / 'wav')
-    # load reference dict
-    reference_dict = wav2recordings(hrtf_dir / 'rec' / 'reference' / reference_dir)
+    if (hrtf_dir / 'rec' / 'reference' / ref_dir).exists():  # load reference dict
+        reference_dict = wav2recordings(hrtf_dir / 'rec' / 'reference' / ref_dir)
+    else: # record reference
+        logging.info('No reference recordings found.')
+        # reference_dict = record_reference()
+        # recordings2wav(reference_dict, ref_dir)
+        return 0
     # compute Impulse Response
     ir_dict = recordings2ir(recordings_dict, reference_dict)
     # add azimuth sources
@@ -41,7 +53,7 @@ def record_hrir(id, overwrite):
     hrir = add_itd(hrir)  # todo indiv. head radius?
     hrir = add_ild(hrir)  # todo test db conversion
     slab.HRTF.write_sofa(hrir, subject_dir / f'{id}.sofa')     # write to sofa
-    return hrir
+    return hrir, reference_dict, recordings_dict
 
 def recordings2ir(recordings_dict, reference_dict):
     """
@@ -52,8 +64,7 @@ def recordings2ir(recordings_dict, reference_dict):
     Returns:
         ir_dict : Dictionary mapping directional impulse responses to sound source locations.
     """
-    fs = list(recordings_dict.values())[0].samplerate
-    ir_dict = dict()
+    ir_dict = {}
     for key, recording in recordings_dict.items():
         # get the reference recording for the current speaker idx
         reference = reference_dict[[k for k in reference_dict.keys() if k[:2] == key[:2]][0]]
@@ -91,3 +102,6 @@ def add_az_sources(ir_dict, az_range=(-35, 35)):
                 new_entries[new_key] = filt  # or copy.deepcopy(filt) if you want independent objects
     ir_dict.update(new_entries)
     return ir_dict
+#
+# if __name__ == "__main__":
+#     hrir, reference_dict, recordings_dict = record_hrir()

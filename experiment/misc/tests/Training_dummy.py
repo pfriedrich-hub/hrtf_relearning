@@ -8,6 +8,7 @@ import slab
 from pythonosc import udp_client
 import datetime
 date = datetime.datetime.now()
+import pybinsim
 
 from experiment.Subject import Subject
 from experiment.misc.training_helpers.training_targets import set_target_probabilistic
@@ -103,7 +104,7 @@ def distance_to_interval(distance):
 
 # -------------------- Subprocess workers --------------------
 def binsim_stream():
-    import pybinsim
+    # import pybinsim
     pybinsim.logger.setLevel(logging.ERROR)
     logging.info(f"Loading {hrir.name}")
     binsim = pybinsim.BinSim(HRIR_DIR / f"{hrir.name}_training_settings.txt")

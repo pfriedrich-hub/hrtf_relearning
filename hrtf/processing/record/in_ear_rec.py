@@ -142,6 +142,7 @@ def plot_dict(data_dict, kind='tf'):
         # --- Plot depending on object type ---
         if isinstance(item, slab.Binaural):
             item.spectrum(axis=ax)
+            ax.set_ylim(-130, 20)
         elif isinstance(item, slab.Filter):
             if kind.upper() == 'TF':
                 _ = item.tf(show=True, axis=ax)
@@ -154,8 +155,7 @@ def plot_dict(data_dict, kind='tf'):
         line.set_ydata(y + elevation)  # use elevation as baseline offset
         line.set_label(f"el={elevation:.1f}°")
     # --- Cosmetics ---
-    ylim = numpy.mean(ylim, axis=0)
-    ax.set_ylim(-130, 20)
+    # ylim = numpy.mean(ylim, axis=0)
     ax.set_xlim([2e3, 18e3])
     ax.set_xscale('linear')
     ax.legend(title="Elevation (°)")

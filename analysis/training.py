@@ -1,3 +1,8 @@
+import time
+from experiment import Subject
+
+SUBJECT_ID = 'PF'
+
 # ---------- Pose trace analysis & visualization ----------
 
 import numpy as numpy
@@ -138,3 +143,14 @@ def replay_trace_with_binsim(subject, trial_idx, hrir, speed=1.0, ip="127.0.0.1"
                           0,0,0])
 
     print(f"Replayed trial {trial_idx} at speed x{speed:.2f}.")
+
+if __name__ == "__main__":
+    # After a session, load your subject
+    subject = Subject(SUBJECT_ID)
+
+    # 1) Visualize
+    plot_trial_pose(subject, trial_idx=subject.trials[-1]["trial_idx"], show_velocity=True)
+
+    # # 2) (Optional) Replay through pyBinSim at original timing (or faster/slower)
+    # #    Uses the target stored with the trial to compute relative indices.
+    # replay_trace_with_binsim(subject, trial_idx=subject.trials[-1]["trial_idx"], hrir=hrir, speed=1.0)

@@ -7,12 +7,12 @@ slab.set_default_samplerate(fs)
 hrtf_dir = Path.cwd() / 'data' / 'hrtf'
 freefield.set_logger('info')
 
-# todo calibrate setup and record new reference and test HRTF recording
+# todo calibrate setup, record new reference and test HRTF recording with in ear microphones
 
-id = 'kemar_in_ear'
+id = 'kemar'
 overwrite = False
-reference = 'laras_reference'
-# reference = 'kemar_no_ears'
+# reference = 'laras_reference'
+reference = 'kemar_no_ears'
 n_samp = 1
 n_rec = 20
 
@@ -39,13 +39,13 @@ def record_hrir():
         logging.info('No reference recordings found.')
         # reference_dict = record_reference()
         # recordings2wav(reference_dict, ref_dir)
-        return 0
+        # return 0
     # compute Impulse Response
     ir_dict = recordings2ir(recordings_dict, reference_dict)
     # add azimuth sources
-    ir_dict = add_az_sources(ir_dict, az_range=(-35, 35))
-    ir_dict = dict(sorted(ir_dict.items(), key=lambda kv: (float(kv[0].rsplit("_", 2)[-1]),  # sort by elevation
-                                                           float(kv[0].rsplit("_", 2)[-2]))))    # and azimuth
+    ir_dict = add_az_sources(ir_dict, az_range=(-45, 45))
+    ir_dict = dict(sorted(ir_dict.items(), key=lambda kv: (float(kv[0].rsplit("_", 2)[-2]),  # sort by azimuth
+                                                           float(kv[0].rsplit("_", 2)[-1]))))    # and elevation
     # construct HRIR
     data = numpy.array([filt.data for filt in list(ir_dict.values())])
     hrir = slab.HRTF(data=data, sources=get_sources(ir_dict), samplerate=fs, datatype='FIR')

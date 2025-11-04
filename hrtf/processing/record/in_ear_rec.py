@@ -27,6 +27,7 @@ def record_dome(n_samp=5, n_rec=20, fs=48828):
     res = abs(speakers[0].elevation - speakers[1].elevation) / n_samp  # resolution
     recordings_dict = dict()
     for n in range(n_samp):
+        input('enter')
         elevation_step = (n) * res  #
         # wait_for_button(msg=f'Rest gaze at +{elevation_step} elevation and press Enter to continue.')
         for speaker in speakers:

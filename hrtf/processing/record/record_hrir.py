@@ -9,11 +9,11 @@ freefield.set_logger('info')
 
 # todo calibrate setup, record new reference and test HRTF recording with in ear microphones
 
-id = 'kemar'
-overwrite = False
-# reference = 'laras_reference'
-reference = 'kemar_no_ears'
-n_samp = 1
+id = 'MS'
+overwrite = True
+reference = 'laras_reference'
+# reference = 'kemar_no_ears'
+n_samp = 2
 n_rec = 20
 
 def record_hrir():
@@ -39,7 +39,7 @@ def record_hrir():
         logging.info('No reference recordings found.')
         # reference_dict = record_reference()
         # recordings2wav(reference_dict, ref_dir)
-        # return 0
+        return 0
     # compute Impulse Response
     ir_dict = recordings2ir(recordings_dict, reference_dict)
     # add azimuth sources

@@ -3,7 +3,10 @@ import numpy
 import slab
 import logging
 
-def rec2ir(recording, reference):
+def compute_tf(recordings_dict, reference_dict, signal):
+
+
+def equalize(recording_tf, reference_tf):
     """
     Compute an impulse response (IR) from a recorded playback of a known reference signal.
 

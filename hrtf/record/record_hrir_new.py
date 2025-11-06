@@ -1,6 +1,8 @@
 import logging
 from pathlib import Path
 import copy
+import json
+from datetime import datetime
 
 import matplotlib
 matplotlib.use('tkagg')
@@ -17,80 +19,71 @@ from hrtf.processing.make.add_interaural import add_itd, add_ild  # from your re
 # -------------------------------------------------------------------------
 # Global defaults
 # -------------------------------------------------------------------------
-subject_id = 'MS'
+subject_id = 'test'
 overwrite = False
-reference = 'ref_06.11_new_sweep'
-# reference = 'kemar_no_ears'
+reference = 'test'
 n_samp = 2
 n_rec = 20
-fs = 48828  # 97656, 195312.5
+fs = 48828  # 97656
 
 slab.set_default_samplerate(fs)
 data_dir = Path.cwd() / "data"
 freefield.set_logger("info")
-
 
 # -------------------------------------------------------------------------
 # High-level: record HRIR for one subject
 # -------------------------------------------------------------------------
 def record_hrir(
     subject_id: str,
-    reference_name: str,
+    reference: str,
     n_samp: int = 1,
     n_rec: int = 20,
     fs: int = fs,
     overwrite: bool = False,
     az_range: tuple[float, float] = (-45, 45),
 ):
-    """
-    Record from in-ear microphones and estimate the HRIR / HRTF.
-
-    Returns
-    -------
-    hrir : slab.HRTF
-    reference_recs : Recordings
-    subject_recs : Recordings
-    """
     hrtf_dir = Path.cwd() / "data" / "hrtf"
     subject_dir = hrtf_dir / "rec" / subject_id
     ref_dir = hrtf_dir / "rec" / "reference" / reference
 
     # excitation signal
-    # sweep_path = data_dir / "sounds" / "log_sweep.wav"# duration=0.2, level=80, from_frequency=20, to_frequency=fs/2
-    # signal = slab.Sound(sweep_path)
-    signal = slab.Sound.chirp(duration=0.2, level=90, from_frequency=50, to_frequency=18e3, samplerate=48828)
-    signal = signal.ramp(when='both', duration=.005)
-
+    params = {"type": "slab.Sound.chirp", "duration": 0.2, "level": 90,
+              "from_frequency": 50, "to_frequency": 18e3, "samplerate": fs}
+    signal = slab.Sound.chirp(duration=params["duration"], level=params["level"], samplerate=fs,
+                              from_frequency=params["from_frequency"], to_frequency=params["to_frequency"])
+    signal = signal.ramp(when="both", duration=0.005)
+    signal.params = params
 
     # 1) subject recordings
-    if not (subject_dir.exists() or overwrite):
-        subject_dir.mkdir(exist_ok=True, parents=True)
-        (subject_dir / "wav").mkdir(exist_ok=True)
-
-        recs = Recordings.record_dome(signal, n_samp=n_samp, n_rec=n_rec, fs=fs)
-        recs.to_wav(subject_dir / "wav")
+    if (not subject_dir.exists()) or overwrite:
+        ear_pressure = Recordings.record_dome(signal, n_samp=n_samp, n_rec=n_rec, fs=fs)
+        ear_pressure.params["subject_id"] = subject_id
+        ear_pressure.to_wav(subject_dir / "wav", overwrite=overwrite)
     else:
         logging.info("Loading subject recordings from wav directory")
-        recs = Recordings.from_wav(subject_dir / "wav", fs=fs, meta={"id": subject_id})  #todo add meta information
+        ear_pressure = Recordings.from_wav(subject_dir / "wav")
+        # todo optionally: try to load params.txt here later
 
-    # 2) reference recordings
-    if ref_dir.exists():
+    if ref_dir.exists() and not overwrite:
         logging.info("Loading reference recordings")
-        refs = Recordings.from_wav(ref_dir, fs=fs, meta={"id": reference})
+        reference_pressure = Recordings.from_wav(ref_dir / "wav")
     else:
-        logging.info("No reference recordings found at %s", ref_dir)
-        logging.info('Record new reference')
-        refs = Recordings.record_dome(signal, n_samp=1, n_rec=n_rec, fs=fs)
-        refs.to_wav(ref_dir)  # todo test if delay is correct (freefield.py)
-        raise FileNotFoundError(ref_dir)
+        logging.info("Recording new reference")
+        ref_dir.mkdir(exist_ok=True, parents=True)
+        reference_pressure = Recordings.record_dome(signal, n_samp=1, n_rec=n_rec, fs=fs)
+        reference_pressure.params["subject_id"] = reference
+        reference_pressure.to_wav(ref_dir / "wav", overwrite=overwrite)
+    # optional: plot spectra
+    # ear_pressure.plot_spectra()
+    # reference_pressure.plot_spectra()
 
     # 3) convert recordings → IRs
-    rec_ir = recs.compute_tf(signal)  # todo inspect resulting IR duration
+    ear_ir = ear_pressure.compute_tf(signal)  # todo inspect resulting IR
     # todo implement fabians pipeline
-    ref_ir = refs.compute_tf(signal)
+    reference_ir = reference_pressure.compute_tf(signal)
 
     # 4) equalize
-    ir_dir = equalize(rec_ir, ref_ir)  # todo rework pipeline
+    ir_dir = equalize(ear_ir, reference_ir)  # todo rework pipeline
 
     # # 4) add azimuth sources
     # irs.add_az_sources(az_range=az_range)
@@ -126,17 +119,14 @@ def wait_for_button(msg=None):
 # -------------------------------------------------------------------------
 class SpeakerGridBase:
     """
-    Base container for data defined on your loudspeaker grid.
-
+    Base container for data defined on the loudspeaker grid.
     Keys are strings like '19_0.0_40.0' → (idx, az, el).
-    Values are typically slab.Binaural (for recordings)
-    or slab.Filter (for IRs).
+    Values are typically slab.Binaural or slab.Filter.
     """
 
-    def __init__(self, data=None, fs=None, meta=None):
+    def __init__(self, data=None, params=None):
         self.data: dict[str, object] = data or {}
-        self.fs: int | None = fs
-        self.meta: dict[str, object] = meta or {}
+        self.params: dict[str, object] = params or {}
 
     # --- dict-like ---------------------------------------------------------
     def __getitem__(self, key: str) -> object:
@@ -163,9 +153,6 @@ class SpeakerGridBase:
     # --- key helpers -------------------------------------------------------
     @staticmethod
     def parse_key(key: str) -> tuple[int, float, float]:
-        """
-        '19_0.0_40.0' -> (idx, az, el)
-        """
         parts = key.split("_")
         if len(parts) != 3:
             raise ValueError(f"Cannot parse key '{key}', expected 'idx_az_el'")
@@ -176,9 +163,6 @@ class SpeakerGridBase:
 
     # --- spatial helpers ---------------------------------------------------
     def get_sources(self, distance: float = 1.2) -> numpy.ndarray:
-        """
-        Build sources array (az, el, r) from keys.
-        """
         coords = []
         for key in self.data.keys():
             _, az, el = self.parse_key(key)
@@ -187,32 +171,68 @@ class SpeakerGridBase:
 
     # --- I/O ---------------------------------------------------------------
     @classmethod
-    def from_wav(cls, path: Path | str, fs: int | None = None, meta: dict | None = None):
-        """
-        Generic loader: subclasses may override type expectations.
-        """
+    def from_wav(cls, path: Path | str):
+        """Generic loader: subclasses may override type expectations."""
         path = Path(path)
         data = {}
         for wav in path.glob("*.wav"):
             data[wav.stem] = slab.Sound(wav)
         if not data:
             raise FileNotFoundError(f"No .wav files found in {path}")
-        if fs is None:
-            first = next(iter(data.values()))
-            fs = first.samplerate
-        return cls(data=data, fs=fs, meta=meta or {})
+        return cls(data=data)
 
-    def to_wav(self, path: Path | str) -> None:
+    def to_wav(self, path: Path | str, overwrite: bool = False) -> None:
         """
-        Generic writer: expects each value to have `.write(Path)` like slab.Sound/Binaural/Filter.
+        Write all entries in self.data to WAV files.
+
+        Parameters
+        ----------
+        path : base directory for saving the wav files
+        overwrite : if False, existing wav files are kept and skipped.
+                    if True, existing wav files are overwritten.
         """
         path = Path(path)
         path.mkdir(parents=True, exist_ok=True)
+        self.write_params_file(path)  # write recording parameters
         for key, obj in self.data.items():
-            if hasattr(obj, "write"):
-                obj.write(path / f"{key}.wav")
-            else:
+            if not hasattr(obj, "write"):
                 raise TypeError(f"Object for key {key} has no `.write` method: {type(obj)}")
+
+            fname = path / f"{key}.wav"
+
+            if fname.exists() and not overwrite:
+                logging.info(f"Skipping existing file (overwrite=False): {fname}")
+                continue
+
+            obj.write(fname)
+        
+    # --- parameter logging -------------------------------------------------
+    def write_params_file(self, path: Path, filename: str = "params.txt") -> None:
+        """
+        Write all entries from self.params to a human-readable text file.
+        """
+        path.mkdir(parents=True, exist_ok=True)
+        file = path / filename
+
+        lines = []
+        for key, val in self.params.items():
+            if isinstance(val, dict):
+                lines.append(f"{key}:")
+                for sk, sv in val.items():
+                    lines.append(f"  {sk}: {sv}")
+            else:
+                lines.append(f"{key}: {val}")
+
+        lines += [
+            "",
+            "Software versions:",
+            f"  slab:      {getattr(slab, '__version__', 'unknown')}",
+            f"  pyfar:     {getattr(pyfar, '__version__', 'unknown')}",
+            f"  freefield: {getattr(freefield, '__version__', 'unknown')}",
+        ]
+
+        with file.open("w", encoding="utf-8") as f:
+            f.write("\n".join(lines))
 
     # --- selection ---------------------------------------------------------
     def select(
@@ -220,9 +240,6 @@ class SpeakerGridBase:
         azimuth: float | tuple[float, float] | None = None,
         elevation: float | tuple[float, float] | None = None,
     ) -> "SpeakerGridBase":
-        """
-        Subset by azimuth / elevation ranges (like your get_speakers).
-        """
         if azimuth is None:
             az_low, az_high = -float("inf"), float("inf")
         elif isinstance(azimuth, (int, float)):
@@ -243,8 +260,8 @@ class SpeakerGridBase:
             if az_low <= az <= az_high and el_low <= el <= el_high:
                 sub[key] = obj
 
-        return type(self)(data=sub, fs=self.fs, meta=self.meta.copy())
-
+        # copy params reference
+        return type(self)(data=sub, params=self.params.copy())
 
 # -------------------------------------------------------------------------
 # Recordings (binaural in-ear)
@@ -255,15 +272,47 @@ class Recordings(SpeakerGridBase):
     Values are `slab.Binaural`.
     """
 
-    # --- acquisition -------------------------------------------------------
+    @classmethod
+    def record_dome(cls, signal: slab.Sound, n_samp=5, n_rec=20, fs=48828):
+        """Record across the dome and return a Recordings object with all parameters stored."""
+        if freefield.PROCESSORS.mode != "play_birec":
+            freefield.initialize("dome", "play_birec")
+
+        speakers_all = freefield.read_speaker_table()
+        speakers = cls.get_speakers(speakers_all, azimuth=0, elevation=None)
+        if len(speakers) < 2:
+            raise RuntimeError("Need at least two speakers to infer vertical resolution.")
+
+        res = abs(speakers[0].elevation - speakers[1].elevation) / n_samp
+        min_el = min(spk.elevation for spk in speakers)
+
+        recordings_dict = {}
+        filt = slab.Filter.band(kind="hp", frequency=50, samplerate=fs)
+
+        for n in range(n_samp):
+            elevation_step = n * res
+            if n_samp > 1:
+                input(f"Press Enter when head is at {0 + elevation_step}° elevation ...")
+            for base_spk in speakers:
+                spk = copy.deepcopy(base_spk)
+                spk.elevation -= elevation_step
+                if spk.elevation >= min_el:
+                    logging.info(f"Recording from Speaker {spk.index} at {spk.elevation:.1f}° elevation")
+                    key = f"{spk.index}_{spk.azimuth}_{spk.elevation}"
+                    rec = cls.record_speaker(spk, signal, n_rec, fs)
+                    recordings_dict[key] = filt.apply(rec)
+
+        params = {
+            "fs": fs,
+            "n_rec": n_rec,
+            "n_samp": n_samp,
+            "signal": getattr(signal, "params", {}),
+            "datetime": datetime.now().isoformat(),
+        }
+        return cls(data=recordings_dict, params=params)
+
     @staticmethod
     def get_speakers(speakers, azimuth=None, elevation=None):
-        """
-        Fetch speaker objects within the provided azimuth/elevation ranges.
-
-        azimuth : float | (min, max) | None
-        elevation : float | (min, max) | None
-        """
         out = []
         if azimuth is None:
             az_low, az_high = -float("inf"), float("inf")
@@ -286,9 +335,6 @@ class Recordings(SpeakerGridBase):
 
     @staticmethod
     def record_speaker(speaker, signal: slab.Sound, n_rec: int, fs: int) -> slab.Binaural:
-        """
-        Record n times from a specified speaker and average.
-        """
         recordings = []
         for _ in range(n_rec):
             recordings.append(
@@ -296,56 +342,12 @@ class Recordings(SpeakerGridBase):
                     speaker,
                     signal,
                     equalize=False,
-                    recording_samplerate=fs*2,
+                    recording_samplerate=fs * 2,
                 )
             )
         return slab.Binaural(numpy.mean(recordings, axis=0))
 
-    @classmethod
-    def record_dome(
-        cls,
-        signal: slab.Sound,
-        n_samp: int = 5,
-        n_rec: int = 20,
-        fs: int = fs,
-    ) -> "Recordings":
-        """
-        Play across the central loudspeaker array and record from binaural in-ear microphones.
-
-        n_samp: number of different listener orientations to record (head steps)
-        n_rec:  number of repetitions per speaker for averaging
-        """
-        if freefield.PROCESSORS.mode != "play_birec":
-            freefield.initialize("dome", "play_birec")
-
-        speakers_all = freefield.read_speaker_table()
-        speakers = cls.get_speakers(speakers_all, azimuth=0, elevation=None)
-
-        if len(speakers) < 2:
-            raise RuntimeError("Need at least two speakers in the central array to infer vertical resolution.")
-
-        res = abs(speakers[0].elevation - speakers[1].elevation) / n_samp  # elevation resolution
-        min_el = min(spk.elevation for spk in speakers)
-
-        recordings_dict: dict[str, slab.Binaural] = {}
-
-        filt = slab.Filter.band(kind='hp', frequency=50, samplerate=fs)  # remove low freq noise
-        for n in range(n_samp):
-            if n_samp > 1: input("Press Enter when head is at the next elevation step...")
-            elevation_step = n * res
-            for base_spk in speakers:
-                spk = copy.deepcopy(base_spk)
-                spk.elevation = spk.elevation - elevation_step
-                if spk.elevation >= min_el:
-                    logging.info(
-                        f"Recording from Speaker index {spk.index} at {spk.elevation:.1f}° elevation."
-                    )
-                    key = f"{spk.index}_{spk.azimuth}_{spk.elevation}"
-                    recording = cls.record_speaker(spk, signal, n_rec, fs)
-                    recordings_dict[key] = filt.apply(recording)
-        return cls(data=recordings_dict, fs=fs, meta={"n_samp": n_samp, "n_rec": n_rec})
-
-    # --- I/O override: always Binaural --------------------------------------
+        # --- I/O override: always Binaural --------------------------------------
     @classmethod
     def from_wav(cls, path: Path | str, fs: int | None = None, meta: dict | None = None):
         path = Path(path)
@@ -427,12 +429,8 @@ class Recordings(SpeakerGridBase):
             ir_windowed, window = pyfar.dsp.time_window(
                 ir, times, 'hann', unit='s', crop='end', return_window=True)
 
-
-
-
         slab.Filter(data=hrir_deconvolved.time, samplerate=fs, fir='IR')
         return ImpulseResponses(data=ir_dict, fs=self.fs, meta=self.meta.copy())
-
 
 # -------------------------------------------------------------------------
 # Impulse Responses (slab.Filter grid)
@@ -538,7 +536,6 @@ class ImpulseResponses(SpeakerGridBase):
             hrir = add_ild(hrir)
 
         return hrir
-
 
 # -------------------------------------------------------------------------
 # Deconvolution / equalization (pyfar pipeline)

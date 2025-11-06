@@ -1,19 +1,19 @@
-from hrtf.processing.record.in_ear_rec import *
+from hrtf.processing.record.in_ear_rec_new import *
 from hrtf.processing.record.rec2ir import *
 from hrtf.processing.make.add_interaural import *
 # global parameters
 fs = 48828  # 97656, 195312.5
 slab.set_default_samplerate(fs)
-hrtf_dir = Path.cwd() / 'data' / 'hrtf'
+data_dir = Path.cwd() / 'data'
 freefield.set_logger('info')
 
 # todo calibrate setup, record new reference and test HRTF recording with in ear microphones
 
 id = 'MS'
-overwrite = True
-reference = 'laras_reference'
-# reference = 'kemar_no_ears'
-n_samp = 2
+overwrite = False
+# reference = 'laras_reference'
+reference = 'kemar_no_ears'
+n_samp = 1
 n_rec = 20
 
 def record_hrir():
@@ -24,12 +24,14 @@ def record_hrir():
         overwrite (bool): Whether to overwrite existing recordings or load from existing.
             Automatically create new recordings if folder does not exist.
     """
+    hrtf_dir = Path.cwd() / 'data' / 'hrtf'
     subject_dir = hrtf_dir / 'rec' / id
     ref_dir = hrtf_dir / 'rec' / 'reference' / reference
+    signal =  slab.Sound(data_dir / 'sounds' / 'log_sweep.wav')  # duration=0.2, level=80, from_frequency=20, to_frequency=fs/2
     if not subject_dir.exists() or overwrite:  # record and write
         subject_dir.mkdir(exist_ok=True, parents=True)
         (subject_dir / 'wav').mkdir(exist_ok=True)
-        recordings_dict = record_dome(n_samp, n_rec, fs)  # record  # todo equalize level
+        recordings_dict = record_dome(signal, n_samp, n_rec, fs)  # record  # todo equalize level
         recordings2wav(recordings_dict, subject_dir / 'wav')  # write
     else:  # load existing recordings
         recordings_dict = wav2recordings(path=subject_dir / 'wav')
@@ -39,7 +41,8 @@ def record_hrir():
         logging.info('No reference recordings found.')
         # reference_dict = record_reference()
         # recordings2wav(reference_dict, ref_dir)
-        return 0
+        # return 0
+    ir_dict = compute_tf(recordings_dict, reference_dict, signal)
     # compute Impulse Response
     ir_dict = recordings2ir(recordings_dict, reference_dict)
     # add azimuth sources
@@ -55,7 +58,7 @@ def record_hrir():
     slab.HRTF.write_sofa(hrir, subject_dir / f'{id}.sofa')     # write to sofa
     return hrir, reference_dict, recordings_dict
 
-def recordings2ir(recordings_dict, reference_dict):
+def recordings2ir(recordings_dict, reference_dict, signal):
     """
     Build a dictionary of Impulse Response slab.Filters from recordings and reference dictionaries
     Args:
@@ -68,8 +71,10 @@ def recordings2ir(recordings_dict, reference_dict):
     for key, recording in recordings_dict.items():
         # get the reference recording for the current speaker idx
         reference = reference_dict[[k for k in reference_dict.keys() if k[:2] == key[:2]][0]]
-        # compute ir (see rec2ir.py for details)
-        ir_dict[key] = rec2ir(recording, reference)
+        # compute TF (divide recordings by signal in the frequency domain)
+        recording_tf, reference_tf = compute_tf(recording, reference, signal)
+        # equalize (convolve IRrec with IRref^-1 == divide TFrec by TFref)
+        ir_dict[key] = equalize(recording_tf, reference_tf)
     return ir_dict
 
 def get_sources(ir_dict, distance=1.2):

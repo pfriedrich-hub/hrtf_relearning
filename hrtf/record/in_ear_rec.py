@@ -9,7 +9,7 @@ import numpy
 import copy
 data_dir = Path.cwd() / 'data'
 
-def record_dome(n_samp=5, n_rec=20, fs=48828):
+def record_dome(signal, n_samp=5, n_rec=20, fs=48828):
     """
     Play cross the central loudspeaker array and record from binaural in-ear microphones.
     Args:
@@ -21,8 +21,7 @@ def record_dome(n_samp=5, n_rec=20, fs=48828):
     # slab.set_default_samplerate(fs)
     if not freefield.PROCESSORS.mode == 'play_birec':
         freefield.initialize('dome', 'play_birec')
-    # signal = slab.Sound(data_dir / 'sounds' / 'log_sweep.wav')  # duration=0.2, level=80, from_frequency=20, to_frequency=fs/2
-    signal = slab.Sound.chirp(duration=0.2, level=80, from_frequency=20, to_frequency=48828/2, samplerate=48828)
+    # signal = slab.Sound.chirp(duration=0.2, level=80, from_frequency=20, to_frequency=48828/2, samplerate=48828)
     speakers = get_speakers(speakers=freefield.read_speaker_table(), azimuth=0, elevation=None)
     res = abs(speakers[0].elevation - speakers[1].elevation) / n_samp  # resolution
     recordings_dict = dict()

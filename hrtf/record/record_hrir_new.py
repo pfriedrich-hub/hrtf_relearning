@@ -1,29 +1,26 @@
+import matplotlib
+matplotlib.use('tkagg')
 import logging
 from pathlib import Path
 import copy
-import json
 from datetime import datetime
-
-import matplotlib
-matplotlib.use('tkagg')
-from matplotlib import pyplot as plt
-
 from pynput import keyboard
 import numpy
-import slab
 import freefield
 import pyfar
-
+import slab
 from hrtf.processing.make.add_interaural import add_itd, add_ild  # from your repo
+from hrtf.processing.spherical_head import spherical_head
+from matplotlib import pyplot as plt
 
 # -------------------------------------------------------------------------
 # Global defaults
 # -------------------------------------------------------------------------
-subject_id = 'test'
+subject_id = 'PF'
 overwrite = False
-reference = 'test'
+reference = 'ref_07.11'
 n_samp = 2
-n_rec = 20
+n_rec = 5
 fs = 48828  # 97656
 
 slab.set_default_samplerate(fs)
@@ -36,8 +33,8 @@ freefield.set_logger("info")
 def record_hrir(
     subject_id: str,
     reference: str,
-    n_samp: int = 1,
-    n_rec: int = 20,
+    n_samp: int = 5,
+    n_rec: int = 5,
     fs: int = fs,
     overwrite: bool = False,
     az_range: tuple[float, float] = (-45, 45),
@@ -46,24 +43,24 @@ def record_hrir(
     subject_dir = hrtf_dir / "rec" / subject_id
     ref_dir = hrtf_dir / "rec" / "reference" / reference
 
-    # excitation signal
-    params = {"type": "slab.Sound.chirp", "duration": 0.2, "level": 90,
+    # generate excitation signal
+    params = {"type": "slab.Sound.chirp", "duration": 0.2, "level": 85,
               "from_frequency": 50, "to_frequency": 18e3, "samplerate": fs}
     signal = slab.Sound.chirp(duration=params["duration"], level=params["level"], samplerate=fs,
                               from_frequency=params["from_frequency"], to_frequency=params["to_frequency"])
-    signal = signal.ramp(when="both", duration=0.005)
+    signal = signal.ramp(when="both", duration=0.01)  # matches the cos ramp in bi_play_buf.rcx
     signal.params = params
 
     # 1) subject recordings
     if (not subject_dir.exists()) or overwrite:
         ear_pressure = Recordings.record_dome(signal, n_samp=n_samp, n_rec=n_rec, fs=fs)
         ear_pressure.params["subject_id"] = subject_id
-        ear_pressure.to_wav(subject_dir / "wav", overwrite=overwrite)
+        ear_pressure.to_wav(subject_dir, overwrite=overwrite)
     else:
         logging.info("Loading subject recordings from wav directory")
         ear_pressure = Recordings.from_wav(subject_dir / "wav")
-        # todo optionally: try to load params.txt here later
 
+    # 2) reference recordings
     if ref_dir.exists() and not overwrite:
         logging.info("Loading reference recordings")
         reference_pressure = Recordings.from_wav(ref_dir / "wav")
@@ -72,15 +69,14 @@ def record_hrir(
         ref_dir.mkdir(exist_ok=True, parents=True)
         reference_pressure = Recordings.record_dome(signal, n_samp=1, n_rec=n_rec, fs=fs)
         reference_pressure.params["subject_id"] = reference
-        reference_pressure.to_wav(ref_dir / "wav", overwrite=overwrite)
+        reference_pressure.to_wav(ref_dir, overwrite=overwrite)
     # optional: plot spectra
     # ear_pressure.plot_spectra()
     # reference_pressure.plot_spectra()
 
     # 3) convert recordings → IRs
-    ear_ir = ear_pressure.compute_tf(signal)  # todo inspect resulting IR
-    # todo implement fabians pipeline
-    reference_ir = reference_pressure.compute_tf(signal)
+    ear_ir = ear_pressure.compute_tf(out_n_samp=256)
+    reference_ir = reference_pressure.compute_tf(out_n_samp=256)
 
     # 4) equalize
     ir_dir = equalize(ear_ir, reference_ir)  # todo rework pipeline
@@ -169,18 +165,6 @@ class SpeakerGridBase:
             coords.append([az, el, distance])
         return numpy.array(coords, dtype="float16")
 
-    # --- I/O ---------------------------------------------------------------
-    @classmethod
-    def from_wav(cls, path: Path | str):
-        """Generic loader: subclasses may override type expectations."""
-        path = Path(path)
-        data = {}
-        for wav in path.glob("*.wav"):
-            data[wav.stem] = slab.Sound(wav)
-        if not data:
-            raise FileNotFoundError(f"No .wav files found in {path}")
-        return cls(data=data)
-
     def to_wav(self, path: Path | str, overwrite: bool = False) -> None:
         """
         Write all entries in self.data to WAV files.
@@ -197,13 +181,10 @@ class SpeakerGridBase:
         for key, obj in self.data.items():
             if not hasattr(obj, "write"):
                 raise TypeError(f"Object for key {key} has no `.write` method: {type(obj)}")
-
             fname = path / f"{key}.wav"
-
             if fname.exists() and not overwrite:
                 logging.info(f"Skipping existing file (overwrite=False): {fname}")
                 continue
-
             obj.write(fname)
         
     # --- parameter logging -------------------------------------------------
@@ -272,6 +253,10 @@ class Recordings(SpeakerGridBase):
     Values are `slab.Binaural`.
     """
 
+    def __init__(self, data=None, params=None, signal: slab.Sound | None = None):
+        super().__init__(data=data, params=params)
+        self.signal = signal
+
     @classmethod
     def record_dome(cls, signal: slab.Sound, n_samp=5, n_rec=20, fs=48828):
         """Record across the dome and return a Recordings object with all parameters stored."""
@@ -288,10 +273,13 @@ class Recordings(SpeakerGridBase):
 
         recordings_dict = {}
         filt = slab.Filter.band(kind="hp", frequency=50, samplerate=fs)
+        [led_speaker] = freefield.pick_speakers(23)  # get object for center speaker LED
 
         for n in range(n_samp):
             elevation_step = n * res
             if n_samp > 1:
+                freefield.write(tag='bitmask', value=led_speaker.digital_channel,
+                                processors=led_speaker.digital_proc)  # illuminate LED
                 input(f"Press Enter when head is at {0 + elevation_step}° elevation ...")
             for base_spk in speakers:
                 spk = copy.deepcopy(base_spk)
@@ -301,7 +289,7 @@ class Recordings(SpeakerGridBase):
                     key = f"{spk.index}_{spk.azimuth}_{spk.elevation}"
                     rec = cls.record_speaker(spk, signal, n_rec, fs)
                     recordings_dict[key] = filt.apply(rec)
-
+            freefield.write(tag='bitmask', value=0, processors=led_speaker.digital_proc)  # turn off LED
         params = {
             "fs": fs,
             "n_rec": n_rec,
@@ -309,7 +297,117 @@ class Recordings(SpeakerGridBase):
             "signal": getattr(signal, "params", {}),
             "datetime": datetime.now().isoformat(),
         }
-        return cls(data=recordings_dict, params=params)
+        return cls(data=recordings_dict, params=params, signal=signal)
+
+    # --- conversion to IRs --------------------------------------------------
+    def compute_tf(self, out_n_samp) -> "ImpulseResponses":
+        """
+        Convert this set of recordings to impulse responses using a reference set.
+
+        For each key in this Recordings object, find the matching reference entry
+        by comparing the first `match_prefix_len` characters (speaker index),
+        then compute the equalized IR with `equalize(...)`.
+        """
+        # --- COMPUTE RAW TF ---- #
+        reference = self.signal
+        ir_dict: dict[str, pyfar.Signal] = {}
+        for key, recording in self.data.items():
+            rec = pyfar.Signal(recording.data.T, fs)
+            ref_inv = pyfar.dsp.regularized_spectrum_inversion(pyfar.Signal(reference.data.T, fs),
+                frequency_range=(self.params['signal']['from_frequency'], self.params['signal']['to_frequency']))
+            hrir_deconvolved = (rec * ref_inv)
+            ir_dict[key] = hrir_deconvolved
+
+        # --- PROCESS TF ---- #
+        onsets = pyfar.dsp.find_impulse_response_start(ir_dict['23_0.0_0.0'])  # onsets at the central speaker (0, 0)
+        for key, ir in ir_dict.items():
+            # align IRs in time
+            ir  = pyfar.dsp.time_shift(ir, -numpy.min(onsets) / ir.sampling_rate + .001, unit='s')
+            # window the HRIRs
+            onsets = pyfar.dsp.find_impulse_response_start(ir, threshold=20)
+            onsets_min = numpy.min(onsets) / ir.sampling_rate  # onset in seconds
+            times = (onsets_min - .00025,  # start of fade-in
+                     onsets_min,  # end if fade-in
+                     onsets_min + .0048,  # start of fade_out
+                     onsets_min + .0058)  # end of_fade_out
+            ir_windowed, window = pyfar.dsp.time_window(
+                ir, times, 'hann', unit='s', crop='end', return_window=True)
+            ir_dict[key] = ir_windowed
+
+        ## 6. Low-frequency extrapolation
+        # todo get pyfar source grid and compute Spherical Head Transfer Functions - maybe do this after adding all az?
+        source_positions = [key[3:] for key in self.keys()] #todo this should be pyfar coordinates
+        shtf = spherical_head(source_positions, n_samples=ir_windowed.n_samples,
+                              sampling_rate=ir_windowed.sampling_rate)
+        for key, ir in ir_dict.items():
+            ir_extrapolated = self._low_freq_extrapolation(ir, shtf)
+            ir_dict[key] = ir_extrapolated
+
+        ## 7. Far-field extrapolation
+        source_positions_far_field = source_positions.copy()
+        source_positions_far_field.radius = 100
+        shtf_far_field = spherical_head(
+            source_positions_far_field,
+            n_samples=ir_extrapolated.n_samples,
+            sampling_rate=ir_extrapolated.sampling_rate)
+        dvf = shtf_far_field / shtf
+        for key, ir in ir_dict.items():
+            ir_far_field = ir * dvf
+            ir_dict[key] = ir_far_field
+
+        ## 8. Window to final length
+        for key, ir in ir_dict.items():
+            times = [0, 10, out_n_samp-1, out_n_samp]
+            hrir_final = pyfar.dsp.time_window(
+                hrir_far_field, times, 'hann', crop='end')
+            ### END SOLUTION
+
+        slab.Filter(data=hrir_deconvolved.time, samplerate=fs, fir='IR')
+        return ImpulseResponses(data=ir_dict, fs=self.fs, meta=self.meta.copy())
+    @staticmethod
+    def _low_freq_extrapolation(ir, shtf):
+        # Compute spherical head transfer functions using `spherical_head()`
+        # frequency below which the data is extrapolated
+        f_extrap = 400
+        mask_extrap = ir.frequencies >= f_extrap
+        # frequency below which the HRTF magnitude is assumed to be constant
+        f_target_idx = ir.find_nearest_frequency(150)
+        f_target = ir.frequencies[f_target_idx]
+        # valid frequencies and magnitude values
+        frequencies = ir.frequencies[mask_extrap]
+        magnitude = numpy.abs(
+            ir.freq[..., mask_extrap])
+        # concatenate target gains and frequencies
+        magnitude = numpy.concatenate((
+            numpy.abs(shtf.freq[..., 0, None]),  # 0 Hz
+            numpy.abs(shtf.freq[..., 1, None]),  # f_target
+            magnitude), -1)
+        frequencies = numpy.concatenate(([0], [f_target], frequencies))
+        # interpolate magnitude
+        magnitude_interpolated = numpy.empty_like(ir.freq)
+        for source in range(magnitude.shape[0]):
+            for ear in range(magnitude.shape[1]):
+                magnitude_interpolated[source, ear] = numpy.interp(
+                    ir.frequencies, frequencies, magnitude[source, ear])
+        # apply new magnitude response
+        ir_extrapolated = ir.copy()
+        ir_extrapolated.freq = \
+            magnitude_interpolated * numpy.exp(1j * numpy.angle(ir.freq))
+        return ir_extrapolated
+
+    @staticmethod
+    def record_speaker(speaker, signal: slab.Sound, n_rec: int, fs: int) -> slab.Binaural:
+        recordings = []
+        for _ in range(n_rec):
+            recordings.append(
+                freefield.play_and_record(
+                    speaker,
+                    signal,
+                    equalize=False,
+                    recording_samplerate=fs*2,  # due to the rp2 silently running on fs / 2
+                )
+            )
+        return slab.Binaural(numpy.mean(recordings, axis=0))
 
     @staticmethod
     def get_speakers(speakers, azimuth=None, elevation=None):
@@ -333,33 +431,46 @@ class Recordings(SpeakerGridBase):
                 out.append(spk)
         return out
 
-    @staticmethod
-    def record_speaker(speaker, signal: slab.Sound, n_rec: int, fs: int) -> slab.Binaural:
-        recordings = []
-        for _ in range(n_rec):
-            recordings.append(
-                freefield.play_and_record(
-                    speaker,
-                    signal,
-                    equalize=False,
-                    recording_samplerate=fs * 2,
-                )
-            )
-        return slab.Binaural(numpy.mean(recordings, axis=0))
+        # --- I/O: always Binaural --------------------------------------
 
-        # --- I/O override: always Binaural --------------------------------------
     @classmethod
-    def from_wav(cls, path: Path | str, fs: int | None = None, meta: dict | None = None):
+    def from_wav(cls, path: Path | str):
+        """
+        Load binaural recordings from wav and params.txt into a Recordings object.
+        Also reconstructs the excitation signal if params contain it.
+        """
         path = Path(path)
         data: dict[str, slab.Binaural] = {}
         for wav in path.glob("*.wav"):
             data[wav.stem] = slab.Binaural(wav)
         if not data:
             raise FileNotFoundError(f"No .wav files found in {path}")
-        if fs is None:
-            first = next(iter(data.values()))
-            fs = first.samplerate
-        return cls(data=data, fs=fs, meta=meta or {})
+
+        # 🔍 read params.txt if present
+        params = parse_params_file(path)
+
+        # 🔁 try to reconstruct the signal from params["signal"]
+        signal = None
+        sig_params = params.get("signal", {})
+        if isinstance(sig_params, dict) and sig_params.get("type") == "slab.Sound.chirp":
+            dur = sig_params.get("duration", 0.2)
+            level = sig_params.get("level", 90)
+            fs_sig = sig_params.get("samplerate", fs)  # fall back to global fs
+            f_start = sig_params.get("from_frequency", 50)
+            f_end = sig_params.get("to_frequency", fs_sig / 2)
+
+            signal = slab.Sound.chirp(
+                duration=dur,
+                level=level,
+                samplerate=fs_sig,
+                from_frequency=f_start,
+                to_frequency=f_end,
+            )
+            # if you always ramped originally, you can ramp again here:
+            signal = signal.ramp(when="both", duration=0.01)
+            signal.params = sig_params
+
+        return cls(data=data, params=params, signal=signal)
 
     # --- plotting of spectra -----------------------------------------------
     def plot_spectra(self):
@@ -389,48 +500,6 @@ class Recordings(SpeakerGridBase):
         ax.legend(title="Elevation (°)")
         plt.show()
 
-    # --- conversion to IRs --------------------------------------------------
-    def compute_tf(
-        self,
-        reference: "slab.Sound",
-        match_prefix_len: int = 2,
-    ) -> "ImpulseResponses":
-        """
-        Convert this set of recordings to impulse responses using a reference set.
-
-        For each key in this Recordings object, find the matching reference entry
-        by comparing the first `match_prefix_len` characters (speaker index),
-        then compute the equalized IR with `equalize(...)`.
-        """
-        ir_dict: dict[str, slab.Filter] = {}
-        for key, recording in self.data.items():
-            rec = pyfar.Signal(recording.data.T, fs)
-            ref_inv = pyfar.dsp.regularized_spectrum_inversion(
-                pyfar.Signal(reference.data.T, fs), frequency_range=(20, int(reference.samplerate / 2)))
-            hrir_deconvolved = (rec * ref_inv)
-            ir_dict[key] = hrir_deconvolved
-
-
-        onsets = pyfar.dsp.find_impulse_response_start(ir_dict['23_0.0_0.0'])
-        for key, ir in ir_dict.items():
-            # align IRs in time
-            ir  = pyfar.dsp.time_shift(
-            ir, -numpy.min(onsets) / ir.sampling_rate + .001,
-            unit='s')
-            # window the HRIRs
-            onsets = pyfar.dsp.find_impulse_response_start(ir, threshold=20)
-            onsets_min = numpy.min(onsets) / ir.sampling_rate  # onset in seconds
-            times = (onsets_min - .00025,  # start of fade-in
-                     onsets_min,  # end if fade-in
-                     # onsets_min + .0048,  # start of fade_out
-                     # onsets_min + .0058)  # end of_fade_out
-                     onsets_min + .05,  # start of fade_out
-                     onsets_min + .051)  # end of_fade_out
-            ir_windowed, window = pyfar.dsp.time_window(
-                ir, times, 'hann', unit='s', crop='end', return_window=True)
-
-        slab.Filter(data=hrir_deconvolved.time, samplerate=fs, fir='IR')
-        return ImpulseResponses(data=ir_dict, fs=self.fs, meta=self.meta.copy())
 
 # -------------------------------------------------------------------------
 # Impulse Responses (slab.Filter grid)
@@ -607,13 +676,6 @@ def equalize(rec_ir: ImpulseResponses | Recordings, ref_ir: ImpulseResponses | R
 # -------------------------------------------------------------------------
 # Compatibility helpers
 # -------------------------------------------------------------------------
-def recordings2wav(recordings_dict: dict[str, slab.Binaural], path: Path | str):
-    Recordings(data=recordings_dict).to_wav(path)
-
-
-def wav2recordings(path: Path | str) -> dict[str, slab.Binaural]:
-    return Recordings.from_wav(path).data
-
 
 def recordings2ir(
     recordings_dict: dict[str, slab.Binaural] | Recordings,
@@ -635,7 +697,6 @@ def recordings2ir(
 
     irs = recordings.to_ir(reference)
     return irs.data
-
 
 def plot_dict(data_dict, kind: str = "tf"):
     """
@@ -662,6 +723,74 @@ def plot_dict(data_dict, kind: str = "tf"):
             line.set_label(key)
         ax.legend()
         plt.show()
+
+def parse_params_file(path: Path | str, filename: str = "params.txt") -> dict:
+    """
+    Read a params.txt written by `write_params_file` and rebuild a params dict.
+
+    Supports:
+    key: value
+    nested_dict:
+      subkey: subval
+    """
+    path = Path(path)
+    file = path / filename
+    params: dict[str, object] = {}
+
+    if not file.exists():
+        return params  # no params file → leave dict empty
+
+    def parse_value(s: str):
+        s = s.strip()
+        # try int, then float, then bool, else leave as string
+        if s.lower() in ("true", "false"):
+            return s.lower() == "true"
+        try:
+            return int(s)
+        except ValueError:
+            pass
+        try:
+            return float(s)
+        except ValueError:
+            pass
+        return s
+
+    with file.open("r", encoding="utf-8") as f:
+        lines = [line.rstrip("\n") for line in f]
+
+    current_dict = None
+    current_key = None
+
+    for line in lines:
+        if not line.strip():
+            continue
+
+        # top-level line (no leading spaces)
+        if not line.startswith(" "):
+            if line.endswith(":") and not ":" in line[:-1]:
+                # e.g. "signal:" or "Software versions:"
+                key = line[:-1].strip()
+                current_key = key
+                current_dict = {}
+                params[key] = current_dict
+            else:
+                # e.g. "fs: 48828"
+                if ":" in line:
+                    key, val = line.split(":", 1)
+                    key = key.strip()
+                    val = val.strip()
+                    params[key] = parse_value(val)
+                current_dict = None
+                current_key = None
+        else:
+            # indented line: part of current_dict
+            if current_dict is not None:
+                sub = line.strip()
+                if ":" in sub:
+                    sk, sv = sub.split(":", 1)
+                    current_dict[sk.strip()] = parse_value(sv.strip())
+
+    return params
 
 if __name__ == "__main__":
     # tiny example call – adjust IDs and reference name

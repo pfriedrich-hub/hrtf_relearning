@@ -1,5 +1,5 @@
-import matplotlib
-matplotlib.use('tkagg')
+# import matplotlib
+# matplotlib.use('tkagg')
 import logging
 from pathlib import Path
 import copy
@@ -43,7 +43,7 @@ def record_hrir(
     subject_dir = hrtf_dir / "rec" / subject_id
     ref_dir = hrtf_dir / "rec" / "reference" / reference
 
-    # generate excitation signal
+    # excitation signal
     params = {"type": "slab.Sound.chirp", "duration": 0.2, "level": 85,
               "from_frequency": 50, "to_frequency": 18e3, "samplerate": fs}
     signal = slab.Sound.chirp(duration=params["duration"], level=params["level"], samplerate=fs,
@@ -51,35 +51,37 @@ def record_hrir(
     signal = signal.ramp(when="both", duration=0.01)  # matches the cos ramp in bi_play_buf.rcx
     signal.params = params
 
-    # 1) subject recordings
+    # 1) in ear recordings
     if (not subject_dir.exists()) or overwrite:
         ear_pressure = Recordings.record_dome(signal, n_samp=n_samp, n_rec=n_rec, fs=fs)
         ear_pressure.params["subject_id"] = subject_id
         ear_pressure.to_wav(subject_dir, overwrite=overwrite)
     else:
         logging.info("Loading subject recordings from wav directory")
-        ear_pressure = Recordings.from_wav(subject_dir / "wav")
+        ear_pressure = Recordings.from_wav(subject_dir)
 
     # 2) reference recordings
     if ref_dir.exists() and not overwrite:
         logging.info("Loading reference recordings")
-        reference_pressure = Recordings.from_wav(ref_dir / "wav")
+        reference_pressure = Recordings.from_wav(ref_dir)
     else:
         logging.info("Recording new reference")
         ref_dir.mkdir(exist_ok=True, parents=True)
         reference_pressure = Recordings.record_dome(signal, n_samp=1, n_rec=n_rec, fs=fs)
         reference_pressure.params["subject_id"] = reference
         reference_pressure.to_wav(ref_dir, overwrite=overwrite)
-    # optional: plot spectra
+
+    # plot spectra
     # ear_pressure.plot_spectra()
     # reference_pressure.plot_spectra()
 
-    # 3) convert recordings → IRs
-    ear_ir = ear_pressure.compute_tf(out_n_samp=256)
-    reference_ir = reference_pressure.compute_tf(out_n_samp=256)
+    # 3) Compute TF (deconvolve recordings with inverted signal)
+    hrir_recorded = ear_pressure.compute_tf(out_n_samp=256)
+    hrir_reference = reference_pressure.compute_tf(out_n_samp=256)
 
-    # 4) equalize
-    ir_dir = equalize(ear_ir, reference_ir)  # todo rework pipeline
+    # 4) Equalize (divide ear tf by reference tf)
+    hrir_equalized = equalize(hrir_recorded, hrir_reference)
+
 
     # # 4) add azimuth sources
     # irs.add_az_sources(az_range=az_range)
@@ -300,100 +302,48 @@ class Recordings(SpeakerGridBase):
         return cls(data=recordings_dict, params=params, signal=signal)
 
     # --- conversion to IRs --------------------------------------------------
-    def compute_tf(self, out_n_samp) -> "ImpulseResponses":
+    def compute_tf(self, out_n_samp=256) -> "ImpulseResponses":
         """
         Convert this set of recordings to impulse responses using a reference set.
 
         For each key in this Recordings object, find the matching reference entry
         by comparing the first `match_prefix_len` characters (speaker index),
-        then compute the equalized IR with `equalize(...)`.
         """
-        # --- COMPUTE RAW TF ---- #
-        reference = self.signal
-        ir_dict: dict[str, pyfar.Signal] = {}
-        for key, recording in self.data.items():
-            rec = pyfar.Signal(recording.data.T, fs)
-            ref_inv = pyfar.dsp.regularized_spectrum_inversion(pyfar.Signal(reference.data.T, fs),
-                frequency_range=(self.params['signal']['from_frequency'], self.params['signal']['to_frequency']))
-            hrir_deconvolved = (rec * ref_inv)
-            ir_dict[key] = hrir_deconvolved
+        ear_pressure = pyfar.Signal([item.data.T for item in list(self.data.values())], fs)  # convert to pyfar signal
+        # compute raw tf
+        ref_inv = pyfar.dsp.regularized_spectrum_inversion(pyfar.Signal(self.signal.data.T, fs),
+                                                           frequency_range=(self.params['signal']['from_frequency'],
+                                                                            self.params['signal']['to_frequency']))
+        hrir_deconvolved = (ear_pressure * ref_inv) # convolve with reference signal
 
-        # --- PROCESS TF ---- #
-        onsets = pyfar.dsp.find_impulse_response_start(ir_dict['23_0.0_0.0'])  # onsets at the central speaker (0, 0)
-        for key, ir in ir_dict.items():
-            # align IRs in time
-            ir  = pyfar.dsp.time_shift(ir, -numpy.min(onsets) / ir.sampling_rate + .001, unit='s')
-            # window the HRIRs
-            onsets = pyfar.dsp.find_impulse_response_start(ir, threshold=20)
-            onsets_min = numpy.min(onsets) / ir.sampling_rate  # onset in seconds
-            times = (onsets_min - .00025,  # start of fade-in
-                     onsets_min,  # end if fade-in
-                     onsets_min + .0048,  # start of fade_out
-                     onsets_min + .0058)  # end of_fade_out
-            ir_windowed, window = pyfar.dsp.time_window(
-                ir, times, 'hann', unit='s', crop='end', return_window=True)
-            ir_dict[key] = ir_windowed
+        # correct group delay / temporal alignment of all HRIRs in the dataset at 1ms (keeps relative timing intact)
+        hrir_shifted = pyfar.dsp.time_shift(hrir_deconvolved, 2000)
+        center_idx = [i for i, s in enumerate(self.data.keys()) if s == '23_0.0_0.0']
+        center_onset = pyfar.dsp.find_impulse_response_start(hrir_shifted[center_idx], threshold=15)  # onsets at the central speaker (0, 0)
+        hrir_aligned = pyfar.dsp.time_shift(  # align
+            hrir_shifted, -numpy.min(center_onset) / hrir_shifted.sampling_rate + .001, unit='s')
 
-        ## 6. Low-frequency extrapolation
-        # todo get pyfar source grid and compute Spherical Head Transfer Functions - maybe do this after adding all az?
-        source_positions = [key[3:] for key in self.keys()] #todo this should be pyfar coordinates
-        shtf = spherical_head(source_positions, n_samples=ir_windowed.n_samples,
-                              sampling_rate=ir_windowed.sampling_rate)
-        for key, ir in ir_dict.items():
-            ir_extrapolated = self._low_freq_extrapolation(ir, shtf)
-            ir_dict[key] = ir_extrapolated
+        # window the HRIRs
+        onsets = pyfar.dsp.find_impulse_response_start(hrir_aligned, threshold=15)
+        onsets_min = numpy.min(onsets) / hrir_aligned.sampling_rate  #  earliest onset in the HRIR dataset
+        times = (onsets_min - .00025,  # start of fade-in
+                 onsets_min,  # end if fade-in
+                 onsets_min + .0048,  # start of fade_out
+                 onsets_min + .0058)  # end of_fade_out
+        hrir_windowed, window = pyfar.dsp.time_window(
+            hrir_aligned, times, 'hann', unit='s', crop='end', return_window=True)
 
-        ## 7. Far-field extrapolation
-        source_positions_far_field = source_positions.copy()
-        source_positions_far_field.radius = 100
-        shtf_far_field = spherical_head(
-            source_positions_far_field,
-            n_samples=ir_extrapolated.n_samples,
-            sampling_rate=ir_extrapolated.sampling_rate)
-        dvf = shtf_far_field / shtf
-        for key, ir in ir_dict.items():
-            ir_far_field = ir * dvf
-            ir_dict[key] = ir_far_field
+        # window to final length
+        times = [0, 10, 246, out_n_samp]
+        hrir_final = pyfar.dsp.time_window(
+            hrir_windowed, times, 'hann', crop='end')
 
-        ## 8. Window to final length
-        for key, ir in ir_dict.items():
-            times = [0, 10, out_n_samp-1, out_n_samp]
-            hrir_final = pyfar.dsp.time_window(
-                hrir_far_field, times, 'hann', crop='end')
-            ### END SOLUTION
-
-        slab.Filter(data=hrir_deconvolved.time, samplerate=fs, fir='IR')
-        return ImpulseResponses(data=ir_dict, fs=self.fs, meta=self.meta.copy())
-    @staticmethod
-    def _low_freq_extrapolation(ir, shtf):
-        # Compute spherical head transfer functions using `spherical_head()`
-        # frequency below which the data is extrapolated
-        f_extrap = 400
-        mask_extrap = ir.frequencies >= f_extrap
-        # frequency below which the HRTF magnitude is assumed to be constant
-        f_target_idx = ir.find_nearest_frequency(150)
-        f_target = ir.frequencies[f_target_idx]
-        # valid frequencies and magnitude values
-        frequencies = ir.frequencies[mask_extrap]
-        magnitude = numpy.abs(
-            ir.freq[..., mask_extrap])
-        # concatenate target gains and frequencies
-        magnitude = numpy.concatenate((
-            numpy.abs(shtf.freq[..., 0, None]),  # 0 Hz
-            numpy.abs(shtf.freq[..., 1, None]),  # f_target
-            magnitude), -1)
-        frequencies = numpy.concatenate(([0], [f_target], frequencies))
-        # interpolate magnitude
-        magnitude_interpolated = numpy.empty_like(ir.freq)
-        for source in range(magnitude.shape[0]):
-            for ear in range(magnitude.shape[1]):
-                magnitude_interpolated[source, ear] = numpy.interp(
-                    ir.frequencies, frequencies, magnitude[source, ear])
-        # apply new magnitude response
-        ir_extrapolated = ir.copy()
-        ir_extrapolated.freq = \
-            magnitude_interpolated * numpy.exp(1j * numpy.angle(ir.freq))
-        return ir_extrapolated
+        # convert to slab filters and write to impulseresponses object
+        params = {'fs': fs,'signal': self.params['signal'], 'n_samp': out_n_samp, 'date':datetime.now().isoformat()}
+        out = copy.deepcopy(self)
+        for key, filt in zip(out.data.keys(), hrir_final):
+            out.data[key] = slab.Filter(data=filt.time, samplerate=fs, fir='IR')
+        return ImpulseResponses(data=out.data, params=params)
 
     @staticmethod
     def record_speaker(speaker, signal: slab.Sound, n_rec: int, fs: int) -> slab.Binaural:
@@ -445,11 +395,7 @@ class Recordings(SpeakerGridBase):
             data[wav.stem] = slab.Binaural(wav)
         if not data:
             raise FileNotFoundError(f"No .wav files found in {path}")
-
-        # 🔍 read params.txt if present
         params = parse_params_file(path)
-
-        # 🔁 try to reconstruct the signal from params["signal"]
         signal = None
         sig_params = params.get("signal", {})
         if isinstance(sig_params, dict) and sig_params.get("type") == "slab.Sound.chirp":
@@ -509,6 +455,8 @@ class ImpulseResponses(SpeakerGridBase):
     Directional impulse responses over the speaker dome.
     Values are `slab.Filter` (FIR).
     """
+    def __init__(self, data=None, params=None):
+        super().__init__(data=data, params=params)
 
     @classmethod
     def from_wav(cls, path: Path | str, fs: int | None = None, meta: dict | None = None):
@@ -573,6 +521,7 @@ class ImpulseResponses(SpeakerGridBase):
             ax.set_xlim([2e3, 18e3])
             ax.set_xscale("linear")
             ax.set_xlabel("Frequency [Hz]")
+            ax.set_ylim(80, -80)
         else:
             ax.set_xlabel("Samples")
 
@@ -591,86 +540,77 @@ class ImpulseResponses(SpeakerGridBase):
             key=lambda kv: (
                 float(kv[0].rsplit("_", 2)[-2]),  # az
                 float(kv[0].rsplit("_", 2)[-1]),  # el
-            ),
-        )
-
+            ),)
         data = numpy.array([filt.data for _, filt in items_sorted])
         sources = self.get_sources()
-
         hrir = slab.HRTF(data=data, sources=sources, samplerate=self.fs, datatype="FIR")
-
         if add_itd_flag:
             hrir = add_itd(hrir)
         if add_ild_flag:
             hrir = add_ild(hrir)
-
         return hrir
 
 # -------------------------------------------------------------------------
 # Deconvolution / equalization (pyfar pipeline)
 # -------------------------------------------------------------------------
-def equalize(rec_ir: ImpulseResponses | Recordings, ref_ir: ImpulseResponses | Recordings) -> ImpulseResponses:
+def equalize(hrir_recorded: ImpulseResponses | Recordings, hrir_reference: ImpulseResponses | Recordings) -> ImpulseResponses:
     """
-    Compute a time-limited FIR IR from a recording and its reference.
-
-    This is adapted from your existing `rec2ir.equalize` implementation.
+    Equalize IRs
     """
+    logging.info('Applying equalization')
+    signal_params = hrir_recorded.params['signal']
+    fs = hrir_recorded.params['fs']
+    n_samp = hrir_recorded.params['n_samp']
     # find reference with same speaker index prefix
-    for key, recording in rec_ir.data.items():
-        ref_key = [k for k in ref_ir.data.keys() if k[:2] == key[:2]][0]
+    equalized = ImpulseResponses()
+    for key, filt in hrir_recorded.items():
+        equalized[key] = pyfar.Signal(filt.data.T, filt.samplerate)  # convert to pyfar signal
+
+    # convolve IRs with reference (loudspeaker specific recordings)
+    speaker_ids =  list(set(key[:2] for key in equalized.keys()))
+    for spk_id in speaker_ids:
+        # pick reference recording and remove DC and invert its spectrum
+        [ref_key] = [k for k in hrir_reference.keys() if spk_id in k[:2]]
         if not ref_key:
             raise KeyError(f"No matching reference for recording key '{key}'")
-        reference = ref_ir.data[ref_key]
-        fs = recording.samplerate
-        if recording.samplerate != reference.samplerate:
-            logging.warning("sampling rate mismatch. resampling reference")
-            reference = reference.resample(recording.samplerate)
+        reference = pyfar.Signal(hrir_reference[ref_key].data.T, fs)
+        reference.time -= numpy.mean(reference.time, axis=1, keepdims=True)
+        # Equalize HRIR by convolution with inverted reference signal
+        reference_inv = pyfar.dsp.regularized_spectrum_inversion(reference,
+                                frequency_range=(signal_params['from_frequency'], signal_params['to_frequency']))
+        # equalize IRs recorded from the same speaker
+        rec_keys = [k for k in equalized.keys() if spk_id in k[:2]]
+        for key in rec_keys:
+            ir = equalized[key]
+            ir.time -= numpy.mean(ir.time, axis=1, keepdims=True)  # remove DC
+            ir_equalized = ir * reference_inv  # convolve and store in equalized dict
+            equalized[key] = ir_equalized
 
-        reference_sig = pyfar.Signal(reference.data.T, fs)
-        recording_sig = pyfar.Signal(recording.data.T, fs)
+    # time align and window
+    hrir = pyfar.Signal(numpy.stack([s.time for s in equalized.values()], axis=0), fs)  # work on a single pyfar object
 
-        # remove DC
-        recording_sig.time -= numpy.mean(recording_sig.time, axis=1, keepdims=True)
-        reference_sig.time -= numpy.mean(reference_sig.time, axis=1, keepdims=True)
+    # correct group delay / temporal alignment of all HRIRs in the dataset at 1ms (keeps relative timing intact)
+    hrir_shifted = pyfar.dsp.time_shift(hrir, int(n_samp / 2))
+    center_idx = [i for i, s in enumerate(hrir_reference.keys()) if s == '23_0.0_0.0']
+    center_onset = pyfar.dsp.find_impulse_response_start(hrir_shifted[center_idx], threshold=15)  # onsets at the central speaker (0, 0)
+    hrir_aligned = pyfar.dsp.time_shift(  # align
+        hrir_shifted, -numpy.min(center_onset) / fs + .001, unit='s')
 
-        reference_inverted = pyfar.dsp.regularized_spectrum_inversion(
-            reference_sig, frequency_range=(20, 18750),)
+    # window the HRIRs
+    onsets = pyfar.dsp.find_impulse_response_start(hrir_aligned, threshold=15)
+    onsets_min = numpy.min(onsets) / fs # earliest onset in the HRIR dataset
+    times = (onsets_min - .0005,  # start of fade-in
+             onsets_min,  # end if fade-in
+             onsets_min + .002,  # start of fade_out
+             onsets_min + .0025)  # end of_fade_out
+    hrir_windowed, window = pyfar.dsp.time_window(
+        hrir_aligned, times, 'hann', unit='s', crop='none', return_window=True)
 
-        ir = recording_sig * reference_inverted
-
-        # use earliest main peak (L/R) as reference
-        n0 = min( int(numpy.argmax(numpy.abs(ir.time[0]))), int(numpy.argmax(numpy.abs(ir.time[1]))),)
-
-        # time-window around direct sound
-        ir_windowed = pyfar.dsp.time_window(
-            ir,
-            (max(0, n0 - 50), min(n0 + 100, len(ir.time[0]) - 1)),
-            window="boxcar",
-            unit="samples",
-            crop="window",
-        )
-
-        ir_windowed = pyfar.dsp.pad_zeros(ir_windowed, ir.n_samples - ir_windowed.n_samples)
-
-        # low/high frequency split at 400 Hz
-        ir_low = pyfar.dsp.filter.crossover(pyfar.signals.impulse(ir_windowed.n_samples), 4, 400)[0]
-        ir_low.sampling_rate = fs
-        ir_high = pyfar.dsp.filter.crossover(ir_windowed, 4, 400)[1]
-
-        ir_low_delayed = pyfar.dsp.fractional_time_shift(
-            ir_low,
-            pyfar.dsp.find_impulse_response_delay(ir_windowed),
-        )
-        ir_extrapolated = ir_low_delayed + ir_high
-
-        ir_final = pyfar.dsp.time_window(
-            ir_extrapolated,
-            (0, 255),
-            "boxcar",
-            crop="window",
-        )
-
-    return slab.Filter(data=ir_final.time, samplerate=fs, fir="IR")
+    # convert to slab filters and write to impulseresponses object
+    equalized.params = {'fs': fs, 'signal': signal_params, 'n_samp': n_samp, 'date': datetime.now().isoformat()}
+    for key, filt in zip(equalized.keys(), hrir_windowed):
+        equalized[key] = slab.Filter(data=filt.time, samplerate=fs, fir='IR')
+    return equalized
 
 
 # -------------------------------------------------------------------------
@@ -792,6 +732,37 @@ def parse_params_file(path: Path | str, filename: str = "params.txt") -> dict:
 
     return params
 
+    # @staticmethod
+    # def _low_freq_extrapolation(ir, shtf):
+    #     # Compute spherical head transfer functions using `spherical_head()`
+    #     # frequency below which the data is extrapolated
+    #     f_extrap = 400
+    #     mask_extrap = ir.frequencies >= f_extrap
+    #     # frequency below which the HRTF magnitude is assumed to be constant
+    #     f_target_idx = ir.find_nearest_frequency(150)
+    #     f_target = ir.frequencies[f_target_idx]
+    #     # valid frequencies and magnitude values
+    #     frequencies = ir.frequencies[mask_extrap]
+    #     magnitude = numpy.abs(
+    #         ir.freq[..., mask_extrap])
+    #     # concatenate target gains and frequencies
+    #     magnitude = numpy.concatenate((
+    #         numpy.abs(shtf.freq[..., 0, None]),  # 0 Hz
+    #         numpy.abs(shtf.freq[..., 1, None]),  # f_target
+    #         magnitude), -1)
+    #     frequencies = numpy.concatenate(([0], [f_target], frequencies))
+    #     # interpolate magnitude
+    #     magnitude_interpolated = numpy.empty_like(ir.freq)
+    #     for source in range(magnitude.shape[0]):
+    #         for ear in range(magnitude.shape[1]):
+    #             magnitude_interpolated[source, ear] = numpy.interp(
+    #                 ir.frequencies, frequencies, magnitude[source, ear])
+    #     # apply new magnitude response
+    #     ir_extrapolated = ir.copy()
+    #     ir_extrapolated.freq = \
+    #         magnitude_interpolated * numpy.exp(1j * numpy.angle(ir.freq))
+    #     return ir_extrapolated
+    #
 if __name__ == "__main__":
     # tiny example call – adjust IDs and reference name
     logging.basicConfig(level=logging.INFO)

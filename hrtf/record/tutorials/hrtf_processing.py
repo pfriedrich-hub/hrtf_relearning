@@ -355,7 +355,3 @@ ax.set_title(f'HRTFs and DTFs (position {idx})')
 ax.set_xlim(50, 22050)
 plt.show()
 ### END SOLUTION
-
-%load_ext watermark
-%watermark -v -m -p numpy,scipy,pyfar,sofar,nbgrader,watermark
-

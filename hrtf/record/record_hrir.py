@@ -418,7 +418,8 @@ class Recordings(SpeakerGridBase):
         )
 
         # do this after equalization?
-        times_samples = [0, 10, 246, out_n_samp]
+
+        times_samples = [0, 10, 246, out_n_samp-1]
         hrir_final = pyfar.dsp.time_window(
             hrir_windowed,
             times_samples,

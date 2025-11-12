@@ -1,6 +1,7 @@
 fs: 48828
 n_rec: 5
 n_samp: 2
+highpass_frequency: 50
 signal:
   type: slab.Sound.chirp
   duration: 0.2

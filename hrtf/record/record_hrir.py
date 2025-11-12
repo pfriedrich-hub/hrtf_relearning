@@ -10,14 +10,12 @@ import freefield
 import pyfar
 import warnings
 import slab
-from hrtf.processing.make.add_interaural import add_itd, add_ild  # from your repo
-from hrtf.processing.spherical_head import spherical_head
 from matplotlib import pyplot as plt
 warnings.filterwarnings("ignore", category=pyfar._utils.PyfarDeprecationWarning)
 
 
 # -------------------------------------------------------------------------
-# Global defaults
+# Global settings
 # -------------------------------------------------------------------------
 subject_id = 'PF'
 overwrite = False
@@ -25,6 +23,7 @@ reference = 'ref_07.11'
 n_samp = 2
 n_rec = 5
 fs = 48828  # 97656
+show = False
 
 slab.set_default_samplerate(fs)
 data_dir = Path.cwd() / "data"
@@ -40,23 +39,15 @@ def record_hrir(
     n_rec: int = 5,
     fs: int = fs,
     overwrite: bool = False,
-    az_range: tuple[float, float] = (-45, 45),
-):
+    show: bool = True):
+
     hrtf_dir = Path.cwd() / "data" / "hrtf"
     subject_dir = hrtf_dir / "rec" / subject_id
     ref_dir = hrtf_dir / "rec" / "reference" / reference
 
-    # excitation signal
-    params = {"type": "slab.Sound.chirp", "duration": 0.2, "level": 85,
-              "from_frequency": 50, "to_frequency": 18e3, "samplerate": fs}
-    signal = slab.Sound.chirp(duration=params["duration"], level=params["level"], samplerate=fs,
-                              from_frequency=params["from_frequency"], to_frequency=params["to_frequency"])
-    signal = signal.ramp(when="both", duration=0.01)  # matches the cos ramp in bi_play_buf.rcx
-    signal.params = params
-
     # 1) in ear recordings
     if (not subject_dir.exists()) or overwrite:
-        ear_pressure = Recordings.record_dome(signal, n_samp=n_samp, n_rec=n_rec, fs=fs)
+        ear_pressure = Recordings.record_dome(n_samp=n_samp, n_rec=n_rec, hp_freq=50, fs=fs)
         ear_pressure.params["subject_id"] = subject_id
         ear_pressure.to_wav(subject_dir, overwrite=overwrite)
     else:
@@ -70,7 +61,7 @@ def record_hrir(
     else:
         logging.info("Recording new reference")
         ref_dir.mkdir(exist_ok=True, parents=True)
-        reference_pressure = Recordings.record_dome(signal, n_samp=1, n_rec=n_rec, fs=fs)
+        reference_pressure = Recordings.record_dome(n_samp=1, n_rec=n_rec, hp_freq=50, fs=fs)
         reference_pressure.params["subject_id"] = reference
         reference_pressure.to_wav(ref_dir, overwrite=overwrite)
 
@@ -78,42 +69,23 @@ def record_hrir(
     # ear_pressure.plot_spectra()
     # reference_pressure.plot_spectra()
 
-    # 3) Compute TF (deconvolve recordings with inverted signal)
-    hrir_recorded = ear_pressure.compute_tf(out_n_samp=256, show=True)
-    hrir_reference = reference_pressure.compute_tf(out_n_samp=256, show=True)
+    # 3) Compute TF (deconvolve recordings with inverted excitation signal)
+    hrir_recorded = ear_pressure.compute_tf(out_n_samp=256, show=show)
+    hrir_reference = reference_pressure.compute_tf(out_n_samp=256, show=show)
 
-    # 4) Equalize (divide ear tf by reference tf)
-    hrir_equalized = equalize(hrir_recorded, hrir_reference)
+    # 4) Equalize HRIR by reference IR
+    hrir_eq = equalize(hrir_recorded, hrir_reference, show=True)
 
+    # 5) Low frequency extrapolation
+    hrir_extrapol = lowfreq_extrapolate(hrir_eq, f_extrap=400.0, f_target=150.0, head_radius=0.0875, show=True)
 
-    # # 4) add azimuth sources
-    # irs.add_az_sources(az_range=az_range)
-    #
-    #
-    #
-    # # 5) build HRTF
-    # hrir = irs.to_hrtf(add_itd_flag=True, add_ild_flag=True)
-    #
-    # # 6) write SOFA
-    # slab.HRTF.write_sofa(hrir, subject_dir / f"{subject_id}.sofa")
-    #
-    # return hrir, reference_recs, recs
+    # 6) Extend azimuths + add binaural cues (ILD full-band off-midline + ITD align)
+    hrir_full = expand_azimuths_with_binaural_cues(hrir_extrapol, az_range=(-50, 50), head_radius=0.0875, show=True)
 
+    # 5) Export to slab.HRTF when ready
+    hrir = hrir_full.to_slab_hrtf(datatype="FIR")
 
-# -------------------------------------------------------------------------
-# Helper: wait for Enter (optional)
-# -------------------------------------------------------------------------
-def wait_for_button(msg=None):
-    if msg:
-        logging.info(msg)
-
-    def on_press(key):
-        if key == keyboard.Key.enter:
-            listener.stop()
-
-    with keyboard.Listener(on_press=on_press) as listener:
-        listener.join()
-
+    return hrir
 
 # -------------------------------------------------------------------------
 # Base grid container
@@ -216,7 +188,7 @@ class SpeakerGridBase:
                 logging.info(f"Skipping existing file (overwrite=False): {fname}")
                 continue
             obj.write(fname)
-        
+
     # --- parameter logging -------------------------------------------------
     def write_params_file(self, path: Path, filename: str = "params.txt") -> None:
         """
@@ -288,10 +260,18 @@ class Recordings(SpeakerGridBase):
         self.signal = signal
 
     @classmethod
-    def record_dome(cls, signal: slab.Sound, n_samp=5, n_rec=5, hp_freq=50, fs=48828):
+    def record_dome(cls, n_samp=5, n_rec=5, hp_freq=50, fs=48828):
         """Record across the dome and return a Recordings object with all parameters stored."""
         if freefield.PROCESSORS.mode != "play_birec":
             freefield.initialize("dome", "play_birec")
+
+        # excitation signal
+        params = {"type": "slab.Sound.chirp", "duration": 0.2, "level": 85,
+                  "from_frequency": 50, "to_frequency": 18e3, "samplerate": fs}
+        signal = slab.Sound.chirp(duration=params["duration"], level=params["level"], samplerate=fs,
+                                  from_frequency=params["from_frequency"], to_frequency=params["to_frequency"])
+        signal = signal.ramp(when="both", duration=0.01)  # matches the cos ramp in bi_play_buf.rcx
+        signal.params = params
 
         speakers_all = freefield.read_speaker_table()
         speakers = cls.get_speakers(speakers_all, azimuth=0, elevation=None)
@@ -336,7 +316,7 @@ class Recordings(SpeakerGridBase):
         Convert this set of recordings to impulse responses.
 
         Steps:
-        1. Stack all binaural in-ear recordings into a multi-channel pyfar.Signal
+        1. Stack all binaural in-ear recordings into a multi channel pyfar.Signal
         2. Compute regularized inverse of the excitation signal
         3. Deconvolve (Y * X^{-1}) to obtain HRIRs
         4. Align group delay relative to a center loudspeaker
@@ -350,10 +330,10 @@ class Recordings(SpeakerGridBase):
         # 0) Basic parameters
         # ------------------------------------------------------------------
         if "fs" in self.params:
-            fs_local = int(self.params["fs"])
+            fs = int(self.params["fs"])
         else:
             from record_hrir import fs as fs_global
-            fs_local = int(fs_global)
+            fs = int(fs_global)
 
         if not self.data:
             raise ValueError("Recordings.compute_tf(): self.data is empty.")
@@ -361,8 +341,8 @@ class Recordings(SpeakerGridBase):
         # ------------------------------------------------------------------
         # 1) Convert recordings -> pyfar.Signal
         # ------------------------------------------------------------------
-        ear_arrays = [rec.data.T for rec in self.data.values()]  # (2, n_samples) per rec
-        ear_pressure = pyfar.Signal(ear_arrays, fs_local)
+        rec_array = [rec.data.T for rec in self.data.values()]  # (2, n_samples) per rec
+        recording = pyfar.Signal(rec_array, fs)
 
         # ------------------------------------------------------------------
         # 2) Invert the excitation chirp
@@ -370,28 +350,26 @@ class Recordings(SpeakerGridBase):
         if self.signal is None:
             raise ValueError("Recordings.compute_tf(): self.signal is None, "
                              "cannot perform deconvolution.")
-
         sig = self.signal
         sig_params = self.params.get("signal", {})
         from_f = sig_params.get("from_frequency")
         to_f = sig_params.get("to_frequency")
 
         # filter excitation signal, if recordings where filtered
-        if self.params["highpass frequency"]:
-            hp_freq = self.params.get('highpass frequency')
+        if "highpass_frequency" in self.params:
+            hp_freq = self.params.get('highpass_frequency')
             filt = slab.Filter.band(kind="hp", frequency=hp_freq, samplerate=fs)
             sig = filt.apply(sig)
 
-        excitation = pyfar.Signal(sig.data.T, fs_local)  # (2, n_samples)
+        excitation = pyfar.Signal(sig.data.T, fs)  # (2, n_samples)
         ref_inv = pyfar.dsp.regularized_spectrum_inversion(
             excitation,
-            (from_f, to_f),
-        )
+            (from_f, to_f),)
 
         # ------------------------------------------------------------------
         # 3) Deconvolve: HRIR = Y * X^{-1}
         # ------------------------------------------------------------------
-        hrir_deconvolved = ear_pressure * ref_inv
+        hrir_deconvolved = recording * ref_inv
 
         # ------------------------------------------------------------------
         # 4) Align group delay
@@ -422,25 +400,24 @@ class Recordings(SpeakerGridBase):
         # ------------------------------------------------------------------
         # 5) Window around the earliest onset in the whole dataset
         # ------------------------------------------------------------------
-        onsets = pyfar.dsp.find_impulse_response_start(hrir_aligned, threshold=15)
+        onsets = pyfar.dsp.find_impulse_response_start(hrir_aligned, threshold=10)
         onsets_min = numpy.min(onsets) / hrir_aligned.sampling_rate  # seconds
 
-        times_s = (
-            onsets_min - 0.00025,
-            onsets_min,
-            onsets_min + 0.0048,
-            onsets_min + 0.0058,
-        )
+        times = (onsets_min - .00025,  # start of fade-in
+                 onsets_min,  # end if fade-in
+                 onsets_min + .0048,  # start of fade_out
+                 onsets_min + .0058)  # end of_fade_out
 
         hrir_windowed, window = pyfar.dsp.time_window(
             hrir_aligned,
-            times_s,
+            times,
             "hann",
             unit="s",
             crop="end",
             return_window=True,
         )
 
+        # do this after equalization?
         times_samples = [0, 10, 246, out_n_samp]
         hrir_final = pyfar.dsp.time_window(
             hrir_windowed,
@@ -448,15 +425,16 @@ class Recordings(SpeakerGridBase):
             "hann",
             crop="end",
         )
+        # hrir_final = hrir_windowed
 
         # ------------------------------------------------------------------
         # 6) Optionally: plot processing steps
         # ------------------------------------------------------------------
         if show:
-            self._plot_processing_pyfar(
+            _plot_processing_pyfar(
                 excitation=excitation,
                 ref_inv=ref_inv,
-                ear_pressure=ear_pressure,
+                recording=recording,
                 hrir_deconvolved=hrir_deconvolved,
                 hrir_shifted=hrir_shifted,
                 hrir_aligned=hrir_aligned,
@@ -470,7 +448,7 @@ class Recordings(SpeakerGridBase):
         # 7) Convert to slab.Filter and wrap in ImpulseResponses
         # ------------------------------------------------------------------
         params = {
-            "fs": fs_local,
+            "fs": fs,
             "signal": self.params.get("signal", {}),
             "n_samp": out_n_samp,
             "date": datetime.now().isoformat(),
@@ -480,122 +458,11 @@ class Recordings(SpeakerGridBase):
         for key, h in zip(out.data.keys(), hrir_final):
             out.data[key] = slab.Filter(
                 data=h.time.T,
-                samplerate=fs_local,
+                samplerate=fs,
                 fir="IR",
             )
 
         return ImpulseResponses(data=out.data, params=params)
-
-    @staticmethod
-    def _plot_processing_pyfar(
-        excitation,
-        ref_inv,
-        ear_pressure,
-        hrir_deconvolved,
-        hrir_shifted,
-        hrir_aligned,
-        hrir_windowed,
-        hrir_final,
-        window,
-        center_idx: int = 0,
-    ) -> None:
-        """
-        Comprehensive overview of the processing pipeline, using pyfar's
-        plotting shortcuts (same style as Fabian's notebook).
-
-        Shows, in one figure with subplots:
-        - Recorded sweep at center position
-        - Excitation + inverse (frequency domain)
-        - Deconvolved, shifted, aligned, windowed HRIRs
-        - Window overlay
-        - Frequency response before vs after final truncation
-        """
-        import pyfar.plot as pfplot
-        from matplotlib import pyplot as plt
-        import numpy
-
-        # which source index we show in detail
-        idx = center_idx
-
-        fig, axes = plt.subplots(3, 3, figsize=(15, 10))
-        axes = axes.ravel()
-
-        # 1) Recorded sweep at the ears (time, both channels)
-        ax = axes[0]
-        pfplot.time(ear_pressure[idx], unit="ms", ax=ax, label=["left", "right"])
-        ax.set_title(f"Recorded sine sweep (center pos)")
-        ax.legend()
-
-        # 2) Excitation in time domain
-        ax = axes[1]
-        pfplot.time(excitation[0], unit="ms", ax=ax)
-        ax.set_title("Excitation sweep (time)")
-
-        # 3) Excitation and inverse in frequency domain
-        ax = axes[2]
-        pfplot.freq(excitation[0], freq_scale="log", ax=ax, color=[0.6, 0.6, 0.6])
-        pfplot.freq(ref_inv[0], freq_scale="log", ax=ax, label=["inverse L", "inverse R"])
-        ax.set_title("Excitation & inverse (magnitude)")
-        ax.set_xlim(50, excitation.sampling_rate / 2)
-        ax.legend(loc="best")
-
-        # 4) Deconvolved HRIR at center position (time, dB)
-        ax = axes[3]
-        pfplot.time(hrir_deconvolved[idx], dB=True, unit="ms", ax=ax)
-        ax.set_title("Deconvolved HRIR (center pos)")
-
-        # 5) Time-shifted HRIRs (all positions)
-        ax = axes[4]
-        pfplot.time(hrir_shifted, dB=True, unit="ms", ax=ax)
-        ax.set_title("Time-shifted HRIRs (all positions)")
-
-        # 6) Aligned HRIR at center (onset at 1 ms)
-        ax = axes[5]
-        pfplot.time(hrir_aligned[idx], unit="ms", ax=ax)
-        ax.axvline(1.0, color="k", linestyle="--",
-                   label="1 ms: desired onset (center)")
-        ax.set_xlim(0, 5)
-        ax.legend()
-        ax.set_title("Aligned center HRIR")
-
-        # 7) Aligned HRIRs (all positions)
-        ax = axes[6]
-        pfplot.time(hrir_aligned, unit="ms", ax=ax)
-        ax.axvline(1.0, color="k", linestyle="--",
-                   label="1 ms: desired onset (center)")
-        ax.set_xlim(0, 5)
-        ax.legend()
-        ax.set_title("Aligned HRIRs (all positions)")
-
-        # 8) Windowed HRIRs + window
-        ax = axes[7]
-        pfplot.time(hrir_windowed, unit="ms", dB=True, ax=ax)
-        pfplot.time(window, unit="ms", dB=True,
-                    color="k", linestyle="--", ax=ax, label="window")
-        ax.set_xlim(0, 10)
-        ax.set_title("Windowed HRIRs + window")
-        ax.legend()
-
-        # 9) Frequency response before vs after final truncation (one position)
-        ax = axes[8]
-        pfplot.freq(
-            hrir_windowed[idx],
-            freq_scale="log",
-            ax=ax,
-            color=[0.6, 0.6, 0.6],
-        )
-        pfplot.freq(
-            hrir_final[idx],
-            freq_scale="log",
-            ax=ax,
-            label=["final L", "final R"],
-        )
-        ax.set_title(f"HRIRs before/after final truncation (center pos)")
-        ax.set_xlim(50, hrir_final.sampling_rate / 2)
-        ax.legend(loc="lower left")
-
-        fig.tight_layout()
-        plt.show()
 
     @staticmethod
     def record_speaker(speaker, signal: slab.Sound, n_rec: int, fs: int) -> slab.Binaural:
@@ -647,6 +514,8 @@ class Recordings(SpeakerGridBase):
             data[wav.stem] = slab.Binaural(wav)
         if not data:
             raise FileNotFoundError(f"No .wav files found in {path}")
+        data = dict(sorted(data.items(), key=lambda kv: (float(kv[0].rsplit("_", 2)[-1]))))  # sort by elevation
+
         params = parse_params_file(path)
         signal = None
         sig_params = params.get("signal", {})
@@ -709,6 +578,295 @@ class ImpulseResponses(SpeakerGridBase):
     def __init__(self, data=None, params=None):
         super().__init__(data=data, params=params)
 
+    def apply_spherical_head_lowfreq(
+            self,
+            f_extrap: float = 400.0,
+            f_target: float = 150.0,
+            head_radius: float | None = None,
+            onset_threshold_db: float = 20.0,
+            center_az: float = 0.0,
+            az_tol: float = 1e-6,
+    ) -> "ImpulseResponses":
+        """
+        Use a spherical head model as
+
+        - low-frequency magnitude anchor (LF extrapolation, externalisation),
+        - full-band ILD template for off-midline azimuths,
+        - ITD target (via time shift of the whole IR).
+
+        Pipeline inside this method:
+
+        1) Convert current IRs (slab.Filter) -> pyfar.Signal (hrir_meas).
+        2) Build pyfar.Coordinates from the source grid and compute spherical-
+           head HRTFs (shtf) for the same positions.
+        3) LOW-FREQ MAGNITUDE EXTRAPOLATION (notebook-style):
+           - anchor magnitudes at 0 Hz and f_target from spherical head,
+           - use measured magnitudes for f >= f_extrap,
+           - interpolate smoothly over the full frequency axis,
+           - keep measured phase.
+        4) FULL-BAND ILD SHAPING (off-midline only):
+           - for each non-midline azimuth, impose spherical-head ILD per
+             frequency bin, preserving the measured average level.
+        5) ITD ALIGNMENT:
+           - compute ITD from spherical head and from the modified HRIRs,
+           - time-shift the entire right-ear IR per position so ITD matches
+             the spherical head across the band.
+        6) Convert back to slab.Filter and store in self.data.
+
+        Parameters
+        ----------
+        f_extrap
+            Frequency (Hz) above which measured magnitude is trusted. Below
+            this, magnitude is extrapolated between spherical head and
+            measured data.
+        f_target
+            Frequency (Hz) at which the spherical-head magnitude is used as a
+            second anchor for the low-frequency extrapolation.
+        head_radius
+            Optional head radius (meters) for spherical_head(). If None,
+            the default head from spherical_head.py is used.
+        onset_threshold_db
+            Threshold in dB for onset detection when estimating ITD.
+        center_az
+            Azimuth (deg) considered the vertical midline (e.g. 0°).
+        az_tol
+            Tolerance (deg) when deciding if a source is on the midline.
+
+        Returns
+        -------
+        self : ImpulseResponses
+            Modified in-place and returned for chaining.
+        """
+        from hrtf.processing.spherical_head import spherical_head
+
+        fs = int(self.params["fs"])
+
+        # --- 1) Convert ImpulseResponses -> pyfar.Signal -------------------
+        keys = list(self.data.keys())
+        if not keys:
+            raise ValueError("apply_spherical_head_lowfreq: no IRs in self.data")
+
+        filters = [self.data[k] for k in keys]  # slab.Filter
+        # slab.Filter.data: (n_samples, n_channels)
+        # -> (n_pos, n_ears, n_samples)
+        data = numpy.stack([filt.data.T for filt in filters], axis=0)
+        hrir_meas = pyfar.Signal(data, fs)
+
+        # --- 2) Build pyfar.Coordinates from your grid ---------------------
+        # get_sources() should return [az, el, r] in degrees / meters
+        sources = self.get_sources()  # shape (n_pos, 3)
+        coords = pyfar.Coordinates(
+            sources[:, 0],  # azimuth in deg
+            sources[:, 1],  # elevation in deg
+            sources[:, 2],  # radius in m
+            domain="sph",
+            convention = 'top_elev',
+            unit="deg",
+        )
+
+        # --- 3) Spherical-head HRTFs for same positions --------------------
+        shtf = _spherical_head_for(coords, hrir_meas.n_samples, fs, head_radius)
+
+        # --- 4) Low-frequency magnitude extrapolation (notebook-style) -----
+        freqs = hrir_meas.frequencies  # (n_freqs,)
+        mag_meas = numpy.abs(hrir_meas.freq)
+        phase_meas = numpy.angle(hrir_meas.freq)
+        mag_sph = numpy.abs(shtf.freq)
+
+        # frequencies we trust from the measurement
+        mask_extrap = freqs >= f_extrap
+
+        # frequency below which magnitude is assumed constant (second anchor)
+        f_target_idx = hrir_meas.find_nearest_frequency(f_target)
+        f_target = freqs[f_target_idx]  # snap to exact grid
+
+        # valid (trusted) measurement magnitudes and freqs
+        freqs_valid = freqs[mask_extrap]  # (n_valid,)
+        mag_valid = mag_meas[..., mask_extrap]  # (n_pos, n_ears, n_valid)
+
+        # spherical head magnitudes at anchors
+        mag0 = mag_sph[..., 0:1]  # 0 Hz
+        mag_ft = mag_sph[..., f_target_idx:f_target_idx + 1]  # f_target
+
+        # concatenate along frequency axis: 0 Hz, f_target, f >= f_extrap
+        mag_anchor = numpy.concatenate((mag0, mag_ft, mag_valid), axis=-1)
+        freqs_anchor = numpy.concatenate((
+            numpy.array([0.0]),
+            numpy.array([f_target]),
+            freqs_valid,
+        ))
+
+        # interpolate magnitude over full freq grid
+        mag_interp = numpy.empty_like(hrir_meas.freq)
+        for src in range(mag_anchor.shape[0]):
+            for ear in range(mag_anchor.shape[1]):
+                mag_interp[src, ear] = numpy.interp(
+                    freqs,
+                    freqs_anchor,
+                    mag_anchor[src, ear],
+                )
+
+        # apply new magnitude, keep measured phase for now
+        hrir_meas.freq = mag_interp * numpy.exp(1j * phase_meas)
+
+        # --- 5) Full-band ILD shaping for off-midline azimuths ------------
+        H_meas = hrir_meas.freq  # updated complex HRTFs
+        mag_meas = numpy.abs(H_meas)  # updated magnitudes
+        phase_meas = numpy.angle(H_meas)  # updated phases
+        mag_head = mag_sph  # spherical-head magnitudes
+
+        n_pos, n_ears, n_freqs = mag_meas.shape
+        if n_ears != 2:
+            raise ValueError("apply_spherical_head_lowfreq expects binaural data (2 ears).")
+
+        az = sources[:, 0]
+        is_midline = numpy.abs(az - center_az) <= az_tol
+
+        mag_new = mag_meas.copy()
+
+        for i in range(n_pos):
+            if is_midline[i]:
+                # keep original ILD on the vertical midline
+                continue
+
+            # spherical head ILD ratio R/L
+            mag_head_L = mag_head[i, 0, :]
+            mag_head_R = mag_head[i, 1, :]
+            r = mag_head_R / numpy.maximum(mag_head_L, 1e-12)  # R/L
+
+            # average magnitude from measured HRTF (power average)
+            mag_L_meas = mag_meas[i, 0, :]
+            mag_R_meas = mag_meas[i, 1, :]
+            A = numpy.sqrt((mag_L_meas ** 2 + mag_R_meas ** 2) / 2.0)
+
+            # new magnitudes: preserve A, enforce ILD ratio r
+            mL = A * numpy.sqrt(2.0 / (1.0 + r ** 2))
+            mR = r * mL
+
+            mag_new[i, 0, :] = mL
+            mag_new[i, 1, :] = mR
+
+        # rebuild complex spectrum with new magnitudes and original phase
+        H_new = mag_new * numpy.exp(1j * phase_meas)
+        hrir_meas.freq = H_new
+
+        # --- 6) ITD alignment: impose spherical-head ITD via time shift ----
+        # force both into time domain (no iteration over Signal)
+        _ = shtf.time
+        _ = hrir_meas.time
+
+        # onsets in samples: (n_pos, n_ears)
+        onsets_model = pyfar.dsp.find_impulse_response_start(
+            shtf, threshold=onset_threshold_db
+        )
+        onsets_meas = pyfar.dsp.find_impulse_response_start(
+            hrir_meas, threshold=onset_threshold_db
+        )
+
+        # use numpy arrays for signal data to avoid domain-iteration issues
+        time_data = hrir_meas.time  # (n_pos, n_ears, n_samples)
+        time_data_shifted = numpy.empty_like(time_data)
+
+        for i in range(time_data.shape[0]):  # over positions
+            onset_m_L = onsets_model[i, 0]
+            onset_m_R = onsets_model[i, 1]
+            onset_h_L = onsets_meas[i, 0]
+            onset_h_R = onsets_meas[i, 1]
+
+            itd_model = (onset_m_R - onset_m_L) / fs
+            itd_meas = (onset_h_R - onset_h_L) / fs
+            delta_itd = itd_model - itd_meas
+
+            # keep left ear fixed, shift right ear by delta_itd
+            time_data_shifted[i, 0, :] = time_data[i, 0, :]
+
+            sig_r = pyfar.Signal(time_data[i, 1:2, :], fs)  # (1, n_samples)
+            sig_r_shifted = pyfar.dsp.time_shift(sig_r, delta_itd, unit="s")
+            time_data_shifted[i, 1, :] = sig_r_shifted.time[0]
+
+        # --- 7) Write back to self.data as slab.Filter --------------------
+        for key, sig_time in zip(keys, time_data_shifted):
+            # sig_time: (n_ears, n_samples) -> slab.Filter expects (n_samples, n_ears)
+            self.data[key] = slab.Filter(
+                data=sig_time.T,
+                samplerate=fs,
+                fir="IR",
+            )
+
+        # bookkeeping
+        self.params.setdefault("spherical_head", {})
+        self.params["spherical_head"].update(
+            {
+                "f_extrap": float(f_extrap),
+                "f_target": float(f_target),
+                "head_radius": float(head_radius) if head_radius is not None else None,
+                "onset_threshold_db": float(onset_threshold_db),
+                "center_az": float(center_az),
+                "az_tol": float(az_tol),
+                "date": datetime.now().isoformat(),
+            }
+        )
+
+        return self
+
+    # --- export to slab.HRTF ----------------------------------------------
+    def to_slab_hrtf(
+        self,
+        fs: int | None = None,
+        datatype: str = "FIR",
+    ) -> slab.HRTF:
+        """
+        Convert this ImpulseResponses object into a slab.HRTF.
+
+        Assumes that self.data is a dict mapping keys like
+        '23_0.0_40.0' → slab.Filter with shape (n_samples, n_channels).
+
+        The resulting HRTF has shape (n_positions, n_samples, n_channels)
+        and sources from self.get_sources().
+
+        Parameters
+        ----------
+        fs
+            Samplerate for the HRTF. If None, tries self.params["fs"],
+            then the samplerate of the first Filter.
+        datatype
+            Passed to slab.HRTF (e.g. 'FIR').
+
+        Returns
+        -------
+        hrtf : slab.HRTF
+        """
+        if not self.data:
+            raise ValueError("to_slab_hrtf: no filters in self.data")
+
+        # samplerate
+        if fs is None:
+            if "fs" in self.params:
+                fs = int(self.params["fs"])
+            else:
+                # fall back to first filter's samplerate
+                first_key = next(iter(self.data.keys()))
+                fs = int(self.data[first_key].samplerate)
+
+        # ensure a stable order: use keys list once for data and coordinates
+        keys = list(self.data.keys())
+
+        # stack filters: (n_positions, n_samples, n_channels)
+        data = numpy.stack([self.data[k].data for k in keys], axis=0)
+
+        # sources: (n_positions, 3) -> [az, el, r]
+        # uses the same internal order as self.data, so things stay aligned
+        sources = self.get_sources()
+
+        hrir = slab.HRTF(
+            data=data,
+            sources=sources,
+            samplerate=fs,
+            datatype=datatype,
+        )
+
+        return hrir
+
     @classmethod
     def from_wav(cls, path: Path | str, fs: int | None = None, meta: dict | None = None):
         """
@@ -727,25 +885,76 @@ class ImpulseResponses(SpeakerGridBase):
         return cls(data=data, fs=fs, meta=meta or {})
 
     # --- azimuth extension --------------------------------------------------
-    def add_az_sources(self, az_range: tuple[float, float] = (-35, 35)) -> "ImpulseResponses":
+    def add_az_sources(
+            self,
+            az_range: tuple[float, float] = (-50, 50), center_az: float = 0.0, tol: float = 1e-6,
+    ) -> "ImpulseResponses":
         """
-        Extend IR set by duplicating each elevation across additional azimuths.
+        Extend IR set by duplicating each elevation across an azimuth grid.
+
+        For now, all new azimuths get the *same* IR/TF as the central azimuth
+        (usually 0°). Later, you can replace / modify these copies using
+        spherical-head ILD/ITD (from `spherical_head`) etc.
+
+        Parameters
+        ----------
+        az_range
+            (min_az, max_az) in degrees for the azimuth grid.
+        center_az
+            Azimuth (in deg) that is considered the "central" reference
+            and will be duplicated to the other azimuths.
+        tol
+            Tolerance when deciding whether an entry belongs to `center_az`.
+
+        Returns
+        -------
+        self : ImpulseResponses
+            The instance is modified in-place and returned for chaining.
         """
-        sources = self.get_sources()
-        vertical_res = (sources[:, 1].max() - sources[:, 1].min()) / (len(sources) - 1)
-        azimuths = numpy.arange(az_range[0], az_range[1] + 1e-6, vertical_res)
+        # use the existing parser + coordinate helper
+        sources = self.get_sources()  # [az, el, r]
+        elevations = numpy.unique(sources[:, 1])
+        elevations = numpy.sort(elevations)
+
+        if len(elevations) > 1:
+            # average spacing between elevations
+            vertical_res = numpy.mean(numpy.diff(elevations))
+        else:
+            # fallback if you only have a single elevation (shouldn’t really happen)
+            vertical_res = az_range[1] - az_range[0]
+
+        # build azimuth grid using the same step size as the vertical spacing
+        azimuths = numpy.arange(
+            az_range[0],
+            az_range[1] + vertical_res / 2,
+            vertical_res,
+        )
 
         new_entries: dict[str, slab.Filter] = {}
 
-        for key, filt in self.data.items():
-            spk_id, _, el_str = key.split("_")
+        # only duplicate *central* azimuth entries (e.g. 0°)
+        for key, filt in list(self.data.items()):
+            spk_id, az_str, el_str = key.split("_")
+            if abs(float(az_str) - center_az) > tol:
+                # not a central azimuth -> skip
+                continue
+
             for az in azimuths:
-                az_str = f"{float(az):.1f}"
-                new_key = f"{spk_id}_{az_str}_{el_str}"
-                if new_key not in self.data and new_key not in new_entries:
-                    new_entries[new_key] = filt  # or copy.deepcopy(filt) if you want independent filters
+                az_str_new = f"{float(az):.1f}"
+                new_key = f"{spk_id}_{az_str_new}_{el_str}"
+
+                if new_key in self.data or new_key in new_entries:
+                    continue
+
+                # use deepcopy so later modifications (e.g. adding ILD/ITD) don’t
+                # accidentally change the original central IR
+                new_entries[new_key] = copy.deepcopy(filt)
 
         self.data.update(new_entries)
+
+        # sort by azimuth and elevation
+        self.data = dict(sorted(self.data.items(), key=lambda kv: (float(kv[0].rsplit("_", 2)[-2]),  # sort by azimuth
+                                                               float(kv[0].rsplit("_", 2)[-1]))))  # and elevation
         return self
 
     # --- plotting -----------------------------------------------------------
@@ -781,139 +990,826 @@ class ImpulseResponses(SpeakerGridBase):
         ax.legend(title="Elevation (°)")
         plt.show()
 
-    # --- build slab.HRTF ----------------------------------------------------
-    def to_hrtf(self, add_itd_flag: bool = True, add_ild_flag: bool = True) -> slab.HRTF:
-        """
-        Build a slab.HRTF from this IR set and (optionally) add ITD/ILD.
-        """
-        items_sorted = sorted(
-            self.data.items(),
-            key=lambda kv: (
-                float(kv[0].rsplit("_", 2)[-2]),  # az
-                float(kv[0].rsplit("_", 2)[-1]),  # el
-            ),)
-        data = numpy.array([filt.data for _, filt in items_sorted])
-        sources = self.get_sources()
-        hrir = slab.HRTF(data=data, sources=sources, samplerate=self.fs, datatype="FIR")
-        if add_itd_flag:
-            hrir = add_itd(hrir)
-        if add_ild_flag:
-            hrir = add_ild(hrir)
-        return hrir
+# -------------------------------------------------------------------------
+# HRTF processing
+# -------------------------------------------------------------------------
+def equalize(
+    hrir_recorded: ImpulseResponses | Recordings,
+    hrir_reference: ImpulseResponses | Recordings,
+    show: bool = False,
+) -> ImpulseResponses:
+    """
+    Equalize IRs (per loudspeaker) using reference measurements.
 
-# -------------------------------------------------------------------------
-# Deconvolution / equalization (pyfar pipeline)
-# -------------------------------------------------------------------------
-def equalize(hrir_recorded: ImpulseResponses | Recordings, hrir_reference: ImpulseResponses | Recordings) -> ImpulseResponses:
+    Steps:
+    1. Convert recorded IRs (slab.Filter) to pyfar.Signal objects
+    2. For each loudspeaker ID:
+       - pick matching reference IR
+       - remove DC
+       - compute regularized inverse of the reference spectrum
+       - convolve all IRs from this loudspeaker with the inverse
+    3. Pack all equalized IRs into a single pyfar.Signal
+    4. Time-align using the central loudspeaker (23_0.0_0.0) to 1 ms
+    5. Window all HRIRs
+    6. Convert back to ImpulseResponses (slab.Filter grid)
+    7. Optionally plot intermediate steps (show=True)
     """
-    Equalize IRs
-    """
-    logging.info('Applying equalization')
-    signal_params = hrir_recorded.params['signal']
-    fs = hrir_recorded.params['fs']
-    n_samp = hrir_recorded.params['n_samp']
-    # find reference with same speaker index prefix
+    logging.info("Applying equalization")
+
+    signal_params = hrir_recorded.params["signal"]
+    fs = int(hrir_recorded.params["fs"])
+    n_samp = int(hrir_recorded.params["n_samp"])
+
+    from_f = signal_params["from_frequency"]
+    to_f = signal_params["to_frequency"]
+
+    # ------------------------------------------------------------------
+    # 1) Convert recorded HRIRs to pyfar.Signal
+    # ------------------------------------------------------------------
     equalized = ImpulseResponses()
     for key, filt in hrir_recorded.items():
-        equalized[key] = pyfar.Signal(filt.data.T, filt.samplerate)  # convert to pyfar signal
+        # slab.Filter data: (n_samples, n_channels)
+        equalized[key] = pyfar.Signal(filt.data.T, filt.samplerate)
 
-    # convolve IRs with reference (loudspeaker specific recordings)
-    speaker_ids =  list(set(key[:2] for key in equalized.keys()))
+    # ------------------------------------------------------------------
+    # 2) Loudspeaker-wise equalization using reference recordings
+    # ------------------------------------------------------------------
+    # speaker ID = first two chars of key (e.g. "19", "23", ...)
+    speaker_ids = list(set(key[:2] for key in equalized.keys()))
+
+    # we’ll remember the center loudspeaker’s reference + inverse for plotting
+    center_key_full = "23_0.0_0.0"
+    center_ref_signal = None
+    center_ref_inv = None
+
     for spk_id in speaker_ids:
-        # pick reference recording, remove DC and invert its spectrum
-        [ref_key] = [k for k in hrir_reference.keys() if spk_id in k[:2]]
-        if not ref_key:
-            raise KeyError(f"No matching reference for recording key '{key}'")
+        # find the reference entry for this loudspeaker
+        ref_candidates = [k for k in hrir_reference.keys() if k.startswith(spk_id + "_")]
+        if not ref_candidates:
+            raise KeyError(f"No matching reference for loudspeaker ID '{spk_id}'")
+        ref_key = ref_candidates[0]
+
         reference = pyfar.Signal(hrir_reference[ref_key].data.T, fs)
-        reference.time -= numpy.mean(reference.time, axis=1, keepdims=True)
-        # Equalize HRIR by convolution with inverted reference signal
-        reference_inv = pyfar.dsp.regularized_spectrum_inversion(reference,
-                                frequency_range=(signal_params['from_frequency'], signal_params['to_frequency']))
-        # equalize IRs recorded from the same speaker
-        rec_keys = [k for k in equalized.keys() if spk_id in k[:2]]
+        # remove DC
+        reference.time -= numpy.mean(reference.time, axis=-1, keepdims=True)
+
+        # regularized inverse of reference
+        reference_inv = pyfar.dsp.regularized_spectrum_inversion(
+            reference,
+            frequency_range=(from_f, to_f),
+        )
+
+        # store for plotting if this loudspeaker contains the center key
+        rec_keys = [k for k in equalized.keys() if k.startswith(spk_id + "_")]
+        if center_key_full in rec_keys:
+            center_ref_signal = reference
+            center_ref_inv = reference_inv
+
+        # equalize all recordings from this loudspeaker
         for key in rec_keys:
             ir = equalized[key]
-            ir.time -= numpy.mean(ir.time, axis=1, keepdims=True)  # remove DC
-            ir_equalized = ir * reference_inv  # convolve and store in equalized dict
+            ir.time -= numpy.mean(ir.time, axis=-1, keepdims=True)  # remove DC
+            ir_equalized = ir * reference_inv
             equalized[key] = ir_equalized
 
-    # time align and window (again?)
-    hrir = pyfar.Signal(numpy.stack([s.time for s in equalized.values()], axis=0), fs)  # work on a single pyfar object
+    # ------------------------------------------------------------------
+    # 3) Pack equalized HRIRs into one pyfar.Signal
+    # ------------------------------------------------------------------
+    keys_list = list(equalized.keys())
+    sig_list = [equalized[k] for k in keys_list]
+    # shape: (n_positions, n_channels, n_samples)
+    hrir = pyfar.Signal(numpy.stack([s.time for s in sig_list], axis=0), fs)
 
-    # correct group delay / temporal alignment of all HRIRs in the dataset at 1ms (keeps relative timing intact)
+    # ------------------------------------------------------------------
+    # 4) Temporal alignment using central loudspeaker
+    # ------------------------------------------------------------------
     hrir_shifted = pyfar.dsp.time_shift(hrir, int(n_samp / 2))
-    center_idx = [i for i, s in enumerate(hrir_reference.keys()) if s == '23_0.0_0.0']
-    center_onset = pyfar.dsp.find_impulse_response_start(hrir_shifted[center_idx], threshold=15)  # onsets at the central speaker (0, 0)
-    hrir_aligned = pyfar.dsp.time_shift(  # align
-        hrir_shifted, -numpy.min(center_onset) / fs + .001, unit='s')
 
-    # window the HRIRs
+    # find index of central loudspeaker in keys_list
+    center_key = center_key_full if center_key_full in keys_list else keys_list[0]
+    center_idx = keys_list.index(center_key)
+
+    center_onset = pyfar.dsp.find_impulse_response_start(
+        hrir_shifted[center_idx], threshold=15
+    )
+    center_onset = float(numpy.min(center_onset))
+    center_onset_s = center_onset / fs
+
+    # shift so that center onset is at 1 ms
+    desired_onset_s = 0.001
+    shift_s = desired_onset_s - center_onset_s
+    hrir_aligned = pyfar.dsp.time_shift(hrir_shifted, shift_s, unit="s")
+
+    # ------------------------------------------------------------------
+    # 5) Window the HRIRs (short asymmetric Hann)
+    # ------------------------------------------------------------------
     onsets = pyfar.dsp.find_impulse_response_start(hrir_aligned, threshold=15)
-    onsets_min = numpy.min(onsets) / fs # earliest onset in the HRIR dataset
-    times = (onsets_min - .0005,  # start of fade-in
-             onsets_min,  # end if fade-in
-             onsets_min + .002,  # start of fade_out
-             onsets_min + .0025)  # end of_fade_out
-    hrir_windowed, window = pyfar.dsp.time_window(
-        hrir_aligned, times, 'hann', unit='s', crop='none', return_window=True)
+    onsets_min = numpy.min(onsets) / fs  # earliest onset in seconds
 
-    # convert to slab filters and write to impulseresponses object
-    equalized.params = {'fs': fs, 'signal': signal_params, 'n_samp': n_samp, 'date': datetime.now().isoformat()}
+    times = (
+        onsets_min - 0.0005,  # start of fade-in
+        onsets_min,           # end of fade-in
+        onsets_min + 0.002,   # start of fade-out
+        onsets_min + 0.0025,  # end of fade-out
+    )
+    hrir_windowed, window = pyfar.dsp.time_window(
+        hrir_aligned, times, "hann", unit="s", crop="none", return_window=True
+    )
+
+    # ------------------------------------------------------------------
+    # 6) Plot equalization stages (optional)
+    # ------------------------------------------------------------------
+    if show:
+        # raw recorded center IR as pyfar.Signal
+        if center_key in hrir_recorded:
+            raw_center = pyfar.Signal(
+                hrir_recorded[center_key].data.T,
+                fs,
+            )
+        else:  # fallback: first key
+            raw_center = pyfar.Signal(
+                hrir_recorded[keys_list[0]].data.T,
+                fs,
+            )
+
+        # equalized but not windowed/packed center signal
+        equalized_center = equalized[center_key]
+
+        _plot_equalization_pyfar(
+            raw_center=raw_center,
+            reference=center_ref_signal,
+            reference_inv=center_ref_inv,
+            equalized_center=equalized_center,
+            hrir_shifted=hrir_shifted,
+            hrir_aligned=hrir_aligned,
+            hrir_windowed=hrir_windowed,
+            window=window,
+            center_idx=center_idx,
+        )
+
+    # ------------------------------------------------------------------
+    # 7) Convert to slab filters and return ImpulseResponses
+    # ------------------------------------------------------------------
+    equalized.params = {
+        "fs": fs,
+        "signal": signal_params,
+        "n_samp": n_samp,
+        "date": datetime.now().isoformat(),
+    }
     for key, filt in zip(equalized.keys(), hrir_windowed):
-        equalized[key] = slab.Filter(data=filt.time, samplerate=fs, fir='IR')
+        # pyfar.Signal: (n_channels, n_samples) -> slab.Filter expects (n_samples, n_channels)
+        equalized[key] = slab.Filter(data=filt.time.T, samplerate=fs, fir="IR")
+
     return equalized
 
-
-# -------------------------------------------------------------------------
-# Compatibility helpers
-# -------------------------------------------------------------------------
-
-def recordings2ir(
-    recordings_dict: dict[str, slab.Binaural] | Recordings,
-    reference_dict: dict[str, slab.Binaural] | Recordings,
-) -> dict[str, slab.Filter]:
+def lowfreq_extrapolate(
+    irs,
+    f_extrap: float = 400.0,
+    f_target: float = 150.0,
+    head_radius: float | None = None,
+    show: bool = False,
+    probe_index: int | None = None,
+):
     """
-    Backwards-compatible wrapper for your old function:
-    takes plain dicts or `Recordings` and returns a dict of `slab.Filter`.
+    Smoothly replace low frequencies with spherical-head magnitude.
+
+    Anchors the magnitude at 0 Hz and `f_target` from a spherical-head model,
+    keeps measured magnitudes above `f_extrap`, and linearly interpolates
+    across the full band. Phase (and thus ITD) is preserved.
+
+    Parameters
+    ----------
+    irs : ImpulseResponses
+        Binaural IRs in pyfar spherical coords (`domain="sph"`, `top_elev`).
+    f_extrap : float
+        Frequency (Hz) above which measured magnitudes are trusted.
+    f_target : float
+        Low-frequency anchor (Hz) taken from the spherical-head model.
+    head_radius : float or None
+        Spherical-head radius in meters (None → model default).
+    show : bool
+        If True, plot before/after magnitude for one position.
+
+    Returns
+    -------
+    ImpulseResponses
+        New object with LF-magnitude extrapolated, phase unchanged.
+
+    Notes
+    -----
+    Interpolates magnitudes per ear per source; uses `domain='freq'`
+    when constructing pyfar signals for plotting.
     """
-    if not isinstance(recordings_dict, Recordings):
-        recordings = Recordings(data=recordings_dict)
-    else:
-        recordings = recordings_dict
+    # ----------------------------------------------------------------------
+    # (1) Convert measured IRs -> pyfar.Signal + spherical coordinates
+    # ----------------------------------------------------------------------
+    hrir_meas, coords, keys, fs = _irs_to_pyfar(irs)
 
-    if not isinstance(reference_dict, Recordings):
-        reference = Recordings(data=reference_dict)
-    else:
-        reference = reference_dict
+    # Get spherical-head HRTFs for the same coordinates
+    shtf = _spherical_head_for(coords, hrir_meas.n_samples, fs, head_radius)
 
-    irs = recordings.to_ir(reference)
-    return irs.data
+    # ----------------------------------------------------------------------
+    # (2) Prepare variables and masks for frequency-domain interpolation
+    # ----------------------------------------------------------------------
+    freqs = hrir_meas.frequencies           # frequency axis [Hz]
+    mask_extrap = freqs >= f_extrap         # region where measurement is trusted
 
-def plot_dict(data_dict, kind: str = "tf"):
-    """
-    Backwards-compatible plotting helper.
-    """
-    if isinstance(data_dict, ImpulseResponses):
-        data_dict.plot(kind=kind)
-    elif isinstance(data_dict, Recordings):
-        data_dict.plot_spectra()
-    else:
-        # raw dict fallback
-        from matplotlib import pyplot as plt
+    # Find index closest to f_target (used as second model anchor)
+    f_target_idx = hrir_meas.find_nearest_frequency(f_target)
+    f_target = freqs[f_target_idx]          # ensure grid alignment
 
-        fig, ax = plt.subplots()
-        for key, item in data_dict.items():
-            if isinstance(item, slab.Binaural):
-                item.spectrum(axis=ax)
-            elif isinstance(item, slab.Filter):
-                if kind.upper() == "TF":
-                    _ = item.tf(show=True, axis=ax)
-                else:
-                    ax.plot(item.data)
-            line = ax.lines[-1]
-            line.set_label(key)
+    # Separate magnitude and phase for convenience
+    mag_meas = numpy.abs(hrir_meas.freq)
+    phase_meas = numpy.angle(hrir_meas.freq)
+    mag_sph = numpy.abs(shtf.freq)          # spherical-head magnitude
+
+    # ----------------------------------------------------------------------
+    # (3) Build the "anchor" magnitude vectors
+    # ----------------------------------------------------------------------
+    # - 0 Hz and f_target: take from spherical-head model
+    # - f >= f_extrap: take from measurement
+    # Everything between will be interpolated later.
+
+    freqs_valid = freqs[mask_extrap]                    # f >= f_extrap
+    mag_valid = mag_meas[..., mask_extrap]              # measured magnitudes above f_extrap
+
+    mag0 = mag_sph[..., 0:1]                            # model @ 0 Hz
+    mag_ft = mag_sph[..., f_target_idx:f_target_idx+1]  # model @ f_target
+
+    # Concatenate anchor magnitudes for each ear/source:
+    # shape: (n_pos, n_ears, 2 + n_valid)
+    mag_anchor = numpy.concatenate((mag0, mag_ft, mag_valid), axis=-1)
+
+    # Corresponding anchor frequencies
+    freqs_anchor = numpy.concatenate((
+        numpy.array([0.0]),
+        numpy.array([f_target]),
+        freqs_valid,
+    ))
+
+    # ----------------------------------------------------------------------
+    # (4) Interpolate magnitude across the entire frequency axis
+    # ----------------------------------------------------------------------
+    mag_interp = numpy.empty_like(hrir_meas.freq)
+    for src in range(mag_anchor.shape[0]):       # iterate over all source positions
+        for ear in range(mag_anchor.shape[1]):   # iterate over ears (L/R)
+            # Linear interpolation in magnitude domain
+            mag_interp[src, ear] = numpy.interp(
+                freqs,             # full frequency grid
+                freqs_anchor,      # anchor frequencies
+                mag_anchor[src, ear],  # anchor magnitudes
+            )
+
+    # ----------------------------------------------------------------------
+    # (5) Combine new magnitudes with original phases
+    # ----------------------------------------------------------------------
+    # Phase is preserved (no ITD or phase shift change here)
+    hrir_meas.freq = mag_interp * numpy.exp(1j * phase_meas)
+
+    # ----------------------------------------------------------------------
+    # (6) Optional quick visualization: before vs after (one position)
+    # ----------------------------------------------------------------------
+    if show:
+        idx = 0 if probe_index is None else int(probe_index)
+
+        # Plot frequency responses for left/right ear before and after
+        plt.figure()
+        ax = pyfar.plot.freq(
+            pyfar.Signal(mag_meas[idx] * numpy.exp(1j * phase_meas[idx]), fs, domain='freq'),
+            color=[.6, .6, .6],
+            label=['before L', 'before R'],
+        )
+        pyfar.plot.freq(
+            pyfar.Signal(hrir_meas.freq[idx], fs, domain='freq'),
+            label=['after L', 'after R'],
+            ax=ax,
+        )
+        ax.set_title(f'LF extrapolation (pos {idx})')
+        ax.set_xlim(50, fs / 2)
         ax.legend()
         plt.show()
+
+    # ----------------------------------------------------------------------
+    # (7) Convert back into ImpulseResponses object for next pipeline step
+    # ----------------------------------------------------------------------
+    time_data = hrir_meas.time  # (n_pos, n_ears, n_samples)
+    out = _pyfar_to_irs(irs, keys, time_data, fs)
+
+    # Bookkeeping / metadata
+    out.params.setdefault("processing", {})
+    out.params["processing"]["lowfreq_extrapolate"] = {
+        "f_extrap": float(f_extrap),
+        "f_target": float(f_target),
+        "head_radius": float(head_radius) if head_radius is not None else None,
+        "date": datetime.now().isoformat(),
+    }
+
+    return out
+
+def expand_azimuths_with_binaural_cues(
+    irs,
+    az_range: tuple[float, float] = (-50, 50),
+    head_radius: float | None = None,
+    center_az: float = 0.0,
+    az_tol: float = 1e-6,
+    onset_threshold_db: float = 15.0,
+    show: bool = False,
+    probe_az: float = 45.0,
+):
+    """
+     Extend vertical-arc HRIRs across azimuths and impose binaural cues.
+
+     This combines three processing steps:
+       1) **Azimuth expansion** – Duplicates all IRs near `center_az` across
+          a grid within `az_range`, spaced by the mean elevation step.
+       2) **Full-band ILD shaping** – Applies spherical-head ILDs to all
+          off-midline sources while preserving per-frequency power and phase.
+       3) **ITD alignment** – Shifts the right-ear IR so measured ITDs match
+          those predicted by the spherical-head model.
+
+     If `show=True`, plots one example (closest to `probe_az`) using
+     `pyfar.plot.time_freq` to visualize ITD and ILD.
+
+     Parameters
+     ----------
+     irs : ImpulseResponses
+         Binaural input (2 ch) in pyfar spherical coordinates
+         (`domain="sph"`, `convention="top_elev"`).
+     az_range : (float, float)
+         Azimuth range (deg) for duplication, e.g. (-35, 35).
+     head_radius : float or None
+         Sphere radius in meters; default uses model internal value.
+     center_az : float
+         Midline azimuth (deg), typically 0.
+     show : bool
+         Plot diagnostic time/freq view at `probe_az`.
+
+     Returns
+     -------
+     ImpulseResponses
+         New object with expanded azimuths, spherical-head ILDs,
+         and ITD-aligned IRs.
+
+     Notes
+     -----
+     ILDs are applied per frequency bin via R/L magnitude ratios from the
+     spherical-head model; ITDs are adjusted by time-shifting the right ear.
+     """
+
+    # ---------------------------------------------------------------------
+    # STEP 2: AZIMUTH EXPANSION
+    # ---------------------------------------------------------------------
+    # We start from a vertical arc at center_az (e.g., 0°). We’ll duplicate
+    # those IRs across an azimuth grid covering az_range. The azimuth grid
+    # step equals the mean *elevation* step in your existing arc, so the
+    # az grid density matches your vertical sampling density.
+    # New entries are deep-copied so later edits won’t affect originals.
+    # ---------------------------------------------------------------------
+    sources0 = irs.get_sources()  # shape (n_pos, 3): [az, el, r]
+    elevations = numpy.unique(sources0[:, 1])
+    if len(elevations) > 1:
+        vertical_res = float(numpy.mean(numpy.diff(numpy.sort(elevations))))
+    else:
+        # Fallback (single elevation present): create a single az step
+        vertical_res = az_range[1] - az_range[0]
+
+    azimuths = numpy.arange(az_range[0], az_range[1] + vertical_res / 2, vertical_res)
+
+    # Find keys at/near midline az (these are the templates we duplicate)
+    mid_keys = [k for k in irs.data.keys() if abs(float(k.split("_")[1]) - center_az) <= az_tol]
+
+    # Create a copy we can update with new entries
+    out = copy.deepcopy(irs)
+    new_entries = {}
+    for key in mid_keys:
+        spk, _, el = key.split("_")
+        for az in azimuths:
+            az_s = f"{float(az):.1f}"
+            new_key = f"{spk}_{az_s}_{el}"
+            if new_key not in out.data and new_key not in new_entries:
+                new_entries[new_key] = copy.deepcopy(out.data[key])  # independent copy
+    # Update dictionary with synthetic az entries
+    out.data.update(new_entries)
+    # Convert to pyfar so we can do spectral shaping and time shifting
+    hrir, coords, keys, fs = _irs_to_pyfar(out)
+    # Generate spherical-head HRTFs for the FULL (expanded) grid
+    shtf = _spherical_head_for(coords, hrir.n_samples, fs, head_radius)
+
+    # ---------------------------------------------------------------------
+    # STEP 3: FULL-BAND ILD SHAPING (OFF-MIDLINE ONLY)
+    # ---------------------------------------------------------------------
+    # For each synthesized direction, we impose the spherical-head ILD per
+    # frequency bin. We preserve the measured *power average* per bin:
+    #   r(f)  = H_R_head / H_L_head    (magnitude ratio)
+    #   A(f)  = sqrt((|H_L|^2 + |H_R|^2) / 2)
+    #   mL'   = A * sqrt(2/(1+r^2))
+    #   mR'   = r * mL'
+    # Phases are preserved (ILD affects magnitudes only).
+    # Midline (≈ center_az) directions are left untouched.
+    # ---------------------------------------------------------------------
+    H_meas = hrir.freq  # complex spectrum, shape (n_pos, 2, n_bins)
+    mag_meas = numpy.abs(H_meas)
+    phase_meas = numpy.angle(H_meas)
+    mag_head = numpy.abs(shtf.freq)
+
+    n_pos, n_ears, _ = mag_meas.shape
+    if n_ears != 2:
+        raise ValueError("Binaural data expected (2 ears).")
+
+    sources = out.get_sources()
+    az_all = sources[:, 0]
+    is_midline = numpy.abs(az_all - center_az) <= az_tol
+
+    # Copy magnitudes; we will overwrite off-midline entries
+    mag_new = mag_meas.copy()
+
+    for i in range(n_pos):
+        if is_midline[i]:
+            # Keep measured magnitudes on the midline as-is
+            continue
+
+        # Head-model ILD ratio r(f) = R/L
+        mL_h = mag_head[i, 0, :]
+        mR_h = mag_head[i, 1, :]
+        r = mR_h / numpy.maximum(mL_h, 1e-12)  # protect division
+
+        # Measured magnitudes and power average
+        mL = mag_meas[i, 0, :]
+        mR = mag_meas[i, 1, :]
+        A = numpy.sqrt((mL**2 + mR**2) / 2.0)
+
+        # Apply ILD while preserving A and phases
+        mL_new = A * numpy.sqrt(2.0 / (1.0 + r**2))
+        mR_new = r * mL_new
+
+        mag_new[i, 0, :] = mL_new
+        mag_new[i, 1, :] = mR_new
+
+    # Recombine with original phases
+    H_new = mag_new * numpy.exp(1j * phase_meas)
+    hrir.freq = H_new  # pyfar will update time on demand
+
+    # ---------------------------------------------------------------------
+    # STEP 4: ITD ALIGNMENT (GLOBAL TIME SHIFT OF RIGHT EAR)
+    # ---------------------------------------------------------------------
+    # We want the *onset difference* (right minus left) to match the model
+    # in the *time domain*. Compute onsets for both (model & processed),
+    # then time-shift the *entire* right ear by ΔITD per direction.
+    # ---------------------------------------------------------------------
+    _ = hrir.time  # ensure time cache
+    _ = shtf.time
+
+    on_mod = pyfar.dsp.find_impulse_response_start(shtf, threshold=onset_threshold_db)
+    on_mea = pyfar.dsp.find_impulse_response_start(hrir, threshold=onset_threshold_db)
+
+    time_data = hrir.time  # shape (n_pos, 2, n_samples)
+    out_time = numpy.empty_like(time_data)
+
+    for i in range(time_data.shape[0]):
+        # Convert sample offsets to seconds
+        itd_model = (on_mod[i, 1] - on_mod[i, 0]) / fs
+        itd_meas  = (on_mea[i, 1] - on_mea[i, 0]) / fs
+        delta_itd = itd_model - itd_meas  # desired additional shift for right ear
+
+        # Left ear unchanged
+        out_time[i, 0, :] = time_data[i, 0, :]
+
+        # Shift right ear in time using pyfar; preserves spectrum consistency
+        sig_r = pyfar.Signal(time_data[i, 1:2, :], fs)
+        sig_rs = pyfar.dsp.time_shift(sig_r, delta_itd, unit="s")
+        out_time[i, 1, :] = sig_rs.time[0]
+
+    # ---------------------------------------------------------------------
+    # OPTIONAL: Quick diagnostic plot at ~probe_az
+    # ---------------------------------------------------------------------
+    if show:
+        idx = int(numpy.argmin(numpy.abs(az_all - float(probe_az))))
+        import matplotlib.pyplot as plt
+        plt.figure(figsize=(7,10))
+        ax_t, ax_f = pyfar.plot.time_freq(pyfar.Signal(out_time[idx], fs))
+        ax_t.get_lines()[0].set_label('left')
+        ax_t.get_lines()[1].set_label('right')
+        ax_t.legend()
+        ax_f.get_lines()[0].set_label('left')
+        ax_f.get_lines()[1].set_label('right')
+        ax_f.legend()
+        ax_t.set_title('time')
+        ax_f.set_title("magnitude")
+        plt.suptitle(f"Result @ az≈{az_all[idx]:.1f}°")
+        plt.show()
+
+    # ---------------------------------------------------------------------
+    # Return as a fresh ImpulseResponses object with provenance
+    # ---------------------------------------------------------------------
+    out_final = _pyfar_to_irs(out, keys, out_time, fs)
+    out_final.params.setdefault("processing", {})
+    out_final.params["processing"]["expand_azimuths_with_binaural_cues"] = {
+        "az_range": [float(az_range[0]), float(az_range[1])],
+        "head_radius": float(head_radius) if head_radius is not None else None,
+        "center_az": float(center_az),
+        "az_tol": float(az_tol),
+        "onset_threshold_db": float(onset_threshold_db),
+        "date": datetime.now().isoformat(),
+    }
+    return out_final
+
+# -------------------------------------------------------------------------
+# Helpers / Plotting
+# -------------------------------------------------------------------------
+def _irs_to_pyfar(irs):
+    """ImpulseResponses -> (pyfar.Signal, pyfar.Coordinates, keys, fs)"""
+    fs = int(irs.params["fs"])
+    keys = list(irs.data.keys())
+    if not keys:
+        raise ValueError("No filters in ImpulseResponses.data")
+    filters = [irs.data[k] for k in keys]  # slab.Filter
+    data = numpy.stack([f.data.T for f in filters], axis=0)  # (n_pos, n_ears, n_samp)
+
+    sources = irs.get_sources()  # (n_pos, 3): [az, el, r] in deg/m
+    coords = pyfar.Coordinates(
+        sources[:, 0],  # azimuth in deg
+        sources[:, 1],  # elevation in deg
+        sources[:, 2],  # radius in m
+        domain="sph",
+        convention="top_elev",
+        unit="deg",
+    )
+    sig = pyfar.Signal(data, fs)
+    return sig, coords, keys, fs
+
+def _pyfar_to_irs(template_irs, keys, time_data, fs):
+    """(keys aligned with dimension 0) -> new ImpulseResponses with slab.Filters."""
+    out = copy.deepcopy(template_irs)
+    for key, sig_time in zip(keys, time_data):  # sig_time: (n_ears, n_samp)
+        out.data[key] = slab.Filter(data=sig_time.T, samplerate=fs, fir="IR")
+    return out
+
+def _spherical_head_for(coords, n_samples, fs, head_radius=None):
+    """
+    Wrap spherical_head() and, if head_radius is given, construct the expected
+    spharpy/SOFAR SamplingSphere with two ear nodes (±90° az, 0° el).
+    """
+    from hrtf.processing.spherical_head import spherical_head as _spherical_head
+    import numpy as numpy
+
+    if head_radius is None:
+        return _spherical_head(coords, n_samples=n_samples, sampling_rate=fs)
+
+    # Try to construct a SamplingSphere with cshape (2,)
+    sampling_sphere = None
+    err_msgs = []
+
+    # Option A: spharpy
+    try:
+        # spharpy typically uses radians; names often azimuth (phi), colatitude (theta)
+        import spharpy.sampling as sphsamp
+        phi_deg = numpy.array([ 90.0, -90.0 ])   # azimuth
+        theta_deg = numpy.array([ 90.0,  90.0 ]) # colatitude = 90° (horizontal plane)
+        sampling_sphere = sphsamp.SamplingSphere(
+            phi=numpy.deg2rad(phi_deg),
+            theta=numpy.deg2rad(theta_deg),
+            radius=head_radius,
+        )
+    except Exception as e:
+        err_msgs.append(f"spharpy.sampling: {e}")
+
+    # Option B: SOFAR (sometimes packaged as sofar.sphere or sofar.sph)
+    if sampling_sphere is None:
+        try:
+            # A common SOFAR variant; adjust if your API differs
+            from sofar.sph.sampling import SamplingSphere
+            phi_deg = numpy.array([ 90.0, -90.0 ])
+            theta_deg = numpy.array([ 90.0,  90.0 ])
+            sampling_sphere = SamplingSphere(
+                phi=numpy.deg2rad(phi_deg),
+                theta=numpy.deg2rad(theta_deg),
+                radius=head_radius,
+            )
+        except Exception as e:
+            err_msgs.append(f"sofar.sph.sampling: {e}")
+
+    if sampling_sphere is None:
+        # Last resort: keep running with default head inside spherical_head
+        # (prevents crashes but ignores your custom radius)
+        # You can print/log err_msgs if helpful.
+        return _spherical_head(coords, n_samples=n_samples, sampling_rate=fs)
+
+    # Pass the SamplingSphere (cshape (2,)) as `head`
+    return _spherical_head(
+        coords,
+        head=sampling_sphere,
+        n_samples=n_samples,
+        sampling_rate=fs,
+    )
+
+def _plot_processing_pyfar(excitation, ref_inv, recording, hrir_deconvolved, hrir_shifted,
+    hrir_aligned, hrir_windowed, hrir_final, window, center_idx: int = 0) -> None:
+    """
+    Comprehensive overview of the processing pipeline, using pyfar's
+    plotting shortcuts (same style as Fabian's notebook).
+
+    Shows, in one figure with subplots:
+    - Recorded sweep at center position
+    - Excitation + inverse (frequency domain)
+    - Deconvolved, shifted, aligned, windowed HRIRs
+    - Window overlay
+    - Frequency response before vs after final truncation
+    """
+    import pyfar.plot as pfplot
+
+    # which source index we show in detail
+    idx = center_idx
+
+    fig, axes = plt.subplots(3, 3, figsize=(15, 10))
+    axes = axes.ravel()
+
+    # 1) Recorded sweep at the ears (time, both channels)
+    ax = axes[0]
+    pfplot.time(recording[idx], unit="ms", ax=ax, label=["left", "right"])
+    ax.set_title(f"Recorded sine sweep (center pos)")
+    ax.legend()
+
+    # 2) Excitation in time domain
+    ax = axes[1]
+    pfplot.time(excitation[0], unit="ms", ax=ax)
+    ax.set_title("Excitation sweep (time)")
+
+    # 3) Excitation and inverse in frequency domain
+    ax = axes[2]
+    pfplot.freq(excitation[0], freq_scale="log", ax=ax, color=[0.6, 0.6, 0.6])
+    pfplot.freq(ref_inv[0], freq_scale="log", ax=ax, label=["inverse L", "inverse R"])
+    ax.set_title("Excitation & inverse (magnitude)")
+    ax.set_xlim(50, excitation.sampling_rate / 2)
+    ax.legend(loc="best")
+
+    # 4) Deconvolved HRIR at center position (time, dB)
+    ax = axes[3]
+    pfplot.time(hrir_deconvolved[idx], dB=True, unit="ms", ax=ax)
+    ax.set_title("Deconvolved HRIR (center pos)")
+
+    # 5) Time-shifted HRIRs (all positions)
+    ax = axes[4]
+    pfplot.time(hrir_shifted, dB=True, unit="ms", ax=ax)
+    ax.set_title("Time-shifted HRIRs (all positions)")
+
+    # 6) Aligned HRIR at center (onset at 1 ms)
+    ax = axes[5]
+    pfplot.time(hrir_aligned[idx], unit="ms", ax=ax)
+    ax.axvline(1.0, color="k", linestyle="--",
+               label="1 ms: desired onset (center)")
+    ax.set_xlim(0, 5)
+    ax.legend()
+    ax.set_title("Aligned center HRIR")
+
+    # 7) Aligned HRIRs (all positions)
+    ax = axes[6]
+    pfplot.time(hrir_aligned, unit="ms", ax=ax)
+    ax.axvline(1.0, color="k", linestyle="--",
+               label="1 ms: desired onset (center)")
+    ax.set_xlim(0, 5)
+    ax.legend()
+    ax.set_title("Aligned HRIRs (all positions)")
+
+    # 8) Windowed HRIRs + window
+    ax = axes[7]
+    pfplot.time(hrir_windowed, unit="ms", dB=True, ax=ax)
+    pfplot.time(window, unit="ms", dB=True,
+                color="k", linestyle="--", ax=ax, label="window")
+    ax.set_xlim(0, 10)
+    ax.set_title("Windowed HRIRs + window")
+    ax.legend()
+
+    # 9) Frequency response before vs after final truncation (one position)
+    ax = axes[8]
+    pfplot.freq(
+        hrir_windowed[idx],
+        freq_scale="log",
+        ax=ax,
+        color=[0.6, 0.6, 0.6],
+    )
+    pfplot.freq(
+        hrir_final[idx],
+        freq_scale="log",
+        ax=ax,
+        label=["final L", "final R"],
+    )
+    ax.set_title(f"HRIRs before/after final truncation (center pos)")
+    ax.set_xlim(50, hrir_final.sampling_rate / 2)
+    ax.legend(loc="lower left")
+
+    fig.tight_layout()
+    plt.show()
+
+def _plot_equalization_pyfar(
+    raw_center: pyfar.Signal, reference: pyfar.Signal | None,
+    reference_inv: pyfar.Signal | None, equalized_center: pyfar.Signal, hrir_shifted: pyfar.Signal,
+    hrir_aligned: pyfar.Signal, hrir_windowed: pyfar.Signal, window: pyfar.Signal, center_idx: int = 0) -> None:
+    """
+    Overview plot for the equalization pipeline, using pyfar's plotting shortcuts.
+    Inspired by the example notebook.
+
+    Shows:
+    - Raw HRIR (center position)
+    - Reference IR and inverse (time + magnitude)
+    - Center HRIR before vs after equalization
+    - Shifted / aligned / windowed HRIRs
+    - Window overlay
+    - Frequency response before vs after windowing (center)
+    """
+    import pyfar.plot as pfplot
+    from matplotlib import pyplot as plt
+
+    fig, axes = plt.subplots(3, 3, figsize=(15, 10))
+    axes = axes.ravel()
+
+    # 1) Raw HRIR at center position (time)
+    ax = axes[0]
+    pfplot.time(raw_center, unit="ms", ax=ax, label=["left", "right"])
+    ax.set_title("Raw HRIR (center loudspeaker)")
+    ax.legend()
+
+    # 2) Reference IR (time)
+    ax = axes[1]
+    if reference is not None:
+        pfplot.time(reference, unit="ms", ax=ax)
+        ax.set_title("Reference IR (time)")
+    else:
+        ax.set_title("Reference IR (missing)")
+
+    # 3) Reference inverse (magnitude)
+    ax = axes[2]
+    if reference_inv is not None:
+        pfplot.freq(reference_inv, freq_scale="log", ax=ax, label=["inv L", "inv R"])
+        ax.set_title("Inverse reference (magnitude)")
+        ax.set_xlim(50, reference_inv.sampling_rate / 2)
+        ax.legend()
+    else:
+        ax.set_title("Inverse reference (missing)")
+
+    # 4) Center HRIR before vs after equalization (time)
+    ax = axes[3]
+    pfplot.time(raw_center, unit="ms", ax=ax, color=[0.6, 0.6, 0.6])
+    pfplot.time(equalized_center, unit="ms", ax=ax, label=["equalized L", "equalized R"])
+    ax.set_title("Center HRIR: raw vs equalized")
+    ax.legend()
+
+    # 5) Time-shifted HRIRs (all positions)
+    ax = axes[4]
+    pfplot.time(hrir_shifted, dB=True, unit="ms", ax=ax)
+    ax.set_title("Equalized HRIRs (time-shifted, all positions)")
+
+    # 6) Aligned center HRIR (1 ms onset)
+    ax = axes[5]
+    pfplot.time(hrir_aligned[center_idx], unit="ms", ax=ax)
+    ax.axvline(1.0, color="k", linestyle="--", label="1 ms onset target")
+    ax.set_xlim(0, 5)
+    ax.legend()
+    ax.set_title("Aligned center HRIR")
+
+    # 7) Aligned HRIRs (all positions)
+    ax = axes[6]
+    pfplot.time(hrir_aligned, unit="ms", ax=ax)
+    ax.axvline(1.0, color="k", linestyle="--", label="1 ms onset target")
+    ax.set_xlim(0, 5)
+    ax.legend()
+    ax.set_title("Aligned HRIRs (all positions)")
+
+    # 8) Windowed HRIRs + window
+    ax = axes[7]
+    pfplot.time(hrir_windowed, unit="ms", dB=True, ax=ax)
+    pfplot.time(window, unit="ms", dB=True, color="k", linestyle="--", ax=ax, label="window")
+    ax.set_xlim(0, 10)
+    ax.set_title("Windowed HRIRs + window")
+    ax.legend()
+
+    # 9) Frequency response (center) before vs after windowing
+    ax = axes[8]
+    pfplot.freq(
+        hrir_aligned[center_idx], freq_scale="log", ax=ax, color=[0.6, 0.6, 0.6]
+    )
+    pfplot.freq(
+        hrir_windowed[center_idx],
+        freq_scale="log",
+        ax=ax,
+        label=["windowed L", "windowed R"],
+    )
+    ax.set_title("Center HRIR: aligned vs windowed (magnitude)")
+    ax.set_xlim(50, hrir_windowed.sampling_rate / 2)
+    ax.legend(loc="lower left")
+
+    fig.tight_layout()
+    plt.show()
+
+def wait_for_button(msg=None):
+    if msg:
+        logging.info(msg)
+
+    def on_press(key):
+        if key == keyboard.Key.enter:
+            listener.stop()
+
+    with keyboard.Listener(on_press=on_press) as listener:
+        listener.join()
 
 def parse_params_file(path: Path | str, filename: str = "params.txt") -> dict:
     """
@@ -1014,8 +1910,9 @@ def parse_params_file(path: Path | str, filename: str = "params.txt") -> dict:
     #         magnitude_interpolated * numpy.exp(1j * numpy.angle(ir.freq))
     #     return ir_extrapolated
     #
+
 if __name__ == "__main__":
     # tiny example call – adjust IDs and reference name
     logging.basicConfig(level=logging.INFO)
-    # hrir, ref_recs, recs = record_hrir("MS", "kemar_no_ears", n_samp=1, n_rec=20)
+    hrir = record_hrir(subject_id, reference, n_samp, n_rec, fs, overwrite, show)
     pass

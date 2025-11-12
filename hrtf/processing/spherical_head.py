@@ -142,7 +142,7 @@ dsvxy
     ear_elevation = head.elevation[:, None]
     ear_azimuth = head.azimuth[:, None]
     # great circle distance of shape (number of ear, number of sources)
-    theta = np.acos(
+    theta = np.arccos(
         np.sin(source_elevation) * np.sin(ear_elevation) +
         np.cos(source_elevation) * np.cos(ear_elevation) *
         np.cos(source_azimuth - ear_azimuth))

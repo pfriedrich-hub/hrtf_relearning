@@ -21,7 +21,7 @@ logging.getLogger().setLevel('INFO')
 
 # -------------------- Config --------------------
 SUBJECT_ID = "PF"
-HRIR_NAME = "pf_hr_itld"  # 'KU100', 'kemar', etc.
+HRIR_NAME = "PF"  # 'KU100', 'kemar', etc.
 EAR = None              # or None for binaural (your unilateral training)
 REVERB = True
 

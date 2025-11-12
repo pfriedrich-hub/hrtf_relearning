@@ -1,5 +1,5 @@
 import matplotlib
-# matplotlib.use('tkagg')
+matplotlib.use('tkagg')
 from matplotlib import pyplot as plt
 import numpy
 import scipy
@@ -15,7 +15,10 @@ def localization_accuracy(sequence):
     responses = loc_data[:, 0]
 
     #  elevation gain, rmse, response variability
-    elevation_gain, n = scipy.stats.linregress(targets[:, 1], responses[:, 1])[:2]
+    try:
+        elevation_gain, n = scipy.stats.linregress(targets[:, 1], responses[:, 1])[:2]
+    except ValueError:
+        elevation_gain = 0
     azimuth_gain, n = scipy.stats.linregress(targets[:, 0], responses[:, 0])[:2]
     rmse = numpy.sqrt(numpy.mean(numpy.square(targets - responses), axis=0))
     az_rmse, ele_rmse = rmse[0], rmse[1]

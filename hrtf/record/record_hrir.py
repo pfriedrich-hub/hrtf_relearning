@@ -1,5 +1,5 @@
-# import matplotlib
-# matplotlib.use('tkagg')
+import matplotlib
+matplotlib.use('tkagg')
 import logging
 from pathlib import Path
 import copy
@@ -1311,8 +1311,6 @@ def expand_azimuths_with_binaural_cues(
     irs,
     az_range: tuple[float, float] = (-50, 50),
     head_radius: float | None = None,
-    center_az: float = 0.0,
-    az_tol: float = 1e-6,
     onset_threshold_db: float = 15.0,
     show: bool = False,
     probe_az: float = 45.0,
@@ -1374,26 +1372,43 @@ def expand_azimuths_with_binaural_cues(
         # Fallback (single elevation present): create a single az step
         vertical_res = az_range[1] - az_range[0]
 
+    # --- build azimuth grid based on vertical spacing ---
     azimuths = numpy.arange(az_range[0], az_range[1] + vertical_res / 2, vertical_res)
+    # wrap to [0, 360) for pyfar convention (0°=front, 90°=left)
+    azimuths_wrapped = _wrap_az_deg_ccw(azimuths)
 
-    # Find keys at/near midline az (these are the templates we duplicate)
-    mid_keys = [k for k in irs.data.keys() if abs(float(k.split("_")[1]) - center_az) <= az_tol]
+    # --- find midline IRs at az = 0 (wrapped 0°) ---
+    def _key_az_wrapped(k: str) -> float:
+        # keys look like "spk_az_el"
+        return float(_wrap_az_deg_ccw(float(k.split("_")[1])))
 
-    # Create a copy we can update with new entries
+    # --- duplicate midline IRs across azimuth grid, inserting wrapped az into keys ---
     out = copy.deepcopy(irs)
     new_entries = {}
-    for key in mid_keys:
-        spk, _, el = key.split("_")
-        for az in azimuths:
-            az_s = f"{float(az):.1f}"
-            new_key = f"{spk}_{az_s}_{el}"
+
+    for key in irs.data.keys():
+        spk, _az_str, el_str = key.split("_")  # reuse elevation
+        for az_w in azimuths_wrapped:
+            az_s = f"{float(az_w):.1f}"
+            new_key = f"{spk}_{az_s}_{el_str}"
             if new_key not in out.data and new_key not in new_entries:
                 new_entries[new_key] = copy.deepcopy(out.data[key])  # independent copy
-    # Update dictionary with synthetic az entries
+
+    # --- update and sort dictionary for stable downstream behavior ---
     out.data.update(new_entries)
-    # Convert to pyfar so we can do spectral shaping and time shifting
+
+    try:
+        from collections import OrderedDict
+        def _parse_key_triple(k):
+            spk, az_s, el_s = k.split("_")
+            return (float(az_s), float(el_s), spk)
+
+        out.data = OrderedDict(sorted(out.data.items(), key=lambda kv: _parse_key_triple(kv[0])))
+    except Exception:
+        pass  # sorting is optional
+
+    # --- convert to pyfar + compute spherical-head reference ---
     hrir, coords, keys, fs = _irs_to_pyfar(out)
-    # Generate spherical-head HRTFs for the FULL (expanded) grid
     shtf = _spherical_head_for(coords, hrir.n_samples, fs, head_radius)
 
     # ---------------------------------------------------------------------
@@ -1419,7 +1434,7 @@ def expand_azimuths_with_binaural_cues(
 
     sources = out.get_sources()
     az_all = sources[:, 0]
-    is_midline = numpy.abs(az_all - center_az) <= az_tol
+    is_midline = sources[:, 0] == 0
 
     # Copy magnitudes; we will overwrite off-midline entries
     mag_new = mag_meas.copy()
@@ -1507,8 +1522,6 @@ def expand_azimuths_with_binaural_cues(
     out_final.params["processing"]["expand_azimuths_with_binaural_cues"] = {
         "az_range": [float(az_range[0]), float(az_range[1])],
         "head_radius": float(head_radius) if head_radius is not None else None,
-        "center_az": float(center_az),
-        "az_tol": float(az_tol),
         "onset_threshold_db": float(onset_threshold_db),
         "date": datetime.now().isoformat(),
     }
@@ -1551,57 +1564,10 @@ def _spherical_head_for(coords, n_samples, fs, head_radius=None):
     spharpy/SOFAR SamplingSphere with two ear nodes (±90° az, 0° el).
     """
     from hrtf.processing.spherical_head import spherical_head as _spherical_head
-    import numpy as numpy
-
-    if head_radius is None:
+    if head_radius is None:  # use default head radius: .0875 m
         return _spherical_head(coords, n_samples=n_samples, sampling_rate=fs)
-
-    # Try to construct a SamplingSphere with cshape (2,)
-    sampling_sphere = None
-    err_msgs = []
-
-    # Option A: spharpy
-    try:
-        # spharpy typically uses radians; names often azimuth (phi), colatitude (theta)
-        import spharpy.sampling as sphsamp
-        phi_deg = numpy.array([ 90.0, -90.0 ])   # azimuth
-        theta_deg = numpy.array([ 90.0,  90.0 ]) # colatitude = 90° (horizontal plane)
-        sampling_sphere = sphsamp.SamplingSphere(
-            phi=numpy.deg2rad(phi_deg),
-            theta=numpy.deg2rad(theta_deg),
-            radius=head_radius,
-        )
-    except Exception as e:
-        err_msgs.append(f"spharpy.sampling: {e}")
-
-    # Option B: SOFAR (sometimes packaged as sofar.sphere or sofar.sph)
-    if sampling_sphere is None:
-        try:
-            # A common SOFAR variant; adjust if your API differs
-            from sofar.sph.sampling import SamplingSphere
-            phi_deg = numpy.array([ 90.0, -90.0 ])
-            theta_deg = numpy.array([ 90.0,  90.0 ])
-            sampling_sphere = SamplingSphere(
-                phi=numpy.deg2rad(phi_deg),
-                theta=numpy.deg2rad(theta_deg),
-                radius=head_radius,
-            )
-        except Exception as e:
-            err_msgs.append(f"sofar.sph.sampling: {e}")
-
-    if sampling_sphere is None:
-        # Last resort: keep running with default head inside spherical_head
-        # (prevents crashes but ignores your custom radius)
-        # You can print/log err_msgs if helpful.
-        return _spherical_head(coords, n_samples=n_samples, sampling_rate=fs)
-
-    # Pass the SamplingSphere (cshape (2,)) as `head`
-    return _spherical_head(
-        coords,
-        head=sampling_sphere,
-        n_samples=n_samples,
-        sampling_rate=fs,
-    )
+    head = pyfar.Coordinates(0, [head_radius, -head_radius], 0)
+    return _spherical_head(coords,head=head,n_samples=n_samples,sampling_rate=fs)
 
 def _plot_processing_pyfar(excitation, ref_inv, recording, hrir_deconvolved, hrir_shifted,
     hrir_aligned, hrir_windowed, hrir_final, window, center_idx: int = 0) -> None:
@@ -1845,14 +1811,10 @@ def parse_params_file(path: Path | str, filename: str = "params.txt") -> dict:
 
     with file.open("r", encoding="utf-8") as f:
         lines = [line.rstrip("\n") for line in f]
-
     current_dict = None
-    current_key = None
-
     for line in lines:
         if not line.strip():
             continue
-
         # top-level line (no leading spaces)
         if not line.startswith(" "):
             if line.endswith(":") and not ":" in line[:-1]:
@@ -1877,43 +1839,23 @@ def parse_params_file(path: Path | str, filename: str = "params.txt") -> dict:
                 if ":" in sub:
                     sk, sv = sub.split(":", 1)
                     current_dict[sk.strip()] = parse_value(sv.strip())
-
     return params
 
-    # @staticmethod
-    # def _low_freq_extrapolation(ir, shtf):
-    #     # Compute spherical head transfer functions using `spherical_head()`
-    #     # frequency below which the data is extrapolated
-    #     f_extrap = 400
-    #     mask_extrap = ir.frequencies >= f_extrap
-    #     # frequency below which the HRTF magnitude is assumed to be constant
-    #     f_target_idx = ir.find_nearest_frequency(150)
-    #     f_target = ir.frequencies[f_target_idx]
-    #     # valid frequencies and magnitude values
-    #     frequencies = ir.frequencies[mask_extrap]
-    #     magnitude = numpy.abs(
-    #         ir.freq[..., mask_extrap])
-    #     # concatenate target gains and frequencies
-    #     magnitude = numpy.concatenate((
-    #         numpy.abs(shtf.freq[..., 0, None]),  # 0 Hz
-    #         numpy.abs(shtf.freq[..., 1, None]),  # f_target
-    #         magnitude), -1)
-    #     frequencies = numpy.concatenate(([0], [f_target], frequencies))
-    #     # interpolate magnitude
-    #     magnitude_interpolated = numpy.empty_like(ir.freq)
-    #     for source in range(magnitude.shape[0]):
-    #         for ear in range(magnitude.shape[1]):
-    #             magnitude_interpolated[source, ear] = numpy.interp(
-    #                 ir.frequencies, frequencies, magnitude[source, ear])
-    #     # apply new magnitude response
-    #     ir_extrapolated = ir.copy()
-    #     ir_extrapolated.freq = \
-    #         magnitude_interpolated * numpy.exp(1j * numpy.angle(ir.freq))
-    #     return ir_extrapolated
-    #
+def _wrap_az_deg_ccw(az):
+    """Wrap azimuth(s) to [0, 360) with CCW-positive (pyfar 'sph/top_elev')."""
+    az = numpy.asarray(az, dtype=float)
+    az = numpy.mod(az, 360.0)
+    az[az < 0] += 360.0
+    return az
 
 if __name__ == "__main__":
     # tiny example call – adjust IDs and reference name
     logging.basicConfig(level=logging.INFO)
     hrir = record_hrir(subject_id, reference, n_samp, n_rec, fs, overwrite, show)
     pass
+
+
+
+"""
+hrir.write_sofa(data_dir / 'hrtf' / 'rec' / subject_id / str(subject_id + '.sofa'))
+"""

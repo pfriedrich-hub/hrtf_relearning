@@ -25,7 +25,7 @@ subject = Subject(id)
 hrir = 'pf_high_res_itd'
 
 # ---- specify ear for unilateral testing, None defaults to binaural testing
-ear = 'left'
+ear = None
 # ear = 'left'
 reverb = True
 
@@ -70,7 +70,7 @@ class Localization:
         self.subject.write()
 
     def run(self):
-        self.sequence = make_sequence_from_sources(self.settings, self.hrir_sources)
+        self.sequence = make_sequence_from_sources(self.settings, self.hrir)
         # self.sequence = make_sequence(self.settings)
         self.sequence.name = self.filename
         self.write()
@@ -88,7 +88,7 @@ class Localization:
     def play_trial(self):
         # generate stimulus
         self.stim = self.make_stim()  # generate a new stim each trial
-        self.stim.write(self.sound_path / 'localization.binsim')
+        self.stim.write(self.sound_path / 'localization.wav')
         # play stim
         self.play_stimulus()
         time.sleep(self.stim.duration)
@@ -114,13 +114,13 @@ class Localization:
         logging.debug(f'Set filter for {self.hrir_sources[filter_idx]}')
         # play
         self.osc_client_2.send_message('/pyBinSimLoudness', self.settings['gain'])
-        self.osc_client_2.send_message('/pyBinSimFile', str(self.sound_path / 'localization.binsim'))
+        self.osc_client_2.send_message('/pyBinSimFile', str(self.sound_path / 'localization.wav'))
         time.sleep(.5)
         self.osc_client_2.send_message('/pyBinSimLoudness', 0)
 
     def play_sound(self, kind):
         logging.info(f'Playing {kind} sound')
-        name = f'{kind}.binsim'
+        name = f'{kind}.wav'
         duration = slab.Sound(self.sound_path / name).duration
         self.osc_client_2.send_message('/pyBinSimLoudness', self.settings['gain'])
         self.osc_client_2.send_message('/pyBinSimFile', str(self.sound_path / name))
@@ -135,7 +135,7 @@ class Localization:
     def _binsim_stream(hrir_name):
         import pybinsim
         pybinsim.logger.setLevel(logging.ERROR)
-        binsim = pybinsim.BinSim(data_dir / 'hrtf' / 'binsim' / hrir_name / f'{hrir_name}_test_settings.txt')
+        binsim = pybinsim.BinSim(data_dir / 'hrtf' / 'wav' / hrir_name / f'{hrir_name}_test_settings.txt')
         binsim.stream_start()  # run binsim loop
 
     @staticmethod

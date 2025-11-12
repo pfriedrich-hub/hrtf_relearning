@@ -26,13 +26,11 @@ subject_id = 'PF'
 sequence = Subject(subject_id).last_sequence  # must contain .settings and .data
 
 # HRTF selection
-# sofa_name = 'KU100'
-sofa_name = 'single_notch'
-# sofa_name = 'kemar'
+sofa_name = 'KU100'
 
 # unilateral vs. binaural
-# ear = None
-ear = 'left'
+ear = None
+# ear = 'left'
 
 # Test settings (similar to training but typically longer trial/hold)
 settings = dict(
@@ -56,7 +54,7 @@ soundfile = None
 
 hrir = hrtf2binsim(sofa_name, ear, overwrite=False)
 slab.set_default_samplerate(hrir.samplerate)
-hrir_dir = Path.cwd() / 'data' / 'hrtf' / 'wav' / hrir.name
+hrir_dir = Path.cwd() / 'data' / 'hrtf' / 'binsim' / hrir.name
 
 
 # ------------------------ LIVE TF PLOTTER ------------------------

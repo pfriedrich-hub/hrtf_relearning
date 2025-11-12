@@ -74,13 +74,13 @@ def record_hrir(
     hrir_reference = reference_pressure.compute_tf(out_n_samp=256, show=show)
 
     # 4) Equalize HRIR by reference IR
-    hrir_eq = equalize(hrir_recorded, hrir_reference, show=True)
+    hrir_eq = equalize(hrir_recorded, hrir_reference, show=show)
 
     # 5) Low frequency extrapolation
-    hrir_extrapol = lowfreq_extrapolate(hrir_eq, f_extrap=400.0, f_target=150.0, head_radius=0.0875, show=True)
+    hrir_extrapol = lowfreq_extrapolate(hrir_eq, f_extrap=400.0, f_target=150.0, head_radius=0.0875, show=show)
 
     # 6) Extend azimuths + add binaural cues (ILD full-band off-midline + ITD align)
-    hrir_full = expand_azimuths_with_binaural_cues(hrir_extrapol, az_range=(-50, 50), head_radius=0.0875, show=True)
+    hrir_full = expand_azimuths_with_binaural_cues(hrir_extrapol, az_range=(-50, 50), head_radius=0.0875, show=show)
 
     # 5) Export to slab.HRTF when ready
     hrir = hrir_full.to_slab_hrtf(datatype="FIR")
@@ -1857,5 +1857,6 @@ if __name__ == "__main__":
 
 
 """
-hrir.write_sofa(data_dir / 'hrtf' / 'rec' / subject_id / str(subject_id + '.sofa'))
+hrir.write_sofa(data_dir / 'hrtf' / 'rec' / subject_id / str(subject_id + '.sofa'))  # write to subject rec folder
+hrir.write_sofa(data_dir / 'hrtf' / 'sofa' / str(subject_id + '.sofa'))  # write to sofa folder
 """

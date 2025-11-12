@@ -1,5 +1,6 @@
 import logging
 import time
+from matplotlib import pyplot as plt
 from pathlib import Path
 import multiprocessing as mp
 from queue import Empty
@@ -19,12 +20,15 @@ logging.getLogger().setLevel('INFO')
 
 # -------------------- Config --------------------
 SUBJECT_ID = "test"
-HRIR_NAME = "kemar_itld"  # 'KU100', 'kemar', etc.
+HRIR_NAME = "PF"  # 'KU100', 'kemar', etc.
 EAR = None              # or None for binaural (your unilateral training)
 REVERB = True
 
-# Sound/Pulse
+# Sound
 SOUND_FILE = None         # None -> pink noise pulses; or 'uso_225ms_9_.wav', etc.
+# Graphics
+show_ui = False  # enable UI
+SHOW_TF = 'TF'  # set to TF or IR to spawn live filter plot
 
 # -------------------- Global HRIR/Sequence --------------------
 hrir = hrtf2binsim(HRIR_NAME, EAR, REVERB, overwrite=False)
@@ -44,8 +48,6 @@ settings = dict(
     gain=0.2,
 )
 
-SHOW_TF = False  # set True to spawn live TF plot process
-
 # -------------------- Helpers --------------------
 def make_osc_client(port, ip="127.0.0.1"):
     return udp_client.SimpleUDPClient(ip, port)
@@ -58,6 +60,58 @@ def _drain_pose_queue(q):
         except Empty:
             break
     return items
+
+def plot_current_tf(filter_idx_shared, redraw_interval_s=0.05, kind=SHOW_TF):
+    """
+    Lives in its own process. Opens a Qt figure and plots the TF of the
+    current HRTF (hrir[filter_idx]) whenever the filter index changes.
+    """
+    # Reuse global `hrir` and its sources
+    global hrir
+    sources = hrir.sources.vertical_polar  # (N,3), az in [0..360), el linear
+    plt.ion()
+    fig, ax = plt.subplots(figsize=(7, 4))
+    if kind == 'TF':
+        ax.set_title("Current Transfer Function")
+    if kind == 'IR':
+        ax.set_title("Current Impulse Response")
+    fig.canvas.manager.set_window_title(f"Live HR{kind}")
+    last_idx = -1
+    while True:
+        idx = filter_idx_shared.value
+        if idx >= 0 and idx != last_idx:
+            last_idx = idx
+            try:
+                # Clear and replot using slab's built-in viz
+                ax.cla()
+                # slab.HRTF slice → .tf(show=True, axis=ax) will draw on provided axis
+                if kind == 'TF':
+                    hrir[idx].channel(0).tf(show=True, axis=ax)
+                    hrir[idx].channel(1).tf(show=True, axis=ax)
+                    ax.lines[0].set_label('left')
+                    ax.lines[1].set_label('right')
+                    ax.legend()
+                elif kind == 'IR':
+                    times = numpy.linspace(0, hrir[idx].n_samples / hrir.samplerate, hrir[idx].n_samples)
+                    ax.plot(times, hrir[idx].data[:, 0], label='left')
+                    ax.plot(times, hrir[idx].data[:, 1], label='right')
+                    ax.legend(loc='upper right')
+                # Add some context (az, el)
+                az0, el0 = sources[idx, 0], sources[idx, 1]
+                az180 = (az0 + 180) % 360 - 180  # to (-180,180]
+                ax.set_title(f"{kind} idx {idx}  |  az={az180:.1f}°, el={el0:.1f}°")
+                ax.grid(True, which='both', linestyle=':', linewidth=0.6)
+                fig.canvas.draw_idle()
+                plt.pause(0.001)
+            except Exception as e:
+                # Keep the loop alive even if one plot fails
+                ax.cla()
+                ax.text(0.5, 0.5, f"Plot error for idx {idx}:\n{e}", ha='center', va='center')
+                fig.canvas.draw_idle()
+                plt.pause(0.001)
+
+        # Throttle the loop to avoid pegging a CPU core
+        plt.pause(redraw_interval_s)
 
 def begin_session(subject):
     """
@@ -329,8 +383,9 @@ def play_session():
         prev_high = 0
     highscore = mp.Value("i", prev_high)
 
-    # Start UI
-    shared = game_ui.UIShared(
+    # Start UI (conditional)
+    if show_ui:
+        shared = game_ui.UIShared(
         current_score=current_score,
         game_time_left=game_time_left,
         trial_time_left=trial_time_left,
@@ -340,8 +395,10 @@ def play_session():
         ui_state=ui_state,
         highscore=highscore,
     )
-    ui_proc = mp.Process(target=game_ui.run_ui, args=(shared, Path.cwd() / "data" / "ui" / "highscores.json"))
-    ui_proc.start()
+        ui_proc = mp.Process(target=game_ui.run_ui, args=(shared, Path.cwd() / "data" / "ui" / "highscores.json"))
+        ui_proc.start()
+    else:
+        ui_proc = None
 
     # Start workers
     tracking_worker = mp.Process(target=head_tracker, args=(distance, target, sensor_state, pose_queue,
@@ -351,6 +408,10 @@ def play_session():
     binsim_worker.start()
     pulse_worker = mp.Process(target=pulse_maker, args=(pulse_interval, pulse_state))
     pulse_worker.start()
+
+    if SHOW_TF:  # start plot_worker
+        plot_worker = mp.Process(target=plot_current_tf, args=(plot_filter_idx, 0.05, SHOW_TF), daemon=True)
+        plot_worker.start()
 
     # Wait for tracker init
     while sensor_state.value != 1:
@@ -365,10 +426,13 @@ def play_session():
             enter_pressed.value = 0
 
             # --- PRE-SESSION PROMPT ---
-            ui_state.value = 1  # waiting to start
-            while enter_pressed.value == 0:
-                time.sleep(0.05)
-            enter_pressed.value = 0
+            if show_ui:
+                ui_state.value = 1  # waiting to start
+                while enter_pressed.value == 0:
+                    time.sleep(0.05)
+                enter_pressed.value = 0
+            else:
+                ui_state.value = 2  # headless: start immediately
 
             scores = []
             game_timer = 0.0
@@ -417,13 +481,16 @@ def play_session():
             logging.info(f"Game Over! Total Score: {int(session_total.value)}")
 
             # Show play-again prompt (same big overlay, different text)
-            ui_state.value = 3  # session over → "Press Enter to play again"
-            enter_pressed.value = 0
-            # wait for Enter to start next session
-            while enter_pressed.value == 0:
-                time.sleep(0.05)
-            enter_pressed.value = 0
-            # loop continues -> new session
+            if show_ui:
+                ui_state.value = 3  # session over → "Press Enter to play again"
+                enter_pressed.value = 0
+                # wait for Enter to start next session
+                while enter_pressed.value == 0:
+                    time.sleep(0.05)
+                enter_pressed.value = 0
+                # loop continues -> new session
+            else:
+                break  # headless: run one session and exit
 
     finally:
         logging.info("Ending")
@@ -441,16 +508,17 @@ def play_session():
             tracking_worker.terminate()
         except Exception:
             pass
-        try:
-            ui_proc.terminate()
-            ui_proc.join()
-        except Exception:
-            pass
-
-
-
+        if ui_proc is not None:
+            try:
+                ui_proc.terminate()
+                ui_proc.join()
+            except Exception:
+                pass
 
 # -------------------- Main --------------------
-if __name__ == "__main__":
-    play_session()
 
+if __name__ == "__main__":
+    try:
+        play_session()
+    except KeyboardInterrupt:
+        print("\n[Training] Interrupted by user. Shutting down.")

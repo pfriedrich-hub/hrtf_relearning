@@ -1,0 +1,16 @@
+fs: 48828
+n_rec: 20
+n_samp: 2
+signal:
+  type: slab.Sound.chirp
+  duration: 0.2
+  level: 80
+  from_frequency: 20
+  to_frequency: 24414
+  samplerate: 48828
+datetime: 2025-11-07T16:49:45.855676
+subject_id: MS
+Software versions:
+  slab:      1.8.2
+  pyfar:     0.7.3
+  freefield: 1.1.0

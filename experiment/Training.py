@@ -20,7 +20,7 @@ from experiment.misc.training_helpers import game_ui
 logging.getLogger().setLevel('INFO')
 
 # -------------------- Config --------------------
-SUBJECT_ID = "test"
+SUBJECT_ID = "PF"
 HRIR_NAME = "PF"  # 'KU100', 'kemar', etc.
 EAR = None              # or None for binaural (your unilateral training)
 REVERB = True
@@ -28,7 +28,7 @@ REVERB = True
 # Sound
 SOUND_FILE = None         # None -> pink noise pulses; or 'uso_225ms_9_.wav', etc.
 # Graphics
-show_ui = False  # enable UI
+show_ui = False  # todo
 SHOW_TF = 'TF'  # set to TF or IR to spawn live filter plot
 
 # -------------------- Global HRIR/Sequence --------------------
@@ -46,8 +46,7 @@ settings = dict(
     min_dist=30,
     game_time=90,
     trial_time=10,
-    gain=0.2,
-)
+    gain=0.2)
 
 # -------------------- Helpers --------------------
 def make_osc_client(port, ip="127.0.0.1"):
@@ -61,6 +60,49 @@ def _drain_pose_queue(q):
         except Empty:
             break
     return items
+
+def begin_session(subject):
+    """
+    Call this once at the beginning of a session to get:
+      - session_id (timestamp-based)
+      - base_index = current length of subject.trials
+    """
+    now = f'{date.strftime("%d")}.{date.strftime("%m")}_{date.strftime("%H")}.{date.strftime("%M")}'
+    session_id = datetime.datetime.now().strftime(now)
+    base_index = len(subject.trials)
+    return {"session_id": session_id, "base_index": base_index}
+
+def play_sound(osc_client, soundfile=None, duration=None, sleep=False):
+    """Wrapper: set /pyBinSimFile to play a file (or synthesize pink noise pulses)."""
+    if duration:
+        if soundfile:
+            sound = slab.Sound.read(HRIR_DIR / "sounds" / soundfile)
+            soundfile = "cropped_" + soundfile
+            (slab.Sound(sound.data[: int(hrir.samplerate * duration)])
+             .ramp(duration=0.03)
+             .write(HRIR_DIR / "sounds" / soundfile))
+        else:
+            soundfile = "noise_pulse.wav"
+            slab.Sound.pinknoise(duration).ramp(duration=0.03).write(HRIR_DIR / "sounds" / soundfile)
+    else:
+        duration = slab.Sound(HRIR_DIR / "sounds" / soundfile).duration
+    logging.debug(f"Setting soundfile: {soundfile}")
+    osc_client.send_message("/pyBinSimFile", str(HRIR_DIR / "sounds" / soundfile))
+    if sleep:
+        time.sleep(duration)
+
+def distance_to_interval(distance):
+    max_interval = 350
+    min_interval = 75
+    steepness = 5
+    max_distance = numpy.linalg.norm(numpy.subtract([0, 0], [settings["az_range"][0], settings["ele_range"][0]]))
+    if distance <= settings["target_size"]:
+        return 0
+    norm_dist = (distance - settings["target_size"]) / (max_distance - settings["target_size"])
+    norm_dist = numpy.clip(norm_dist, 0, 1)
+    scale = numpy.log1p(steepness * norm_dist) / numpy.log1p(steepness)
+    interval = (min_interval + (max_interval - min_interval) * scale).astype(int)
+    return int(interval) / 1000
 
 def plot_current_tf(filter_idx_shared, redraw_interval_s=0.05, kind=SHOW_TF):
     """
@@ -113,49 +155,6 @@ def plot_current_tf(filter_idx_shared, redraw_interval_s=0.05, kind=SHOW_TF):
 
         # Throttle the loop to avoid pegging a CPU core
         plt.pause(redraw_interval_s)
-
-def begin_session(subject):
-    """
-    Call this once at the beginning of a session to get:
-      - session_id (timestamp-based)
-      - base_index = current length of subject.trials
-    """
-    now = f'{date.strftime("%d")}.{date.strftime("%m")}_{date.strftime("%H")}.{date.strftime("%M")}'
-    session_id = datetime.datetime.now().strftime(now)
-    base_index = len(subject.trials)
-    return {"session_id": session_id, "base_index": base_index}
-
-def play_sound(osc_client, soundfile=None, duration=None, sleep=False):
-    """Wrapper: set /pyBinSimFile to play a file (or synthesize pink noise pulses)."""
-    if duration:
-        if soundfile:
-            sound = slab.Sound.read(HRIR_DIR / "sounds" / soundfile)
-            soundfile = "cropped_" + soundfile
-            (slab.Sound(sound.data[: int(hrir.samplerate * duration)])
-             .ramp(duration=0.03)
-             .write(HRIR_DIR / "sounds" / soundfile))
-        else:
-            soundfile = "noise_pulse.wav"
-            slab.Sound.pinknoise(duration).ramp(duration=0.03).write(HRIR_DIR / "sounds" / soundfile)
-    else:
-        duration = slab.Sound(HRIR_DIR / "sounds" / soundfile).duration
-    logging.debug(f"Setting soundfile: {soundfile}")
-    osc_client.send_message("/pyBinSimFile", str(HRIR_DIR / "sounds" / soundfile))
-    if sleep:
-        time.sleep(duration)
-
-def distance_to_interval(distance):
-    max_interval = 350
-    min_interval = 75
-    steepness = 5
-    max_distance = numpy.linalg.norm(numpy.subtract([0, 0], [settings["az_range"][0], settings["ele_range"][0]]))
-    if distance <= settings["target_size"]:
-        return 0
-    norm_dist = (distance - settings["target_size"]) / (max_distance - settings["target_size"])
-    norm_dist = numpy.clip(norm_dist, 0, 1)
-    scale = numpy.log1p(steepness * norm_dist) / numpy.log1p(steepness)
-    interval = (min_interval + (max_interval - min_interval) * scale).astype(int)
-    return int(interval) / 1000
 
 # -------------------- Subprocess workers --------------------
 def binsim_stream():
@@ -387,9 +386,8 @@ def play_session():
         prev_high = 0
     highscore = mp.Value("i", prev_high)
 
-    # Start UI (conditional)
-    if show_ui:
-        shared = game_ui.UIShared(
+    # Start UI
+    shared = game_ui.UIShared(
         current_score=current_score,
         game_time_left=game_time_left,
         trial_time_left=trial_time_left,
@@ -399,10 +397,8 @@ def play_session():
         ui_state=ui_state,
         highscore=highscore,
     )
-        ui_proc = mp.Process(target=game_ui.run_ui, args=(shared, Path.cwd() / "data" / "ui" / "highscores.json"))
-        ui_proc.start()
-    else:
-        ui_proc = None
+    ui_proc = mp.Process(target=game_ui.run_ui, args=(shared, Path.cwd() / "data" / "ui" / "highscores.json"))
+    ui_proc.start()
 
     # Start workers
     tracking_worker = mp.Process(target=head_tracker, args=(distance, target, sensor_state, pose_queue,
@@ -430,13 +426,10 @@ def play_session():
             enter_pressed.value = 0
 
             # --- PRE-SESSION PROMPT ---
-            if show_ui:
-                ui_state.value = 1  # waiting to start
-                while enter_pressed.value == 0:
-                    time.sleep(0.05)
-                enter_pressed.value = 0
-            else:
-                ui_state.value = 2  # headless: start immediately
+            ui_state.value = 1  # waiting to start
+            while enter_pressed.value == 0:
+                time.sleep(0.05)
+            enter_pressed.value = 0
 
             scores = []
             game_timer = 0.0
@@ -485,16 +478,13 @@ def play_session():
             logging.info(f"Game Over! Total Score: {int(session_total.value)}")
 
             # Show play-again prompt (same big overlay, different text)
-            if show_ui:
-                ui_state.value = 3  # session over → "Press Enter to play again"
-                enter_pressed.value = 0
-                # wait for Enter to start next session
-                while enter_pressed.value == 0:
-                    time.sleep(0.05)
-                enter_pressed.value = 0
-                # loop continues -> new session
-            else:
-                break  # headless: run one session and exit
+            ui_state.value = 3  # session over → "Press Enter to play again"
+            enter_pressed.value = 0
+            # wait for Enter to start next session
+            while enter_pressed.value == 0:
+                time.sleep(0.05)
+            enter_pressed.value = 0
+            # loop continues -> new session
 
     finally:
         logging.info("Ending")
@@ -512,12 +502,14 @@ def play_session():
             tracking_worker.terminate()
         except Exception:
             pass
-        if ui_proc is not None:
-            try:
-                ui_proc.terminate()
-                ui_proc.join()
-            except Exception:
-                pass
+        try:
+            ui_proc.terminate()
+            ui_proc.join()
+        except Exception:
+            pass
+
+
+
 
 # -------------------- Main --------------------
 

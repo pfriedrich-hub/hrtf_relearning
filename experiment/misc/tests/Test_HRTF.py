@@ -26,7 +26,7 @@ subject_id = 'PF'
 sequence = Subject(subject_id).last_sequence  # must contain .settings and .data
 
 # HRTF selection
-sofa_name = 'KU100'
+sofa_name = 'PF'
 
 # unilateral vs. binaural
 ear = None
@@ -35,12 +35,12 @@ ear = None
 # Test settings (similar to training but typically longer trial/hold)
 settings = dict(
     target_size=3,                # deg
-    target_time=1.0,              # time on target to score (seconds)
-    az_range=sequence.settings['azimuth_range'],
-    ele_range=sequence.settings['elevation_range'],
-    min_dist=30,                  # deg
+    target_time=5,              # time on target to score (seconds)
+    az_range=(-1, 1),
+    ele_range=(-1, 1),
+    min_dist=0,                  # deg
     game_time=300,                # session length
-    trial_time=25,                # per trial
+    trial_time=300,                # per trial
     gain=.2,                      # loudness
     hold_on_center=2.0            # additional hold/continuous time after entering target
 )

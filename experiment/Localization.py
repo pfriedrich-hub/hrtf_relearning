@@ -19,10 +19,7 @@ id = 'PF'
 subject = Subject(id)
 
 # --- HRTF settings ----
-# hrir='KU100'
-# hrir ='single_notch'
-# hrir = 'pf_just_itd'
-hrir = 'pf_high_res_itd'
+hrir = 'PF'
 
 # ---- specify ear for unilateral testing, None defaults to binaural testing
 ear = None
@@ -70,7 +67,7 @@ class Localization:
         self.subject.write()
 
     def run(self):
-        self.sequence = make_sequence_from_sources(self.settings, self.hrir)
+        self.sequence = make_sequence_from_sources(self.settings, self.hrir_sources)
         # self.sequence = make_sequence(self.settings)
         self.sequence.name = self.filename
         self.write()
@@ -135,7 +132,7 @@ class Localization:
     def _binsim_stream(hrir_name):
         import pybinsim
         pybinsim.logger.setLevel(logging.ERROR)
-        binsim = pybinsim.BinSim(data_dir / 'hrtf' / 'wav' / hrir_name / f'{hrir_name}_test_settings.txt')
+        binsim = pybinsim.BinSim(data_dir / 'hrtf' / 'binsim' / hrir_name / f'{hrir_name}_test_settings.txt')
         binsim.stream_start()  # run binsim loop
 
     @staticmethod
@@ -147,25 +144,25 @@ class Localization:
 
     @staticmethod
     def make_stim():
-        stim = slab.Sound.pinknoise(duration=0.225, level=90).ramp(when='both', duration=0.01)
-        n_silent = (numpy.arange(25,221,25).reshape(4,2) * stim.samplerate / 1000).astype(int)
-        ramp_len = int(.005 * stim.samplerate)
-        half_len = int(ramp_len / 2)
-        for start, end in n_silent:
-            ramp_up = 0.5 * (1 - numpy.cos(numpy.linspace(0, numpy.pi, ramp_len)))
-            ramp_down = 0.5 * (1 - numpy.cos(numpy.linspace(numpy.pi, 0, ramp_len)))
-            ramp_up = ramp_up[:, numpy.newaxis]
-            ramp_down = ramp_down[:, numpy.newaxis]
-            # Apply ramps at the edges of the silent region
-            stim.data[start - half_len: start + half_len] *= (1 - ramp_up)
-            stim.data[end - half_len: end + half_len] *= (1 - ramp_down)
-            # Silence the center
-            stim.data[start + half_len: end - half_len] = 0
-        # noise = slab.Sound.pinknoise(duration=0.025, level=90)
-        # noise = noise.ramp(when='both', duration=0.01)
-        # silence = slab.Sound.silence(duration=0.025)
-        # stim = slab.Sound.sequence(noise, silence, noise, silence, noise,
-        #                            silence, noise, silence, noise)
+        # stim = slab.Sound.pinknoise(duration=0.225, level=90).ramp(when='both', duration=0.01)
+        # n_silent = (numpy.arange(25,221,25).reshape(4,2) * stim.samplerate / 1000).astype(int)
+        # ramp_len = int(.005 * stim.samplerate)
+        # half_len = int(ramp_len / 2)
+        # for start, end in n_silent:
+        #     ramp_up = 0.5 * (1 - numpy.cos(numpy.linspace(0, numpy.pi, ramp_len)))
+        #     ramp_down = 0.5 * (1 - numpy.cos(numpy.linspace(numpy.pi, 0, ramp_len)))
+        #     ramp_up = ramp_up[:, numpy.newaxis]
+        #     ramp_down = ramp_down[:, numpy.newaxis]
+        #     # Apply ramps at the edges of the silent region
+        #     stim.data[start - half_len: start + half_len] *= (1 - ramp_up)
+        #     stim.data[end - half_len: end + half_len] *= (1 - ramp_down)
+        #     # Silence the center
+        #     stim.data[start + half_len: end - half_len] = 0
+        noise = slab.Sound.pinknoise(duration=0.025, level=90)
+        noise = noise.ramp(when='both', duration=0.01)
+        silence = slab.Sound.silence(duration=0.025)
+        stim = slab.Sound.sequence(noise, silence, noise, silence, noise,
+                                   silence, noise, silence, noise)
         stim.ramp('both', 0.01)
         return stim
 

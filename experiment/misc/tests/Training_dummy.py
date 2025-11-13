@@ -10,6 +10,8 @@ from pythonosc import udp_client
 import datetime
 date = datetime.datetime.now()
 import pybinsim
+import sys
+import threading
 
 from experiment.Subject import Subject
 from experiment.misc.training_helpers.training_targets import set_target_probabilistic
@@ -19,7 +21,7 @@ from experiment.misc.training_helpers import game_ui
 logging.getLogger().setLevel('INFO')
 
 # -------------------- Config --------------------
-SUBJECT_ID = "test"
+SUBJECT_ID = "PF"
 HRIR_NAME = "PF"  # 'KU100', 'kemar', etc.
 EAR = None              # or None for binaural (your unilateral training)
 REVERB = True
@@ -28,7 +30,7 @@ REVERB = True
 SOUND_FILE = None         # None -> pink noise pulses; or 'uso_225ms_9_.wav', etc.
 # Graphics
 show_ui = False  # enable UI
-SHOW_TF = 'TF'  # set to TF or IR to spawn live filter plot
+SHOW_TF = False  # set to TF or IR to spawn live filter plot
 
 # -------------------- Global HRIR/Sequence --------------------
 hrir = hrtf2binsim(HRIR_NAME, EAR, REVERB, overwrite=False)
@@ -40,8 +42,8 @@ sequence = Subject(SUBJECT_ID).last_sequence  # last localization sequence (your
 settings = dict(
     target_size=3,
     target_time=0.5,
-    az_range=sequence.settings["azimuth_range"] if sequence else (-30,30),
-    ele_range=sequence.settings["elevation_range"] if sequence else (-30,30),
+    az_range=sequence.settings["azimuth_range"] if sequence else (-30, 30),
+    ele_range=sequence.settings["elevation_range"] if sequence else (-30, 30),
     min_dist=30,
     game_time=90,
     trial_time=10,
@@ -52,6 +54,7 @@ settings = dict(
 def make_osc_client(port, ip="127.0.0.1"):
     return udp_client.SimpleUDPClient(ip, port)
 
+
 def _drain_pose_queue(q):
     items = []
     while True:
@@ -60,6 +63,7 @@ def _drain_pose_queue(q):
         except Empty:
             break
     return items
+
 
 def plot_current_tf(filter_idx_shared, redraw_interval_s=0.05, kind=SHOW_TF):
     """
@@ -113,6 +117,7 @@ def plot_current_tf(filter_idx_shared, redraw_interval_s=0.05, kind=SHOW_TF):
         # Throttle the loop to avoid pegging a CPU core
         plt.pause(redraw_interval_s)
 
+
 def begin_session(subject):
     """
     Call this once at the beginning of a session to get:
@@ -123,6 +128,7 @@ def begin_session(subject):
     session_id = datetime.datetime.now().strftime(now)
     base_index = len(subject.trials)
     return {"session_id": session_id, "base_index": base_index}
+
 
 def play_sound(osc_client, soundfile=None, duration=None, sleep=False):
     """Wrapper: set /pyBinSimFile to play a file (or synthesize pink noise pulses)."""
@@ -143,11 +149,14 @@ def play_sound(osc_client, soundfile=None, duration=None, sleep=False):
     if sleep:
         time.sleep(duration)
 
+
 def distance_to_interval(distance):
     max_interval = 350
     min_interval = 75
     steepness = 5
-    max_distance = numpy.linalg.norm(numpy.subtract([0, 0], [settings["az_range"][0], settings["ele_range"][0]]))
+    max_distance = numpy.linalg.norm(
+        numpy.subtract([0, 0], [settings["az_range"][0], settings["ele_range"][0]])
+    )
     if distance <= settings["target_size"]:
         return 0
     norm_dist = (distance - settings["target_size"]) / (max_distance - settings["target_size"])
@@ -156,6 +165,7 @@ def distance_to_interval(distance):
     interval = (min_interval + (max_interval - min_interval) * scale).astype(int)
     return int(interval) / 1000
 
+
 # -------------------- Subprocess workers --------------------
 def binsim_stream():
     # import pybinsim
@@ -163,6 +173,7 @@ def binsim_stream():
     logging.info(f"Loading {hrir.name}")
     binsim = pybinsim.BinSim(HRIR_DIR / f"{hrir.name}_training_settings.txt")
     binsim.stream_start()
+
 
 def pulse_maker(pulse_interval, pulse_state):
     """state: 0 mute, 1 idle, 2 play pulses; interval in seconds (0 => continuous target sound)"""
@@ -186,6 +197,7 @@ def pulse_maker(pulse_interval, pulse_state):
                 target_sound = False
         time.sleep(0.01)
 
+
 def head_tracker(distance, target, sensor_state, pose_queue, current_trial, plot_filter_idx):
     """Dummy tracker that 'walks' towards target; updates pyBinSim filters accordingly."""
     import logging
@@ -207,7 +219,7 @@ def head_tracker(distance, target, sensor_state, pose_queue, current_trial, plot
             pose = pose + step * direction
 
             try:
-                # store: (t_monotonic, current_trial_id, yaw, pitch, roll)
+                # store: (t_monotonic, current_trial_id, yaw, pitch)
                 pose_queue.put((
                     time.time(),
                     int(current_trial.value),
@@ -223,14 +235,15 @@ def head_tracker(distance, target, sensor_state, pose_queue, current_trial, plot
             rel_target = numpy.array((rel[0], rel[1], hrtf_sources[0, 2]))
             filter_idx = numpy.argmin(numpy.linalg.norm(rel_target - hrtf_sources, axis=1))
             rel_hrtf_coords = hrtf_sources[filter_idx]
-            osc.send_message('/pyBinSim_ds_Filter', [0,0,0,0,0,0,0,0,0,0,
+            osc.send_message('/pyBinSim_ds_Filter', [0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                                                      float(rel_hrtf_coords[0]), float(rel_hrtf_coords[1]), 0,
-                                                     0,0,0])
+                                                     0, 0, 0])
             if filter_idx != last_idx:
                 last_idx = filter_idx
                 if plot_filter_idx is not None:
                     plot_filter_idx.value = int(filter_idx)
         time.sleep(0.01)
+
 
 def play_trial(subject, trial_idx, current_trial, target, distance, pulse_interval, pulse_state, sensor_state,
                game_time_left, trial_time, game_time, game_timer,
@@ -299,6 +312,7 @@ def play_trial(subject, trial_idx, current_trial, target, distance, pulse_interv
             session_total.value = int(session_total.value + score)
 
             # 2) Make sure loudness is up for SFX and trigger sound non-blocking
+            global osc_client
             osc_client.send_message('/pyBinSimLoudness', settings['gain'])
 
             # Non-blocking SFX trigger
@@ -307,7 +321,7 @@ def play_trial(subject, trial_idx, current_trial, target, distance, pulse_interv
             # 3) Give the SFX a short head-start before we exit/mute
             # read actual duration (safe if file is present)
             actual_dur = slab.Sound(HRIR_DIR / 'sounds' / sfile).duration
-            time.sleep( actual_dur)
+            time.sleep(actual_dur)
 
             break
 
@@ -321,7 +335,7 @@ def play_trial(subject, trial_idx, current_trial, target, distance, pulse_interv
 
     # Collect pose samples; keep those for our trial id & time window
     raw = _drain_pose_queue(pose_queue)
-    # raw items are (t_monotonic, trial_id, yaw, pitch, roll)
+    # raw items are (t_monotonic, trial_id, yaw, pitch)
     trace = [(t, yaw, pitch,) for (t, tid, yaw, pitch) in raw
              if (tid == trial_idx) and (t0 <= t <= t1)]
 
@@ -329,7 +343,7 @@ def play_trial(subject, trial_idx, current_trial, target, distance, pulse_interv
     trial_dict = {
         "trial_idx": int(trial_idx),
         "target": tuple(target.tolist() if hasattr(target, "tolist") else target),
-        "pose_trace": trace,  # [(t, yaw, pitch, roll), ...]
+        "pose_trace": trace,  # [(t, yaw, pitch), ...]
         "duration": float(game_timer),
         # add session id if you used begin_session():
         "session_id": globals().get("_current_session_id", None)
@@ -347,6 +361,39 @@ def play_trial(subject, trial_idx, current_trial, target, distance, pulse_interv
     return game_timer, score
 
 
+# -------------------- Headless console Enter listener --------------------
+def _start_console_enter_listener(enter_flag):
+    """
+    Spawn a background thread that sets enter_flag.value = 1 whenever the user
+    presses Enter in the console.
+    """
+    stop = {'running': True}
+
+    def _loop():
+        while stop['running']:
+            line = sys.stdin.readline()
+            if not line:
+                break  # EOF
+            try:
+                enter_flag.value = 1
+            except Exception:
+                pass
+
+    t = threading.Thread(target=_loop, daemon=True)
+    t._enter_listener_stop = stop
+    t.start()
+    return t
+
+
+def _stop_console_enter_listener(thread):
+    """Stop the console Enter listener thread if it exists."""
+    if thread is None:
+        return
+    stop = getattr(thread, "_enter_listener_stop", None)
+    if isinstance(stop, dict):
+        stop["running"] = False
+
+
 def play_session():
     """
     Main loop: start workers, then run until game_time.
@@ -357,23 +404,23 @@ def play_session():
     osc_client = make_osc_client(port=10003)
 
     # Shared state for workers
-    sensor_state    = mp.Value("i", 0)
-    pulse_state     = mp.Value("i", 0)
-    target          = mp.Array("f", [0.0, 0.0])
-    distance        = mp.Value("f", 0.0)
-    pulse_interval  = mp.Value("f", 0.0)
+    sensor_state = mp.Value("i", 0)
+    pulse_state = mp.Value("i", 0)
+    target = mp.Array("f", [0.0, 0.0])
+    distance = mp.Value("f", 0.0)
+    pulse_interval = mp.Value("f", 0.0)
     plot_filter_idx = mp.Value("i", -1)
     current_trial = mp.Value('i', -1)  # -1 = no active trial
     pose_queue = mp.Queue(maxsize=10000)
 
     # UI shared state
-    current_score   = mp.Value("i", 0)   # optional (not used directly)
-    session_total   = mp.Value("i", 0)   # what we display as the big number
-    game_time_left  = mp.Value("f", float(settings["game_time"]))
+    current_score = mp.Value("i", 0)   # optional (not used directly)
+    session_total = mp.Value("i", 0)   # what we display as the big number
+    game_time_left = mp.Value("f", float(settings["game_time"]))
     trial_time_left = mp.Value("f", float(settings["trial_time"]))
     last_goal_points = mp.Value("i", 0)  # 0/1/2 → UI coin animation trigger
-    enter_pressed    = mp.Value("i", 0)  # UI sets to 1 when user presses Enter
-    ui_state         = mp.Value("i", 0)  # 0 idle, 1 awaiting enter, 2 running, 3 over
+    enter_pressed = mp.Value("i", 0)  # UI or headless sets to 1 when user presses Enter
+    ui_state = mp.Value("i", 0)  # 0 idle, 1 awaiting enter, 2 running, 3 over
 
     # Highscore persistence via Subject
     try:
@@ -383,26 +430,34 @@ def play_session():
         prev_high = 0
     highscore = mp.Value("i", prev_high)
 
-    # Start UI (conditional)
+    listener_thread = None
+
+    # Start UI or headless console listener
     if show_ui:
         shared = game_ui.UIShared(
-        current_score=current_score,
-        game_time_left=game_time_left,
-        trial_time_left=trial_time_left,
-        last_goal_points=last_goal_points,
-        session_total=session_total,
-        enter_pressed=enter_pressed,
-        ui_state=ui_state,
-        highscore=highscore,
-    )
-        ui_proc = mp.Process(target=game_ui.run_ui, args=(shared, Path.cwd() / "data" / "ui" / "highscores.json"))
+            current_score=current_score,
+            game_time_left=game_time_left,
+            trial_time_left=trial_time_left,
+            last_goal_points=last_goal_points,
+            session_total=session_total,
+            enter_pressed=enter_pressed,
+            ui_state=ui_state,
+            highscore=highscore,
+        )
+        ui_proc = mp.Process(
+            target=game_ui.run_ui,
+            args=(shared, Path.cwd() / "data" / "ui" / "highscores.json")
+        )
         ui_proc.start()
     else:
         ui_proc = None
+        listener_thread = _start_console_enter_listener(enter_pressed)
 
     # Start workers
-    tracking_worker = mp.Process(target=head_tracker, args=(distance, target, sensor_state, pose_queue,
-                                                            current_trial, plot_filter_idx))
+    tracking_worker = mp.Process(
+        target=head_tracker,
+        args=(distance, target, sensor_state, pose_queue, current_trial, plot_filter_idx)
+    )
     tracking_worker.start()
     binsim_worker = mp.Process(target=binsim_stream, args=())
     binsim_worker.start()
@@ -410,7 +465,11 @@ def play_session():
     pulse_worker.start()
 
     if SHOW_TF:  # start plot_worker
-        plot_worker = mp.Process(target=plot_current_tf, args=(plot_filter_idx, 0.05, SHOW_TF), daemon=True)
+        plot_worker = mp.Process(
+            target=plot_current_tf,
+            args=(plot_filter_idx, 0.05, SHOW_TF),
+            daemon=True
+        )
         plot_worker.start()
 
     # Wait for tracker init
@@ -426,13 +485,13 @@ def play_session():
             enter_pressed.value = 0
 
             # --- PRE-SESSION PROMPT ---
-            if show_ui:
-                ui_state.value = 1  # waiting to start
-                while enter_pressed.value == 0:
-                    time.sleep(0.05)
-                enter_pressed.value = 0
-            else:
-                ui_state.value = 2  # headless: start immediately
+            ui_state.value = 1  # waiting to start
+            if not show_ui:
+                print("\n[Training] Headless mode — Press Enter to start (Ctrl-C to quit)")
+            while enter_pressed.value == 0:
+                time.sleep(0.05)
+            enter_pressed.value = 0
+            ui_state.value = 2  # running
 
             scores = []
             game_timer = 0.0
@@ -451,18 +510,26 @@ def play_session():
                 # show "Press Enter" overlay and wait for user
                 ui_state.value = 1
                 enter_pressed.value = 0
+                if not show_ui:
+                    print("\n[Training] Press Enter to start next trial (Ctrl-C to quit)")
                 while enter_pressed.value == 0:
                     # keep updating UI timer while we wait
-                    game_time_left.value = max(0.0, float(settings["game_time"]) - game_timer)
+                    game_time_left.value = max(
+                        0.0,
+                        float(settings["game_time"]) - game_timer
+                    )
                     time.sleep(0.05)
                 # start trial
                 ui_state.value = 2
                 enter_pressed.value = 0
 
-                game_timer, score = play_trial(subject, trial_idx, current_trial, target, distance, pulse_interval, pulse_state, sensor_state,
-                                            game_time_left,settings["trial_time"], settings["game_time"], game_timer,
-                                            settings["target_size"], settings["target_time"], session_total, last_goal_points,
-                                               pose_queue)
+                game_timer, score = play_trial(
+                    subject, trial_idx, current_trial, target, distance, pulse_interval,
+                    pulse_state, sensor_state, game_time_left, settings["trial_time"],
+                    settings["game_time"], game_timer, settings["target_size"],
+                    settings["target_time"], session_total, last_goal_points,
+                    pose_queue
+                )
                 scores.append(score)
                 # update high score live; persist to Subject
                 if session_total.value > highscore.value:
@@ -481,28 +548,25 @@ def play_session():
             logging.info(f"Game Over! Total Score: {int(session_total.value)}")
 
             # Show play-again prompt (same big overlay, different text)
-            if show_ui:
-                ui_state.value = 3  # session over → "Press Enter to play again"
-                enter_pressed.value = 0
-                # wait for Enter to start next session
-                while enter_pressed.value == 0:
-                    time.sleep(0.05)
-                enter_pressed.value = 0
-                # loop continues -> new session
-            else:
-                break  # headless: run one session and exit
+            ui_state.value = 3  # session over → "Press Enter to play again"
+            enter_pressed.value = 0
+            if not show_ui:
+                print("\n[Training] Session finished. Press Enter to play again, or Ctrl-C to quit.")
+            # wait for Enter to start next session
+            while enter_pressed.value == 0:
+                time.sleep(0.05)
+            enter_pressed.value = 0
+            # loop continues -> new session
 
     finally:
         logging.info("Ending")
         try:
             # Clean up workers
             pulse_state.value = 0
-            logging.info("Ending")
+            logging.info("Ending workers")
             binsim_worker.join()
             pulse_worker.join()
             tracking_worker.join()
-            ui_proc.terminate()
-            ui_proc.join()
             binsim_worker.terminate()
             pulse_worker.terminate()
             tracking_worker.terminate()
@@ -514,6 +578,11 @@ def play_session():
                 ui_proc.join()
             except Exception:
                 pass
+        try:
+            _stop_console_enter_listener(listener_thread)
+        except Exception:
+            pass
+
 
 # -------------------- Main --------------------
 

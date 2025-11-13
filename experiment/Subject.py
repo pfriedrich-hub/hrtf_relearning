@@ -1,9 +1,6 @@
 import matplotlib
 # matplotlib.use('tkagg')
-import platform
-import pathlib
-if platform.system() == 'Darwin':  pathlib.WindowsPath = pathlib.PosixPath
-import pickle
+from experiment.misc.safe_pickle import load, dump
 import logging
 from pathlib import Path
 results_dir = Path.cwd() / 'data' / 'results'
@@ -15,7 +12,7 @@ class Subject:
         if self.file_path.exists():
             logging.info('Loading subject data.')
             with open(self.file_path, 'rb') as subj_file:
-                subject = pickle.load(subj_file, fix_imports=True)
+                subject = load(subj_file)
                 self.__dict__ = subject.__dict__.copy()
                 self.file_path = results_dir / f'{id}.pkl'  # overwrite Path to match current system for writing
 
@@ -34,5 +31,5 @@ class Subject:
             logging.debug('Updating subject file.')
         else: logging.info('Creating subject file.')
         with open(self.file_path, 'wb') as subj_file:
-            pickle.dump(self, subj_file)  # highest protocol dumping -> numpy error while loading on mac
+            dump(self, subj_file)  # highest protocol dumping -> numpy error while loading on mac
 

@@ -17,13 +17,13 @@ warnings.filterwarnings("ignore", category=pyfar._utils.PyfarDeprecationWarning)
 # -------------------------------------------------------------------------
 # Global settings
 # -------------------------------------------------------------------------
-subject_id = 'PF'
+subject_id = 'LS'
 overwrite = False
 reference = 'ref_07.11'
 n_samp = 2
-n_rec = 5
+n_rec = 20
 fs = 48828  # 97656
-show = False
+show = True
 
 slab.set_default_samplerate(fs)
 data_dir = Path.cwd() / "data"
@@ -70,17 +70,19 @@ def record_hrir(
     # reference_pressure.plot_spectra()
 
     # 3) Compute TF (deconvolve recordings with inverted excitation signal)
-    hrir_recorded = ear_pressure.compute_tf(out_n_samp=256, show=show)
-    hrir_reference = reference_pressure.compute_tf(out_n_samp=256, show=show)
+    # hrir_recorded = ear_pressure.compute_tf(out_n_samp=256, show=show)
+    # hrir_reference = reference_pressure.compute_tf(out_n_samp=256, show=show)
 
     # 4) Equalize HRIR by reference IR
-    hrir_eq = equalize(hrir_recorded, hrir_reference, show=show)
+    hrir_full = equalize(ear_pressure, reference_pressure, show=show)
+
+    # hrir_eq = equalize(hrir_recorded, hrir_reference, show=show)
 
     # 5) Low frequency extrapolation
-    hrir_extrapol = lowfreq_extrapolate(hrir_eq, f_extrap=400.0, f_target=150.0, head_radius=0.0875, show=show)
+    # hrir_extrapol = lowfreq_extrapolate(hrir_eq, f_extrap=400.0, f_target=150.0, head_radius=0.0875, show=show)
 
     # 6) Extend azimuths + add binaural cues (ILD full-band off-midline + ITD align)
-    hrir_full = expand_azimuths_with_binaural_cues(hrir_extrapol, az_range=(-50, 50), head_radius=0.0875, show=show)
+    # hrir_full = expand_azimuths_with_binaural_cues(hrir_extrapol, az_range=(-50, 50), head_radius=0.0875, show=show)
 
     # 5) Export to slab.HRTF when ready
     hrir = hrir_full.to_slab_hrtf(datatype="FIR")
@@ -160,7 +162,7 @@ class SpeakerGridBase:
         return idx, az, el
 
     # --- spatial helpers ---------------------------------------------------
-    def get_sources(self, distance: float = 1.2) -> numpy.ndarray:
+    def get_sources(self, distance: float = 1.4) -> numpy.ndarray:
         coords = []
         for key in self.data.keys():
             _, az, el = self.parse_key(key)

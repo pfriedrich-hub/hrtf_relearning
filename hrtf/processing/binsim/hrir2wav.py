@@ -19,7 +19,7 @@ def hrir2wav(hrir):
     for file in sound_path.glob('*.wav'): # resample sound files
         sound = slab.Sound.read(file)
         sound.resample(hrir.samplerate).write(wav_path / hrir.name / 'sounds' / file.name)
-    write_lr_filter(hrir, drr=5)  # write reverb, larger drr results in weaker reverb
+    write_lr_filter(hrir, drr=20)  # write reverb, larger drr results in weaker reverb
     # write_hp_filter(mute_ear='left')
     return hrir
 

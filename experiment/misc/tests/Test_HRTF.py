@@ -1,4 +1,5 @@
-# test_hrtf.py
+import matplotlib
+matplotlib.rcParams['figure.raise_window'] = False
 import matplotlib
 matplotlib.use('Qt5Agg')
 import matplotlib.pyplot as plt
@@ -22,7 +23,7 @@ logging.getLogger().setLevel('INFO')
 # ------------------------ CONFIG ------------------------
 
 # Subject / last localization sequence (for training ranges & probabilities)
-subject_id = 'PF'
+subject_id = 'test'
 sequence = Subject(subject_id).last_sequence  # must contain .settings and .data
 
 # HRTF selection
@@ -115,24 +116,16 @@ def play_session():
     osc_client = make_osc_client(port=10003)  # pyBinSim control
 
     sensor_state = mp.Value("i", 0)       # 1=ready, 2=calibrate, 3=track
-    pulse_state = mp.Value("i", 0)        # 0=mute, 1=idle, 2=play pulses/continuous
     target = mp.Array("f", [0, 0])        # [az, el] in (-180,180], linear el
-    distance = mp.Value("f", 0.0)         # updated by head_tracker
-    pulse_interval = mp.Value("f", 0.0)   # updated by play_trial
     filter_idx_shared = mp.Value("i", -1) # NEW: share current HRTF index to plotter
 
     # workers
     plot_worker = mp.Process(target=plot_current_tf, args=(filter_idx_shared,), daemon=True)
     plot_worker.start()
-
-    tracking_worker = mp.Process(target=head_tracker, args=(distance, target, sensor_state, filter_idx_shared))
+    tracking_worker = mp.Process(target=head_tracker, args=(target, sensor_state, filter_idx_shared))
     tracking_worker.start()
-
     binsim_worker = mp.Process(target=binsim_stream, args=())
     binsim_worker.start()
-
-    pulse_worker = mp.Process(target=pulse_maker, args=(pulse_interval, pulse_state))
-    pulse_worker.start()
 
     # wait for tracker init
     while not sensor_state.value == 1:
@@ -146,15 +139,13 @@ def play_session():
             # use your probabilistic targeting (depends on last localization sequence)
             set_target_probabilistic(target, settings, sequence=None, hrir=hrir)
             game_timer, score = play_trial(
-                distance, pulse_interval, pulse_state, sensor_state,
+                sensor_state,
                 settings['trial_time'], settings['game_time'], game_timer,
                 settings['target_size'], settings['target_time'],
-                settings['hold_on_center']
             )
             scores.append(score)
 
         # end-of-session
-        pulse_state.value = 1
         play_sound(osc_client, soundfile='buzzer.wav', duration=None, sleep=True)
         logging.info(f'Game Over! Total Score: {sum(scores)}')
         if input('Go again? (y/n): ').lower().strip() == 'n':
@@ -162,14 +153,13 @@ def play_session():
 
     logging.info('Ending')
     binsim_worker.join()
-    pulse_worker.join()
     tracking_worker.join()
     # plot_worker is daemon → will exit with main
 
 
-def play_trial(distance, pulse_interval, pulse_state, sensor_state,
+def play_trial(sensor_state,
                trial_time, game_time, game_timer,
-               target_size, target_time, hold_on_center):
+               target_size, target_time):
     """
     One test trial. Similar to training, but keeps the target sound on for
     an additional hold at center (hold_on_center).
@@ -264,7 +254,7 @@ def pulse_maker(pulse_interval, pulse_state):
             interval = pulse_interval.value
             logging.debug(f'pulse stream: got interval value {interval}')
             if interval == 0 and not target_sound:  # continuous
-                play_sound(osc_client, soundfile=soundfile, duration=float(settings['target_time']), sleep=False)
+                play_sound(osc_client, soundfile=soundfile, duration=float(settings['trial_time']), sleep=False)
                 target_sound = True
             elif interval != 0:
                 play_sound(osc_client, soundfile=soundfile, duration=float(interval), sleep=True)

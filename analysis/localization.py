@@ -19,7 +19,10 @@ def localization_accuracy(sequence):
         elevation_gain, n = scipy.stats.linregress(targets[:, 1], responses[:, 1])[:2]
     except ValueError:
         elevation_gain = 0
-    azimuth_gain, n = scipy.stats.linregress(targets[:, 0], responses[:, 0])[:2]
+    if not len(numpy.unique(targets[:, 0])) < 1:
+        azimuth_gain, n = scipy.stats.linregress(targets[:, 0], responses[:, 0])[:2]
+    else:
+        azimuth_gain = None
     rmse = numpy.sqrt(numpy.mean(numpy.square(targets - responses), axis=0))
     az_rmse, ele_rmse = rmse[0], rmse[1]
     variability = compute_sector_precision(targets, responses, sequence.sector_centers, sequence.settings['sector_size'])
@@ -267,3 +270,82 @@ def plot_localization(sequence, report_stats=['elevation', 'azimuth'], filepath=
         plt.savefig(filepath / f'{sequence.name}.png')
 
     plt.show()
+
+
+def plot_elevation_response(sequence, axis=None, show=True, add_fit=True):
+    """
+    Plot elevation responses (y-axis) against elevation targets (x-axis).
+
+    Parameters
+    ----------
+    sequence : object
+        Your localization sequence with .data, .this_n, .n_remaining, .sector_centers, .settings, .name
+    axis : matplotlib.axes.Axes or None
+        Existing axis to plot into. If None, a new figure/axis is created.
+    show : bool
+        If True, calls plt.show() at the end (if a new figure was created).
+    add_fit : bool
+        If True, add a linear regression fit line with slope (gain).
+
+    Returns
+    -------
+    eg, ele_rmse, ele_sd, ag, az_rmse, az_sd : floats
+        Same statistics as `localization_accuracy`.
+    """
+    # Guard: no data yet
+    if sequence.this_n == -1 or sequence.n_remaining == len(sequence.data) or not sequence.data:
+        return numpy.nan, numpy.nan, numpy.nan, numpy.nan, numpy.nan, numpy.nan
+
+    # unpack data: sequence.data -> (trials, 2, 2)
+    loc_data = numpy.asarray(sequence.data)
+    loc_data = loc_data.reshape(loc_data.shape[0], 2, 2)
+    targets = loc_data[:, 1]      # [az, el]
+    responses = loc_data[:, 0]    # [az, el]
+
+    targ_el = targets[:, 1]
+    resp_el = responses[:, 1]
+
+    # Compute stats (re-use your existing function)
+    eg, ele_rmse, ele_sd, ag, az_rmse, az_sd = localization_accuracy(sequence)
+
+    # Figure / axis handling
+    created_fig = False
+    if axis is None:
+        fig, axis = plt.subplots(figsize=(6, 6))
+        created_fig = True
+
+    # Scatter plot: elevation targets vs responses
+    axis.scatter(targ_el, resp_el, alpha=0.7, label="Trials")
+
+    # Identity (veridical) line y = x
+    min_el = float(numpy.min(numpy.concatenate([targ_el, resp_el])))
+    max_el = float(numpy.max(numpy.concatenate([targ_el, resp_el])))
+    pad = 5.0
+    x_line = numpy.linspace(min_el - pad, max_el + pad, 100)
+    axis.plot(x_line, x_line, 'k--', label="Veridical (y = x)")
+
+    # Optional regression line
+    if add_fit and len(targ_el) >= 2 and not numpy.allclose(targ_el, targ_el[0]):
+        slope, intercept, r_value, p_value, stderr = scipy.stats.linregress(targ_el, resp_el)
+        y_fit = intercept + slope * x_line
+        axis.plot(x_line, y_fit, '-', label=f"Fit (gain={slope:.2f}, R²={r_value**2:.2f})")
+
+    # Cosmetics
+    axis.set_xlabel("Target elevation (°)")
+    axis.set_ylabel("Response elevation (°)")
+    axis.set_aspect('equal', adjustable='box')
+    axis.grid(True, linestyle='--', linewidth=0.5)
+
+    title = getattr(sequence, "name", "Localization") + \
+            f"\nElevation: gain={eg:.2f}, RMSE={ele_rmse:.2f}°, SD={ele_sd:.2f}°"
+    axis.set_title(title)
+    axis.legend()
+
+    if created_fig and show:
+        plt.tight_layout()
+        plt.show()
+
+    return eg, ele_rmse, ele_sd, ag, az_rmse, az_sd
+
+
+

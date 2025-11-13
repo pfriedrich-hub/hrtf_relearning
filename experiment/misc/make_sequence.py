@@ -23,6 +23,9 @@ def make_sequence_from_sources(settings, hrir_sources=None):
     Returns:
         slab.Trialsequence
     """
+    if settings['kind'] == 'standard':
+        return make_std_sequence_from_sources(hrir_sources)  # play 3 times from each source in the sequence
+
     azimuth_range = settings['azimuth_range']
     elevation_range = settings['elevation_range']
     sector_size = settings['sector_size']  # (azimuth_size, elevation_size)
@@ -275,6 +278,98 @@ def plot_sequence_targets(sequence, title="Recorded targets over sectors"):
     ax.legend(loc="best")
     plt.tight_layout()
     plt.show()
+
+def make_std_sequence_from_sources(hrir_sources, repeats=3, min_distance=30.0, max_tries=1000):
+    """
+    Default sequence:
+    - use every HRIR source `repeats` times
+    - random order
+    - enforce min_distance (in deg) between successive targets
+
+    hrir_sources: array-like of shape (N, 2) -> [az, el] in degrees
+    """
+    if hrir_sources is None:
+        raise ValueError("hrir_sources must be provided when settings is None.")
+
+    src = numpy.asarray(hrir_sources, dtype=float)
+    if src.ndim != 2 or src.shape[1] < 2:
+        raise ValueError("hrir_sources must be of shape (N, 2) -> [az, el].")
+
+    src_az = src[:, 0].astype(float)
+    src_el = src[:, 1].astype(float)
+    n_sources = src.shape[0]
+
+    def _wrap_diff(a, b):
+        """Smallest signed difference a-b on a 360° circle, result in [-180, 180)."""
+        d = (a - b + 180.0) % 360.0 - 180.0
+        return d
+
+    # Precompute distance matrix between all sources in az/el plane (degrees)
+    az1 = src_az[:, None]
+    az2 = src_az[None, :]
+    d_az = _wrap_diff(az1, az2)
+    d_el = src_el[:, None] - src_el[None, :]
+    dist = numpy.sqrt(d_az ** 2 + d_el ** 2)  # shape (N, N)
+
+    total_len = n_sources * repeats
+
+    for attempt in range(max_tries):
+        # how many times each index is still available
+        remaining = numpy.full(n_sources, repeats, dtype=int)
+        seq_indices = []
+
+        # pick first source randomly
+        first = numpy.random.randint(0, n_sources)
+        seq_indices.append(first)
+        remaining[first] -= 1
+
+        success = True
+        for _ in range(1, total_len):
+            last = seq_indices[-1]
+
+            # candidate indices that still have remaining repetitions
+            # and satisfy min_distance constraint to last
+            candidates = numpy.where(
+                (remaining > 0) & (dist[last] >= min_distance)
+            )[0]
+
+            if candidates.size == 0:
+                success = False
+                break  # dead end → restart whole sequence
+
+            # random choice among valid candidates
+            nxt = numpy.random.choice(candidates)
+            seq_indices.append(nxt)
+            remaining[nxt] -= 1
+
+        if success:
+            # we found a valid sequence
+            seq_indices = numpy.asarray(seq_indices, dtype=int)
+            points = numpy.column_stack([src_az[seq_indices], src_el[seq_indices]])
+
+            # wrap azimuths to (-180, 180]
+            points[:, 0] = (points[:, 0] + 180) % 360 - 180
+            points = numpy.round(points, 2)
+
+            sequence = slab.Trialsequence(points)
+            # store some meta info for later introspection
+            sequence.settings = {
+                "mode": "all_sources_repeated",
+                "repeats": repeats,
+                "min_distance": min_distance,
+                "azimuth_range": (float(points[:, 0].min()), float(points[:, 0].max())),
+                "elevation_range": (float(points[:, 1].min()), float(points[:, 1].max())),
+            }
+            sequence.sector_centers = None
+            return sequence
+
+    # If we get here, all attempts failed
+    logging.error(
+        f"Could not construct sequence with min_distance={min_distance}° "
+        f"after {max_tries} attempts. Try lowering min_distance or repeats."
+    )
+    raise RuntimeError("Failed to build std sequence with min-distance constraint.")
+
 
 # Example usage
 # azimuth_range = (-50, 50)

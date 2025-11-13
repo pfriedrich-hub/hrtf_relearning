@@ -19,7 +19,7 @@ id = 'PF'
 subject = Subject(id)
 
 # --- HRTF settings ----
-hrir = 'PF'
+hrir = 'laras_pf_in_ear_mic'
 
 # ---- specify ear for unilateral testing, None defaults to binaural testing
 ear = None
@@ -39,10 +39,11 @@ class Localization:
         # make trial sequence and write to subject
         # self.settings = {'azimuth_range': (-35, 0), 'elevation_range': (-35, 35), 'sector_size': (7, 14),
         #                  'targets_per_sector': 3, 'min_distance': 15, 'gain': .5}
-        self.settings = {'azimuth_range': (-1, 1), 'elevation_range': (-50, 50), 'sector_size': (2, 6),
-                         'targets_per_sector': 1, 'min_distance': 10, 'gain': .5}  # azimuth test
+        # self.settings = {'azimuth_range': (-1, 1), 'elevation_range': (-50, 50), 'sector_size': (2, 6),
+        #                  'targets_per_sector': 1, 'min_distance': 10, 'gain': .5}  # azimuth test
         # self.settings = {'azimuth_range': (-40, 40), 'elevation_range': (-30, 30), 'sector_size': (20, 20),
         #                  'targets_per_sector': 3, 'min_distance': 20, 'gain': .8}  # ff HRTF
+        self.settings = {'kind': 'standard', 'gain': .8}  # just play 3 times from each source in the hrir (works well for dome recorded)
         self.subject = subject
         self.filename = subject.id + f'_{hrir.name}' + '_loc_' + date
 
@@ -148,27 +149,27 @@ class Localization:
     def make_stim():
         # stim = slab.Sound.pinknoise(duration=0.5, level=90).ramp(when='both', duration=0.01)
 
-        stim = slab.Sound.pinknoise(duration=0.225, level=90).ramp(when='both', duration=0.01)
-        n_silent = (numpy.arange(25,221,25).reshape(4,2) * stim.samplerate / 1000).astype(int)
-        ramp_len = int(.005 * stim.samplerate)
-        half_len = int(ramp_len / 2)
-        for start, end in n_silent:
-            ramp_up = 0.5 * (1 - numpy.cos(numpy.linspace(0, numpy.pi, ramp_len)))
-            ramp_down = 0.5 * (1 - numpy.cos(numpy.linspace(numpy.pi, 0, ramp_len)))
-            ramp_up = ramp_up[:, numpy.newaxis]
-            ramp_down = ramp_down[:, numpy.newaxis]
-            # Apply ramps at the edges of the silent region
-            stim.data[start - half_len: start + half_len] *= (1 - ramp_up)
-            stim.data[end - half_len: end + half_len] *= (1 - ramp_down)
-            # Silence the center
-            stim.data[start + half_len: end - half_len] = 0
+        # stim = slab.Sound.pinknoise(duration=0.225, level=90).ramp(when='both', duration=0.01)
+        # n_silent = (numpy.arange(25,221,25).reshape(4,2) * stim.samplerate / 1000).astype(int)
+        # ramp_len = int(.005 * stim.samplerate)
+        # half_len = int(ramp_len / 2)
+        # for start, end in n_silent:
+        #     ramp_up = 0.5 * (1 - numpy.cos(numpy.linspace(0, numpy.pi, ramp_len)))
+        #     ramp_down = 0.5 * (1 - numpy.cos(numpy.linspace(numpy.pi, 0, ramp_len)))
+        #     ramp_up = ramp_up[:, numpy.newaxis]
+        #     ramp_down = ramp_down[:, numpy.newaxis]
+        #     # Apply ramps at the edges of the silent region
+        #     stim.data[start - half_len: start + half_len] *= (1 - ramp_up)
+        #     stim.data[end - half_len: end + half_len] *= (1 - ramp_down)
+        #     # Silence the center
+        #     stim.data[start + half_len: end - half_len] = 0
 
-        # noise = slab.Sound.pinknoise(duration=0.025, level=90)
-        # noise = noise.ramp(when='both', duration=0.01)
-        # silence = slab.Sound.silence(duration=0.025)
-        # stim = slab.Sound.sequence(noise, silence, noise, silence, noise,
-        #                            silence, noise, silence, noise)
-        # stim.ramp('both', 0.01)
+        noise = slab.Sound.pinknoise(duration=0.025, level=90)
+        noise = noise.ramp(when='both', duration=0.01)
+        silence = slab.Sound.silence(duration=0.025)
+        stim = slab.Sound.sequence(noise, silence, noise, silence, noise,
+                                   silence, noise, silence, noise)
+        stim.ramp('both', 0.01)
         return stim
 
     @staticmethod
@@ -184,6 +185,7 @@ if __name__ == "__main__":
     loc_test = Localization(subject, hrir)
     loc_test.run()
     sequence = subject.localization[loc_test.filename]
-    plot_localization(sequence, report_stats=['elevation', 'azimuth'],
+    plot_localization(sequence, report_stats=['elevation'],
                       filepath=data_dir / 'results' / 'plot' / subject.id)
+    plot_elevation_response(sequence)
 

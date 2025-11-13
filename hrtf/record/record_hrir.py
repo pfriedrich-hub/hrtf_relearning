@@ -17,13 +17,14 @@ warnings.filterwarnings("ignore", category=pyfar._utils.PyfarDeprecationWarning)
 # -------------------------------------------------------------------------
 # Global settings
 # -------------------------------------------------------------------------
-subject_id = 'LS'
+subject_id = 'PF'
 overwrite = False
 reference = 'ref_07.11'
-n_samp = 2
-n_rec = 20
+samp_rec = 2  # number of recorded vertical head orientations
+n_rec = 20  # number of recordings per speaker
 fs = 48828  # 97656
-show = True
+n_samp_out = 256  # number of samples in the resulting IR
+show = True  # show plots
 
 slab.set_default_samplerate(fs)
 data_dir = Path.cwd() / "data"
@@ -33,13 +34,8 @@ freefield.set_logger("info")
 # High-level: record HRIR for one subject
 # -------------------------------------------------------------------------
 def record_hrir(
-    subject_id: str,
-    reference: str,
-    n_samp: int = 5,
-    n_rec: int = 5,
-    fs: int = fs,
-    overwrite: bool = False,
-    show: bool = True):
+    subject_id: str, reference: str, samp_rec: int = 5, n_rec: int = 5,
+    fs: int = fs, overwrite: bool = False, n_samp_out: int = 256, show: bool = True):
 
     hrtf_dir = Path.cwd() / "data" / "hrtf"
     subject_dir = hrtf_dir / "rec" / subject_id
@@ -47,7 +43,7 @@ def record_hrir(
 
     # 1) in ear recordings
     if (not subject_dir.exists()) or overwrite:
-        ear_pressure = Recordings.record_dome(n_samp=n_samp, n_rec=n_rec, hp_freq=50, fs=fs)
+        ear_pressure = Recordings.record_dome(n_samp=samp_rec, n_rec=n_rec, hp_freq=50, fs=fs)
         ear_pressure.params["subject_id"] = subject_id
         ear_pressure.to_wav(subject_dir, overwrite=overwrite)
     else:
@@ -70,23 +66,24 @@ def record_hrir(
     # reference_pressure.plot_spectra()
 
     # 3) Compute TF (deconvolve recordings with inverted excitation signal)
-    # hrir_recorded = ear_pressure.compute_tf(out_n_samp=256, show=show)
-    # hrir_reference = reference_pressure.compute_tf(out_n_samp=256, show=show)
+    # hrir_recorded = ear_pressure.compute_tf(n_samp_out=n_samp_out, show=show)
+    # hrir_reference = reference_pressure.compute_tf(n_samp_out=n_samp_out, show=show)
 
     # 4) Equalize HRIR by reference IR
-    hrir_full = equalize(ear_pressure, reference_pressure, show=show)
-
-    # hrir_eq = equalize(hrir_recorded, hrir_reference, show=show)
+    hrir = equalize(ear_pressure, reference_pressure, n_samp_out=n_samp_out, show=show)
+    # hrir = equalize(hrir_recorded, hrir_reference, n_samp_out=n_samp_out, show=show)
 
     # 5) Low frequency extrapolation
-    # hrir_extrapol = lowfreq_extrapolate(hrir_eq, f_extrap=400.0, f_target=150.0, head_radius=0.0875, show=show)
+    hrir = lowfreq_extrapolate(hrir, f_extrap=400.0, f_target=150.0, head_radius=0.0875, show=False)
 
     # 6) Extend azimuths + add binaural cues (ILD full-band off-midline + ITD align)
-    # hrir_full = expand_azimuths_with_binaural_cues(hrir_extrapol, az_range=(-50, 50), head_radius=0.0875, show=show)
+    hrir = expand_azimuths_with_binaural_cues(hrir, az_range=(-50, 50), head_radius=0.0875, show=False)
 
     # 5) Export to slab.HRTF when ready
-    hrir = hrir_full.to_slab_hrtf(datatype="FIR")
-
+    hrir = hrir.to_slab_hrtf(datatype="FIR")
+    if show:
+        fig, ax = plt.subplots()
+        hrir.plot_tf(hrir.cone_sources(0), axis=ax)
     return hrir
 
 # -------------------------------------------------------------------------
@@ -313,7 +310,7 @@ class Recordings(SpeakerGridBase):
         return cls(data=recordings_dict, params=params, signal=signal)
 
     # --- conversion to IRs --------------------------------------------------
-    def compute_tf(self, out_n_samp: int = 256, show: bool = False) -> "ImpulseResponses":
+    def compute_tf(self, n_samp_out: int = 256, show: bool = False) -> "ImpulseResponses":
         """
         Convert this set of recordings to impulse responses.
 
@@ -419,9 +416,8 @@ class Recordings(SpeakerGridBase):
             return_window=True,
         )
 
-        # do this after equalization?
-
-        times_samples = [0, 10, 246, out_n_samp-1]
+        # cut to final length
+        times_samples = [0, 10, 246, n_samp_out-1]
         hrir_final = pyfar.dsp.time_window(
             hrir_windowed,
             times_samples,
@@ -453,7 +449,7 @@ class Recordings(SpeakerGridBase):
         params = {
             "fs": fs,
             "signal": self.params.get("signal", {}),
-            "n_samp": out_n_samp,
+            "n_samp": n_samp_out,
             "date": datetime.now().isoformat(),
         }
 
@@ -999,6 +995,7 @@ class ImpulseResponses(SpeakerGridBase):
 def equalize(
     hrir_recorded: ImpulseResponses | Recordings,
     hrir_reference: ImpulseResponses | Recordings,
+    n_samp_out: int = 256,
     show: bool = False,
 ) -> ImpulseResponses:
     """
@@ -1119,6 +1116,17 @@ def equalize(
         hrir_aligned, times, "hann", unit="s", crop="none", return_window=True
     )
 
+    # cut recordings to n_samp out if it hasn't been done already
+    if isinstance(hrir_recorded, Recordings):
+        times_samples = [0, 10, 246, n_samp_out - 1]
+        hrir_windowed = pyfar.dsp.time_window(
+            hrir_windowed,
+            times_samples,
+            "hann",
+            crop="end",
+        )
+        equalized.params["n_samp"] = n_samp_out
+
     # ------------------------------------------------------------------
     # 6) Plot equalization stages (optional)
     # ------------------------------------------------------------------
@@ -1156,7 +1164,7 @@ def equalize(
     equalized.params = {
         "fs": fs,
         "signal": signal_params,
-        "n_samp": n_samp,
+        "n_samp_out": n_samp_out,
         "date": datetime.now().isoformat(),
     }
     for key, filt in zip(equalized.keys(), hrir_windowed):
@@ -1310,7 +1318,7 @@ def lowfreq_extrapolate(
     return out
 
 def expand_azimuths_with_binaural_cues(
-    irs,
+    hrir,
     az_range: tuple[float, float] = (-50, 50),
     head_radius: float | None = None,
     onset_threshold_db: float = 15.0,
@@ -1366,7 +1374,7 @@ def expand_azimuths_with_binaural_cues(
     # az grid density matches your vertical sampling density.
     # New entries are deep-copied so later edits won’t affect originals.
     # ---------------------------------------------------------------------
-    sources0 = irs.get_sources()  # shape (n_pos, 3): [az, el, r]
+    sources0 = hrir.get_sources()  # shape (n_pos, 3): [az, el, r]
     elevations = numpy.unique(sources0[:, 1])
     if len(elevations) > 1:
         vertical_res = float(numpy.mean(numpy.diff(numpy.sort(elevations))))
@@ -1385,10 +1393,10 @@ def expand_azimuths_with_binaural_cues(
         return float(_wrap_az_deg_ccw(float(k.split("_")[1])))
 
     # --- duplicate midline IRs across azimuth grid, inserting wrapped az into keys ---
-    out = copy.deepcopy(irs)
+    out = copy.deepcopy(hrir)
     new_entries = {}
 
-    for key in irs.data.keys():
+    for key in hrir.data.keys():
         spk, _az_str, el_str = key.split("_")  # reuse elevation
         for az_w in azimuths_wrapped:
             az_s = f"{float(az_w):.1f}"
@@ -1853,7 +1861,7 @@ def _wrap_az_deg_ccw(az):
 if __name__ == "__main__":
     # tiny example call – adjust IDs and reference name
     logging.basicConfig(level=logging.INFO)
-    hrir = record_hrir(subject_id, reference, n_samp, n_rec, fs, overwrite, show)
+    hrir = record_hrir(subject_id, reference, samp_rec, n_rec, fs, overwrite, n_samp_out, show)
     pass
 
 

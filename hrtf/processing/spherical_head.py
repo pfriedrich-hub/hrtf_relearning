@@ -1,9 +1,9 @@
-import pyfar as pf
-import numpy as np
+import pyfar
+import numpy
 import warnings
 
 def spherical_head(
-    coordinates, head=pf.Coordinates(0, [.0875, -.0875], 0),
+    coordinates, head=pyfar.Coordinates(0, [.0875, -.0875], 0),
     head_position='origin', reference_distance='coordinates',
     n_max=100, n_samples=256, sampling_rate=44100, speed_of_sound=343):
     r"""
@@ -103,11 +103,11 @@ dsvxy
     """
 
     # input checks ------------------------------------------------------------
-    if not isinstance(coordinates, pf.Coordinates) or\
+    if not isinstance(coordinates, pyfar.Coordinates) or\
             coordinates.cdim != 1:
         raise TypeError("coordinates must be a pyfar Coordinates object with"
                         "a cdim of 1")
-    if not isinstance(head, pf.Coordinates) or\
+    if not isinstance(head, pyfar.Coordinates) or\
             head.cshape != (2, ) or  head.csize != 2:
         raise TypeError("head must be a spharpy SamplingSphere object with"
                         "a cshape of (2, )")
@@ -115,10 +115,10 @@ dsvxy
     # pre-process input -------------------------------------------------------
     # compute the center of the spherical head
     if head_position == 'origin':
-        head_center = np.array([0, 0, 0])
+        head_center = numpy.array([0, 0, 0])
     elif head_position == 'interaural center':
-        head_center = np.mean(coordinates.cartesian, axis=0)
-    elif isinstance(head_position, pf.Coordinates):
+        head_center = numpy.mean(coordinates.cartesian, axis=0)
+    elif isinstance(head_position, pyfar.Coordinates):
         if head_position.csize != 1:
             raise ValueError("head_position must contain a single point")
         head_center = head_position.cartesian.flatten()
@@ -142,22 +142,22 @@ dsvxy
     ear_elevation = head.elevation[:, None]
     ear_azimuth = head.azimuth[:, None]
     # great circle distance of shape (number of ear, number of sources)
-    theta = np.arccos(
-        np.sin(source_elevation) * np.sin(ear_elevation) +
-        np.cos(source_elevation) * np.cos(ear_elevation) *
-        np.cos(source_azimuth - ear_azimuth))
+    theta = numpy.arccos(
+        numpy.sin(source_elevation) * numpy.sin(ear_elevation) +
+        numpy.cos(source_elevation) * numpy.cos(ear_elevation) *
+        numpy.cos(source_azimuth - ear_azimuth))
 
     # get unique combinations of theta and radii to avoid computing the same
     # SHTF more than once
 
     # all source positions of shape (number of sources, 2) defined by great
     # circle distance and radius in last dimension
-    positions = np.vstack((theta.flatten(),
-                           np.tile(coordinates.radius, 2))).T
-    positions_unique, idx_to_unique, idx_from_unique = np.unique(
+    positions = numpy.vstack((theta.flatten(),
+                           numpy.tile(coordinates.radius, 2))).T
+    positions_unique, idx_to_unique, idx_from_unique = numpy.unique(
         positions, return_index=True, return_inverse=True, axis=0)
 
-    frequencies = pf.dsp.fft.rfftfreq(n_samples, sampling_rate)
+    frequencies = pyfar.dsp.fft.rfftfreq(n_samples, sampling_rate)
 
     # 0 Hz can not be computed with the below. Take a small frequency instead
     # to get an approximate value.
@@ -168,13 +168,13 @@ dsvxy
     frequencies_compute[0] = min(small_frequency, frequencies_compute[1])
 
     if reference_distance == 'coordinates':
-        reference_distance = np.tile(coordinates.radius, 2)
+        reference_distance = numpy.tile(coordinates.radius, 2)
         reference_distance = reference_distance[idx_to_unique]
     elif isinstance(reference_distance, (int, float)) and \
             reference_distance > 0:
-        reference_distance = np.ones_like(idx_to_unique) * reference_distance
-    elif isinstance(reference_distance, (list, np.ndarray)):
-        reference_distance = np.tile(reference_distance.flatten(), 2)
+        reference_distance = numpy.ones_like(idx_to_unique) * reference_distance
+    elif isinstance(reference_distance, (list, numpy.ndarray)):
+        reference_distance = numpy.tile(reference_distance.flatten(), 2)
         reference_distance = reference_distance[idx_to_unique]
     else:
         raise ValueError(
@@ -191,21 +191,21 @@ dsvxy
     freq = shtf.freq[idx_from_unique]
     freq_left = freq[:coordinates.csize]
     freq_right = freq[coordinates.csize:]
-    freq = np.concatenate((freq_left[:, None, :], freq_right[:, None, :]), 1)
+    freq = numpy.concatenate((freq_left[:, None, :], freq_right[:, None, :]), 1)
     shtf.freq = freq
 
     # force the (almost) 0 Hz bin and bin at the Nyquist frequency to be real
-    shtf.freq[..., 0] = np.abs(shtf.freq[..., 0])
+    shtf.freq[..., 0] = numpy.abs(shtf.freq[..., 0])
     if n_samples % 2:
-        shtf.freq[..., -1] = np.abs(shtf.freq[..., -1])
+        shtf.freq[..., -1] = numpy.abs(shtf.freq[..., -1])
 
     # make it a Signal
-    shtf = pf.Signal(shtf.freq, sampling_rate, n_samples, domain='freq')
+    shtf = pyfar.Signal(shtf.freq, sampling_rate, n_samples, domain='freq')
 
     # shift peak to positive times
-    shift_samples = np.round(
+    shift_samples = numpy.round(
         float(head.radius[0]) / speed_of_sound * sampling_rate) + 20
-    shtf = pf.dsp.time_shift(shtf, shift_samples, mode='cyclic')
+    shtf = pyfar.dsp.time_shift(shtf, shift_samples, mode='cyclic')
 
     return shtf
 
@@ -270,15 +270,15 @@ def sound_pressure_on_sphere(
     # the code to the publication.
 
     # input checks
-    frequencies = np.array(frequencies)
-    if np.any(frequencies <= 0):
+    frequencies = numpy.array(frequencies)
+    if numpy.any(frequencies <= 0):
         raise ValueError('all frequencies must be greater than zero')
 
     # allocate array
-    pressure = np.ones((theta.size, frequencies.size), dtype=complex)
+    pressure = numpy.ones((theta.size, frequencies.size), dtype=complex)
 
     # Normalized frequencies according to Eq. (4)
-    mu = frequencies * 2 * np.pi * sphere_radius / speed_of_sound
+    mu = frequencies * 2 * numpy.pi * sphere_radius / speed_of_sound
 
     # Normalized distances according to Eq. (5)
     rho = distance / sphere_radius
@@ -289,7 +289,7 @@ def sound_pressure_on_sphere(
         # argument and initialization for recursive computation of Legendre
         # polynomial according to Eq. (3) and (A9)
         # initialize legendre Polynom for order m=0 (P2) and m=1 (P1)
-        x = np.cos(theta[nn])
+        x = numpy.cos(theta[nn])
         P2 = 1
         P1 = x
 
@@ -340,7 +340,7 @@ def sound_pressure_on_sphere(
                 term = ((2 * m + 1) * P * Qr) / ((m + 1) * za * Qa - Qa1)
 
                 # only consider valid values
-                idx = ~np.isnan(term)
+                idx = ~numpy.isnan(term)
                 sum[idx] += term[idx]
 
                 # update variables
@@ -353,12 +353,12 @@ def sound_pressure_on_sphere(
 
         # calculate the pressure - Eq. (A10) in Duda & Martens
         pressure[nn] = (
-            rho_0[nn] * np.exp(1j * (mu * rho[nn] - mu * rho_0[nn] - mu) ) *
+            rho_0[nn] * numpy.exp(1j * (mu * rho[nn] - mu * rho_0[nn] - mu) ) *
             sum) / (1j * mu)
 
     # Duda & Marten use Fourier convention with the negative exponent for the
     # inverse transform - cf. Eq. (13). Since pyfar uses the opposite
     # convention the pressure is conjugated
-    pressure = pf.FrequencyData(np.conj(pressure), frequencies)
+    pressure = pyfar.FrequencyData(numpy.conj(pressure), frequencies)
 
     return pressure

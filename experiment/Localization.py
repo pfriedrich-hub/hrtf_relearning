@@ -37,13 +37,12 @@ class Localization:
     """
     def __init__(self, subject, hrir):
         # make trial sequence and write to subject
-        # self.settings = {'azimuth_range': (-35, 0), 'elevation_range': (-35, 35), 'sector_size': (7, 14),
-        #                  'targets_per_sector': 3, 'min_distance': 15, 'gain': .5}
-        # self.settings = {'azimuth_range': (-1, 1), 'elevation_range': (-50, 50), 'sector_size': (2, 6),
-        #                  'targets_per_sector': 1, 'min_distance': 10, 'gain': .5}  # azimuth test
-        # self.settings = {'azimuth_range': (-40, 40), 'elevation_range': (-30, 30), 'sector_size': (20, 20),
-        #                  'targets_per_sector': 3, 'min_distance': 20, 'gain': .8}  # ff HRTF
-        self.settings = {'kind': 'standard', 'gain': .8}  # just play 3 times from each source in the hrir (works well for dome recorded)
+
+        # self.settings = {'kind': 'sectors', 'azimuth_range': (-1, 1), 'elevation_range': (-50, 50), 'sector_size': (2, 6.25),
+        #                  'targets_per_sector': 3, 'min_distance': 10, 'gain': .5, 'replace': True}  # elevation test
+        # just play 3 times from each source in the hrir (works well for dome recorded)
+        self.settings = {'kind': 'standard', 'azimuth_range': (-1, 1), 'elevation_range': (-50, 50),
+                          'targets_per_speaker': 3, 'min_distance': 30, 'gain': .8}
         self.subject = subject
         self.filename = subject.id + f'_{hrir.name}' + '_loc_' + date
 
@@ -68,7 +67,7 @@ class Localization:
         self.subject.write()
 
     def run(self):
-        self.sequence = make_sequence_from_sources(self.settings, self.hrir_sources)
+        self.sequence = make_sequence(self.settings, self.hrir_sources)
         # self.sequence = make_sequence(self.settings)
         self.sequence.name = self.filename
         self.write()

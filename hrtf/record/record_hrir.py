@@ -24,7 +24,7 @@ samp_rec = 2  # number of recorded vertical head orientations
 n_rec = 20  # number of recordings per speaker
 fs = 48828  # 97656
 n_samp_out = 256  # number of samples in the resulting IR
-show = True  # show plots
+show = False  # show plots
 
 slab.set_default_samplerate(fs)
 data_dir = Path.cwd() / "data"
@@ -70,11 +70,12 @@ def record_hrir(
     # hrir_reference = reference_pressure.compute_tf(n_samp_out=n_samp_out, show=show)
 
     # 4) Equalize HRIR by reference IR
-    hrir = equalize(ear_pressure, reference_pressure, n_samp_out=n_samp_out, show=show)
+    # hrir = equalize(ear_pressure, reference_pressure, n_samp_out=n_samp_out, show=show)
     # hrir = equalize(hrir_recorded, hrir_reference, n_samp_out=n_samp_out, show=show)
+    hrir = equalize_old(ear_pressure, reference_pressure, n_samp_out, show=show)
 
     # 5) Low frequency extrapolation
-    hrir = lowfreq_extrapolate(hrir, f_extrap=400.0, f_target=150.0, head_radius=0.0875, show=False)
+    # hrir = lowfreq_extrapolate(hrir, f_extrap=400.0, f_target=150.0, head_radius=0.0875, show=False)
 
     # 6) Extend azimuths + add binaural cues (ILD full-band off-midline + ITD align)
     hrir = expand_azimuths_with_binaural_cues(hrir, az_range=(-50, 50), head_radius=0.0875, show=False)
@@ -1173,6 +1174,150 @@ def equalize(
 
     return equalized
 
+
+def equalize_old(
+    hrir_recorded: ImpulseResponses | Recordings,
+    hrir_reference: ImpulseResponses | Recordings,
+    n_samp_out: int = 256,
+    show: bool = False):
+
+    logging.info("Applying equalization")
+
+    signal_params = hrir_recorded.params["signal"]
+    fs = int(hrir_recorded.params["fs"])
+    n_samp = int(hrir_recorded.params["n_samp"])
+
+    from_f = signal_params["from_frequency"]
+    to_f = signal_params["to_frequency"]
+
+    # ------------------------------------------------------------------
+    # 1) Convert recorded HRIRs to pyfar.Signal
+    # ------------------------------------------------------------------
+    equalized = ImpulseResponses()
+    for key, filt in hrir_recorded.items():
+        # slab.Filter data: (n_samples, n_channels)
+        equalized[key] = pyfar.Signal(filt.data.T, filt.samplerate)
+
+    # ------------------------------------------------------------------
+    # 2) Loudspeaker-wise equalization using reference recordings
+    # ------------------------------------------------------------------
+    # speaker ID = first two chars of key (e.g. "19", "23", ...)
+    speaker_ids = list(set(key[:2] for key in equalized.keys()))
+
+    # we’ll remember the center loudspeaker’s reference + inverse for plotting
+    center_key_full = "23_0.0_0.0"
+    center_ref_signal = None
+    center_ref_inv = None
+
+    for spk_id in speaker_ids:
+        # find the reference entry for this loudspeaker
+        ref_candidates = [k for k in hrir_reference.keys() if k.startswith(spk_id + "_")]
+        if not ref_candidates:
+            raise KeyError(f"No matching reference for loudspeaker ID '{spk_id}'")
+        ref_key = ref_candidates[0]
+
+        reference = pyfar.Signal(hrir_reference[ref_key].data.T, fs)
+        # remove DC
+        reference.time -= numpy.mean(reference.time, axis=-1, keepdims=True)
+
+        # regularized inverse of reference
+        reference_inv = pyfar.dsp.regularized_spectrum_inversion(
+            reference,
+            frequency_range=(from_f, to_f),
+        )  # todo different range (20, 18750)
+
+        # store for plotting if this loudspeaker contains the center key
+        rec_keys = [k for k in equalized.keys() if k.startswith(spk_id + "_")]
+        if center_key_full in rec_keys:
+            center_ref_signal = reference
+            center_ref_inv = reference_inv
+
+        # equalize all recordings from this loudspeaker
+        for key in rec_keys:
+            ir = equalized[key]
+            ir.time -= numpy.mean(ir.time, axis=-1, keepdims=True)  # remove DC
+            ir_equalized = ir * reference_inv
+
+            # windowing
+            n0 = min(int(numpy.argmax(numpy.abs(ir_equalized.time[0]))),
+                     int(numpy.argmax(numpy.abs(ir_equalized.time[1]))))
+            ir_windowed = pyfar.dsp.time_window(ir_equalized,
+                                                  (max(0, n0 - 50), min(n0 + 100, len(ir_equalized.time[0]) - 1)),
+                                                  'boxcar', unit="samples",
+                                                  crop="window")  # (170,335)
+            ir_windowed = pyfar.dsp.pad_zeros(ir_windowed, ir_equalized.n_samples - ir_windowed.n_samples)
+
+            # low freq extrapolation
+            ir_low = pyfar.dsp.filter.crossover(
+                pyfar.signals.impulse(ir_windowed.n_samples), 4, 400)[0]  # *(10**(-1))
+            ir_low.sampling_rate = 48828
+            ir_high = pyfar.dsp.filter.crossover(ir_windowed, 4, 400)[1]
+            ir_low_delayed = pyfar.dsp.fractional_time_shift(
+                ir_low, pyfar.dsp.find_impulse_response_delay(
+                    ir_windowed))  # error if too noisy, overwrite function and use exactly the peakpoint?
+            ir_extrapolated = ir_low_delayed + ir_high
+
+            # no time shift
+
+            # down sampling
+            ir_final = pyfar.dsp.time_window(
+                ir_extrapolated, (0, n_samp_out-1), 'boxcar',
+                crop='window')
+
+            equalized[key] = ir_final
+
+            if key == center_key_full:
+                raw_center = ir
+                reference_center = reference
+                reference_inv_center = reference_inv
+                equalized_center = ir_equalized
+                ir_windowed_center = ir_windowed
+
+    #     # ------------------------------------------------------------------
+    # 4) Temporal alignment using central loudspeaker
+    # ------------------------------------------------------------------
+    # hrir_shifted = pyfar.dsp.time_shift(hrir, int(n_samp / 2))
+    #
+    # # find index of central loudspeaker in keys_list
+    # center_key = center_key_full if center_key_full in keys_list else keys_list[0]
+    # center_idx = keys_list.index(center_key)
+    #
+    # center_onset = pyfar.dsp.find_impulse_response_start(
+    #     hrir_shifted[center_idx], threshold=15
+    # )
+    # center_onset = float(numpy.min(center_onset))
+    # center_onset_s = center_onset / fs
+    #
+    # # shift so that center onset is at 1 ms
+    # desired_onset_s = 0.001
+    # shift_s = desired_onset_s - center_onset_s
+    # hrir_aligned = pyfar.dsp.time_shift(hrir_shifted, shift_s, unit="s")
+
+    # ------------------------------------------------------------------
+    # 6) Plot equalization stages (optional)
+    # ------------------------------------------------------------------
+    if show:
+        _plot_equalization_pyfar(
+            raw_center=raw_center,
+            reference=reference_center,
+            reference_inv=reference_inv_center,
+            equalized_center=equalized_center,
+            hrir_windowed=ir_windowed_center,
+            )
+    # ------------------------------------------------------------------
+    # 7) Convert to slab filters and return ImpulseResponses
+    # ------------------------------------------------------------------
+    equalized.params = {
+        "fs": fs,
+        "signal": signal_params,
+        "n_samp_out": n_samp_out,
+        "date": datetime.now().isoformat(),
+    }
+    for key, filt in equalized.items():
+        # pyfar.Signal: (n_channels, n_samples) -> slab.Filter expects (n_samples, n_channels)
+        equalized[key] = slab.Filter(data=filt.time.T, samplerate=fs, fir="IR")
+    return equalized
+
 def lowfreq_extrapolate(
     irs,
     f_extrap: float = 400.0,
@@ -1678,9 +1823,9 @@ def _plot_processing_pyfar(excitation, ref_inv, recording, hrir_deconvolved, hri
     plt.show()
 
 def _plot_equalization_pyfar(
-    raw_center: pyfar.Signal, reference: pyfar.Signal | None,
-    reference_inv: pyfar.Signal | None, equalized_center: pyfar.Signal, hrir_shifted: pyfar.Signal,
-    hrir_aligned: pyfar.Signal, hrir_windowed: pyfar.Signal, window: pyfar.Signal, center_idx: int = 0) -> None:
+    raw_center, reference = None,
+    reference_inv = None, equalized_center= None, hrir_shifted= None,
+    hrir_aligned= None, hrir_windowed= None, window= None, center_idx: int = 0) -> None:
     """
     Overview plot for the equalization pipeline, using pyfar's plotting shortcuts.
     Inspired by the example notebook.
@@ -1731,49 +1876,54 @@ def _plot_equalization_pyfar(
     ax.legend()
 
     # 5) Time-shifted HRIRs (all positions)
-    ax = axes[4]
-    pfplot.time(hrir_shifted, dB=True, unit="ms", ax=ax)
-    ax.set_title("Equalized HRIRs (time-shifted, all positions)")
+    if hrir_shifted is not None:
+        ax = axes[4]
+        pfplot.time(hrir_shifted, dB=True, unit="ms", ax=ax)
+        ax.set_title("Equalized HRIRs (time-shifted, all positions)")
 
     # 6) Aligned center HRIR (1 ms onset)
-    ax = axes[5]
-    pfplot.time(hrir_aligned[center_idx], unit="ms", ax=ax)
-    ax.axvline(1.0, color="k", linestyle="--", label="1 ms onset target")
-    ax.set_xlim(0, 5)
-    ax.legend()
-    ax.set_title("Aligned center HRIR")
+    if hrir_aligned is not None:
+        ax = axes[5]
+        pfplot.time(hrir_aligned[center_idx], unit="ms", ax=ax)
+        ax.axvline(1.0, color="k", linestyle="--", label="1 ms onset target")
+        ax.set_xlim(0, 5)
+        ax.legend()
+        ax.set_title("Aligned center HRIR")
 
-    # 7) Aligned HRIRs (all positions)
-    ax = axes[6]
-    pfplot.time(hrir_aligned, unit="ms", ax=ax)
-    ax.axvline(1.0, color="k", linestyle="--", label="1 ms onset target")
-    ax.set_xlim(0, 5)
-    ax.legend()
-    ax.set_title("Aligned HRIRs (all positions)")
+        # 7) Aligned HRIRs (all positions)
+        ax = axes[6]
+        pfplot.time(hrir_aligned, unit="ms", ax=ax)
+        ax.axvline(1.0, color="k", linestyle="--", label="1 ms onset target")
+        ax.set_xlim(0, 5)
+        ax.legend()
+        ax.set_title("Aligned HRIRs (all positions)")
 
     # 8) Windowed HRIRs + window
-    ax = axes[7]
-    pfplot.time(hrir_windowed, unit="ms", dB=True, ax=ax)
-    pfplot.time(window, unit="ms", dB=True, color="k", linestyle="--", ax=ax, label="window")
-    ax.set_xlim(0, 10)
-    ax.set_title("Windowed HRIRs + window")
-    ax.legend()
+    if hrir_windowed is not None:
+        ax = axes[7]
+        pfplot.time(hrir_windowed, unit="ms", dB=True, ax=ax)
+        if window is not None:
+            pfplot.time(window, unit="ms", dB=True, color="k", linestyle="--", ax=ax, label="window")
+        ax.set_xlim(0, 10)
+        ax.set_title("Windowed HRIRs + window")
+        ax.legend()
 
     # 9) Frequency response (center) before vs after windowing
-    ax = axes[8]
-    pfplot.freq(
-        hrir_aligned[center_idx], freq_scale="log", ax=ax, color=[0.6, 0.6, 0.6]
-    )
-    pfplot.freq(
-        hrir_windowed[center_idx],
-        freq_scale="log",
-        ax=ax,
-        label=["windowed L", "windowed R"],
-    )
-    ax.set_title("Center HRIR: aligned vs windowed (magnitude)")
-    ax.set_xlim(50, hrir_windowed.sampling_rate / 2)
-    ax.legend(loc="lower left")
-
+    if hrir_aligned is not None:
+        ax = axes[8]
+        pfplot.freq(
+            hrir_aligned[center_idx], freq_scale="log", ax=ax, color=[0.6, 0.6, 0.6]
+        )
+    if hrir_windowed is not None:
+        pfplot.freq(
+            hrir_windowed[center_idx],
+            freq_scale="log",
+            ax=ax,
+            label=["windowed L", "windowed R"],
+        )
+        ax.set_title("Center HRIR: aligned vs windowed (magnitude)")
+        ax.set_xlim(50, hrir_windowed.sampling_rate / 2)
+        ax.legend(loc="lower left")
     fig.tight_layout()
     plt.show()
 

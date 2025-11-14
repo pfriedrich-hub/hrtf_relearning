@@ -1,6 +1,5 @@
 import matplotlib
-matplotlib.rcParams['figure.raise_window'] = False
-import matplotlib
+# matplotlib.rcParams['figure.raise_window'] = False
 matplotlib.use('Qt5Agg')
 import matplotlib.pyplot as plt
 
@@ -12,10 +11,8 @@ from pathlib import Path
 import multiprocessing as mp
 from pythonosc import udp_client
 
-# your project imports
 from experiment.Subject import Subject
 from hrtf.processing.hrtf2binsim import hrtf2binsim
-from experiment.misc.training_helpers.training_targets import set_target_probabilistic
 from experiment.misc.training_helpers import meta_motion
 
 logging.getLogger().setLevel('INFO')
@@ -27,29 +24,22 @@ subject_id = 'test'
 sequence = Subject(subject_id).last_sequence  # must contain .settings and .data
 
 # HRTF selection
-sofa_name = 'PF'
+sofa_name = 'laras_pf_in_ear_mic'
 
 # unilateral vs. binaural
 ear = None
 # ear = 'left'
 
-# Test settings (similar to training but typically longer trial/hold)
 settings = dict(
-    target_size=3,                # deg
-    target_time=5,              # time on target to score (seconds)
-    az_range=(-1, 1),
-    ele_range=(-1, 1),
-    min_dist=0,                  # deg
-    game_time=300,                # session length
-    trial_time=300,                # per trial
+    trial_time=300,
     gain=.2,                      # loudness
-    hold_on_center=2.0            # additional hold/continuous time after entering target
 )
 
-# stimulus (None → internally generated pink pulses)
 soundfile = None
 # soundfile = 'c_chord_guitar.wav'
 # soundfile = 'uso_225ms_9_.wav'
+
+show = 'IR'
 
 # ------------------------ HRTF LOAD ------------------------
 
@@ -58,176 +48,64 @@ slab.set_default_samplerate(hrir.samplerate)
 hrir_dir = Path.cwd() / 'data' / 'hrtf' / 'binsim' / hrir.name
 
 
-# ------------------------ LIVE TF PLOTTER ------------------------
-
-def plot_current_tf(filter_idx_shared, redraw_interval_s=0.05, kind='IR'):
-    """
-    Lives in its own process. Opens a Qt figure and plots the TF of the
-    current HRTF (hrir[filter_idx]) whenever the filter index changes.
-    """
-    global hrir
-    sources = hrir.sources.vertical_polar
-
-    plt.ion()
-    fig, ax = plt.subplots(figsize=(7, 4))
-    ax.set_title("Current HRTF Transfer Function")
-    try:
-        fig.canvas.manager.set_window_title("Live HRTF TF")
-    except Exception:
-        pass
-
-    last_idx = -1
-    while True:
-        idx = filter_idx_shared.value
-        if idx >= 0 and idx != last_idx:
-            last_idx = idx
-            try:
-                ax.cla()
-                # slab's helper draws into the provided axis
-                if kind == 'TF':
-                    hrir[idx].tf(show=True, axis=ax)
-                elif kind == 'IR':
-                    times = numpy.linspace(0, hrir[idx].n_samples / hrir.samplerate, hrir[idx].n_samples)
-                    ax.plot(times, hrir[idx].data)
-                az0, el0 = sources[idx, 0], sources[idx, 1]
-                az180 = (az0 + 180) % 360 - 180
-                ax.set_title(f"TF idx {idx}  |  az={az180:.1f}°, el={el0:.1f}°")
-                ax.grid(True, which='both', linestyle=':', linewidth=0.6)
-                fig.canvas.draw_idle()
-                plt.pause(0.001)
-            except Exception as e:
-                ax.cla()
-                ax.text(0.5, 0.5, f"Plot error for idx {idx}:\n{e}", ha='center', va='center')
-                fig.canvas.draw_idle()
-                plt.pause(0.001)
-
-        # throttle loop
-        plt.pause(redraw_interval_s)
-
-
 # ------------------------ MAIN LOOP ------------------------
-
 def play_session():
     """
     Test session: similar to training but allows staying at the center longer.
     """
-    # shared state
     global osc_client
     osc_client = make_osc_client(port=10003)  # pyBinSim control
 
     sensor_state = mp.Value("i", 0)       # 1=ready, 2=calibrate, 3=track
     target = mp.Array("f", [0, 0])        # [az, el] in (-180,180], linear el
-    filter_idx_shared = mp.Value("i", -1) # NEW: share current HRTF index to plotter
+    filter_idx_shared = mp.Value("i", -1)
 
     # workers
-    plot_worker = mp.Process(target=plot_current_tf, args=(filter_idx_shared,), daemon=True)
+    # 1) REMOVE daemon=True here
+    plot_worker = mp.Process(target=plot_current_tf, args=(filter_idx_shared, show,))
     plot_worker.start()
-    tracking_worker = mp.Process(target=head_tracker, args=(target, sensor_state, filter_idx_shared))
+
+    tracking_worker = mp.Process(
+        target=head_tracker,
+        args=(target, sensor_state, filter_idx_shared)
+    )
     tracking_worker.start()
+
     binsim_worker = mp.Process(target=binsim_stream, args=())
     binsim_worker.start()
 
     # wait for tracker init
-    while not sensor_state.value == 1:
-        time.sleep(.1)
+    while sensor_state.value != 1:
+        time.sleep(0.1)
 
-    while True:
-        scores = []
-        game_timer = 0.0
-
-        while game_timer < settings['game_time']:
-            # use your probabilistic targeting (depends on last localization sequence)
-            set_target_probabilistic(target, settings, sequence=None, hrir=hrir)
-            game_timer, score = play_trial(
-                sensor_state,
-                settings['trial_time'], settings['game_time'], game_timer,
-                settings['target_size'], settings['target_time'],
-            )
-            scores.append(score)
-
-        # end-of-session
-        play_sound(osc_client, soundfile='buzzer.wav', duration=None, sleep=True)
-        logging.info(f'Game Over! Total Score: {sum(scores)}')
-        if input('Go again? (y/n): ').lower().strip() == 'n':
-            break
-
-    logging.info('Ending')
-    binsim_worker.join()
-    tracking_worker.join()
-    # plot_worker is daemon → will exit with main
-
-
-def play_trial(sensor_state,
-               trial_time, game_time, game_timer,
-               target_size, target_time):
-    """
-    One test trial. Similar to training, but keeps the target sound on for
-    an additional hold at center (hold_on_center).
-    """
-    score = 0
-    trial_timer = 0.0
-    time_on_target = 0.0
-    count_down = False
-
-    time.sleep(.1)
-    input("Press Enter to play.")
-    sensor_state.value = 2   # calibrate
-    time.sleep(.1)
-    while not sensor_state.value == 3:
+    sensor_state.value = 2  # calibrate
+    time.sleep(0.1)
+    while sensor_state.value != 3:
         sensor_state.value = 3
-        time.sleep(.1)
+        time.sleep(0.1)
 
-    pulse_interval.value = distance_to_interval(distance.value)
-    time.sleep(.2)
-    pulse_state.value = 2
-    logging.debug('Starting test trial')
+    osc_client.send_message('/pyBinSimLoudness', settings['gain'])
+    play_sound(
+        osc_client,
+        soundfile=soundfile,
+        duration=float(settings['trial_time']),
+        sleep=False
+    )
 
-    start_time = time.time()
-    held_extra = False
-
-    while trial_timer < trial_time:
-        trial_timer = time.time() - start_time
-        if game_timer + trial_timer > game_time:
-            break
-
-        # Update pulse tempo based on current distance
-        pulse_interval.value = distance_to_interval(distance.value)
-
-        # Enter target window
-        if distance.value < target_size:
-            if not count_down:
-                time_on_target, count_down = time.time(), True
-        else:
-            time_on_target, count_down = time.time(), False
-            held_extra = False
-
-        # goal condition reached
-        if count_down and time.time() > time_on_target + target_time:
-            # keep the sound on continuously for an extra hold period
-            if not held_extra:
-                pulse_state.value = 2
-                pulse_interval.value = 0.0  # 0 → continuous playback in pulse_maker
-                time.sleep(hold_on_center)
-                held_extra = True
-
-            # end trial after hold
-            pulse_state.value = 1  # idle (stop pulses)
-            # reward sound
-            if trial_timer <= 3:
-                play_sound(osc_client, soundfile='coins.wav', duration=None, sleep=True)
-                score = 2
-            else:
-                play_sound(osc_client, soundfile='coin.wav', duration=None, sleep=True)
-                score = 1
-            break
-
-        time.sleep(.01)
-
-    logging.info(f'Score: {score}!')
-    game_timer += trial_timer
-    pulse_state.value = 0  # mute sound
-    sensor_state.value = 1 # stop tracking
-    return game_timer, score
+    # 2) KEEP MAIN PROCESS ALIVE for the trial, then clean up
+    try:
+        # Let the session run for trial_time seconds, or interrupt with Ctrl-C
+        time.sleep(settings['trial_time'])
+    except KeyboardInterrupt:
+        logging.info("Session interrupted by user.")
+    finally:
+        logging.info("Stopping workers...")
+        for p in (tracking_worker, binsim_worker, plot_worker):
+            if p.is_alive():
+                p.terminate()
+        for p in (tracking_worker, binsim_worker, plot_worker):
+            p.join()
+        logging.info("All workers stopped.")
 
 
 # ------------------------ SUB-PROCESSES ------------------------
@@ -239,31 +117,7 @@ def binsim_stream():
     binsim = pybinsim.BinSim(hrir_dir / f'{hrir.name}_training_settings.txt')
     binsim.stream_start()
 
-
-def pulse_maker(pulse_interval, pulse_state):
-    osc_client = make_osc_client(port=10003)
-    target_sound = False
-    while True:
-        if pulse_state.value == 0:  # mute
-            osc_client.send_message('/pyBinSimLoudness', 0)
-            target_sound = False
-        elif pulse_state.value == 1:  # idle
-            target_sound = False
-        elif pulse_state.value == 2:  # play with interval
-            osc_client.send_message('/pyBinSimLoudness', settings['gain'])
-            interval = pulse_interval.value
-            logging.debug(f'pulse stream: got interval value {interval}')
-            if interval == 0 and not target_sound:  # continuous
-                play_sound(osc_client, soundfile=soundfile, duration=float(settings['trial_time']), sleep=False)
-                target_sound = True
-            elif interval != 0:
-                play_sound(osc_client, soundfile=soundfile, duration=float(interval), sleep=True)
-                time.sleep(interval)
-                target_sound = False
-        time.sleep(0.01)
-
-
-def head_tracker(distance, target, sensor_state, filter_idx_shared):
+def head_tracker(target, sensor_state, filter_idx_shared):
     osc_client = make_osc_client(port=10000)
     sources = hrir.sources.vertical_polar
 
@@ -288,8 +142,6 @@ def head_tracker(distance, target, sensor_state, filter_idx_shared):
 
             # distance to target in az/el plane
             relative_coords = target[:] - pose
-            distance.value = numpy.linalg.norm(relative_coords)
-            logging.debug(f'head tracking: set distance value {distance.value}')
 
             # convert to HRIR convention (0..360 az) & pick nearest filter
             relative_coords[0] = (-relative_coords[0] + 360) % 360
@@ -311,7 +163,6 @@ def head_tracker(distance, target, sensor_state, filter_idx_shared):
                 filter_idx_shared.value = int(filter_idx)
 
         time.sleep(0.01)
-
 
 # ------------------------ HELPERS ------------------------
 
@@ -340,26 +191,55 @@ def play_sound(osc_client, soundfile=None, duration=None, sleep=False):
         time.sleep(duration)
 
 
-def distance_to_interval(distance):
-    max_interval = 350  # ms
-    min_interval = 75   # ms
-    steepness = 5
-    max_distance = numpy.linalg.norm(numpy.subtract(
-        [0, 0], [settings['az_range'][0], settings['ele_range'][0]]
-    ))
-    if distance <= settings['target_size']:
-        return 0.0
-    # Normalize distance
-    norm_dist = (distance - settings['target_size']) / (max_distance - settings['target_size'])
-    norm_dist = numpy.clip(norm_dist, 0, 1)
-    # log interpolation
-    scale = numpy.log1p(steepness * norm_dist) / numpy.log1p(steepness)
-    interval_ms = (min_interval + (max_interval - min_interval) * scale).astype(int)
-    return int(interval_ms) / 1000.0
-
-
 def make_osc_client(port, ip='127.0.0.1'):
     return udp_client.SimpleUDPClient(ip, port)
+
+
+# ------------------------ LIVE TF PLOTTER ------------------------
+
+def plot_current_tf(filter_idx_shared, show, redraw_interval_s=0.05, ):
+    """
+    Lives in its own process. Opens a Qt figure and plots the TF of the
+    current HRTF (hrir[filter_idx]) whenever the filter index changes.
+    """
+    global hrir
+    sources = hrir.sources.vertical_polar
+
+    plt.ion()
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.set_title("Current HRTF Transfer Function")
+    try:
+        fig.canvas.manager.set_window_title("Live HRTF TF")
+    except Exception:
+        pass
+
+    last_idx = -1
+    while True:
+        idx = filter_idx_shared.value
+        if idx >= 0 and idx != last_idx:
+            last_idx = idx
+            try:
+                ax.cla()
+                # slab's helper draws into the provided axis
+                if show == 'TF':
+                    hrir[idx].tf(show=True, axis=ax)
+                elif show == 'IR':
+                    times = numpy.linspace(0, hrir[idx].n_samples / hrir.samplerate, hrir[idx].n_samples)
+                    ax.plot(times, hrir[idx].data)
+                az0, el0 = sources[idx, 0], sources[idx, 1]
+                az180 = (az0 + 180) % 360 - 180
+                ax.set_title(f"TF idx {idx}  |  az={az180:.1f}°, el={el0:.1f}°")
+                ax.grid(True, which='both', linestyle=':', linewidth=0.6)
+                fig.canvas.draw_idle()
+                plt.pause(0.001)
+            except Exception as e:
+                ax.cla()
+                ax.text(0.5, 0.5, f"Plot error for idx {idx}:\n{e}", ha='center', va='center')
+                fig.canvas.draw_idle()
+                plt.pause(0.001)
+
+        # throttle loop
+        plt.pause(redraw_interval_s)
 
 
 # ------------------------ ENTRY ------------------------

@@ -164,7 +164,7 @@ def sector_targets(settings, hrir_sources=None):
     points = numpy.round(points, 2)  # only keep 2nd decimal
     points[:, 0] = (points[:, 0] + 180) % 360 - 180  # wrap to (-180,180)
     sequence = slab.Trialsequence(points)
-    sequence.sector_centers = sector_centers
+    sequence.settings['sector_centers'] = sector_centers
     sequence.settings = settings  # ← store all parameters here
     return sequence
 
@@ -175,9 +175,10 @@ def std_targets(settings, hrir_sources, max_tries=1000):
     - random order
     - enforce min_distance between successive targets
     - supports azimuth_range and elevation_range
+    - fills missing settings like azimuth_range, elevation_range, sector_size, sector_centers
     """
 
-    repeats = settings['n_reps']
+    repeats = settings['targets_per_speaker']
     min_distance = settings['min_distance']
 
     az_range = settings.get('azimuth_range', None)
@@ -213,6 +214,12 @@ def std_targets(settings, hrir_sources, max_tries=1000):
             "No HRIR sources match the specified azimuth/elevation ranges "
             f"(az_range={az_range}, el_range={el_range})."
         )
+
+    # If ranges were not given, infer them from the filtered sources
+    if az_range is None:
+        az_range = (float(src_az.min()), float(src_az.max()))
+    if el_range is None:
+        el_range = (float(src_el.min()), float(src_el.max()))
 
     n_sources = len(src_az)
 
@@ -258,14 +265,66 @@ def std_targets(settings, hrir_sources, max_tries=1000):
             points[:, 0] = (points[:, 0] + 180) % 360 - 180
             points = numpy.round(points, 2)
 
+            # --------------------------------------------------
+            # Infer a "sector_size" from the HRIR grid spacing
+            # --------------------------------------------------
+            sector_size_setting = settings.get("sector_size", None)
+
+            if sector_size_setting is not None:
+                az_step, el_step = sector_size_setting
+            else:
+                unique_az = numpy.unique(numpy.round(src_az, 4))
+                unique_el = numpy.unique(numpy.round(src_el, 4))
+
+                if unique_az.size > 1:
+                    az_diffs = numpy.diff(numpy.sort(unique_az))
+                    az_step = float(numpy.min(az_diffs))
+                else:
+                    az_step = float(az_range[1] - az_range[0]) or 10.0  # fallback
+
+                if unique_el.size > 1:
+                    el_diffs = numpy.diff(numpy.sort(unique_el))
+                    el_step = float(numpy.min(el_diffs))
+                else:
+                    el_step = float(el_range[1] - el_range[0]) or 10.0  # fallback
+
+            sector_size = (az_step, el_step)
+
+            # --------------------------------------------------
+            # Build a virtual sector grid (centers)
+            # --------------------------------------------------
+            az_span = az_range[1] - az_range[0]
+            el_span = el_range[1] - el_range[0]
+
+            num_az = max(1, int(round(az_span / az_step)))
+            num_el = max(1, int(round(el_span / el_step)))
+
+            sector_centers = [
+                (
+                    az_range[0] + (i + 0.5) * az_step,
+                    el_range[0] + (j + 0.5) * el_step,
+                )
+                for i in range(num_az)
+                for j in range(num_el)
+            ]
+
             sequence = slab.Trialsequence(points)
-            sequence.settings = {
+
+            # Start from existing settings, then fill/overwrite what we know
+            settings_out = dict(settings)
+            settings_out.update({
+                "kind": "standard",
                 "mode": "all_sources_repeated",
                 "repeats": repeats,
                 "min_distance": min_distance,
                 "azimuth_range": az_range,
                 "elevation_range": el_range,
-            }
+                "sector_size": sector_size,
+                "sector_centers": sector_centers,
+            })
+
+            sequence.settings = settings_out
+
             return sequence
 
     raise RuntimeError(
@@ -273,31 +332,36 @@ def std_targets(settings, hrir_sources, max_tries=1000):
         f"after {max_tries} attempts."
     )
 
-
 def plot_sequence_targets(sequence, title="Recorded targets over sectors"):
     """
-    Plot target coordinates from sequence.data over the sector grid.
-    Uses sequence.settings to retrieve az/el ranges and sector size.
+    Plot target coordinates from sequence over the sector grid (if available).
+
+    - For settings['kind'] == 'sectors':
+        draws sector rectangles + targets.
+    - For settings['kind'] == 'standard':
+        just plots the targets, using az/el ranges and (optional) sector_size
+        for ticks/grid.
     """
     if not hasattr(sequence, "settings"):
         raise AttributeError("sequence must have a 'settings' attribute (dict).")
-    if not hasattr(sequence, "sector_centers"):
-        raise AttributeError("sequence must have 'sector_centers' attribute.")
 
     settings = sequence.settings
-    sector_centers = list(sequence.sector_centers)
-    az_size, el_size = settings['sector_size']
-    az_range = settings['azimuth_range']
-    el_range = settings['elevation_range']
+    kind = settings.get("kind", "sectors")
 
-    # --- extract target coordinates (2nd row) from sequence.data ---
-    points = []
-    for entry in sequence.conditions:
-        points.append(entry)  # target row
-    points = numpy.asarray(points, dtype=float)
+    az_range = settings.get("azimuth_range", None)
+    el_range = settings.get("elevation_range", None)
+    sector_size = settings.get("sector_size", None)
+
+    # Extract target coordinates
+    points = numpy.asarray(sequence.conditions, dtype=float)
     points[:, 0] = (points[:, 0] + 180) % 360 - 180  # wrap azimuth
 
-    # --- plotting ---
+    # Infer ranges if missing
+    if az_range is None:
+        az_range = (float(points[:, 0].min()), float(points[:, 0].max()))
+    if el_range is None:
+        el_range = (float(points[:, 1].min()), float(points[:, 1].max()))
+
     fig, ax = plt.subplots(figsize=(8, 6))
     ax.set_xlim(az_range)
     ax.set_ylim(el_range)
@@ -305,143 +369,41 @@ def plot_sequence_targets(sequence, title="Recorded targets over sectors"):
     ax.set_ylabel("Elevation (°)")
     ax.set_title(title)
 
-    # sector rectangles
-    for (caz, cel) in sector_centers:
-        rect = matplotlib.patches.Rectangle(
-            (caz - az_size / 2.0, cel - el_size / 2.0),
-            az_size, el_size,
-            fill=False, linestyle="--", linewidth=1.0
-        )
-        ax.add_patch(rect)
+    # Draw sector rectangles if we actually have sector_centers
+    if kind == "sectors" and hasattr(sequence, "sector_centers") and sequence.sector_centers is not None:
+        az_size, el_size = sector_size
+        sector_centers = list(sequence.sector_centers)
 
-    # grid
-    az_ticks = numpy.arange(az_range[0], az_range[1] + az_size, az_size)
-    el_ticks = numpy.arange(el_range[0], el_range[1] + el_size, el_size)
+        for (caz, cel) in sector_centers:
+            rect = matplotlib.patches.Rectangle(
+                (caz - az_size / 2.0, cel - el_size / 2.0),
+                az_size, el_size,
+                fill=False, linestyle="--", linewidth=1.0
+            )
+            ax.add_patch(rect)
+
+        az_ticks = numpy.arange(az_range[0], az_range[1] + az_size, az_size)
+        el_ticks = numpy.arange(el_range[0], el_range[1] + el_size, el_size)
+    else:
+        # standard mode or no sector_centers: simpler grid
+        if sector_size is not None:
+            az_step, el_step = sector_size
+        else:
+            az_step, el_step = 10.0, 10.0
+        az_ticks = numpy.arange(az_range[0], az_range[1] + az_step, az_step)
+        el_ticks = numpy.arange(el_range[0], el_range[1] + el_step, el_step)
+
     ax.set_xticks(az_ticks)
     ax.set_yticks(el_ticks)
     ax.grid(True, linestyle="--", linewidth=0.5)
 
-    # scatter
     ax.scatter(points[:, 0], points[:, 1], s=25, color="red", label="Targets")
     ax.legend(loc="best")
     plt.tight_layout()
     plt.show()
 
-def std_targets(settings, hrir_sources, max_tries=1000):
-    """
-    Standard sequence:
-    - Use every HRIR source within the specified az/el range
-    - Repeat each source settings['targets_per_speaker'] times
-    - Enforce settings['min_distance'] between consecutive targets
-    """
 
-    # -------------------------------
-    # Extract settings (required)
-    # -------------------------------
-    try:
-        az_range = settings['azimuth_range']
-        el_range = settings['elevation_range']
-        repeats = settings['targets_per_speaker']
-        min_distance = settings['min_distance']
-    except KeyError as e:
-        raise KeyError(f"Missing required setting: {e}")
 
-    # -------------------------------
-    # Validate input
-    # -------------------------------
-    if hrir_sources is None:
-        raise ValueError("hrir_sources must be provided.")
-
-    src = numpy.asarray(hrir_sources, dtype=float)
-    if src.ndim != 2 or src.shape[1] < 2:
-        raise ValueError("hrir_sources must be array-like (N, 2) → [az, el].")
-
-    src_az = src[:, 0].astype(float)
-    src_el = src[:, 1].astype(float)
-
-    # -------------------------------
-    # Apply azimuth/elevation filtering
-    # -------------------------------
-    mask = numpy.ones(len(src), dtype=bool)
-    mask &= (src_az >= az_range[0]) & (src_az <= az_range[1])
-    mask &= (src_el >= el_range[0]) & (src_el <= el_range[1])
-
-    src_az = src_az[mask]
-    src_el = src_el[mask]
-
-    if len(src_az) == 0:
-        raise ValueError(
-            f"No HRIR sources fall inside the requested ranges.\n"
-            f"az_range={az_range}, el_range={el_range}"
-        )
-
-    n_sources = len(src_az)
-
-    # -------------------------------
-    # Δ function for circular azimuth
-    # -------------------------------
-    def _wrap_diff(a, b):
-        return (a - b + 180.0) % 360.0 - 180.0
-
-    # -------------------------------
-    # Precompute distance matrix
-    # -------------------------------
-    az1 = src_az[:, None]
-    az2 = src_az[None, :]
-    d_az = _wrap_diff(az1, az2)
-    d_el = src_el[:, None] - src_el[None, :]
-    dist = numpy.sqrt(d_az ** 2 + d_el ** 2)
-
-    total_len = repeats * n_sources
-
-    # -------------------------------
-    # Try building a valid sequence
-    # -------------------------------
-    for attempt in range(max_tries):
-        remaining = numpy.full(n_sources, repeats, dtype=int)
-        seq_indices = []
-
-        first = numpy.random.randint(0, n_sources)
-        seq_indices.append(first)
-        remaining[first] -= 1
-
-        success = True
-
-        for _ in range(1, total_len):
-            last = seq_indices[-1]
-
-            candidates = numpy.where(
-                (remaining > 0) & (dist[last] >= min_distance)
-            )[0]
-
-            if len(candidates) == 0:
-                success = False
-                break
-
-            nxt = numpy.random.choice(candidates)
-            seq_indices.append(nxt)
-            remaining[nxt] -= 1
-
-        if success:
-            # Build coordinate array
-            seq_indices = numpy.asarray(seq_indices, dtype=int)
-            points = numpy.column_stack([src_az[seq_indices], src_el[seq_indices]])
-            points[:, 0] = (points[:, 0] + 180) % 360 - 180  # wrap az
-            points = numpy.round(points, 2)
-
-            sequence = slab.Trialsequence(points)
-
-            # Store settings identically to sector version
-            sequence.settings = settings
-            sequence.sector_centers = None
-
-            return sequence
-
-    # If all attempts fail
-    raise RuntimeError(
-        f"Failed to build standard sequence with min_distance={min_distance}° "
-        f"after {max_tries} attempts."
-    )
 
 
 

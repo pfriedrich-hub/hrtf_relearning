@@ -19,7 +19,7 @@ def localization_accuracy(sequence):
         elevation_gain, n = scipy.stats.linregress(targets[:, 1], responses[:, 1])[:2]
     except ValueError:
         elevation_gain = 0
-    if not len(numpy.unique(targets[:, 0])) < 1:
+    if not len(numpy.unique(targets[:, 0])) == 1:
         azimuth_gain, n = scipy.stats.linregress(targets[:, 0], responses[:, 0])[:2]
     else:
         azimuth_gain = None
@@ -96,7 +96,7 @@ def target_p(sequence, show=False, axis=None):
     settings = sequence.settings
     az_size, el_size = settings['sector_size']
     half_az, half_el = az_size / 2.0, el_size / 2.0
-    centers = numpy.asarray(sequence.sector_centers, dtype=float)  # (N,2)
+    centers = numpy.asarray(sequence.settings['sector_centers'], dtype=float)  # (N,2)
     # --- unpack data (targets = 2nd row, responses = 1st row) ---
     loc_data = numpy.asarray(sequence.data)
     loc_data = loc_data.reshape(loc_data.shape[0], 2, 2)
@@ -196,7 +196,7 @@ def plot_localization(sequence, report_stats=['elevation', 'azimuth'], filepath=
     loc_data = loc_data.reshape(loc_data.shape[0], 2, 2)
     targets = loc_data[:, 1]  # [az, ele]
     responses = loc_data[:, 0]
-    sector_centers = sequence.sector_centers
+    sector_centers = sequence.settings['sector_centers']
     az_size, el_size = sequence.settings['sector_size']
     eg, ele_rmse, ele_sd, ag, az_rmse, az_sd = localization_accuracy(sequence)
 
@@ -239,7 +239,7 @@ def plot_localization(sequence, report_stats=['elevation', 'azimuth'], filepath=
     title = sequence.name
     if 'elevation' in report_stats:
         title += f"\nEG: {eg:.2f}, RMSE: {ele_rmse:.2f}, SD: {ele_sd:.2f}"
-    if 'azimuth' in report_stats:
+    if 'azimuth' in report_stats and ag:
         title += f"\nAG: {ag:.2f}, az RMSE: {az_rmse:.2f}, az SD: {az_sd:.2f}"
     ax.set_title(title)
     ax.grid(False)

@@ -42,7 +42,7 @@ class Localization:
         #                  'targets_per_sector': 3, 'min_distance': 10, 'gain': .5, 'replace': True}  # elevation test
         # just play 3 times from each source in the hrir (works well for dome recorded)
         self.settings = {'kind': 'standard', 'azimuth_range': (-1, 1), 'elevation_range': (-50, 50),
-                          'targets_per_speaker': 3, 'min_distance': 30, 'gain': .8}
+                          'targets_per_speaker': 2, 'min_distance': 30, 'gain': .8}
         self.subject = subject
         self.filename = subject.id + f'_{hrir.name}' + '_loc_' + date
 

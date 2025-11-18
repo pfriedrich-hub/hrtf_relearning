@@ -17,14 +17,14 @@ warnings.filterwarnings("ignore", category=pyfar._utils.PyfarDeprecationWarning)
 # -------------------------------------------------------------------------
 # Global settings
 # -------------------------------------------------------------------------
-subject_id = 'PF'
+subject_id = 'NE'
 overwrite = False
 reference = 'ref_07.11'
-samp_rec = 2  # number of recorded vertical head orientations
-n_rec = 20  # number of recordings per speaker
+n_samp = 2
+n_rec = 20
 fs = 48828  # 97656
-n_samp_out = 256  # number of samples in the resulting IR
-show = False  # show plots
+show = True
+n_samp_out = 256
 
 slab.set_default_samplerate(fs)
 data_dir = Path.cwd() / "data"
@@ -75,7 +75,7 @@ def record_hrir(
     hrir = equalize_old(ear_pressure, reference_pressure, n_samp_out, show=show)
 
     # 5) Low frequency extrapolation
-    # hrir = lowfreq_extrapolate(hrir, f_extrap=400.0, f_target=150.0, head_radius=0.0875, show=False)
+    hrir = lowfreq_extrapolate(hrir, f_extrap=400.0, f_target=150.0, head_radius=0.0875, show=False)
 
     # 6) Extend azimuths + add binaural cues (ILD full-band off-midline + ITD align)
     hrir = expand_azimuths_with_binaural_cues(hrir, az_range=(-50, 50), head_radius=0.0875, show=False)
@@ -2008,12 +2008,12 @@ def _wrap_az_deg_ccw(az):
     az[az < 0] += 360.0
     return az
 
-if __name__ == "__main__":
-    # tiny example call – adjust IDs and reference name
-    logging.basicConfig(level=logging.INFO)
-    hrir = record_hrir(subject_id, reference, samp_rec, n_rec, fs, overwrite, n_samp_out, show)
-    pass
-
+# if __name__ == "__main__":
+#     # tiny example call – adjust IDs and reference name
+#     logging.basicConfig(level=logging.INFO)
+#     hrir = record_hrir(subject_id, reference, samp_rec, n_rec, fs, overwrite, n_samp_out, show)
+#     pass
+#
 
 
 """

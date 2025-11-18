@@ -14,12 +14,19 @@ date = f'{date.strftime("%d")}.{date.strftime("%m")}_{date.strftime("%H")}.{date
 logging.getLogger().setLevel('INFO')
 data_dir = Path.cwd() / 'data'
 
+
+
+
+
+
+
+
 # --- Load Subject ----
-id = 'PF'
+id = 'NE'
 subject = Subject(id)
 
 # --- HRTF settings ----
-hrir = 'laras_pf_in_ear_mic'
+hrir = 'KU100'
 
 # ---- specify ear for unilateral testing, None defaults to binaural testing
 ear = None
@@ -38,11 +45,11 @@ class Localization:
     def __init__(self, subject, hrir):
         # make trial sequence and write to subject
 
-        # self.settings = {'kind': 'sectors', 'azimuth_range': (-1, 1), 'elevation_range': (-50, 50), 'sector_size': (2, 6.25),
-        #                  'targets_per_sector': 3, 'min_distance': 10, 'gain': .5, 'replace': True}  # elevation test
+        self.settings = {'kind': 'sectors', 'azimuth_range': (-35, 35), 'elevation_range': (-35, 35), 'sector_size': (17.5, 17.5),
+                          'targets_per_sector': 3, 'min_distance': 30, 'gain': .5, 'replace': True}  # elevation test
         # just play 3 times from each source in the hrir (works well for dome recorded)
-        self.settings = {'kind': 'standard', 'azimuth_range': (-1, 1), 'elevation_range': (-50, 50),
-                          'targets_per_speaker': 2, 'min_distance': 30, 'gain': .8}
+        #self.settings = {'kind': 'standard', 'azimuth_range': (-45, 45), 'elevation_range': (-45, 45),
+         #                 'targets_per_speaker': 2, 'min_distance': 30, 'gain': .4}
         self.subject = subject
         self.filename = subject.id + f'_{hrir.name}' + '_loc_' + date
 

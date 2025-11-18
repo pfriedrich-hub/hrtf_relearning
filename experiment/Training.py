@@ -1,6 +1,5 @@
 import matplotlib
 matplotlib.rcParams['figure.raise_window'] = False
-matplotlib.use('Agg')
 from matplotlib import pyplot as plt
 import logging
 import time
@@ -23,7 +22,7 @@ from experiment.misc.training_helpers import game_ui
 logging.getLogger().setLevel('INFO')
 
 # -------------------- Config --------------------
-SUBJECT_ID = "pf_1"
+SUBJECT_ID = "new"
 HRIR_NAME = "PF"  # 'KU100', 'kemar', etc.
 EAR = None              # or None for binaural (your unilateral training)
 REVERB = True
@@ -32,14 +31,14 @@ REVERB = True
 SOUND_FILE = None         # None -> pink noise pulses; or 'uso_225ms_9_.wav', etc.
 # Graphics
 show_ui = True  # todo
-SHOW_TF = 'TF'  # set to TF or IR to spawn live filter plot
+SHOW_TF = False  # set to TF or IR to spawn live filter plot
 
 # -------------------- Global HRIR/Sequence --------------------
 hrir = hrtf2binsim(HRIR_NAME, EAR, REVERB, overwrite=False)
 slab.set_default_samplerate(hrir.samplerate)
 HRIR_DIR = Path.cwd() / "data" / "hrtf" / "binsim" / hrir.name
 subject = Subject(SUBJECT_ID)
-sequence = subject.last_sequence  # last localization sequence (your code)
+sequence = subject.last_sequence
 
 # Game settings
 settings = dict(
@@ -50,11 +49,12 @@ settings = dict(
     min_dist=30,
     game_time=90,
     trial_time=10,
-    gain=0.2)
+    gain=0.07)
 
 # -------------------- Helpers --------------------
 def make_osc_client(port, ip="127.0.0.1"):
     return udp_client.SimpleUDPClient(ip, port)
+
 
 def _drain_pose_queue(q):
     items = []

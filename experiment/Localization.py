@@ -14,15 +14,8 @@ date = f'{date.strftime("%d")}.{date.strftime("%m")}_{date.strftime("%H")}.{date
 logging.getLogger().setLevel('INFO')
 data_dir = Path.cwd() / 'data'
 
-
-
-
-
-
-
-
 # --- Load Subject ----
-id = 'NE'
+id = 'test'
 subject = Subject(id)
 
 # --- HRTF settings ----

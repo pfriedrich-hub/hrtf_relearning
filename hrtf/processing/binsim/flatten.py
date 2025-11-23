@@ -1,7 +1,7 @@
 import numpy
 import copy
 import logging
-from hrtf.analysis.plot import plot
+from hrtf.analysis.plot_ir import plot
 
 def flatten_dtf(hrir, ear='left', method='energy', window_ms=None, onset_thresh=0.5, keep_polarity=True):
     """

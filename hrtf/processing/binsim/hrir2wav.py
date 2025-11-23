@@ -1,4 +1,4 @@
-from hrtf.analysis.plot import plot_reverb
+from hrtf.analysis.plot_ir import plot_reverb
 import numpy
 import slab
 import logging

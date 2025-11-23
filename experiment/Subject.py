@@ -1,35 +1,40 @@
-import matplotlib
-# matplotlib.use('tkagg')
-from experiment.misc.safe_pickle import load, dump
+import json
 import logging
 from pathlib import Path
-results_dir = Path.cwd() / 'data' / 'results'
+
+results_dir = Path.cwd() / "data" / "results"
+results_dir.mkdir(parents=True, exist_ok=True)
+
 
 class Subject:
-    def __init__(self, id):
-        self.file_path = results_dir / f'{id}.pkl'
-        # check if subject exists in data folder and laod the data
+    def __init__(self, id: str):
+        self.id = id
+        self.file_path = results_dir / f"{id}.json"
+        self.localization = {}
+        self.trials = []
+        self.last_sequence = None
+
         if self.file_path.exists():
-            logging.info('Loading subject data.')
-            with open(self.file_path, 'rb') as subj_file:
-                subject = load(subj_file)
-                self.__dict__ = subject.__dict__.copy()
-                self.file_path = results_dir / f'{id}.pkl'  # overwrite Path to match current system for writing
+            logging.info("Loading subject data.")
+            self._load()
+        else:
+            logging.info("Creating new subject.")
 
-        else:  # otherwise create a new subject object
-            logging.info('Creating new subject data.')
-            self.id = id
-            self.localization = dict()
-            self.trials = []
+    def _load(self):
+        with open(self.file_path, "r") as f:
+            data = json.load(f)
+        self.id = data.get("id", self.id)
+        self.localization = data.get("localization", {})
+        self.trials = data.get("trials", [])
+        self.last_sequence = data.get("last_sequence", None)
+        self.file_path = results_dir / f"{self.id}.json"
 
-        if list(self.localization.keys()):  # get the last localization sequence
-            self.last_sequence = self.localization[list(self.localization.keys())[-1]]
-        else: self.last_sequence = None
-
-    def write(self):
-        if (self.file_path).exists():
-            logging.debug('Updating subject file.')
-        else: logging.info('Creating subject file.')
-        with open(self.file_path, 'wb') as subj_file:
-            dump(self, subj_file)  # highest protocol dumping -> numpy error while loading on mac
-
+    def save(self):
+        data = {
+            "id": self.id,
+            "localization": self.localization,
+            "trials": self.trials,
+            "last_sequence": self.last_sequence,
+        }
+        with open(self.file_path, "w") as f:
+            json.dump(data, f, indent=2)

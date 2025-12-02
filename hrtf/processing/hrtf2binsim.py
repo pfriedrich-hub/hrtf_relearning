@@ -1,4 +1,4 @@
-from hrtf.analysis.plot import plot
+from hrtf.analysis.plot_ir import plot
 from hrtf.processing.binsim.tf2ir import hrtf2hrir
 from hrtf.processing.binsim.flatten import flatten_dtf
 from hrtf.processing.binsim.hrir2wav import hrir2wav

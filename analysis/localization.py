@@ -271,10 +271,10 @@ def plot_localization(sequence, report_stats=['elevation', 'azimuth'], filepath=
 
     plt.show()
 
-
 def plot_elevation_response(sequence, axis=None, show=True, add_fit=True):
     """
-    Plot elevation responses (y-axis) against elevation targets (x-axis).
+    Plot elevation responses (y-axis) against elevation targets (x-axis),
+    with grayscale indicating target azimuth (black = center, light = sides).
 
     Parameters
     ----------
@@ -302,6 +302,7 @@ def plot_elevation_response(sequence, axis=None, show=True, add_fit=True):
     targets = loc_data[:, 1]      # [az, el]
     responses = loc_data[:, 0]    # [az, el]
 
+    targ_az = targets[:, 0]
     targ_el = targets[:, 1]
     resp_el = responses[:, 1]
 
@@ -314,8 +315,30 @@ def plot_elevation_response(sequence, axis=None, show=True, add_fit=True):
         fig, axis = plt.subplots(figsize=(6, 6))
         created_fig = True
 
-    # Scatter plot: elevation targets vs responses
-    axis.scatter(targ_el, resp_el, alpha=0.7, label="Trials")
+    # ----- Grayscale encoding of azimuth -----
+    # Determine normalization range: use azimuth range from settings if available,
+    # otherwise fall back to actual data.
+    if "azimuth_range" in sequence.settings:
+        az_min, az_max = sequence.settings["azimuth_range"]
+        max_abs_az = max(abs(az_min), abs(az_max))
+    else:
+        # fallback: use range in dataset
+        max_abs_az = float(numpy.max(numpy.abs(targ_az)))
+
+    # Normalize azimuth: 0° → 0, max_abs_az → 1
+    az_norm = numpy.abs(targ_az) / max_abs_az
+
+    # Convert to grayscale (0=black, 1=white)
+    gray_vals = az_norm  # automatically gives black at 0°, white at max
+
+    # Optional: keep white from becoming too bright → use 0.85 instead of 1.0
+    # gray_vals = 0.0 + 0.85 * az_norm
+
+    # Build Nx3 RGB greys
+    colors = numpy.stack([gray_vals, gray_vals, gray_vals], axis=1)
+
+    # Scatter plot: elevation targets vs responses, colored by azimuth
+    sc = axis.scatter(targ_el, resp_el, c=colors, alpha=0.8, edgecolors="none")
 
     # Identity (veridical) line y = x
     min_el = float(numpy.min(numpy.concatenate([targ_el, resp_el])))
@@ -326,9 +349,12 @@ def plot_elevation_response(sequence, axis=None, show=True, add_fit=True):
 
     # Optional regression line
     if add_fit and len(targ_el) >= 2 and not numpy.allclose(targ_el, targ_el[0]):
-        slope, intercept, r_value, p_value, stderr = scipy.stats.linregress(targ_el, resp_el)
+        slope, intercept, r_value, p_value, stderr = stats.linregress(targ_el, resp_el)
         y_fit = intercept + slope * x_line
-        axis.plot(x_line, y_fit, '-', label=f"Fit (gain={slope:.2f}, R²={r_value**2:.2f})")
+        axis.plot(
+            x_line, y_fit, '-',
+            label=f"Fit (gain={slope:.2f}, R²={r_value**2:.2f})"
+        )
 
     # Cosmetics
     axis.set_xlabel("Target elevation (°)")
@@ -340,6 +366,22 @@ def plot_elevation_response(sequence, axis=None, show=True, add_fit=True):
             f"\nElevation: gain={eg:.2f}, RMSE={ele_rmse:.2f}°, SD={ele_sd:.2f}°"
     axis.set_title(title)
     axis.legend()
+
+    # Optional tiny colorbar-esque legend for azimuth
+    # (purely schematic, no numeric ticks)
+    # You can comment this block out if you don't want it.
+    from matplotlib.lines import Line2D
+    legend_elements = [
+        Line2D([0], [0], marker='o', linestyle='None',
+               markerfacecolor='black', markeredgecolor='none',
+               label='Az ≈ 0°'),
+        Line2D([0], [0], marker='o', linestyle='None',
+               markerfacecolor='0.7', markeredgecolor='none',
+               label='|Az| large'),
+    ]
+    axis.legend(handles=axis.get_legend_handles_labels()[0] + legend_elements,
+                labels=[*axis.get_legend_handles_labels()[1], 'Az ≈ 0°', '|Az| large'],
+                loc='best')
 
     if created_fig and show:
         plt.tight_layout()

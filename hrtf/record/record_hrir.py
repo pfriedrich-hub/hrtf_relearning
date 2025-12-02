@@ -17,33 +17,32 @@ warnings.filterwarnings("ignore", category=pyfar._utils.PyfarDeprecationWarning)
 # -------------------------------------------------------------------------
 # Global settings
 # -------------------------------------------------------------------------
-subject_id = 'NE'
+subject_id = 'PF'
 overwrite = False
 reference = 'ref_07.11'
-n_samp = 2
-n_rec = 20
+n_directions = 2
+n_recordings = 20
 fs = 48828  # 97656
 show = True
-n_samp_out = 256
+n_samples_out = 256
 
 slab.set_default_samplerate(fs)
-data_dir = Path.cwd() / "data"
 freefield.set_logger("info")
+
+hrtf_dir = Path.cwd() / "data" / "hrtf"
+subject_dir = hrtf_dir / "rec" / subject_id
+ref_dir = hrtf_dir / "rec" / "reference" / reference
 
 # -------------------------------------------------------------------------
 # High-level: record HRIR for one subject
 # -------------------------------------------------------------------------
 def record_hrir(
-    subject_id: str, reference: str, samp_rec: int = 5, n_rec: int = 5,
+    subject_id: str, reference: str, n_directions: int = 5, n_recordings: int = 5,
     fs: int = fs, overwrite: bool = False, n_samp_out: int = 256, show: bool = True):
-
-    hrtf_dir = Path.cwd() / "data" / "hrtf"
-    subject_dir = hrtf_dir / "rec" / subject_id
-    ref_dir = hrtf_dir / "rec" / "reference" / reference
 
     # 1) in ear recordings
     if (not subject_dir.exists()) or overwrite:
-        ear_pressure = Recordings.record_dome(n_samp=samp_rec, n_rec=n_rec, hp_freq=50, fs=fs)
+        ear_pressure = Recordings.record_dome(n_directions, n_recordings, hp_freq=50, fs=fs)
         ear_pressure.params["subject_id"] = subject_id
         ear_pressure.to_wav(subject_dir, overwrite=overwrite)
     else:
@@ -51,15 +50,15 @@ def record_hrir(
         ear_pressure = Recordings.from_wav(subject_dir)
 
     # 2) reference recordings
-    if ref_dir.exists() and not overwrite:
-        logging.info("Loading reference recordings")
-        reference_pressure = Recordings.from_wav(ref_dir)
-    else:
+    if (not ref_dir.exists()) or overwrite:
         logging.info("Recording new reference")
         ref_dir.mkdir(exist_ok=True, parents=True)
-        reference_pressure = Recordings.record_dome(n_samp=1, n_rec=n_rec, hp_freq=50, fs=fs)
+        reference_pressure = Recordings.record_dome(n_directions=1, n_recordings=n_recordings, hp_freq=50, fs=fs)
         reference_pressure.params["subject_id"] = reference
         reference_pressure.to_wav(ref_dir, overwrite=overwrite)
+    else:
+        logging.info("Loading reference recordings")
+        reference_pressure = Recordings.from_wav(ref_dir)
 
     # plot spectra
     # ear_pressure.plot_spectra()
@@ -70,9 +69,9 @@ def record_hrir(
     # hrir_reference = reference_pressure.compute_tf(n_samp_out=n_samp_out, show=show)
 
     # 4) Equalize HRIR by reference IR
-    # hrir = equalize(ear_pressure, reference_pressure, n_samp_out=n_samp_out, show=show)
+    hrir = equalize(ear_pressure, reference_pressure, n_samples_out=n_samples_out, show=show)
     # hrir = equalize(hrir_recorded, hrir_reference, n_samp_out=n_samp_out, show=show)
-    hrir = equalize_old(ear_pressure, reference_pressure, n_samp_out, show=show)
+    # hrir = equalize_old(ear_pressure, reference_pressure, n_samp_out, show=show)
 
     # 5) Low frequency extrapolation
     hrir = lowfreq_extrapolate(hrir, f_extrap=400.0, f_target=150.0, head_radius=0.0875, show=False)
@@ -260,15 +259,16 @@ class Recordings(SpeakerGridBase):
         self.signal = signal
 
     @classmethod
-    def record_dome(cls, n_samp=5, n_rec=5, hp_freq=50, fs=48828):
+    def record_dome(cls, n_directions=5, n_recordings=5, hp_freq=50, fs=48828):
         """Record across the dome and return a Recordings object with all parameters stored."""
         if freefield.PROCESSORS.mode != "play_birec":
             freefield.initialize("dome", "play_birec")
 
-        # excitation signal
+        # excitation signal  # todo 1 - adjust sweep parameters (freq range and ramp) to measure across 120-18 khz
         params = {"type": "slab.Sound.chirp", "duration": 0.2, "level": 85,
-                  "from_frequency": 50, "to_frequency": 18e3, "samplerate": fs}
-        signal = slab.Sound.chirp(duration=params["duration"], level=params["level"], samplerate=fs,
+                  "from_frequency": 20, "to_frequency": 19e3, "samplerate": fs}
+        # Orb Audio Mod1 frequency response: 120 Hz - 18 KHz
+        signal = slab.Sound.chirp(duration=params["duration"], level=params["level"], samplerate=fs, kind='logarithmic',
                                   from_frequency=params["from_frequency"], to_frequency=params["to_frequency"])
         signal = signal.ramp(when="both", duration=0.01)  # matches the cos ramp in bi_play_buf.rcx
         signal.params = params
@@ -278,16 +278,16 @@ class Recordings(SpeakerGridBase):
         if len(speakers) < 2:
             raise RuntimeError("Need at least two speakers to infer vertical resolution.")
 
-        res = abs(speakers[0].elevation - speakers[1].elevation) / n_samp
+        res = abs(speakers[0].elevation - speakers[1].elevation) / n_directions
         min_el = min(spk.elevation for spk in speakers)
 
         recordings_dict = {}
         filt = slab.Filter.band(kind="hp", frequency=hp_freq, samplerate=fs)
         [led_speaker] = freefield.pick_speakers(23)  # get object for center speaker LED
 
-        for n in range(n_samp):
+        for n in range(n_directions):
             elevation_step = n * res
-            if n_samp > 1:
+            if n_directions > 1:
                 freefield.write(tag='bitmask', value=led_speaker.digital_channel,
                                 processors=led_speaker.digital_proc)  # illuminate LED
                 input(f"Press Enter when head is at {0 + elevation_step}° elevation ...")
@@ -297,13 +297,13 @@ class Recordings(SpeakerGridBase):
                 if spk.elevation >= min_el:
                     logging.info(f"Recording from Speaker {spk.index} at {spk.elevation:.1f}° elevation")
                     key = f"{spk.index}_{spk.azimuth}_{spk.elevation}"
-                    rec = cls.record_speaker(spk, signal, n_rec, fs)
+                    rec = cls.record_speaker(spk, signal, n_recordings, fs)
                     recordings_dict[key] = filt.apply(rec)
             freefield.write(tag='bitmask', value=0, processors=led_speaker.digital_proc)  # turn off LED
         params = {
             "fs": fs,
-            "n_rec": n_rec,
-            "n_samp": n_samp,
+            "n_recordings": n_recordings,
+            "n_directions": n_directions,
             "signal": getattr(signal, "params", {}),
             "highpass frequency": hp_freq,
             "datetime": datetime.now().isoformat(),
@@ -465,9 +465,9 @@ class Recordings(SpeakerGridBase):
         return ImpulseResponses(data=out.data, params=params)
 
     @staticmethod
-    def record_speaker(speaker, signal: slab.Sound, n_rec: int, fs: int) -> slab.Binaural:
+    def record_speaker(speaker, signal: slab.Sound, n_recordings: int, fs: int) -> slab.Binaural:
         recordings = []
-        for _ in range(n_rec):
+        for _ in range(n_recordings):
             recordings.append(
                 freefield.play_and_record(
                     speaker,
@@ -540,32 +540,142 @@ class Recordings(SpeakerGridBase):
         return cls(data=data, params=params, signal=signal)
 
     # --- plotting of spectra -----------------------------------------------
-    def plot_spectra(self):
+    def spectrum(
+            self,
+            linesep=20,
+            xscale="linear",
+            axis=None,
+    ):
         """
-        Rough equivalent of your `plot_dict(..., kind='tf')` for recordings.
+        Waterfall plot of left + right ear spectra from in-ear recordings.
+        Elevations determine vertical offset (one curve per elevation).
+        Left ear = dark gray, right = lighter gray.
+
+        Parameters
+        ----------
+        xlim : tuple
+            Frequency axis limits.
+        n_bins : int or None
+            FFT resolution for spectrum().
+        linesep : float
+            Vertical separation in dB between stacked spectra.
+        xscale : 'linear' or 'log'
+            Frequency axis scaling.
+        show : bool
+            Show the plot immediately.
+        axis : matplotlib axis or None
+            Insert plot into an existing axis.
         """
-        from matplotlib import pyplot as plt
+        xlim = (self.params['signal']['from_frequency'], self.params['signal']['to_frequency'])
+        # Create axis
+        if axis is None:
+            fig, axis = plt.subplots(figsize=(7, 6))
+        else:
+            fig = axis.figure
 
-        fig, ax = plt.subplots()
+        keys = list(self.data.keys())
 
-        for key, rec in self.data.items():
-            if not isinstance(rec, slab.Binaural):
-                continue
+        elevations = []
+        specs_L = []  # left ear spectra
+        specs_R = []  # right ear spectra
+        freqs_saved = None
+
+        # ------------------------------------------------------------------
+        # Extract spectra from all recordings
+        # ------------------------------------------------------------------
+        for key in keys:
             _, _, el = self.parse_key(key)
-            rec.spectrum(axis=ax)
-            line = ax.lines[-1]
-            x, y = line.get_xdata(), line.get_ydata()
-            line.set_ydata(y + el)  # offset by elevation
-            line.set_label(f"el={el:.1f}°")
+            rec = self.data[key]  # slab.Binaural
 
-        ax.set_xlim([2e3, 18750])
-        ax.set_xscale("linear")
-        ax.set_ylim(-130, 20)
-        ax.set_title("In-ear recordings (spectrum, offset by elevation)")
-        ax.set_xlabel("Frequency [Hz]")
-        ax.set_ylabel("Level [dB] + elevation offset")
-        ax.legend(title="Elevation (°)")
+            # left ear
+            Hl, freqs = rec.channel(0).spectrum(show=False)
+            # right ear
+            Hr, _ = rec.channel(1).spectrum(show=False)
+
+            if freqs_saved is None:
+                freqs_saved = freqs
+
+            elevations.append(el)
+            specs_L.append(Hl)
+            specs_R.append(Hr)
+
+        elevations = numpy.asarray(elevations)
+        specs_L = numpy.asarray(specs_L)
+        specs_R = numpy.asarray(specs_R)
+
+        # baseline correction (compute common baseline from original data)
+        baseline = numpy.mean((specs_L + specs_R) / 2, axis=0)
+
+        specs_L = specs_L - baseline
+        specs_R = specs_R - baseline
+
+        # ------------------------------------------------------------------
+        # Sort by elevation
+        # ------------------------------------------------------------------
+        idx = numpy.argsort(elevations)
+        elevations = elevations[idx]
+        specs_L = specs_L[idx]
+        specs_R = specs_R[idx]
+
+        # Compute vertical offsets
+        vlines = numpy.arange(len(elevations)) * (linesep + 20)
+
+        # ------------------------------------------------------------------
+        # Plot waterfall curves
+        # ------------------------------------------------------------------
+        for i, (Hl, Hr) in enumerate(zip(specs_L, specs_R)):
+            axis.plot(
+                freqs_saved, Hl + vlines[i],
+                color="0.25", linewidth=0.8, alpha=0.9, label="Left" if i == 0 else None,
+            )
+            axis.plot(
+                freqs_saved, Hr + vlines[i],
+                color="0.65", linewidth=0.8, alpha=0.9, label="Right" if i == 0 else None,
+            )
+
+        # ------------------------------------------------------------------
+        # Elevation labels
+        # ------------------------------------------------------------------
+        ticks = vlines[::2]
+        labels = elevations[::2].astype(int)
+
+        axis.set_yticks(ticks)
+        axis.set_yticklabels(labels)
+        axis.set_ylabel("Elevation (°)")
+
+        # ------------------------------------------------------------------
+        # dB scale bar (height = linesep)
+        # ------------------------------------------------------------------
+        scale_x = xlim[0] + 300
+        scale_y0 = vlines[-1] + 40
+        scale_y1 = scale_y0 + linesep
+
+        axis.plot([scale_x, scale_x], [scale_y0, scale_y1],
+                  color="0.1", linewidth=1.2)
+        axis.text(
+            scale_x + 90,
+            scale_y0 + linesep / 2,
+            f"{linesep} dB",
+            va="center", fontsize=7, color="0.1"
+        )
+
+        # ------------------------------------------------------------------
+        # Formatting utilities
+        # ------------------------------------------------------------------
+        axis.set_xlim(xlim)
+        axis.set_xscale(xscale)
+
+        # Format frequency labels as kHz
+        axis.xaxis.set_major_formatter(
+            matplotlib.ticker.FuncFormatter(lambda x, pos: f"{int(x / 1000)}")
+        )
+        axis.set_xlabel("Frequency [kHz]")
+
+        axis.grid(axis="y", linestyle=":", linewidth=0.3, alpha=0.5)
+        axis.legend(loc="upper right", fontsize=7)
         plt.show()
+        return fig
+
 
 # -------------------------------------------------------------------------
 # Impulse Responses (slab.Filter grid)
@@ -884,79 +994,6 @@ class ImpulseResponses(SpeakerGridBase):
             fs = first.samplerate
         return cls(data=data, fs=fs, meta=meta or {})
 
-    # --- azimuth extension --------------------------------------------------
-    def add_az_sources(
-            self,
-            az_range: tuple[float, float] = (-50, 50), center_az: float = 0.0, tol: float = 1e-6,
-    ) -> "ImpulseResponses":
-        """
-        Extend IR set by duplicating each elevation across an azimuth grid.
-
-        For now, all new azimuths get the *same* IR/TF as the central azimuth
-        (usually 0°). Later, you can replace / modify these copies using
-        spherical-head ILD/ITD (from `spherical_head`) etc.
-
-        Parameters
-        ----------
-        az_range
-            (min_az, max_az) in degrees for the azimuth grid.
-        center_az
-            Azimuth (in deg) that is considered the "central" reference
-            and will be duplicated to the other azimuths.
-        tol
-            Tolerance when deciding whether an entry belongs to `center_az`.
-
-        Returns
-        -------
-        self : ImpulseResponses
-            The instance is modified in-place and returned for chaining.
-        """
-        # use the existing parser + coordinate helper
-        sources = self.get_sources()  # [az, el, r]
-        elevations = numpy.unique(sources[:, 1])
-        elevations = numpy.sort(elevations)
-
-        if len(elevations) > 1:
-            # average spacing between elevations
-            vertical_res = numpy.mean(numpy.diff(elevations))
-        else:
-            # fallback if you only have a single elevation (shouldn’t really happen)
-            vertical_res = az_range[1] - az_range[0]
-
-        # build azimuth grid using the same step size as the vertical spacing
-        azimuths = numpy.arange(
-            az_range[0],
-            az_range[1] + vertical_res / 2,
-            vertical_res,
-        )
-
-        new_entries: dict[str, slab.Filter] = {}
-
-        # only duplicate *central* azimuth entries (e.g. 0°)
-        for key, filt in list(self.data.items()):
-            spk_id, az_str, el_str = key.split("_")
-            if abs(float(az_str) - center_az) > tol:
-                # not a central azimuth -> skip
-                continue
-
-            for az in azimuths:
-                az_str_new = f"{float(az):.1f}"
-                new_key = f"{spk_id}_{az_str_new}_{el_str}"
-
-                if new_key in self.data or new_key in new_entries:
-                    continue
-
-                # use deepcopy so later modifications (e.g. adding ILD/ITD) don’t
-                # accidentally change the original central IR
-                new_entries[new_key] = copy.deepcopy(filt)
-
-        self.data.update(new_entries)
-
-        # sort by azimuth and elevation
-        self.data = dict(sorted(self.data.items(), key=lambda kv: (float(kv[0].rsplit("_", 2)[-2]),  # sort by azimuth
-                                                               float(kv[0].rsplit("_", 2)[-1]))))  # and elevation
-        return self
-
     # --- plotting -----------------------------------------------------------
     def plot(self, kind: str = "tf"):
         """
@@ -994,9 +1031,9 @@ class ImpulseResponses(SpeakerGridBase):
 # HRTF processing
 # -------------------------------------------------------------------------
 def equalize(
-    hrir_recorded: ImpulseResponses | Recordings,
-    hrir_reference: ImpulseResponses | Recordings,
-    n_samp_out: int = 256,
+    recorded: ImpulseResponses | Recordings,
+    reference: ImpulseResponses | Recordings,
+    n_samples_out: int = 256,
     show: bool = False,
 ) -> ImpulseResponses:
     """
@@ -1017,18 +1054,20 @@ def equalize(
     """
     logging.info("Applying equalization")
 
-    signal_params = hrir_recorded.params["signal"]
-    fs = int(hrir_recorded.params["fs"])
-    n_samp = int(hrir_recorded.params["n_samp"])
-
+    signal_params = recorded.params["signal"]
+    fs = int(recorded.params["fs"])
     from_f = signal_params["from_frequency"]
     to_f = signal_params["to_frequency"]
+    center_key = "23_0.0_0.0"
+    # save the center loudspeaker’s reference + inverse for plotting
+    center_ref = None
+    center_ref_inv = None
 
     # ------------------------------------------------------------------
     # 1) Convert recorded HRIRs to pyfar.Signal
     # ------------------------------------------------------------------
     equalized = ImpulseResponses()
-    for key, filt in hrir_recorded.items():
+    for key, filt in recorded.items():
         # slab.Filter data: (n_samples, n_channels)
         equalized[key] = pyfar.Signal(filt.data.T, filt.samplerate)
 
@@ -1037,40 +1076,33 @@ def equalize(
     # ------------------------------------------------------------------
     # speaker ID = first two chars of key (e.g. "19", "23", ...)
     speaker_ids = list(set(key[:2] for key in equalized.keys()))
-
-    # we’ll remember the center loudspeaker’s reference + inverse for plotting
-    center_key_full = "23_0.0_0.0"
-    center_ref_signal = None
-    center_ref_inv = None
-
     for spk_id in speaker_ids:
+
         # find the reference entry for this loudspeaker
-        ref_candidates = [k for k in hrir_reference.keys() if k.startswith(spk_id + "_")]
+        ref_candidates = [k for k in reference.keys() if k.startswith(spk_id + "_")]
         if not ref_candidates:
             raise KeyError(f"No matching reference for loudspeaker ID '{spk_id}'")
         ref_key = ref_candidates[0]
-
-        reference = pyfar.Signal(hrir_reference[ref_key].data.T, fs)
+        ref = pyfar.Signal(reference[ref_key].data.T, fs)
         # remove DC
-        reference.time -= numpy.mean(reference.time, axis=-1, keepdims=True)
-
+        # ref.time -= numpy.mean(reference.time, axis=-1, keepdims=True)
         # regularized inverse of reference
-        reference_inv = pyfar.dsp.regularized_spectrum_inversion(
-            reference,
-            frequency_range=(from_f, to_f),
-        )
-
-        # store for plotting if this loudspeaker contains the center key
-        rec_keys = [k for k in equalized.keys() if k.startswith(spk_id + "_")]
-        if center_key_full in rec_keys:
-            center_ref_signal = reference
-            center_ref_inv = reference_inv
+        ref_inv = pyfar.dsp.regularized_spectrum_inversion(
+            ref,
+            #frequency_range=(from_f, to_f),
+            frequency_range=(200, 15000),
+        )  # todo 2 make sure there are no spikes after adjusting sweep
+        # save center recordings for plotting
+        if ref_key == center_key:
+            center_ref = ref
+            center_ref_inv = ref_inv
 
         # equalize all recordings from this loudspeaker
+        rec_keys = [k for k in equalized.keys() if k.startswith(spk_id + "_")]
         for key in rec_keys:
             ir = equalized[key]
-            ir.time -= numpy.mean(ir.time, axis=-1, keepdims=True)  # remove DC
-            ir_equalized = ir * reference_inv
+            # ir.time -= numpy.mean(ir.time, axis=-1, keepdims=True)  # remove DC
+            ir_equalized = ir * ref_inv
             equalized[key] = ir_equalized
 
     # ------------------------------------------------------------------
@@ -1079,17 +1111,15 @@ def equalize(
     keys_list = list(equalized.keys())
     sig_list = [equalized[k] for k in keys_list]
     # shape: (n_positions, n_channels, n_samples)
-    hrir = pyfar.Signal(numpy.stack([s.time for s in sig_list], axis=0), fs)
+    hrir_equalized = pyfar.Signal(numpy.stack([s.time for s in sig_list], axis=0), fs)
 
     # ------------------------------------------------------------------
     # 4) Temporal alignment using central loudspeaker
     # ------------------------------------------------------------------
-    hrir_shifted = pyfar.dsp.time_shift(hrir, int(n_samp / 2))
+    hrir_shifted = pyfar.dsp.time_shift(hrir_equalized, 2000)
 
     # find index of central loudspeaker in keys_list
-    center_key = center_key_full if center_key_full in keys_list else keys_list[0]
     center_idx = keys_list.index(center_key)
-
     center_onset = pyfar.dsp.find_impulse_response_start(
         hrir_shifted[center_idx], threshold=15
     )
@@ -1102,75 +1132,64 @@ def equalize(
     hrir_aligned = pyfar.dsp.time_shift(hrir_shifted, shift_s, unit="s")
 
     # ------------------------------------------------------------------
-    # 5) Window the HRIRs (short asymmetric Hann)
+    # 5) Window the HRIRs (short asymmetric Hanning window) and cut to final length
     # ------------------------------------------------------------------
     onsets = pyfar.dsp.find_impulse_response_start(hrir_aligned, threshold=15)
     onsets_min = numpy.min(onsets) / fs  # earliest onset in seconds
 
-    times = (
-        onsets_min - 0.0005,  # start of fade-in
-        onsets_min,           # end of fade-in
-        onsets_min + 0.002,   # start of fade-out
-        onsets_min + 0.0025,  # end of fade-out
-    )
+    times = (onsets_min - .00025,  # start of fade-in
+             onsets_min,  # end if fade-in
+             onsets_min + .0048,  # start of fade_out
+             onsets_min + .0058)  # end of_fade_out
     hrir_windowed, window = pyfar.dsp.time_window(
         hrir_aligned, times, "hann", unit="s", crop="none", return_window=True
     )
 
-    # cut recordings to n_samp out if it hasn't been done already
-    if isinstance(hrir_recorded, Recordings):
-        times_samples = [0, 10, 246, n_samp_out - 1]
-        hrir_windowed = pyfar.dsp.time_window(
+    # cut to n_samp out if raw recordings where provided
+    if isinstance(recorded, Recordings):
+        times_samples = [0, 10, 246, n_samples_out - 1]
+        hrir_cropped = pyfar.dsp.time_window(
             hrir_windowed,
             times_samples,
             "hann",
             crop="end",
         )
-        equalized.params["n_samp"] = n_samp_out
-
+        equalized.params["n_samples"] = n_samples_out
+        hrir_final = hrir_cropped
+    else:
+        hrir_final = hrir_windowed
     # ------------------------------------------------------------------
-    # 6) Plot equalization stages (optional)
+    # 6) Convert to slab filters and return ImpulseResponses
     # ------------------------------------------------------------------
-    if show:
-        # raw recorded center IR as pyfar.Signal
-        if center_key in hrir_recorded:
-            raw_center = pyfar.Signal(
-                hrir_recorded[center_key].data.T,
-                fs,
-            )
-        else:  # fallback: first key
-            raw_center = pyfar.Signal(
-                hrir_recorded[keys_list[0]].data.T,
-                fs,
-            )
-
-        # equalized but not windowed/packed center signal
-        equalized_center = equalized[center_key]
-
-        _plot_equalization_pyfar(
-            raw_center=raw_center,
-            reference=center_ref_signal,
-            reference_inv=center_ref_inv,
-            equalized_center=equalized_center,
-            hrir_shifted=hrir_shifted,
-            hrir_aligned=hrir_aligned,
-            hrir_windowed=hrir_windowed,
-            window=window,
-            center_idx=center_idx,
-        )
-
-    # ------------------------------------------------------------------
-    # 7) Convert to slab filters and return ImpulseResponses
-    # ------------------------------------------------------------------
+    for key, filt in zip(equalized.keys(), hrir_final):
+        # pyfar.Signal: (n_channels, n_samples) -> slab.Filter expects (n_samples, n_channels)
+        equalized[key] = slab.Filter(data=filt.time.T, samplerate=fs, fir="IR")
     equalized.params = {
         "fs": fs,
         "signal": signal_params,
-        "n_samp_out": n_samp_out,
+        "n_samp_out": n_samples_out,
         "date": datetime.now().isoformat(),
     }
-    for key, filt in zip(equalized.keys(), hrir_windowed):
-        # pyfar.Signal: (n_channels, n_samples) -> slab.Filter expects (n_samples, n_channels)
-        equalized[key] = slab.Filter(data=filt.time.T, samplerate=fs, fir="IR")
+
+    # ------------------------------------------------------------------
+    # Plot equalization stages (optional)
+    # ------------------------------------------------------------------
+    if show:
+        # raw recorded center IR as pyfar.Signal
+        raw_center = pyfar.Signal(recorded[center_key].data.T, fs)
+        # equalized but not windowed center signal
+        _plot_equalization_pyfar(
+            raw_center=raw_center,
+            center_ref=center_ref,
+            center_ref_inv=center_ref_inv,
+            hrir_equalized=hrir_equalized,
+            hrir_shifted=hrir_shifted,
+            hrir_aligned=hrir_aligned,
+            hrir_windowed=hrir_windowed,
+            hrir_final=hrir_final,
+            window=window,
+            center_idx=center_idx,
+        )
 
     return equalized
 
@@ -1823,9 +1842,9 @@ def _plot_processing_pyfar(excitation, ref_inv, recording, hrir_deconvolved, hri
     plt.show()
 
 def _plot_equalization_pyfar(
-    raw_center, reference = None,
-    reference_inv = None, equalized_center= None, hrir_shifted= None,
-    hrir_aligned= None, hrir_windowed= None, window= None, center_idx: int = 0) -> None:
+    raw_center = None, center_ref = None,
+    center_ref_inv = None, hrir_equalized= None, hrir_shifted= None,
+    hrir_aligned= None, hrir_windowed= None, hrir_final= None, window= None, center_idx: int = 0) -> None:
     """
     Overview plot for the equalization pipeline, using pyfar's plotting shortcuts.
     Inspired by the example notebook.
@@ -1839,7 +1858,6 @@ def _plot_equalization_pyfar(
     - Frequency response before vs after windowing (center)
     """
     import pyfar.plot as pfplot
-    from matplotlib import pyplot as plt
 
     fig, axes = plt.subplots(3, 3, figsize=(15, 10))
     axes = axes.ravel()
@@ -1847,70 +1865,69 @@ def _plot_equalization_pyfar(
     # 1) Raw HRIR at center position (time)
     ax = axes[0]
     pfplot.time(raw_center, unit="ms", ax=ax, label=["left", "right"])
-    ax.set_title("Raw HRIR (center loudspeaker)")
+    ax.set_title("Ear pressure (center)")
     ax.legend()
+
+    # ax = axes[1]
+    # pfplot.freq(raw_center, ax=ax, label=["left", "right"])
+    # ax.set_title("Ear pressure (center)")
+    # ax.legend()
 
     # 2) Reference IR (time)
     ax = axes[1]
-    if reference is not None:
-        pfplot.time(reference, unit="ms", ax=ax)
-        ax.set_title("Reference IR (time)")
+    if center_ref is not None:
+        pfplot.time(center_ref, unit="ms", ax=ax)
+        ax.set_title("Reference pressure (center)")
     else:
+
+        
         ax.set_title("Reference IR (missing)")
 
     # 3) Reference inverse (magnitude)
     ax = axes[2]
-    if reference_inv is not None:
-        pfplot.freq(reference_inv, freq_scale="log", ax=ax, label=["inv L", "inv R"])
-        ax.set_title("Inverse reference (magnitude)")
-        ax.set_xlim(50, reference_inv.sampling_rate / 2)
+    if center_ref_inv is not None:
+        pfplot.freq(center_ref_inv, freq_scale="log", ax=ax, label=["inv L", "inv R"])
+        ax.set_title("Inverted reference")
+        ax.set_xlim(50, center_ref_inv.sampling_rate / 2)
         ax.legend()
     else:
         ax.set_title("Inverse reference (missing)")
 
-    # 4) Center HRIR before vs after equalization (time)
+    # 4) Center HRIR before vs after equalization (freq)
     ax = axes[3]
-    pfplot.time(raw_center, unit="ms", ax=ax, color=[0.6, 0.6, 0.6])
-    pfplot.time(equalized_center, unit="ms", ax=ax, label=["equalized L", "equalized R"])
+    pfplot.freq(raw_center, ax=ax, color=[0.6, 0.6, 0.6])
+    pfplot.freq(hrir_equalized[center_idx], ax=ax, label=["equalized L", "equalized R"])
     ax.set_title("Center HRIR: raw vs equalized")
     ax.legend()
 
-    # 5) Time-shifted HRIRs (all positions)
+    # 5) Time-shifted HRIRs (center)
     if hrir_shifted is not None:
         ax = axes[4]
-        pfplot.time(hrir_shifted, dB=True, unit="ms", ax=ax)
-        ax.set_title("Equalized HRIRs (time-shifted, all positions)")
+        pfplot.time(hrir_shifted[center_idx], dB=False, unit="ms", ax=ax)
+        ax.set_title("Equalized HRIRs (time-shifted)")
 
     # 6) Aligned center HRIR (1 ms onset)
     if hrir_aligned is not None:
         ax = axes[5]
-        pfplot.time(hrir_aligned[center_idx], unit="ms", ax=ax)
-        ax.axvline(1.0, color="k", linestyle="--", label="1 ms onset target")
-        ax.set_xlim(0, 5)
-        ax.legend()
-        ax.set_title("Aligned center HRIR")
-
-        # 7) Aligned HRIRs (all positions)
-        ax = axes[6]
-        pfplot.time(hrir_aligned, unit="ms", ax=ax)
+        pfplot.time(hrir_aligned, unit="ms", ax=ax, linewidth=0.5)
         ax.axvline(1.0, color="k", linestyle="--", label="1 ms onset target")
         ax.set_xlim(0, 5)
         ax.legend()
         ax.set_title("Aligned HRIRs (all positions)")
 
-    # 8) Windowed HRIRs + window
+    # 7) Windowed HRIRs + window
     if hrir_windowed is not None:
-        ax = axes[7]
+        ax = axes[6]
         pfplot.time(hrir_windowed, unit="ms", dB=True, ax=ax)
         if window is not None:
             pfplot.time(window, unit="ms", dB=True, color="k", linestyle="--", ax=ax, label="window")
         ax.set_xlim(0, 10)
-        ax.set_title("Windowed HRIRs + window")
+        ax.set_title("Windowed HRIRs")
         ax.legend()
 
-    # 9) Frequency response (center) before vs after windowing
+    # 8) Frequency response (center) before vs after windowing
     if hrir_aligned is not None:
-        ax = axes[8]
+        ax = axes[7]
         pfplot.freq(
             hrir_aligned[center_idx], freq_scale="log", ax=ax, color=[0.6, 0.6, 0.6]
         )
@@ -1921,9 +1938,18 @@ def _plot_equalization_pyfar(
             ax=ax,
             label=["windowed L", "windowed R"],
         )
-        ax.set_title("Center HRIR: aligned vs windowed (magnitude)")
+        ax.set_title("Windowed HRIR (center)")
         ax.set_xlim(50, hrir_windowed.sampling_rate / 2)
         ax.legend(loc="lower left")
+
+    # 9) Final cropped IR (center)
+    if hrir_final is not None:
+        ax = axes[8]
+        pfplot.time(hrir_final[center_idx], unit="ms", ax=ax)
+        ax.axvline(1.0, color="k", linestyle="--", label="1 ms onset target")
+        ax.legend()
+        ax.set_title("Final center IR")
+
     fig.tight_layout()
     plt.show()
 
@@ -2017,6 +2043,6 @@ def _wrap_az_deg_ccw(az):
 
 
 """
-hrir.write_sofa(data_dir / 'hrtf' / 'rec' / subject_id / str(subject_id + '.sofa'))  # write to subject rec folder
-hrir.write_sofa(data_dir / 'hrtf' / 'sofa' / str(subject_id + '.sofa'))  # write to sofa folder
+hrir.write_sofa(hrtf_dir / 'rec' / subject_id / str(subject_id + '.sofa'))  # write to subject rec folder
+hrir.write_sofa(hrtf_dir / 'sofa' / str(subject_id + '.sofa'))  # write to sofa folder
 """

@@ -38,7 +38,7 @@ ref_dir = hrtf_dir / "rec" / "reference" / reference
 # -------------------------------------------------------------------------
 def record_hrir(
     subject_id: str, reference: str, n_directions: int = 5, n_recordings: int = 5,
-    fs: int = fs, overwrite: bool = False, n_samp_out: int = 256, show: bool = True):
+    fs: int = fs, overwrite: bool = False, n_samples_out: int = 256, show: bool = True):
 
     # 1) in ear recordings
     if (not subject_dir.exists()) or overwrite:
@@ -79,7 +79,7 @@ def record_hrir(
     # 6) Extend azimuths + add binaural cues (ILD full-band off-midline + ITD align)
     hrir = expand_azimuths_with_binaural_cues(hrir, az_range=(-50, 50), head_radius=0.0875, show=False)
 
-    # 5) Export to slab.HRTF when ready
+    # 5) Export to slab.HRTF
     hrir = hrir.to_slab_hrtf(datatype="FIR")
     if show:
         fig, ax = plt.subplots()

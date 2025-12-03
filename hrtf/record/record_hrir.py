@@ -282,12 +282,12 @@ class Recordings(SpeakerGridBase):
         min_el = min(spk.elevation for spk in speakers)
 
         recordings_dict = {}
-        filt = slab.Filter.band(kind="hp", frequency=hp_freq, samplerate=fs)
+        # filt = slab.Filter.band(kind="hp", frequency=hp_freq, samplerate=fs) # todo check if necessary
         [led_speaker] = freefield.pick_speakers(23)  # get object for center speaker LED
 
         for n in range(n_directions):
             elevation_step = n * res
-            if n_directions > 1:
+            if n_directions > 1: # skip for reference recordings
                 freefield.write(tag='bitmask', value=led_speaker.digital_channel,
                                 processors=led_speaker.digital_proc)  # illuminate LED
                 input(f"Press Enter when head is at {0 + elevation_step}° elevation ...")
@@ -470,10 +470,11 @@ class Recordings(SpeakerGridBase):
         for _ in range(n_recordings):
             recordings.append(
                 freefield.play_and_record(
-                    speaker,
-                    signal,
+                    speaker=speaker,
+                    sound=signal,
+                    compensate_delay=True,
                     equalize=False,
-                    recording_samplerate=fs*2,  # due to the rp2 silently running on fs / 2
+                    recording_samplerate=fs,  # due to the rp2 silently running on fs / 2
                 )
             )
         return slab.Binaural(numpy.mean(recordings, axis=0))

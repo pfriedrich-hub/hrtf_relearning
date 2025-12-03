@@ -259,18 +259,18 @@ class Recordings(SpeakerGridBase):
         self.signal = signal
 
     @classmethod
-    def record_dome(cls, n_directions=5, n_recordings=5, hp_freq=50, fs=48828):
+    def record_dome(cls, n_directions=5, n_recordings=5, hp_freq=120, fs=48828):
         """Record across the dome and return a Recordings object with all parameters stored."""
         if freefield.PROCESSORS.mode != "play_birec":
             freefield.initialize("dome", "play_birec")
 
         # excitation signal  # todo 1 - adjust sweep parameters (freq range and ramp) to measure across 120-18 khz
         params = {"type": "slab.Sound.chirp", "duration": 0.2, "level": 85,
-                  "from_frequency": 20, "to_frequency": 19e3, "samplerate": fs}
-        # Orb Audio Mod1 frequency response: 120 Hz - 18 KHz
+                  "from_frequency": 120, "to_frequency": fs/2, "samplerate": fs}
+        # Orb Audio Mod1 frequency response: 120 Hz - 18 KHz, 5 ms ramp cuts off some frequencies
         signal = slab.Sound.chirp(duration=params["duration"], level=params["level"], samplerate=fs, kind='logarithmic',
                                   from_frequency=params["from_frequency"], to_frequency=params["to_frequency"])
-        signal = signal.ramp(when="both", duration=0.01)  # matches the cos ramp in bi_play_buf.rcx
+        signal = signal.ramp(when="both", duration=0.005)  # matches the cos ramp in bi_play_buf.rcx
         signal.params = params
 
         speakers_all = freefield.read_speaker_table()
@@ -282,7 +282,7 @@ class Recordings(SpeakerGridBase):
         min_el = min(spk.elevation for spk in speakers)
 
         recordings_dict = {}
-        filt = slab.Filter.band(kind="hp", frequency=hp_freq, samplerate=fs) # todo check if necessary
+        filt = slab.Filter.band(kind="hp", frequency=hp_freq, samplerate=fs)
         [led_speaker] = freefield.pick_speakers(23)  # get object for center speaker LED
 
         for n in range(n_directions):
@@ -297,7 +297,7 @@ class Recordings(SpeakerGridBase):
                 if spk.elevation >= min_el:
                     logging.info(f"Recording from Speaker {spk.index} at {spk.elevation:.1f}° elevation")
                     key = f"{spk.index}_{spk.azimuth}_{spk.elevation}"
-                    rec = cls.record_speaker(spk, signal, n_recordings, fs)
+                    rec = cls.record_speaker(spk, signal, n_recordings, fs*2)
                     rec.data -= numpy.mean(rec.data, axis=0)  # remove DC
                     rec = filt.apply(rec)  # highpass filter
                     recordings_dict[key] = rec

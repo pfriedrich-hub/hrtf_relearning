@@ -298,7 +298,9 @@ class Recordings(SpeakerGridBase):
                     logging.info(f"Recording from Speaker {spk.index} at {spk.elevation:.1f}° elevation")
                     key = f"{spk.index}_{spk.azimuth}_{spk.elevation}"
                     rec = cls.record_speaker(spk, signal, n_recordings, fs)
-                    recordings_dict[key] = filt.apply(rec)
+                    rec.data -= numpy.mean(rec.data, axis=0)  # remove DC
+                    rec = filt.apply(rec)  # highpass filter
+                    recordings_dict[key] = rec
             freefield.write(tag='bitmask', value=0, processors=led_speaker.digital_proc)  # turn off LED
         params = {
             "fs": fs,

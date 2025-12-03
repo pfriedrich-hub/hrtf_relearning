@@ -13,7 +13,7 @@ fs=48828
 slab.set_default_samplerate(fs)
 
 # --- record KEMAR HRIR across the central dome
-hrir = record_hrir(subject_id='kemar_test', reference = 'ref_07.11', n_directions=1, n_recordings=5,
+hrir = record_hrir(subject_id='kemar_test', reference = 'kemar_reference', n_directions=1, n_recordings=5,
     fs=fs, overwrite=True, n_samples_out=256, show=True) #todo step by step
 
 # --- signal

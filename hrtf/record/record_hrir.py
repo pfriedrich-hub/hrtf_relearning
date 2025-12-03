@@ -282,7 +282,7 @@ class Recordings(SpeakerGridBase):
         min_el = min(spk.elevation for spk in speakers)
 
         recordings_dict = {}
-        # filt = slab.Filter.band(kind="hp", frequency=hp_freq, samplerate=fs) # todo check if necessary
+        filt = slab.Filter.band(kind="hp", frequency=hp_freq, samplerate=fs) # todo check if necessary
         [led_speaker] = freefield.pick_speakers(23)  # get object for center speaker LED
 
         for n in range(n_directions):
@@ -474,7 +474,7 @@ class Recordings(SpeakerGridBase):
                     sound=signal,
                     compensate_delay=True,
                     equalize=False,
-                    recording_samplerate=fs,  # due to the rp2 silently running on fs / 2
+                    recording_samplerate=fs,
                 )
             )
         return slab.Binaural(numpy.mean(recordings, axis=0))

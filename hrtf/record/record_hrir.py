@@ -29,9 +29,7 @@ n_samples_out = 256
 slab.set_default_samplerate(fs)
 freefield.set_logger("info")
 
-hrtf_dir = Path.cwd() / "data" / "hrtf"
-subject_dir = hrtf_dir / "rec" / subject_id
-ref_dir = hrtf_dir / "rec" / "reference" / reference
+
 
 # -------------------------------------------------------------------------
 # High-level: record HRIR for one subject
@@ -40,9 +38,14 @@ def record_hrir(
     subject_id: str, reference: str, n_directions: int = 5, n_recordings: int = 5,
     fs: int = fs, overwrite: bool = False, n_samples_out: int = 256, show: bool = True):
 
+    hrtf_dir = Path.cwd() / "data" / "hrtf"
+    subject_dir = hrtf_dir / "rec" / subject_id
+    ref_dir = hrtf_dir / "rec" / "reference" / reference
+
     # 1) in ear recordings
     if (not subject_dir.exists()) or overwrite:
-        ear_pressure = Recordings.record_dome(n_directions, n_recordings, hp_freq=50, fs=fs)
+        subject_dir.mkdir(exist_ok=True, parents=True)
+        ear_pressure = Recordings.record_dome(n_directions, n_recordings, hp_freq=120, fs=fs)
         ear_pressure.params["subject_id"] = subject_id
         ear_pressure.to_wav(subject_dir, overwrite=overwrite)
     else:
@@ -53,7 +56,7 @@ def record_hrir(
     if (not ref_dir.exists()) or overwrite:
         logging.info("Recording new reference")
         ref_dir.mkdir(exist_ok=True, parents=True)
-        reference_pressure = Recordings.record_dome(n_directions=1, n_recordings=n_recordings, hp_freq=50, fs=fs)
+        reference_pressure = Recordings.record_dome(n_directions=1, n_recordings=n_recordings, hp_freq=120, fs=fs)
         reference_pressure.params["subject_id"] = reference
         reference_pressure.to_wav(ref_dir, overwrite=overwrite)
     else:
@@ -274,7 +277,7 @@ class Recordings(SpeakerGridBase):
         signal.params = params
 
         speakers_all = freefield.read_speaker_table()
-        speakers = cls.get_speakers(speakers_all, azimuth=0, elevation=None)
+        speakers = cls.get_speakers(speakers_all, azimuth=0, elevation=(50, -37.5))  # omit speaker at -50°
         if len(speakers) < 2:
             raise RuntimeError("Need at least two speakers to infer vertical resolution.")
 
@@ -300,6 +303,7 @@ class Recordings(SpeakerGridBase):
                     rec = cls.record_speaker(spk, signal, n_recordings, fs*2)
                     rec.data -= numpy.mean(rec.data, axis=0)  # remove DC
                     rec = filt.apply(rec)  # highpass filter
+                    rec = slab.Binaural(data=rec.channel(0).data, samplerate=fs)  # for kemar reference where we only have one mic
                     recordings_dict[key] = rec
             freefield.write(tag='bitmask', value=0, processors=led_speaker.digital_proc)  # turn off LED
         params = {
@@ -607,7 +611,7 @@ class Recordings(SpeakerGridBase):
         specs_R = numpy.asarray(specs_R)
 
         # baseline correction (compute common baseline from original data)
-        baseline = numpy.mean((specs_L + specs_R) / 2, axis=0)
+        baseline = numpy.mean((specs_L + specs_R) / 2)
 
         specs_L = specs_L - baseline
         specs_R = specs_R - baseline

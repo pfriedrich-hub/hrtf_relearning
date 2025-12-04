@@ -1,109 +1,274 @@
+"""
+Headphone Equalization Script
+-----------------------------
+
+This script measures or loads a raw headphone impulse response (HpIR), and
+computes an equalization filter that compensates the headphone transfer
+function. The resulting inverse filter can be used for HRTF recordings or
+psychophysical experiments requiring flat headphone playback.
+
+Steps:
+1. Initialize hardware and generate the test signal (logarithmic chirp).
+2. Record or load the raw headphone response.
+3. Convert to pyfar.Signal.
+4. Compute the headphone transfer function.
+5. Build a regularized minimum-phase inverse filter.
+6. Optionally plot TF/IR and intermediate steps.
+7. Return or save the equalization filter in a dictionary.
+
+Dependencies:
+- freefield
+- slab
+- pyfar
+- matplotlib
+"""
+
 import matplotlib
-matplotlib.use('tkagg')
+matplotlib.use("tkagg")
 from matplotlib import pyplot as plt
-import freefield
-import slab
 import numpy
 import pyfar
+import slab
+import freefield
 import warnings
-warnings.filterwarnings("ignore", category=pyfar._utils.PyfarDeprecationWarning)
 from pathlib import Path
-from copy import deepcopy
 import pickle
-fs = 48828
-slab.set_default_samplerate(fs)
+warnings.filterwarnings("ignore", category=pyfar._utils.PyfarDeprecationWarning)
+freefield.set_logger("info")
 
-# initialize setup with standard samplerate (48824)
-freefield.initialize('headphones', default='bi_play_rec')
-freefield.set_logger('info')
+# -------------------------------------------------------------------------
+# CONFIG
+# -------------------------------------------------------------------------
+hp_id = 'MYSPHERE'
+save_path = Path.cwd() / 'data' / 'sounds' / f'{hp_id}_equalization.wav'
+FS = 48828
+slab.set_default_samplerate(FS)
 
+# sweep parameters
+LEVEL = 85
+N_REC = 5
+LOW_CUTOFF = 20
+HIGH_CUTOFF = 20000
+CHIRP_DURATION = 1.0
+RAMP_DURATION = .001  # 1ms ramp
 
-# signal
-low_cutoff = 20
-high_cutoff = 20000
-rec_repeat = 5  # how often to repeat measurement for averaging
-# signal for loudspeaker calibration
-signal_length = 1.0  # how long should the chirp be?
-ramp_duration = signal_length / 50
-signal = slab.Binaural.chirp(duration=signal_length, level=85, from_frequency=low_cutoff, to_frequency=high_cutoff,
-                          kind='logarithmic')
-# signal = slab.Sound.ramp(signal, when='both', duration=ramp_duration)
+# regularization parameters
+BETA = .05
 
+# -------------------------------------------------------------------------
+# SIGNAL GENERATION
+# -------------------------------------------------------------------------
 
-recs = []
-for i in range(rec_repeat):
-    recs.append(freefield.play_and_record_headphones(speaker='both', sound=signal, compensate_delay=True, distance=0,
-                                     equalize=False, recording_samplerate=fs))
-    freefield.wait_to_finish_playing()
-hp_raw = slab.Sound(data=numpy.mean(recs, axis=0))
+def generate_chirp():
+    """
+    Generate a logarithmic binaural test chirp for measuring headphone TF.
 
-hp_raw = slab.Binaural.read('/Users/paulfriedrich/projects/hrtf_relearning/hrtf/record/calibration/hp_raw.wav')
+    Returns
+    -------
+    signal : slab.Binaural
+        Two-channel chirp from LOW_CUTOFF to HIGH_CUTOFF Hz.
+    """
+    signal =  slab.Binaural.chirp(
+        duration=CHIRP_DURATION,
+        level=LEVEL,
+        from_frequency=LOW_CUTOFF,
+        to_frequency=HIGH_CUTOFF,
+        kind="logarithmic"
+    )
+    signal = signal.ramp('both', RAMP_DURATION)
+    return signal
 
+# -------------------------------------------------------------------------
+# MEASUREMENT OR LOADING
+# -------------------------------------------------------------------------
 
-# pyfar solution
-# convert to pyfar
-hp_raw = pyfar.Signal(hp_raw.data.T, hp_raw.samplerate)
-signal = pyfar.Signal(signal.data.T, signal.samplerate)
+def measure_hp_raw(signal, repeats=5):
+    """
+    Measure raw headphone impulse response using freefield.
 
-# headphone transfer function
-signal_inv = pyfar.dsp.regularized_spectrum_inversion(signal, frequency_range=(60, high_cutoff))
-hp_tf = hp_raw * signal_inv
+    Parameters
+    ----------
+    signal : slab.Sound
+        Test signal to be played.
+    repeats : int
+        Number of repeated measurements to average.
 
-# invert to obtain equalizing filter
-hp_filt = pyfar.dsp.regularized_spectrum_inversion(hp_tf, frequency_range=(low_cutoff, high_cutoff))
-hp_filt = pyfar.dsp.time_shift(hp_filt, 2000)
-
-# window
-# onsets = pyfar.dsp.find_impulse_response_start(hp_filt, threshold=15)
-# onsets_min = numpy.min(onsets) / fs  # earliest onset in seconds
-# times = (onsets_min - .00025,  # start of fade-in
-#          onsets_min,  # end if fade-in
-#          onsets_min + .0048,  # start of fade_out
-#          onsets_min + .0058)  # end of_fade_out
-# hp_filt, window = pyfar.dsp.time_window(hp_filt, times, "hann", unit="s", crop="none", return_window=True)
-
-# shift to 1ms
-shift_s = .0001 - pyfar.dsp.find_impulse_response_start(hp_filt, threshold=20)
-hp_filt = pyfar.dsp.time_shift(hp_filt, shift_s)
-
-# crop
-# times_samples = [0, 10, 246, 255]
-# hp_filt = pyfar.dsp.time_window(hp_filt, times_samples, "hann", crop="end")
-
-# test
-equalized = pyfar.dsp.convolve(hp_raw, hp_filt, mode='full', method='overlap_add')
-plt.figure()
-pyfar.plot.time_freq(equalized)
-plt.title('not windowed, not cropped, req inv')
-
-
-# slab equalization
-# parameters
-freq_bins = 1000
-bandwidth = 1 / 50
-alpha = 1.0
-filter_bank = slab.Filter.equalizing_filterbank(signal.channel(0), hp_raw, length=freq_bins, low_cutoff=low_cutoff,
-                                                high_cutoff=high_cutoff, bandwidth=bandwidth, alpha=alpha)
-
-# test
-attenuated = deepcopy(signal)
-attenuated = filter_bank.apply(attenuated)
-
-recs = []
-for i in range(rec_repeat):
-    recs.append(freefield.play_and_record_headphones(speaker='both', sound=attenuated, compensate_delay=True, distance=0,
-                                     equalize=False, recording_samplerate=fs))
-    freefield.wait_to_finish_playing()
-equalized_recording = slab.Sound(data=numpy.mean(recs, axis=0))
+    Returns
+    -------
+    slab.Binaural
+        Averaged binaural recording.
+    """
+    # Initialize freefield for headphone playback
+    if not freefield.PROCESSORS.mode == 'bi_play_rec':
+        freefield.initialize("headphones", default="bi_play_rec")
+    input('Press Enter to start recording.')
+    recs = []
+    for _ in range(repeats):
+        rec = freefield.play_and_record_headphones(
+            speaker="both",
+            sound=signal,
+            compensate_delay=True,
+            distance=0,
+            equalize=False,
+            recording_samplerate=FS,
+        )
+        freefield.wait_to_finish_playing()
+        recs.append(rec)
+    return slab.Sound(data=numpy.mean(recs, axis=0))
 
 
-# equalization = dict()  # dictionary to hold equalization parameters
-# array_equalization = {f"{speakers[i].index}": {"level": equalization_levels[i], "filter": filter_bank.channel(i)}
-#                       for i in range(len(speakers))}
-# equalization.update(array_equalization)
-# # write final equalization to pkl file
-# # freefield_path = freefield.DIR / 'data'
-# project_path = Path.cwd() / 'data' / 'calibration'
-# equalization_path = project_path / f'calibration_dome_100k_31.10'
-# with open(equalization_path, 'wb') as f:  # save the newly recorded calibration
-#     pickle.dump(equalization, f, pickle.HIGHEST_PROTOCOL)
+# -------------------------------------------------------------------------
+# EQUALIZATION FILTER
+# -------------------------------------------------------------------------
+
+def compute_headphone_equalization(recording, excitation, show=False):
+    """
+    Compute a regularized, minimum-phase inverse filter for headphone equalization.
+
+    Parameters
+    ----------
+    recording : slab.Sound
+        Binaural recording of the played chirp.
+    excitation : slab.Sound
+        The original test chirp.
+    show : bool
+        Plot intermediate results (TF, inverse, equalized response).
+
+    Returns
+    -------
+    eq_filter : pyfar.Signal
+        Two-channel equalization filter.
+    """
+
+    # ------------------------------------------------------------------
+    # Convert to pyfar.Signal
+    # ------------------------------------------------------------------
+    hp_raw = pyfar.Signal(recording.data.T, recording.samplerate)
+    sig = pyfar.Signal(excitation.data.T, excitation.samplerate)
+
+    # ------------------------------------------------------------------
+    # Compute headphone transfer function: HpTF = recording / signal
+    # ------------------------------------------------------------------
+    signal_inv = pyfar.dsp.regularized_spectrum_inversion(
+        sig, frequency_range=(60, HIGH_CUTOFF)
+    )
+    hp_ir = hp_raw * signal_inv
+
+    # Normalize peak to 1
+    hp_ir.time *= 1 / numpy.max(hp_ir.time)
+
+    # Align IR to 10 ms
+    onset = pyfar.dsp.find_impulse_response_start(hp_ir, threshold=20)
+    shift_s = 0.01 - onset / hp_ir.sampling_rate
+    hp_ir = pyfar.dsp.time_shift(hp_ir, shift_s, unit="s")
+
+    if show:
+        plt.figure()
+        plt.title("Raw HpTF / IR")
+        pyfar.plot.time_freq(hp_ir)
+
+    # ------------------------------------------------------------------
+    # Regularization
+    # ------------------------------------------------------------------
+    reg = pyfar.dsp.filter.low_shelf(
+        pyfar.signals.impulse(hp_ir.n_samples), 60, 20, 2
+    )
+    reg = pyfar.dsp.filter.high_shelf(reg, 6000, 20, 2) * 0.1
+
+    beta = BETA  # strength of regularization
+
+    hp_inv_reg = pyfar.dsp.regularized_spectrum_inversion(
+        hp_ir, (0, 20e3), regu_final=reg.freq * beta
+    )
+
+    if show:
+        plt.figure()
+        plt.title("Regularized inverse")
+        pyfar.plot.freq(hp_inv_reg)
+
+    # ------------------------------------------------------------------
+    # Minimum-phase + time windowing
+    # ------------------------------------------------------------------
+    hp_inv_reg = pyfar.dsp.minimum_phase(hp_inv_reg, truncate=False)
+
+    # Shorten the filter (empirically tuned)
+    hp_inv_reg = pyfar.dsp.time_window(
+        hp_inv_reg, [512, 1024], shape="right"
+    )
+
+    # ------------------------------------------------------------------
+    # Final diagnostic plot
+    # ------------------------------------------------------------------
+    if show:
+        ax = pyfar.plot.freq(reg, linestyle="--", label="Regularization")
+        pyfar.plot.freq(hp_ir[0], label="HpTF")
+        pyfar.plot.freq(hp_inv_reg[0], label="Inverse (regularized)")
+        pyfar.plot.freq(
+            pyfar.dsp.convolve(hp_ir[0], hp_inv_reg[0]),
+            label="Equalized HpTF"
+        )
+        ax.set_ylim(-25, 20)
+        plt.legend()
+        plt.show()
+
+    return hp_inv_reg
+
+
+# -------------------------------------------------------------------------
+# SAVE CALIBRATION
+# -------------------------------------------------------------------------
+def save_filter_wav(eq_filter, path: Path):
+    """
+    Save a pyfar filter as WAV (for pyBinSim).
+
+    Parameters
+    ----------
+    eq_filter : pyfar.Signal
+        Filter to save.
+    path : Path
+        Output file path ending in .wav
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    pyfar.io.write_audio(eq_filter, str(path), overwrite=True)
+    print(f"Saved WAV filter to: {path}")
+
+def save_equalization(eq_filter, path: Path):
+    """
+    Save equalization filter to a pickle file.
+
+    Parameters
+    ----------
+    eq_filter : pyfar.Signal
+        Equalization filter.
+    path : Path
+        Output file path.
+    """
+    with open(path, "wb") as f:
+        pickle.dump(eq_filter, f, pickle.HIGHEST_PROTOCOL)
+    print(f"Saved equalization to {path}")
+
+
+# -------------------------------------------------------------------------
+# MAIN PIPELINE
+# -------------------------------------------------------------------------
+
+if __name__ == "__main__":
+
+    # Generate chirp
+    signal = generate_chirp()
+
+    # Load or measure HpIR
+    hp_raw = measure_hp_raw(signal, repeats=N_REC)
+    # hp_raw = slab.Binaural.read(
+    #     "/Users/paulfriedrich/projects/hrtf_relearning/hrtf/record/calibration/hp_raw.wav"
+    # )
+
+    # Compute equalization
+    eq_filter = compute_headphone_equalization(
+        recording=hp_raw,
+        excitation=signal,
+        show=True
+    )
+
+    # Save filter
+    save_filter_wav(eq_filter, save_path)

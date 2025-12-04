@@ -3,7 +3,7 @@ Record KEMAR HRIR, play back and record via Headphones, compare to initial recor
 to validate HRIR recording and processing.
 """
 
-#todo test this with kemars mics and pirates
+#todo test this with kemar mics and pirates
 
 from hrtf.record.record_hrir import *
 import freefield

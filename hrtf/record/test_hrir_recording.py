@@ -11,10 +11,16 @@ freefield.set_logger('info')
 import slab
 fs=48828
 slab.set_default_samplerate(fs)
+subject_id='kemar_test'
+reference = 'kemar_reference'
+n_directions=1
+n_recordings=5
+overwrite=True
+n_samples_out=256
+show=True
 
 # --- record KEMAR HRIR across the central dome
-hrir = record_hrir(subject_id='kemar_test', reference = 'kemar_reference', n_directions=1, n_recordings=5,
-    fs=fs, overwrite=True, n_samples_out=256, show=True) #todo step by step
+hrir = record_hrir(subject_id, reference, n_directions, n_recordings, fs, overwrite, n_samples_out, show)
 
 # --- signal
 signal = slab.Sound.chirp(duration=1.0, level=85, samplerate=fs, kind='logarithmic',

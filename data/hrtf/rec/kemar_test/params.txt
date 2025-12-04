@@ -9,7 +9,7 @@ signal:
   to_frequency: 24414.0
   samplerate: 48828
 highpass frequency: 120
-datetime: 2025-12-04T09:11:59.259978
+datetime: 2025-12-04T12:57:37.826839
 subject_id: kemar_test
 
 Software versions:

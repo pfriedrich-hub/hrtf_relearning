@@ -273,7 +273,7 @@ class Recordings(SpeakerGridBase):
         # Orb Audio Mod1 frequency response: 120 Hz - 18 KHz, 5 ms ramp cuts off some frequencies
         signal = slab.Sound.chirp(duration=params["duration"], level=params["level"], samplerate=fs, kind='logarithmic',
                                   from_frequency=params["from_frequency"], to_frequency=params["to_frequency"])
-        signal = signal.ramp(when="both", duration=0.005)  # matches the cos ramp in bi_play_buf.rcx
+        signal = signal.ramp(when="both", duration=0.001)  # matches the ramp in bi_play_buf.rcx
         signal.params = params
 
         speakers_all = freefield.read_speaker_table()
@@ -303,7 +303,6 @@ class Recordings(SpeakerGridBase):
                     rec = cls.record_speaker(spk, signal, n_recordings, fs*2)
                     rec.data -= numpy.mean(rec.data, axis=0)  # remove DC
                     rec = filt.apply(rec)  # highpass filter
-                    rec = slab.Binaural(data=rec.channel(0).data, samplerate=fs)  # for kemar reference where we only have one mic
                     recordings_dict[key] = rec
             freefield.write(tag='bitmask', value=0, processors=led_speaker.digital_proc)  # turn off LED
         params = {

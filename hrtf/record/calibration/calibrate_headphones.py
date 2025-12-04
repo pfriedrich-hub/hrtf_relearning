@@ -41,19 +41,19 @@ freefield.set_logger("info")
 # -------------------------------------------------------------------------
 hp_id = 'MYSPHERE'
 save_path = Path.cwd() / 'data' / 'sounds' / f'{hp_id}_equalization.wav'
-FS = 48828
-slab.set_default_samplerate(FS)
+fs = 48828
+slab.set_default_samplerate(fs)
 
 # sweep parameters
 LEVEL = 85
 N_REC = 5
 LOW_CUTOFF = 20
-HIGH_CUTOFF = 20000
+HIGH_CUTOFF = fs/2
 CHIRP_DURATION = 1.0
 RAMP_DURATION = .001  # 1ms ramp
 
 # regularization parameters
-BETA = .05
+BETA = 0.2
 
 # -------------------------------------------------------------------------
 # SIGNAL GENERATION
@@ -101,7 +101,6 @@ def measure_hp_raw(signal, repeats=5):
     # Initialize freefield for headphone playback
     if not freefield.PROCESSORS.mode == 'bi_play_rec':
         freefield.initialize("headphones", default="bi_play_rec")
-    input('Press Enter to start recording.')
     recs = []
     for _ in range(repeats):
         rec = freefield.play_and_record_headphones(
@@ -110,7 +109,7 @@ def measure_hp_raw(signal, repeats=5):
             compensate_delay=True,
             distance=0,
             equalize=False,
-            recording_samplerate=FS,
+            recording_samplerate=fs, #* 2,
         )
         freefield.wait_to_finish_playing()
         recs.append(rec)
@@ -192,15 +191,17 @@ def compute_headphone_equalization(recording, excitation, show=False):
     hp_inv_reg = pyfar.dsp.minimum_phase(hp_inv_reg, truncate=False)
 
     # Shorten the filter (empirically tuned)
-    hp_inv_reg = pyfar.dsp.time_window(
-        hp_inv_reg, [512, 1024], shape="right"
-    )
+    # hp_inv_reg = pyfar.dsp.time_window(
+    #     hp_inv_reg, [0, 1024], shape="right", window='boxcar', crop='window'
+    # )
+
 
     # ------------------------------------------------------------------
     # Final diagnostic plot
     # ------------------------------------------------------------------
     if show:
-        ax = pyfar.plot.freq(reg, linestyle="--", label="Regularization")
+        fig, ax = plt.subplots()
+        pyfar.plot.freq(reg, linestyle="--", label="Regularization", ax=ax)
         pyfar.plot.freq(hp_ir[0], label="HpTF")
         pyfar.plot.freq(hp_inv_reg[0], label="Inverse (regularized)")
         pyfar.plot.freq(
@@ -232,7 +233,7 @@ def save_filter_wav(eq_filter, path: Path):
     pyfar.io.write_audio(eq_filter, str(path), overwrite=True)
     print(f"Saved WAV filter to: {path}")
 
-def save_equalization(eq_filter, path: Path):
+def save_equalization(eq_filter):
     """
     Save equalization filter to a pickle file.
 
@@ -243,9 +244,22 @@ def save_equalization(eq_filter, path: Path):
     path : Path
         Output file path.
     """
-    with open(path, "wb") as f:
-        pickle.dump(eq_filter, f, pickle.HIGHEST_PROTOCOL)
-    print(f"Saved equalization to {path}")
+    # convert to slab filter
+    filter = slab.Filter(
+        data=eq_filter.time.T,
+        samplerate=fs,
+        fir="IR",
+    )
+    speakers = freefield.pick_speakers([0, 1])
+    equalization = dict()
+    equalization.update({f"{speakers[i].index}": {"level": None, "filter": filter.channel(i)}
+                          for i in range(len(speakers))})
+    freefield_path = freefield.DIR / 'data'
+    equalization_path = freefield_path / f'calibration_{hp_id}.pkl'
+    with open(equalization_path, 'wb') as f:  # save the newly recorded calibration
+        pickle.dump(equalization, f, pickle.HIGHEST_PROTOCOL)
+    print(f"Writing equalization to {equalization_path}")
+
 
 
 # -------------------------------------------------------------------------
@@ -258,17 +272,22 @@ if __name__ == "__main__":
     signal = generate_chirp()
 
     # Load or measure HpIR
-    hp_raw = measure_hp_raw(signal, repeats=N_REC)
+    recording = measure_hp_raw(signal, repeats=N_REC)
     # hp_raw = slab.Binaural.read(
     #     "/Users/paulfriedrich/projects/hrtf_relearning/hrtf/record/calibration/hp_raw.wav"
     # )
 
     # Compute equalization
     eq_filter = compute_headphone_equalization(
-        recording=hp_raw,
+        recording=recording,
         excitation=signal,
-        show=True
-    )
+        show=True)
 
     # Save filter
     save_filter_wav(eq_filter, save_path)
+    save_equalization(eq_filter)
+
+    # test
+    # freefield.load_equalization(freefield.DIR / 'data' / f'calibration_{hp_id}.pkl')
+    #
+    # speakers = freefield.pick_speakers([0, 1])

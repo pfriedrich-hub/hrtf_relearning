@@ -285,4 +285,4 @@ if __name__ == "__main__":
     # test
     # freefield.load_equalization(freefield.DIR / 'data' / f'calibration_{hp_id}.pkl')
     #
-    # speakers = freefield.pick_speakers([0, 1])
+    # speakers = freefield.pick_speakers([0, 1])  #todo check why resulting freq response is inverted for l and r chan

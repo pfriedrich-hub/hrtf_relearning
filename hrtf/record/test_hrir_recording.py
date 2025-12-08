@@ -15,7 +15,7 @@ subject_id='kemar_test'
 reference = 'kemar_reference'
 n_directions=1
 n_recordings=5
-overwrite=True
+overwrite=False
 n_samples_out=256
 show=True
 
@@ -27,6 +27,10 @@ signal = slab.Sound.chirp(duration=1.0, level=85, samplerate=fs, kind='logarithm
                           from_frequency=200, to_frequency=18000)
 signal = signal.ramp(when="both", duration=0.01)  # matches the cos ramp in bi_play_buf.rcx # todo
 
+# load headphone filter
+wav = slab.Sound(data="data/sounds/MYSPHERE_1024.wav")
+filt = slab.Filter(data=wav.data)
+
 # --- play and record from speaker
 freefield.initialize('dome', default='play_birec')
 speaker = freefield.pick_speakers((0, 0))
@@ -37,8 +41,9 @@ dome_rec.spectrum()
 
 # --- play and record from headphones
 freefield.initialize('headphones', default='bi_play_rec')
+freefield.load_equalization(freefield.DIR / 'data' / 'calibration_MYSPHERE.pkl')
 src_idx = hrir.get_source_idx(0,0)
-filtered_signal = hrir.apply(src_idx, signal)
-hp_rec = freefield.play_and_record_headphones(speaker='both', sound=filtered_signal, compensate_delay=True, distance=0, compensate_attenuation=False,
-                               equalize=True, recording_samplerate=48828)
+filtered_signal = filt.apply(hrir.apply(src_idx[0], signal))
+hp_rec = freefield.play_and_record_headphones(speaker='both', sound=signal, compensate_delay=True, distance=0,
+                                              compensate_attenuation=False, equalize=False, recording_samplerate=48828) # equalize=True
 hp_rec.spectrum()

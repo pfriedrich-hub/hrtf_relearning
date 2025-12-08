@@ -17,9 +17,9 @@ warnings.filterwarnings("ignore", category=pyfar._utils.PyfarDeprecationWarning)
 # -------------------------------------------------------------------------
 # Global settings
 # -------------------------------------------------------------------------
-subject_id = 'PF'
+subject_id = 'kemar_test'
 overwrite = False
-reference = 'ref_07.11'
+reference = 'kemar_reference'
 n_directions = 2
 n_recordings = 20
 fs = 48828  # 97656
@@ -548,6 +548,7 @@ class Recordings(SpeakerGridBase):
     # --- plotting of spectra -----------------------------------------------
     def spectrum(
             self,
+            azimuth=0,
             linesep=20,
             xscale="linear",
             axis=None,
@@ -1033,6 +1034,143 @@ class ImpulseResponses(SpeakerGridBase):
         ax.legend(title="Elevation (°)")
         plt.show()
 
+    # --- plotting of transfer functions -----------------------------------------------
+    def tf(
+            self,
+            azimuth=0,
+            linesep=20,
+            xscale="linear",
+            axis=None,
+    ):
+        """
+        Waterfall plot of left + right ear spectra from in-ear recordings.
+        Elevations determine vertical offset (one curve per elevation).
+        Left ear = dark gray, right = lighter gray.
+
+        Parameters
+        ----------
+        xlim : tuple
+            Frequency axis limits.
+        n_bins : int or None
+            FFT resolution for spectrum().
+        linesep : float
+            Vertical separation in dB between stacked spectra.
+        xscale : 'linear' or 'log'
+            Frequency axis scaling.
+        show : bool
+            Show the plot immediately.
+        axis : matplotlib axis or None
+            Insert plot into an existing axis.
+        """
+        xlim = (self.params['signal']['from_frequency'], self.params['signal']['to_frequency'])
+        # Create axis
+        if axis is None:
+            fig, axis = plt.subplots(figsize=(7, 6))
+        else:
+            fig = axis.figure
+
+        keys = list(self.data.keys())
+
+        elevations = []
+        specs_L = []  # left ear spectra
+        specs_R = []  # right ear spectra
+        freqs_saved = None
+
+        # ------------------------------------------------------------------
+        # Extract spectra from all recordings
+        # ------------------------------------------------------------------
+        for key in keys:
+            _, _, el = self.parse_key(key)
+            rec = self.data[key]  # slab.Binaural
+
+            # left ear
+            Hl, freqs = rec.tf(0).spectrum(show=False)
+            # right ear
+            Hr, _ = rec.tf(1).spectrum(show=False)
+
+            if freqs_saved is None:
+                freqs_saved = freqs
+
+            elevations.append(el)
+            specs_L.append(Hl)
+            specs_R.append(Hr)
+
+        elevations = numpy.asarray(elevations)
+        specs_L = numpy.asarray(specs_L)
+        specs_R = numpy.asarray(specs_R)
+
+        # baseline correction (compute common baseline from original data)
+        baseline = numpy.mean((specs_L + specs_R) / 2)
+
+        specs_L = specs_L - baseline
+        specs_R = specs_R - baseline
+
+        # ------------------------------------------------------------------
+        # Sort by elevation
+        # ------------------------------------------------------------------
+        idx = numpy.argsort(elevations)
+        elevations = elevations[idx]
+        specs_L = specs_L[idx]
+        specs_R = specs_R[idx]
+
+        # Compute vertical offsets
+        vlines = numpy.arange(len(elevations)) * (linesep + 20)
+
+        # ------------------------------------------------------------------
+        # Plot waterfall curves
+        # ------------------------------------------------------------------
+        for i, (Hl, Hr) in enumerate(zip(specs_L, specs_R)):
+            axis.plot(
+                freqs_saved, Hl + vlines[i],
+                color="0.25", linewidth=0.8, alpha=0.9, label="Left" if i == 0 else None,
+            )
+            axis.plot(
+                freqs_saved, Hr + vlines[i],
+                color="0.65", linewidth=0.8, alpha=0.9, label="Right" if i == 0 else None,
+            )
+
+        # ------------------------------------------------------------------
+        # Elevation labels
+        # ------------------------------------------------------------------
+        ticks = vlines[::2]
+        labels = elevations[::2].astype(int)
+
+        axis.set_yticks(ticks)
+        axis.set_yticklabels(labels)
+        axis.set_ylabel("Elevation (°)")
+
+        # ------------------------------------------------------------------
+        # dB scale bar (height = linesep)
+        # ------------------------------------------------------------------
+        scale_x = xlim[0] + 300
+        scale_y0 = vlines[-1] + 40
+        scale_y1 = scale_y0 + linesep
+
+        axis.plot([scale_x, scale_x], [scale_y0, scale_y1],
+                  color="0.1", linewidth=1.2)
+        axis.text(
+            scale_x + 90,
+            scale_y0 + linesep / 2,
+            f"{linesep} dB",
+            va="center", fontsize=7, color="0.1"
+        )
+
+        # ------------------------------------------------------------------
+        # Formatting utilities
+        # ------------------------------------------------------------------
+        axis.set_xlim(xlim)
+        axis.set_xscale(xscale)
+
+        # Format frequency labels as kHz
+        axis.xaxis.set_major_formatter(
+            matplotlib.ticker.FuncFormatter(lambda x, pos: f"{int(x / 1000)}")
+        )
+        axis.set_xlabel("Frequency [kHz]")
+
+        axis.grid(axis="y", linestyle=":", linewidth=0.3, alpha=0.5)
+        axis.legend(loc="upper right", fontsize=7)
+        plt.show()
+        return fig
 # -------------------------------------------------------------------------
 # HRTF processing
 # -------------------------------------------------------------------------
@@ -1706,6 +1844,8 @@ def expand_azimuths_with_binaural_cues(
         "date": datetime.now().isoformat(),
     }
     return out_final
+
+
 
 # -------------------------------------------------------------------------
 # Helpers / Plotting

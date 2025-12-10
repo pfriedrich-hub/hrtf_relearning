@@ -1236,11 +1236,7 @@ def equalize(
         # remove DC
         # ref.time -= numpy.mean(reference.time, axis=-1, keepdims=True)
         # regularized inverse of reference
-        ref_inv = pyfar.dsp.regularized_spectrum_inversion(
-            ref,
-            #frequency_range=(from_f, to_f),
-            frequency_range=(200, 15000),
-        )  # todo 2 make sure there are no spikes after adjusting sweep
+        ref_inv = pyfar.dsp.regularized_spectrum_inversion(ref, frequency_range=(200, 18000))
         # save center recordings for plotting
         if ref_key == center_key:
             center_ref = ref
@@ -1285,14 +1281,12 @@ def equalize(
     # ------------------------------------------------------------------
     onsets = pyfar.dsp.find_impulse_response_start(hrir_aligned, threshold=15)
     onsets_min = numpy.min(onsets) / fs  # earliest onset in seconds
-
     times = (onsets_min - .00025,  # start of fade-in
              onsets_min,  # end if fade-in
              onsets_min + .0048,  # start of fade_out
              onsets_min + .0058)  # end of_fade_out
     hrir_windowed, window = pyfar.dsp.time_window(
-        hrir_aligned, times, "hann", unit="s", crop="none", return_window=True
-    )
+        hrir_aligned, times, "hann", unit="s", crop="none", return_window=True)
 
     # cut to n_samp out if raw recordings where provided
     if isinstance(recorded, Recordings):
@@ -1307,6 +1301,7 @@ def equalize(
         hrir_final = hrir_cropped
     else:
         hrir_final = hrir_windowed
+
     # ------------------------------------------------------------------
     # 6) Convert to slab filters and return ImpulseResponses
     # ------------------------------------------------------------------
@@ -1958,7 +1953,7 @@ def _plot_processing_pyfar(excitation, ref_inv, recording, hrir_deconvolved, hri
     pfplot.time(hrir_aligned, unit="ms", ax=ax)
     ax.axvline(1.0, color="k", linestyle="--",
                label="1 ms: desired onset (center)")
-    ax.set_xlim(0, 5)
+    ax.set_xlim(0, 25)
     ax.legend()
     ax.set_title("Aligned HRIRs (all positions)")
 
@@ -1988,7 +1983,6 @@ def _plot_processing_pyfar(excitation, ref_inv, recording, hrir_deconvolved, hri
     ax.set_title(f"HRIRs before/after final truncation (center pos)")
     ax.set_xlim(50, hrir_final.sampling_rate / 2)
     ax.legend(loc="lower left")
-
     fig.tight_layout()
     plt.show()
 
@@ -2055,14 +2049,15 @@ def _plot_equalization_pyfar(
     if hrir_shifted is not None:
         ax = axes[4]
         pfplot.time(hrir_shifted[center_idx], dB=False, unit="ms", ax=ax)
-        ax.set_title("Equalized HRIRs (time-shifted)")
+        ax.set_title("Equalized center HRIR (time-shifted)")
+        ax.set_xlim(0, 75)
 
     # 6) Aligned center HRIR (1 ms onset)
     if hrir_aligned is not None:
         ax = axes[5]
         pfplot.time(hrir_aligned, unit="ms", ax=ax, linewidth=0.5)
         ax.axvline(1.0, color="k", linestyle="--", label="1 ms onset target")
-        ax.set_xlim(0, 5)
+        ax.set_xlim(0, 25)
         ax.legend()
         ax.set_title("Aligned HRIRs (all positions)")
 

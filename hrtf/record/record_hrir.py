@@ -68,8 +68,8 @@ def record_hrir(
     # reference_pressure.plot_spectra()
 
     # 3) Compute TF (deconvolve recordings with inverted excitation signal)
-    # hrir_recorded = ear_pressure.compute_tf(n_samp_out=n_samp_out, show=show)
-    # hrir_reference = reference_pressure.compute_tf(n_samp_out=n_samp_out, show=show)
+    tf_recorded = ear_pressure.compute_tf(n_samp_out=n_samples_out, show=show)
+    tf_reference = reference_pressure.compute_tf(n_samp_out=n_samples_out, show=show)
 
     # 4) Equalize HRIR by reference IR
     hrir = equalize(ear_pressure, reference_pressure, n_samples_out=n_samples_out, show=show)
@@ -88,6 +88,7 @@ def record_hrir(
         fig, ax = plt.subplots()
         hrir.plot_tf(hrir.cone_sources(0), axis=ax)
     return hrir
+
 
 # -------------------------------------------------------------------------
 # Base grid container
@@ -247,6 +248,7 @@ class SpeakerGridBase:
 
         # copy params reference
         return type(self)(data=sub, params=self.params.copy())
+
 
 # -------------------------------------------------------------------------
 # Recordings (binaural in-ear)
@@ -1081,12 +1083,12 @@ class ImpulseResponses(SpeakerGridBase):
         # ------------------------------------------------------------------
         for key in keys:
             _, _, el = self.parse_key(key)
-            rec = self.data[key]  # slab.Binaural
+            filt = self.data[key]  # slab.Binaural
 
             # left ear
-            Hl, freqs = rec.tf(0).spectrum(show=False)
+            freqs, Hl = filt.channel(0).tf(show=False)
             # right ear
-            Hr, _ = rec.tf(1).spectrum(show=False)
+            _, Hr = filt.channel(1).tf(show=False)
 
             if freqs_saved is None:
                 freqs_saved = freqs
@@ -1171,6 +1173,8 @@ class ImpulseResponses(SpeakerGridBase):
         axis.legend(loc="upper right", fontsize=7)
         plt.show()
         return fig
+
+
 # -------------------------------------------------------------------------
 # HRTF processing
 # -------------------------------------------------------------------------

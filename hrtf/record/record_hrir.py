@@ -17,10 +17,10 @@ warnings.filterwarnings("ignore", category=pyfar._utils.PyfarDeprecationWarning)
 # -------------------------------------------------------------------------
 # Global settings
 # -------------------------------------------------------------------------
-subject_id = 'kemar_test'
+subject_id = 'AS'
 overwrite = False
 reference = 'kemar_reference'
-n_directions = 2
+n_directions = 1
 n_recordings = 20
 fs = 48828  # 97656
 show = True

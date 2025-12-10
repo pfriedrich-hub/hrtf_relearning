@@ -120,7 +120,7 @@ def measure_hp_raw(signal, repeats=5):
 # EQUALIZATION FILTER
 # -------------------------------------------------------------------------
 
-def compute_headphone_equalization(recording, excitation, beta, show=False):
+def compute_headphone_equalization(recording, excitation, show=False):
     """
     Compute a regularized, minimum-phase inverse filter for headphone equalization.
 
@@ -174,6 +174,8 @@ def compute_headphone_equalization(recording, excitation, beta, show=False):
     )
     reg = pyfar.dsp.filter.high_shelf(reg, 6000, 20, 2) * 0.1
 
+    beta = BETA  # strength of regularization
+
     hp_inv_reg = pyfar.dsp.regularized_spectrum_inversion(
         hp_ir, (0, 20e3), regu_final=reg.freq * beta
     )
@@ -189,7 +191,10 @@ def compute_headphone_equalization(recording, excitation, beta, show=False):
     hp_inv_reg = pyfar.dsp.minimum_phase(hp_inv_reg, truncate=False)
 
     # Shorten the filter (empirically tuned)
-    hp_inv_reg = pyfar.dsp.time_window(hp_inv_reg, [0, 1024], shape="right", window='boxcar', crop='window')
+    # hp_inv_reg = pyfar.dsp.time_window(
+    #     hp_inv_reg, [0, 1024], shape="right", window='boxcar', crop='window'
+    # )
+
 
     # ------------------------------------------------------------------
     # Final diagnostic plot
@@ -225,7 +230,7 @@ def save_filter_wav(eq_filter, path: Path):
         Output file path ending in .wav
     """
     path.parent.mkdir(parents=True, exist_ok=True)
-    pyfar.io.write_audio(eq_filter, str(path), overwrite=True)  #todo test this
+    pyfar.io.write_audio(eq_filter, str(path), overwrite=True)
     print(f"Saved WAV filter to: {path}")
 
 def save_equalization(eq_filter):
@@ -247,7 +252,7 @@ def save_equalization(eq_filter):
     )
     speakers = freefield.pick_speakers([0, 1])
     equalization = dict()
-    equalization.update({f"{speakers[i].index}": {"level": 0, "filter": filter.channel(i)}
+    equalization.update({f"{speakers[i].index}": {"level": None, "filter": filter.channel(i)}
                           for i in range(len(speakers))})
     freefield_path = freefield.DIR / 'data'
     equalization_path = freefield_path / f'calibration_{hp_id}.pkl'
@@ -267,26 +272,22 @@ if __name__ == "__main__":
     signal = generate_chirp()
 
     # Load or measure HpIR
-    # recording = measure_hp_raw(signal, repeats=N_REC)
-    recording = slab.Binaural.read(Path.cwd() / 'hrtf' / 'record' / 'calibration' / 'hp_raw.wav')
+    recording = measure_hp_raw(signal, repeats=N_REC)
+    # hp_raw = slab.Binaural.read(
+    #     "/Users/paulfriedrich/projects/hrtf_relearning/hrtf/record/calibration/hp_raw.wav"
+    # )
 
     # Compute equalization
     eq_filter = compute_headphone_equalization(
         recording=recording,
         excitation=signal,
-        beta=BETA,
         show=True)
 
+    # Save filter
+    save_filter_wav(eq_filter, save_path)
+    save_equalization(eq_filter)
 
-    # # Save filter
-    # save_filter_wav(eq_filter, save_path)
-    # save_equalization(eq_filter)
-
-    # # test
+    # test
     # freefield.load_equalization(freefield.DIR / 'data' / f'calibration_{hp_id}.pkl')
-    # equalized = freefield.play_and_record_headphones(speaker='both', sound=signal, equalize=True)
-    # equalized.spectrum()
-    # equalized.waveform()
     #
-    # speakers = freefield.pick_speakers([0, 1])  #todo check why resulting freq response is inverted for l and r chan
-    # speakers[0].filter.tf()
+    # speakers = freefield.pick_speakers([0, 1])

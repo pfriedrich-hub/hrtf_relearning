@@ -29,7 +29,8 @@ class Subject:
         self.last_sequence = data.get("last_sequence", None)
         self.file_path = results_dir / f"{self.id}.json"
 
-    def save(self):
+    def write(self):
+        logging.debug("Writing subject data.")
         data = {
             "id": self.id,
             "localization": self.localization,

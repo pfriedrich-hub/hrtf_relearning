@@ -17,7 +17,7 @@ warnings.filterwarnings("ignore", category=pyfar._utils.PyfarDeprecationWarning)
 # -------------------------------------------------------------------------
 # Global settings
 # -------------------------------------------------------------------------
-subject_id = 'AS'
+subject_id = 'kemar_test'
 overwrite = False
 reference = 'kemar_reference'
 n_directions = 1
@@ -69,8 +69,8 @@ def record_hrir(
     # reference_pressure.plot_spectra()
 
     # 3) Compute TF (deconvolve recordings with inverted excitation signal)
-    tf_recorded = ear_pressure.compute_tf(n_samp_out=n_samples_out, show=show)
-    tf_reference = reference_pressure.compute_tf(n_samp_out=n_samples_out, show=show)
+    # tf_recorded = ear_pressure.compute_tf(n_samp_out=n_samples_out, show=show)
+    # tf_reference = reference_pressure.compute_tf(n_samp_out=n_samples_out, show=show)
 
     # 4) Equalize HRIR by reference IR
     hrir = equalize(ear_pressure, reference_pressure, n_samples_out=n_samples_out, show=show)
@@ -1042,7 +1042,7 @@ class ImpulseResponses(SpeakerGridBase):
             self,
             azimuth=0,
             linesep=20,
-            xscale="linear",
+            xscale="log",
             axis=None,
     ):
         """
@@ -1163,14 +1163,25 @@ class ImpulseResponses(SpeakerGridBase):
         # ------------------------------------------------------------------
         axis.set_xlim(xlim)
         axis.set_xscale(xscale)
+        if xscale == "log":
+            axis.set_xscale("log")
+            # optionally: let matplotlib choose ticks/formatter
+            axis.xaxis.set_minor_locator(matplotlib.ticker.LogLocator(base=10.0, subs="all"))
+            axis.xaxis.set_minor_formatter(matplotlib.ticker.LogFormatter(base=10.0,
+                                                                          labelOnlyBase=False))
+            axis.grid(axis='x', which='both', linestyle=':', linewidth=0.3, alpha=1)
+            axis.set_xticks([20, 40, 60, 100, 200, 400, 600, 1000, 2e3, 4e3, 6e3, 10e3, 20e3])
+            axis.set_xticklabels([20,40,60,100,200,400,600,'1k','2k','4k','6k','10k','20k'])
+            axis.set_xlim(1e3, 18e3)  # works better
 
-        # Format frequency labels as kHz
-        axis.xaxis.set_major_formatter(
-            matplotlib.ticker.FuncFormatter(lambda x, pos: f"{int(x / 1000)}")
-        )
-        axis.set_xlabel("Frequency [kHz]")
+        # axis.set_xscale(xscale)
+        # # Format frequency labels as kHz
+        # axis.xaxis.set_major_formatter(
+        #     matplotlib.ticker.FuncFormatter(lambda x, pos: f"{int(x / 1000)}")
+        # )
+        # axis.set_xlabel("Frequency [kHz]")
 
-        axis.grid(axis="y", linestyle=":", linewidth=0.3, alpha=0.5)
+        axis.grid(axis="y", linestyle=":", linewidth=0.3, alpha=1)
         axis.legend(loc="upper right", fontsize=7)
         plt.show()
         return fig

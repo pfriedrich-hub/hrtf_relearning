@@ -19,7 +19,7 @@ from experiment.misc.training_helpers.training_targets import set_target_probabi
 from hrtf.processing.hrtf2binsim import hrtf2binsim
 from experiment.misc.training_helpers import game_ui
 
-logging.getLogger().setLevel('INFO')
+logging.getLogger().setLevel('DEBUG')
 
 # -------------------- Config --------------------
 SUBJECT_ID = "new"
@@ -393,8 +393,7 @@ def play_session():
         session_total=session_total,
         enter_pressed=enter_pressed,
         ui_state=ui_state,
-        highscore=highscore,
-    )
+        highscore=highscore)
     ui_proc = mp.Process(target=game_ui.run_ui, args=(shared, Path.cwd() / "data" / "ui" / "highscores.json"))
     ui_proc.start()
 
@@ -434,9 +433,11 @@ def play_session():
             game_time_left.value = float(settings["game_time"])
 
             while game_timer < settings["game_time"]:
+                # init new session for recording
                 sess = begin_session(subject)
                 globals()["_current_session_id"] = sess['session_id']
                 trial_idx = sess["base_index"] + 1
+
                 # pick next target
                 try:
                     set_target_probabilistic(target, settings, sequence, hrir)
@@ -485,7 +486,6 @@ def play_session():
             # loop continues -> new session
 
     finally:
-        logging.info("Ending")
         try:
             # Clean up workers
             pulse_state.value = 0

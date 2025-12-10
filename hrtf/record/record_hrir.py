@@ -45,6 +45,7 @@ def record_hrir(
     # 1) in ear recordings
     if (not subject_dir.exists()) or overwrite:
         subject_dir.mkdir(exist_ok=True, parents=True)
+        # todo make sure we record 2 channels
         ear_pressure = Recordings.record_dome(n_directions, n_recordings, hp_freq=120, fs=fs)
         ear_pressure.params["subject_id"] = subject_id
         ear_pressure.to_wav(subject_dir, overwrite=overwrite)
@@ -483,7 +484,7 @@ class Recordings(SpeakerGridBase):
                     equalize=False,
                     recording_samplerate=fs,
                 )
-            )
+            )  # todo test this to make sure both channels are recorded!
         return slab.Binaural(numpy.mean(recordings, axis=0))
 
     @staticmethod

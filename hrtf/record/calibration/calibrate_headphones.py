@@ -268,7 +268,7 @@ if __name__ == "__main__":
 
     # Load or measure HpIR
     # recording = measure_hp_raw(signal, repeats=N_REC)
-    recording = slab.Binaural.read("/Users/paulfriedrich/projects/hrtf_relearning/hrtf/record/calibration/hp_raw.wav")
+    recording = slab.Binaural.read(Path.cwd() / 'hrtf' / 'record' / 'calibration' / 'hp_raw.wav')
 
     # Compute equalization
     eq_filter = compute_headphone_equalization(
@@ -278,11 +278,15 @@ if __name__ == "__main__":
         show=True)
 
 
-    # Save filter
-    save_filter_wav(eq_filter, save_path)
-    save_equalization(eq_filter)
+    # # Save filter
+    # save_filter_wav(eq_filter, save_path)
+    # save_equalization(eq_filter)
 
-    # test
+    # # test
     # freefield.load_equalization(freefield.DIR / 'data' / f'calibration_{hp_id}.pkl')
+    # equalized = freefield.play_and_record_headphones(speaker='both', sound=signal, equalize=True)
+    # equalized.spectrum()
+    # equalized.waveform()
     #
     # speakers = freefield.pick_speakers([0, 1])  #todo check why resulting freq response is inverted for l and r chan
+    # speakers[0].filter.tf()

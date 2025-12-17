@@ -1,0 +1,18 @@
+fs: 48828
+n_recordings: 5
+n_directions: 1
+signal:
+  type: slab.Sound.chirp
+  duration: 0.2
+  level: 85
+  from_frequency: 120
+  to_frequency: 24414.0
+  samplerate: 48828
+highpass frequency: 120
+datetime: 2025-12-04T12:46:10.204627
+subject_id: kemar_reference
+
+Software versions:
+  slab:      1.8.2
+  pyfar:     0.7.3
+  freefield: 1.1.0

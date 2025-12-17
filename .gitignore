@@ -1,0 +1,18 @@
+/hrtf_relearning.egg-info/dependency_links.txt
+/hrtf_relearning.egg-info/entry_points.txt
+/hrtf_relearning.egg-info/PKG-INFO
+/hrtf_relearning.egg-info/requires.txt
+/hrtf_relearning.egg-info/SOURCES.txt
+/hrtf_relearning.egg-info/top_level.txt
+# Default ignored files
+/shelf/
+/workspace.xml
+# Editor-based HTTP Client requests
+/httpRequests/
+
+**/data/hrtf/binsim
+
+**misc.xml
+**/hrtf_relearning.iml
+**/E1CD49190819.json
+

@@ -10,6 +10,7 @@
 	h5py h5netcdf metawear pyqt5 pynput pyfar
 
 ## for cuda support (>=RTX 30xx):
+	pip uninstall torch
 	pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
 ## for freefield recording with TDT:
 	pip install git+https://github.com/pfriedrich-hub/freefield.git

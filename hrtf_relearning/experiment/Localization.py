@@ -25,7 +25,7 @@ EAR = None
 hrir = hrtf2binsim(HRIR_NAME, EAR, reverb=True, hp_filter=True,
                    convolution='cpu', storage='cpu', overwrite=False)
 slab.set_default_samplerate(hrir.samplerate)
-HRIR_DIR = Path.cwd() / "data" / "hrtf" / "binsim" / hrir.name
+HRIR_DIR = ROOT / "data" / "hrtf" / "binsim" / hrir.name
 subject = Subject(SUBJECT_ID)
 
 class Localization:

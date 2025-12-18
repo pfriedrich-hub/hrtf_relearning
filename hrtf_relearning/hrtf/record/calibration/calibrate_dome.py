@@ -8,20 +8,17 @@ import numpy
 import pyfar
 import pickle
 from copy import deepcopy
-# import hrtf_relearning
-# from pathlib import Path
-# ROOT = Path(hrtf_relearning.__file__).resolve().parent
 
 # ------------------------ CONFIG ------------------------
 
-SPEAKERS = 'center'          # 'full' or 'center'
+SPEAKERS = 'center'
 FS = 48828
 FILTER_LENGTH = 1024
 LOW_FREQ = 20
-HIGH_FREQ = FS/2
+HIGH_FREQ = FS / 2
 N_REPEATS = 3
 BETA = 0.1
-SHOW = False                 # plotting disabled for now
+SHOW = False
 
 OUTPUT_FILE = freefield.DIR / 'data' / 'calibration_dome.pkl'
 
@@ -31,7 +28,6 @@ def initialize_dome():
     freefield.initialize("dome", default="play_rec")
     freefield.set_logger("info")
     slab.set_default_samplerate(FS)
-    return FS
 
 
 def select_speakers():
@@ -40,83 +36,126 @@ def select_speakers():
     elif SPEAKERS == 'center':
         speaker_idx = [19, 20, 21, 22, 23, 24, 25, 26, 27]
     else:
-        raise ValueError('SPEAKERS must be "full" or "center"')
+        raise ValueError
 
-    speakers = freefield.pick_speakers(speaker_idx)
-    if not speakers:
-        raise RuntimeError("No speakers selected.")
-    return speakers
+    return freefield.pick_speakers(speaker_idx)
 
 
 # ------------------------ EXCITATION ------------------------
 
 def make_excitation():
-    duration = 1.0
-    ramp = duration / 50
-
     sig = slab.Sound.chirp(
-        duration=duration,
+        duration=1.0,
         level=80,
         from_frequency=LOW_FREQ,
         to_frequency=FS / 2,
         kind="logarithmic",
     )
+    return sig.ramp(duration=0.02)
 
-    return sig.ramp(duration=ramp)
 
+# ------------------------ RECORD ONCE ------------------------
 
-# ------------------------ LEVEL MEASUREMENT (PASS 1) ------------------------
+def record_speakers(
+    speakers,
+    excitation,
+    equalize=False,
+    calibration=None,
+):
+    recordings = {}
 
-def measure_speaker_level(speaker, excitation):
-    levels = []
-    logging.info(f'Playing from {speaker}')
-    for _ in range(N_REPEATS):
-        rec = freefield.play_and_record(
-            speaker=speaker,
-            sound=excitation,
-            compensate_delay=True,
-            equalize=False,
-            recording_samplerate=FS * 2,  # TDT workaround
+    for spk in speakers:
+        idx = spk.index
+        logging.info(f"Recording speaker {idx}")
+
+        recs = []
+
+        for _ in range(N_REPEATS):
+            sig = excitation
+
+            if equalize:
+                if calibration is None:
+                    raise ValueError("Calibration required when equalize=True")
+
+                sig = deepcopy(excitation)
+
+                # apply level
+                sig.level += calibration[idx]["level"]
+
+                # apply FIR
+                sig = calibration[idx]["filter"].apply(sig)
+
+            rec = freefield.play_and_record(
+                speaker=spk,
+                sound=sig,
+                compensate_delay=True,
+                equalize=False,              # IMPORTANT
+                recording_samplerate=FS * 2  # TDT workaround
+            )
+
+            recs.append(rec.data)
+
+        recordings[idx] = slab.Sound(
+            data=numpy.mean(recs, axis=0),
+            samplerate=FS
         )
-        levels.append(rec.level)
 
-    return numpy.mean(levels)
+    return recordings
 
 
-def compute_level_equalization(levels):
+
+# ------------------------ LEVEL EQUALIZATION ------------------------
+
+def compute_level_equalization(recordings):
     """
-    Compute relative level corrections (old dome logic).
+    Compute relative level offsets from recordings.
     """
+    levels = {
+        idx: rec.level
+        for idx, rec in recordings.items()
+    }
+
     ref = numpy.mean(list(levels.values()))
-    return {spk: ref - lvl for spk, lvl in levels.items()}
+    return {idx: ref - lvl for idx, lvl in levels.items()}
 
-
-# ------------------------ IR MEASUREMENT (PASS 2) ------------------------
-
-def measure_speaker_ir(speaker, excitation, level_correction):
+def update_levels_from_recordings(
+    recordings,
+    calibration,
+    reference="mean",
+):
     """
-    Measure speaker IR with level equalization applied at playback.
+    Update level corrections in-place based on verified recordings.
+
+    Parameters
+    ----------
+    recordings : dict
+        {speaker_idx: slab.Sound}
+        Recordings made with current calibration applied.
+    calibration : dict
+        {speaker_idx: {"level": float, "filter": slab.Filter}}
+    reference : {"mean", "median"}
+
+    Returns
+    -------
+    residuals : dict
+        {speaker_idx: residual_level_correction}
     """
-    attenuated = deepcopy(excitation)
-    attenuated.level += level_correction
+    levels = {idx: rec.level for idx, rec in recordings.items()}
 
-    recs = []
+    if reference == "mean":
+        ref = numpy.mean(list(levels.values()))
+    elif reference == "median":
+        ref = numpy.median(list(levels.values()))
+    else:
+        raise ValueError("reference must be 'mean' or 'median'")
 
-    for _ in range(N_REPEATS):
-        rec = freefield.play_and_record(
-            speaker=speaker,
-            sound=attenuated,
-            compensate_delay=True,
-            equalize=False,
-            recording_samplerate=FS * 2,  # TDT workaround
-        )
-        recs.append(rec.data)
+    residuals = {}
+    for idx, lvl in levels.items():
+        delta = ref - lvl
+        calibration[idx]["level"] += delta
+        residuals[idx] = delta
 
-    return slab.Sound(
-        data=numpy.mean(recs, axis=0),
-        samplerate=FS
-    )
-
+    return residuals
 
 # ------------------------ FILTER CONSTRUCTION ------------------------
 
@@ -124,134 +163,117 @@ def build_inverse_filter(recording, excitation):
     speaker_raw = pyfar.Signal(recording.data.T, recording.samplerate)
     sig = pyfar.Signal(excitation.data.T, excitation.samplerate)
 
-    # ------------------------------------------------------------------
-    # Compute headphone transfer function: HpTF = recording / signal
-    # ------------------------------------------------------------------
-    signal_inv = pyfar.dsp.regularized_spectrum_inversion(
-        sig, frequency_range=(LOW_FREQ, 22e3),
-    )
-    speaker_ir = speaker_raw * signal_inv
+    # compute speaker TF
+    sig_inv = pyfar.dsp.regularized_spectrum_inversion(
+        sig, frequency_range=(LOW_FREQ, HIGH_FREQ))
+    speaker_ir = speaker_raw * sig_inv  # convolution
 
-    # Normalize peak to 1
-    speaker_ir.time *= 1 / numpy.max(speaker_ir.time)
+    speaker_ir.time /= numpy.max(numpy.abs(speaker_ir.time))  # normalize
 
-    # Align IR to 10 ms
+    # force causality (time shift)
     onset = pyfar.dsp.find_impulse_response_start(speaker_ir, threshold=10)
     shift_s = 0.01 - onset / speaker_ir.sampling_rate
     speaker_ir = pyfar.dsp.time_shift(speaker_ir, shift_s, unit="s")
 
-    # if show:
-    #     plt.figure()
-    #     plt.title("Raw Speaker TF / IR")
-    #     pyfar.plot.time_freq(speaker_ir)
-
-    # ------------------------------------------------------------------
-    # Regularization
-    # ------------------------------------------------------------------
+    # regularize
     reg = pyfar.dsp.filter.low_shelf(
-        pyfar.signals.impulse(speaker_ir.n_samples), 60, 20, 2
-    )
+        pyfar.signals.impulse(speaker_ir.n_samples), 60, 20, 2)
     reg = pyfar.dsp.filter.high_shelf(reg, 6000, 20, 2) * 0.1
+    inv = pyfar.dsp.regularized_spectrum_inversion(  #
+        speaker_ir,
+        frequency_range=(LOW_FREQ, HIGH_FREQ),
+        regu_final=reg.freq * BETA)
 
-    speaker_inv_reg = pyfar.dsp.regularized_spectrum_inversion(
-    speaker_ir, (LOW_FREQ, 22e3), regu_final=reg.freq * BETA)
+    # ensure minimum phase
+    eq = pyfar.dsp.minimum_phase(inv, truncate=False)
+    # crop
+    eq = pyfar.dsp.time_window(eq, [0, FILTER_LENGTH - 1],
+                               shape="right", window="boxcar", crop="window")
 
-    # if show:
-    #     plt.figure()
-    #     plt.title("Regularized inverse")
-    #     pyfar.plot.freq(speaker_inv_reg)
-
-    # ------------------------------------------------------------------
-    # Minimum-phase + time windowing
-    # ------------------------------------------------------------------
-    eq_filter = pyfar.dsp.minimum_phase(speaker_inv_reg, truncate=False)
-
-    eq_filter = pyfar.dsp.time_window(eq_filter, [0, 256 - 1],
-                                      shape="right", window='boxcar', crop='window')
-
-    # ------------------------------------------------------------------
-    # Final diagnostic plot
-    # ------------------------------------------------------------------
-    # if show:
-    #     fig, ax = plt.subplots()
-    #     pyfar.plot.freq(reg, linestyle="--", label="Regularization", ax=ax)
-    #     pyfar.plot.freq(speaker_ir, label="HpTF")
-    #     pyfar.plot.freq(speaker_inv_reg
-    #     , label="Inverse (regularized)")
-    #     pyfar.plot.freq(
-    #         pyfar.dsp.convolve(speaker_ir, eq_filter),
-    #         label="Equalized Speaker TF"
-    #     )
-    #     ax.set_ylim(-25, 20)
-    #     plt.legend()
-    #     plt.show()
-
-    filter = slab.Filter(
-        data=eq_filter.time.T,
-        samplerate=FS,
-        fir="IR")
-
-    return filter
+    return slab.Filter(eq.time.T, samplerate=FS, fir="IR")
 
 
-# ------------------------ MAIN CALIBRATION ------------------------
+# ------------------------ MAIN ------------------------
 
 def main():
     initialize_dome()
     speakers = select_speakers()
     excitation = make_excitation()
 
-    # ---------- PASS 1: level measurement ----------
-    print("\n--- Measuring speaker levels ---")
-    levels = {
-        spk.index: measure_speaker_level(spk, excitation)
-        for spk in speakers
-    }
+    # --------------------------------------------------
+    # PASS A: RAW RECORDING (no EQ)
+    # --------------------------------------------------
+    raw_recordings = record_speakers(
+        speakers,
+        excitation,
+        equalize=False,
+    )
 
-    level_eq = compute_level_equalization(levels)
+    # --------------------------------------------------
+    # OFFLINE DESIGN
+    # --------------------------------------------------
+    level_eq = compute_level_equalization(raw_recordings)
 
-    # ---------- PASS 2: frequency equalization ----------
-    print("\n--- Measuring IRs and building filters ---")
     calibration = {}
-
     for spk in speakers:
+        idx = spk.index
+        filt = build_inverse_filter(raw_recordings[idx], excitation)
+        calibration[idx] = {
+            "level": level_eq[idx],
+            "filter": filt,
+        }
 
+    # --------------------------------------------------
+    # PASS B: VERIFICATION (explicit EQ)
+    # --------------------------------------------------
+    verified_recordings = record_speakers(
+        speakers,
+        excitation,
+        equalize=True,
+        calibration=calibration,
+    )
 
-        recording = measure_speaker_ir(
-            spk,
-            excitation,
-            level_eq[spk.index]
-        )
+    # --------------------------------------------------
+    # UPDATE LEVELS (NEW, INTEGRATED)
+    # --------------------------------------------------
+    residuals = update_levels_from_recordings(
+        verified_recordings,
+        calibration,
+        reference="mean",
+    )
 
-        filt = build_inverse_filter(recording, excitation)
+    # --------------------------------------------------
+    # OPTIONAL: SECOND VERIFICATION PASS
+    # --------------------------------------------------
+    verified_recordings_2 = record_speakers(
+        speakers,
+        excitation,
+        equalize=True,
+        calibration=calibration,
+    )
 
-        calibration.update({f'{spk.index}': {"level": level_eq[spk.index], "filter": filt}})
+    if SHOW:  # inspect
+        fig, axis = plt.subplots(1, 1)
 
+        for idx, rec in verified_recordings_2.items():
+            rec.spectrum(axis=axis)
 
-    # ---------- SAVE ----------
+            # catch the last plotted line
+            line = axis.lines[-1]
+            line.set_label(f"Speaker {idx}")
+
+        axis.legend()
+        plt.show()
+
+    # --------------------------------------------------
+    # SAVE FOR FREEFIELD (ONLY NOW)
+    # --------------------------------------------------
     with open(OUTPUT_FILE, "wb") as f:
         pickle.dump(calibration, f)
 
-    print(f"\nCalibration saved to {OUTPUT_FILE}")
+    print(f"Calibration verified and saved to {OUTPUT_FILE}")
 
-    # test
-    freefield.load_equalization(OUTPUT_FILE)
-    recs = []
-    for spk in speakers:
-        rec = freefield.play_and_record(
-            speaker=spk,
-            sound=excitation,
-            compensate_delay=True,
-            equalize=True,
-            recording_samplerate=FS * 2,  # TDT workaround
-        )
-        # rec.spectrum()
-        plt.title(f'Speaker {spk.index}')
-        recs.append(rec)
-    fig, axis = plt.subplots(1,1)
-    # for rec in recs:
-    #     rec.spectrum(axis=axis)
 
-    diff = freefield.spectral_range(slab.Sound(recs), plot=axis)
+# 
 # if __name__ == "__main__":
 #     main()

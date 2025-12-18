@@ -11,13 +11,13 @@ from hrtf_relearning.hrtf.binsim.hrtf2binsim import hrtf2binsim
 from hrtf_relearning.experiment.Subject import Subject
 from pynput import keyboard
 date = datetime.datetime.now()
-date = f'{date.strftime("%d")}.{date.strftime("%m")}_{date.strftime("%H")}.{date.strftime("%M")}'
+date = f'{date.strftime("%d")}.{date.strftime("%m")}_{date.strftime("%H")}:{date.strftime("%M")}'
 logging.getLogger().setLevel('INFO')
 ROOT = Path(hrtf_relearning.__file__).resolve().parent
 
 
 # --- settings ----
-SUBJECT_ID = "test"
+SUBJECT_ID = "AvS"
 HRIR_NAME = "KU100"  # 'KU100', 'kemar', etc.
 EAR = None
 
@@ -186,6 +186,6 @@ if __name__ == "__main__":
     loc_test = Localization(subject, hrir)
     loc_test.run()
     sequence = subject.localization[loc_test.filename]
-    plot_localization(sequence, report_stats=['elevation'], filepath=ROOT / 'data'  / 'results' / 'plot' / subject.id)
+    plot_localization(sequence, report_stats=['azimuth', 'elevation'], filepath=ROOT / 'data'  / 'results' / 'plot' / subject.id)
     plot_elevation_response(sequence, filepath=ROOT / 'data'  / 'results' / 'plot' / subject.id)
 

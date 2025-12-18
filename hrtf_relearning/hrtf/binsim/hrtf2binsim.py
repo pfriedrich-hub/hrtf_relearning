@@ -35,12 +35,12 @@ def hrtf2binsim(sofa_name, ear=None, reverb=True, hp_filter=True, convolution='c
 
 def write_settings(hrir, reverb, hp_filter, convolution, storage):
     # write settings.txt for training and testing:
-    logging.info(f'Writing {hrir.name}_settings.txt: reverb {reverb} hp filter {hp_filter} '
-                 f'convolution {convolution} storage {storage}')
+    logging.info(f'Writing {hrir.name}_settings.txt: Reverb: {reverb}, HP filter: {hp_filter} '
+                 f'Convolution: {convolution}, Storage: {storage}')
     filename = f'{hrir.name}_training_settings.txt'
     wav_path = data_dir / 'binsim'
     reverb_n_samples = int((int(hrir.samplerate * 0.1) // int(hrir[0].n_taps / 2)) * int(hrir[0].n_taps / 2))
-    hp_filtersize = slab.Sound(str(wav_path / hrir.name / "sounds" / "MYSPHERE_equalization.wav")).n_samples
+    hp_filtersize = slab.Sound(str(wav_path / hrir.name / "sounds" / "HP_filter.wav")).n_samples
     with open(wav_path / hrir.name / filename, 'w') as file:
         file.write(
             f'soundfile {str(wav_path / hrir.name / "sounds" / "noise_pulse.wav")}\n'

@@ -24,7 +24,7 @@ logging.getLogger().setLevel('INFO')
 
 
 # -------------------- Config --------------------
-SUBJECT_ID = "test"
+SUBJECT_ID = "AvS"
 HRIR_NAME = "KU100"  # 'KU100', 'kemar', etc.
 EAR = None              # or None for binaural
 
@@ -35,7 +35,7 @@ show_ui = True  # todo
 SHOW_TF = False  # set to TF or IR to spawn live filter plot
 
 # -------------------- Global HRIR/Sequence --------------------
-hrir = hrtf2binsim(HRIR_NAME, EAR, reverb=False, hp_filter=False,
+hrir = hrtf2binsim(HRIR_NAME, EAR, reverb=True, hp_filter=True,
                    convolution='cpu', storage='cpu', overwrite=False)
 slab.set_default_samplerate(hrir.samplerate)
 HRIR_DIR = ROOT / "data" / "hrtf" / "binsim" / hrir.name
@@ -44,14 +44,15 @@ sequence = subject.last_sequence
 
 # Game settings
 settings = dict(
-    target_size=3,
+    target_size=4,
     target_time=0.5,
-    az_range=sequence.settings["azimuth_range"] if sequence else (-30,30),
-    ele_range=sequence.settings["elevation_range"] if sequence else (-30,30),
+    az_range=sequence.settings["azimuth_range"] if sequence else (-35,35),
+    ele_range=sequence.settings["elevation_range"] if sequence else (-35,35
+                                                                     ),
     min_dist=30,
     game_time=90,
-    trial_time=20,
-    gain=.2)
+    trial_time=15,
+    gain=.15)
 
 # -------------------- Helpers --------------------
 def make_osc_client(port, ip="127.0.0.1"):

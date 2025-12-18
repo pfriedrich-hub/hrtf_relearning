@@ -33,6 +33,8 @@ import freefield
 import warnings
 from pathlib import Path
 import pickle
+import hrtf_relearning
+ROOT = Path(hrtf_relearning.__file__).resolve().parent
 warnings.filterwarnings("ignore", category=pyfar._utils.PyfarDeprecationWarning)
 freefield.set_logger("info")
 
@@ -53,7 +55,7 @@ CHIRP_DURATION = 1.0
 RAMP_DURATION = .001  # 1ms ramp
 
 # regularization parameters
-BETA = 0.2
+BETA = 0.1
 
 N_OUT = 256
 # -------------------------------------------------------------------------
@@ -222,8 +224,8 @@ def pyfar2wav(eq_filter, path: Path):
     path : Path
         Output file path ending in .wav
     """
-    path.parent.mkdir(parents=True, exist_ok=True)
-    pyfar.io.write_audio(eq_filter, str(path), overwrite=True)  #todo test this
+    path = str(ROOT / 'data' / 'sounds' / f'{hp_id}_equalization.wav')
+    pyfar.io.write_audio(eq_filter, path, overwrite=True)  #todo test this
     print(f"Saved WAV filter to: {path}")
 
 def save_equalization(eq_filter):
@@ -245,8 +247,9 @@ def save_equalization(eq_filter):
     )
     speakers = freefield.pick_speakers([0, 1])
     equalization = dict()
-    equalization.update({f"{speakers[i].index}": {"level": 0, "filter": filter.channel(i)}
-                          for i in range(len(speakers))})
+    equalization.update({f"{speakers[0].index}": {"level": 0, "filter": filter.channel(1)}})
+    equalization.update({f"{speakers[1].index}": {"level": 0, "filter": filter.channel(0)}})
+
     freefield_path = freefield.DIR / 'data'
     equalization_path = freefield_path / f'calibration_{hp_id}.pkl'
     with open(equalization_path, 'wb') as f:  # save the newly recorded calibration
@@ -266,16 +269,17 @@ if __name__ == "__main__":
 
     # Load or measure HpIR
     recording = measure_hp_raw(excitation, repeats=N_REC)
-    recording = slab.Binaural.read(Path.cwd() / 'hrtf/record/calibration/hp_raw.wav')
+    # recording = slab.Binaural.read(Path.cwd() / 'hrtf/record/calibration/hp_raw.wav')
 
     # Compute equalization
-    eq_filter = compute_headphone_equalization(recording, excitation, beta=BETA, show=True)
+    eq_filter = compute_headphone_equalization(recording, excitation, beta=0.2, show=True)
 
     # Save filter
     pyfar2wav(eq_filter, save_path)
     save_equalization(eq_filter)
 
     # test
-    # freefield.load_equalization(freefield.DIR / 'data' / f'calibration_{hp_id}.pkl')
-    #
-    # speakers = freefield.pick_speakers([0, 1])
+    freefield.load_equalization(freefield.DIR / 'data' / f'calibration_{hp_id}.pkl')
+    equalized = freefield.play_and_record_headphones(speaker='both', sound=excitation, equalize=True)
+    equalized.spectrum()
+

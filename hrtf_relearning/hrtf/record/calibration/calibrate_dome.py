@@ -8,9 +8,9 @@ import numpy
 import pyfar
 import pickle
 from copy import deepcopy
-import hrtf_relearning
-from pathlib import Path
-ROOT = Path(hrtf_relearning.__file__).resolve().parent
+# import hrtf_relearning
+# from pathlib import Path
+# ROOT = Path(hrtf_relearning.__file__).resolve().parent
 
 # ------------------------ CONFIG ------------------------
 
@@ -128,7 +128,7 @@ def build_inverse_filter(recording, excitation):
     # Compute headphone transfer function: HpTF = recording / signal
     # ------------------------------------------------------------------
     signal_inv = pyfar.dsp.regularized_spectrum_inversion(
-        sig, frequency_range=(LOW_FREQ, 20e3),
+        sig, frequency_range=(LOW_FREQ, 22e3),
     )
     speaker_ir = speaker_raw * signal_inv
 
@@ -154,7 +154,7 @@ def build_inverse_filter(recording, excitation):
     reg = pyfar.dsp.filter.high_shelf(reg, 6000, 20, 2) * 0.1
 
     speaker_inv_reg = pyfar.dsp.regularized_spectrum_inversion(
-    speaker_ir, (LOW_FREQ, 20e3), regu_final=reg.freq * BETA)
+    speaker_ir, (LOW_FREQ, 22e3), regu_final=reg.freq * BETA)
 
     # if show:
     #     plt.figure()
@@ -215,7 +215,7 @@ def main():
     calibration = {}
 
     for spk in speakers:
-        print(f"Calibrating speaker {spk}")
+
 
         recording = measure_speaker_ir(
             spk,
@@ -245,10 +245,13 @@ def main():
             equalize=True,
             recording_samplerate=FS * 2,  # TDT workaround
         )
-        rec.spectrum()
+        # rec.spectrum()
         plt.title(f'Speaker {spk.index}')
-        recs.append(rec.data)
+        recs.append(rec)
+    fig, axis = plt.subplots(1,1)
+    # for rec in recs:
+    #     rec.spectrum(axis=axis)
 
-
+    diff = freefield.spectral_range(slab.Sound(recs), plot=axis)
 # if __name__ == "__main__":
 #     main()

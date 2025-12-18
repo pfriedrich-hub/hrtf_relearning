@@ -9,6 +9,7 @@ import pyfar
 import pickle
 from copy import deepcopy
 import hrtf_relearning
+from pathlib import Path
 ROOT = Path(hrtf_relearning.__file__).resolve().parent
 
 # ------------------------ CONFIG ------------------------
@@ -19,6 +20,7 @@ FILTER_LENGTH = 1024
 LOW_FREQ = 20
 HIGH_FREQ = FS/2
 N_REPEATS = 3
+BETA = 0.1
 SHOW = False                 # plotting disabled for now
 
 OUTPUT_FILE = freefield.DIR / 'data' / 'calibration_dome.pkl'
@@ -118,7 +120,7 @@ def measure_speaker_ir(speaker, excitation, level_correction):
 
 # ------------------------ FILTER CONSTRUCTION ------------------------
 
-def build_inverse_filter(recording, excitation, beta=0.1):
+def build_inverse_filter(recording, excitation):
     speaker_raw = pyfar.Signal(recording.data.T, recording.samplerate)
     sig = pyfar.Signal(excitation.data.T, excitation.samplerate)
 
@@ -134,14 +136,14 @@ def build_inverse_filter(recording, excitation, beta=0.1):
     speaker_ir.time *= 1 / numpy.max(speaker_ir.time)
 
     # Align IR to 10 ms
-    onset = pyfar.dsp.find_impulse_response_start(speaker_ir, threshold=20)
+    onset = pyfar.dsp.find_impulse_response_start(speaker_ir, threshold=10)
     shift_s = 0.01 - onset / speaker_ir.sampling_rate
     speaker_ir = pyfar.dsp.time_shift(speaker_ir, shift_s, unit="s")
 
-    if show:
-        plt.figure()
-        plt.title("Raw Speaker TF / IR")
-        pyfar.plot.time_freq(speaker_ir)
+    # if show:
+    #     plt.figure()
+    #     plt.title("Raw Speaker TF / IR")
+    #     pyfar.plot.time_freq(speaker_ir)
 
     # ------------------------------------------------------------------
     # Regularization
@@ -152,12 +154,12 @@ def build_inverse_filter(recording, excitation, beta=0.1):
     reg = pyfar.dsp.filter.high_shelf(reg, 6000, 20, 2) * 0.1
 
     speaker_inv_reg = pyfar.dsp.regularized_spectrum_inversion(
-    speaker_ir, (LOW_FREQ, 20e3), regu_final=reg.freq * beta)
+    speaker_ir, (LOW_FREQ, 20e3), regu_final=reg.freq * BETA)
 
-    if show:
-        plt.figure()
-        plt.title("Regularized inverse")
-        pyfar.plot.freq(speaker_inv_reg)
+    # if show:
+    #     plt.figure()
+    #     plt.title("Regularized inverse")
+    #     pyfar.plot.freq(speaker_inv_reg)
 
     # ------------------------------------------------------------------
     # Minimum-phase + time windowing
@@ -170,22 +172,23 @@ def build_inverse_filter(recording, excitation, beta=0.1):
     # ------------------------------------------------------------------
     # Final diagnostic plot
     # ------------------------------------------------------------------
-    if show:
-        fig, ax = plt.subplots()
-        pyfar.plot.freq(reg, linestyle="--", label="Regularization", ax=ax)
-        pyfar.plot.freq(speaker_ir, label="HpTF")
-        pyfar.plot.freq(speaker_inv_reg, label="Inverse (regularized)")
-        pyfar.plot.freq(
-            pyfar.dsp.convolve(speaker_ir, eq_filter),
-            label="Equalized HpTF"
-        )
-        ax.set_ylim(-25, 20)
-        plt.legend()
-        plt.show()
+    # if show:
+    #     fig, ax = plt.subplots()
+    #     pyfar.plot.freq(reg, linestyle="--", label="Regularization", ax=ax)
+    #     pyfar.plot.freq(speaker_ir, label="HpTF")
+    #     pyfar.plot.freq(speaker_inv_reg
+    #     , label="Inverse (regularized)")
+    #     pyfar.plot.freq(
+    #         pyfar.dsp.convolve(speaker_ir, eq_filter),
+    #         label="Equalized Speaker TF"
+    #     )
+    #     ax.set_ylim(-25, 20)
+    #     plt.legend()
+    #     plt.show()
 
     filter = slab.Filter(
         data=eq_filter.time.T,
-        samplerate=fs,
+        samplerate=FS,
         fir="IR")
 
     return filter
@@ -222,16 +225,29 @@ def main():
 
         filt = build_inverse_filter(recording, excitation)
 
-        calibration[spk] = {
-            "level": level_eq[spk],
-            "filter": filt,
-        }
+        calibration.update({f'{spk.index}': {"level": level_eq[spk.index], "filter": filt}})
+
 
     # ---------- SAVE ----------
     with open(OUTPUT_FILE, "wb") as f:
         pickle.dump(calibration, f)
 
     print(f"\nCalibration saved to {OUTPUT_FILE}")
+
+    # test
+    freefield.load_equalization(OUTPUT_FILE)
+    recs = []
+    for spk in speakers:
+        rec = freefield.play_and_record(
+            speaker=spk,
+            sound=excitation,
+            compensate_delay=True,
+            equalize=True,
+            recording_samplerate=FS * 2,  # TDT workaround
+        )
+        rec.spectrum()
+        plt.title(f'Speaker {spk.index}')
+        recs.append(rec.data)
 
 
 # if __name__ == "__main__":

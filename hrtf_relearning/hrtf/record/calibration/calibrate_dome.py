@@ -8,6 +8,8 @@ import numpy
 import pyfar
 import pickle
 from copy import deepcopy
+import hrtf_relearning
+ROOT = Path(hrtf_relearning.__file__).resolve().parent
 
 # ------------------------ CONFIG ------------------------
 

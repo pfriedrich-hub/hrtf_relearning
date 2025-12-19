@@ -8,7 +8,9 @@ import numpy
 import pyfar
 import pickle
 from copy import deepcopy
-
+import hrtf_relearning
+from pathlib import Path
+ROOT = Path(hrtf_relearning.__file__).resolve().parent
 # ------------------------ CONFIG ------------------------
 
 SPEAKERS = 'center'
@@ -20,7 +22,7 @@ N_REPEATS = 3
 BETA = 0.1
 SHOW = False
 
-OUTPUT_FILE = freefield.DIR / 'data' / 'calibration_dome.pkl'
+OUTPUT_FILE = ROOT / 'hrtf' / 'record' / 'calibration' / 'calibration_dome.pkl'
 
 # ------------------------ SETUP ------------------------
 
@@ -269,6 +271,8 @@ def main():
     # SAVE FOR FREEFIELD (ONLY NOW)
     # --------------------------------------------------
     with open(OUTPUT_FILE, "wb") as f:
+        pickle.dump(calibration, f)
+    with open(freefield.DIR / 'data' / 'calibration_dome.pkl', "wb") as f:
         pickle.dump(calibration, f)
 
     print(f"Calibration verified and saved to {OUTPUT_FILE}")

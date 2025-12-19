@@ -37,12 +37,16 @@ import hrtf_relearning
 ROOT = Path(hrtf_relearning.__file__).resolve().parent
 warnings.filterwarnings("ignore", category=pyfar._utils.PyfarDeprecationWarning)
 freefield.set_logger("info")
+import hrtf_relearning
+ROOT = Path(hrtf_relearning.__file__).resolve().parent
 
 # -------------------------------------------------------------------------
 # CONFIG
 # -------------------------------------------------------------------------
 hp_id = 'MYSPHERE'
-save_path = Path.cwd() / 'data' / 'sounds' / f'{hp_id}_equalization.wav'
+save_path = ROOT / 'data' / 'sounds' / f'{hp_id}_equalization.wav'
+freefield_calibration = ROOT / 'hrtf' / 'record' / 'calibration' / f'{hp_id}_equalization.wav'
+
 fs = 48828
 slab.set_default_samplerate(fs)
 
@@ -254,7 +258,11 @@ def save_equalization(eq_filter):
     equalization_path = freefield_path / f'calibration_{hp_id}.pkl'
     with open(equalization_path, 'wb') as f:  # save the newly recorded calibration
         pickle.dump(equalization, f, pickle.HIGHEST_PROTOCOL)
-    print(f"Writing equalization to {equalization_path}")
+
+    with open(freefield_calibration, 'wb') as f:  # save the newly recorded calibration
+        pickle.dump(equalization, f, pickle.HIGHEST_PROTOCOL)
+    print(f"Writing calibration to {freefield_calibration}")
+
 
 
 

@@ -43,9 +43,7 @@ ROOT = Path(hrtf_relearning.__file__).resolve().parent
 # -------------------------------------------------------------------------
 # CONFIG
 # -------------------------------------------------------------------------
-hp_id = 'MYSPHERE'
-save_path = ROOT / 'data' / 'sounds' / f'{hp_id}_equalization.wav'
-freefield_calibration = ROOT / 'hrtf' / 'record' / 'calibration' / f'{hp_id}_equalization.wav'
+hp_id = 'DT990'
 
 fs = 48828
 slab.set_default_samplerate(fs)
@@ -83,6 +81,7 @@ def generate_chirp():
         kind="logarithmic"
     )
     signal = signal.ramp('both', RAMP_DURATION)
+    signal.level = 75
     return signal
 
 # -------------------------------------------------------------------------
@@ -254,23 +253,19 @@ def save_equalization(eq_filter):
     equalization.update({f"{speakers[0].index}": {"level": 0, "filter": filter.channel(1)}})
     equalization.update({f"{speakers[1].index}": {"level": 0, "filter": filter.channel(0)}})
 
-    freefield_path = freefield.DIR / 'data'
-    equalization_path = freefield_path / f'calibration_{hp_id}.pkl'
-    with open(equalization_path, 'wb') as f:  # save the newly recorded calibration
+    with open(freefield.DIR / 'data' / f'calibration_{hp_id}.pkl', 'wb') as f:  # save the newly recorded calibration
         pickle.dump(equalization, f, pickle.HIGHEST_PROTOCOL)
 
-    with open(freefield_calibration, 'wb') as f:  # save the newly recorded calibration
+    ff_calibration_path = ROOT / 'hrtf' / 'record' / 'calibration' / f'{hp_id}_equalization.wav'
+    with open(ff_calibration_path, 'wb') as f:  # save the newly recorded calibration
         pickle.dump(equalization, f, pickle.HIGHEST_PROTOCOL)
-    print(f"Writing calibration to {freefield_calibration}")
-
-
-
+    print(f"Writing calibration to {ff_calibration_path}")
 
 # -------------------------------------------------------------------------
 # MAIN PIPELINE
-# # -------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 
-if __name__ == "__main__":
+def main():
 
     # Generate chirp
     excitation = generate_chirp()
@@ -280,7 +275,7 @@ if __name__ == "__main__":
     # recording = slab.Binaural.read(Path.cwd() / 'hrtf/record/calibration/hp_raw.wav')
 
     # Compute equalization
-    eq_filter = compute_headphone_equalization(recording, excitation, beta=0.2, show=True)
+    eq_filter = compute_headphone_equalization(recording, excitation, beta=0.05, show=False)
 
     # Save filter
     pyfar2wav(eq_filter, save_path)
@@ -288,6 +283,18 @@ if __name__ == "__main__":
 
     # test
     freefield.load_equalization(freefield.DIR / 'data' / f'calibration_{hp_id}.pkl')
+    fig ,axes = plt.subplots(2,1)
+    equalized = freefield.play_and_record_headphones(speaker='both', sound=excitation, equalize=False)
+    equalized.spectrum(axis=axes[0])
+    axes[0].set_title('Raw HpTF')
     equalized = freefield.play_and_record_headphones(speaker='both', sound=excitation, equalize=True)
-    equalized.spectrum()
+    equalized.spectrum(axis=axes[1])
+    axes[1].set_title('Equalized HpTF')
+    fig.suptitle(f'{hp_id} equalization')
+    plt.savefig(ROOT/'data' / 'img' / 'processing' / 'calibration' / f'calibration_{hp_id}.png')
 
+
+
+
+# if __name__ == "__main__":
+#     main()

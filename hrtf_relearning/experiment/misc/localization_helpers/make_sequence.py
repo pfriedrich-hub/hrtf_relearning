@@ -56,24 +56,26 @@ def sector_targets(settings, hrir_sources=None):
 
     # Select sectors ensuring minimum distance constraint
     selected_sectors = []
-    remaining_sectors = sector_centers[:]
-    while len(selected_sectors) < num_sectors:
-        if not selected_sectors:
-            selected_sectors.append(remaining_sectors.pop(0))
-        else:
-            last_sector = selected_sectors[-1]
-            valid_sectors = [
-                sec for sec in remaining_sectors
-                if numpy.linalg.norm(numpy.array(sec) - numpy.array(last_sector)) >= min_distance
-            ]
-            if valid_sectors:
-                selected_sector = valid_sectors.pop(0)
-                selected_sectors.append(selected_sector)
-                remaining_sectors.remove(selected_sector)
+    while not len(selected_sectors) == num_sectors:  # do it until full sequence can be acquired
+        selected_sectors = []
+        remaining_sectors = sector_centers[:]
+        while len(selected_sectors) < num_sectors:
+            if not selected_sectors:
+                selected_sectors.append(remaining_sectors.pop(0))
             else:
-                logging.error('Can not create target sequence with given settings. '
-                              'Check min distance and target range.')
-                break  # Stop if no valid sector is found
+                last_sector = selected_sectors[-1]
+                valid_sectors = [
+                    sec for sec in remaining_sectors
+                    if numpy.linalg.norm(numpy.array(sec) - numpy.array(last_sector)) >= min_distance
+                ]
+                if valid_sectors:
+                    selected_sector = valid_sectors.pop(0)
+                    selected_sectors.append(selected_sector)
+                    remaining_sectors.remove(selected_sector)
+                else:
+                    logging.error('Can not create target sequence with given settings. '
+                                  'Check min distance and target range.')
+                    break  # Stop if no valid sector is found
 
     # pick random targets from the hrir sources within each selected sector
     src_az = numpy.asarray(hrir_sources[:, 0], dtype=float)

@@ -5,8 +5,10 @@ import datetime
 import time
 from pathlib import Path
 from pythonosc import udp_client
+
+from hrtf_relearning.experiment.misc.localization_helpers.uso_generation import generate_uso
 from hrtf_relearning.experiment.misc.training_helpers import meta_motion
-from hrtf_relearning.experiment.misc.make_sequence import *
+from hrtf_relearning.experiment.misc.localization_helpers.make_sequence import *
 from hrtf_relearning.hrtf.binsim.hrtf2binsim import hrtf2binsim
 from hrtf_relearning.experiment.Subject import Subject
 from pynput import keyboard
@@ -15,11 +17,11 @@ date = f'{date.strftime("%d")}.{date.strftime("%m")}_{date.strftime("%H")}:{date
 logging.getLogger().setLevel('INFO')
 ROOT = Path(hrtf_relearning.__file__).resolve().parent
 
-
 # --- settings ----
 SUBJECT_ID = "AvS"
 HRIR_NAME = "KU100"  # 'KU100', 'kemar', etc.
 EAR = None
+STIM = 'noise_burst'  # 'uso'
 
 # --- load and process HRIR
 hrir = hrtf2binsim(HRIR_NAME, EAR, reverb=True, hp_filter=True,
@@ -144,33 +146,34 @@ class Localization:
         state = meta_motion.State(device)
         return meta_motion.Sensor(state)
 
-
-
     @staticmethod
     def make_stim():
-        # stim = slab.Sound.pinknoise(duration=0.5, level=90).ramp(when='both', duration=0.01)
-
-        stim = slab.Sound.pinknoise(duration=0.225, level=80).ramp(when='both', duration=0.01)
-        n_silent = (numpy.arange(25,221,25).reshape(4,2) * stim.samplerate / 1000).astype(int)
-        ramp_len = int(.005 * stim.samplerate)
-        half_len = int(ramp_len / 2)
-        for start, end in n_silent:
-            ramp_up = 0.5 * (1 - numpy.cos(numpy.linspace(0, numpy.pi, ramp_len)))
-            ramp_down = 0.5 * (1 - numpy.cos(numpy.linspace(numpy.pi, 0, ramp_len)))
-            ramp_up = ramp_up[:, numpy.newaxis]
-            ramp_down = ramp_down[:, numpy.newaxis]
-            # Apply ramps at the edges of the silent region
-            stim.data[start - half_len: start + half_len] *= (1 - ramp_up)
-            stim.data[end - half_len: end + half_len] *= (1 - ramp_down)
-            # Silence the center
-            stim.data[start + half_len: end - half_len] = 0
-
-        # noise = slab.Sound.pinknoise(duration=0.025, level=90)
-        # noise = noise.ramp(when='both', duration=0.01)
-        # silence = slab.Sound.silence(duration=0.025)
-        # stim = slab.Sound.sequence(noise, silence, noise, silence, noise,
-        #                            silence, noise, silence, noise)
-        # stim.ramp('both', 0.01)
+        if STIM == 'noise':
+            stim = slab.Sound.pinknoise(duration=0.225, level=80).ramp(when='both', duration=0.01)
+            n_silent = (numpy.arange(25,221,25).reshape(4,2) * stim.samplerate / 1000).astype(int)
+            ramp_len = int(.005 * stim.samplerate)
+            half_len = int(ramp_len / 2)
+            for start, end in n_silent:
+                ramp_up = 0.5 * (1 - numpy.cos(numpy.linspace(0, numpy.pi, ramp_len)))
+                ramp_down = 0.5 * (1 - numpy.cos(numpy.linspace(numpy.pi, 0, ramp_len)))
+                ramp_up = ramp_up[:, numpy.newaxis]
+                ramp_down = ramp_down[:, numpy.newaxis]
+                # Apply ramps at the edges of the silent region
+                stim.data[start - half_len: start + half_len] *= (1 - ramp_up)
+                stim.data[end - half_len: end + half_len] *= (1 - ramp_down)
+                # Silence the center
+                stim.data[start + half_len: end - half_len] = 0
+            # stim = slab.Sound.pinknoise(duration=0.5, level=90).ramp(when='both', duration=0.01)
+            # noise = slab.Sound.pinknoise(duration=0.025, level=90)
+            # noise = noise.ramp(when='both', duration=0.01)
+            # silence = slab.Sound.silence(duration=0.025)
+            # stim = slab.Sound.sequence(noise, silence, noise, silence, noise,
+            #                            silence, noise, silence, noise)
+            # stim.ramp('both', 0.01)
+        elif STIM == 'uso':
+            stim = generate_uso(samplerate=hrir.samplerate)
+        else: raise ValueError('STIM must be "noise" or "uso".')
+        stim.level = 80
         return stim
 
     @staticmethod
@@ -188,4 +191,3 @@ if __name__ == "__main__":
     sequence = subject.localization[loc_test.filename]
     plot_localization(sequence, report_stats=['azimuth', 'elevation'], filepath=ROOT / 'data'  / 'results' / 'plot' / subject.id)
     plot_elevation_response(sequence, filepath=ROOT / 'data'  / 'results' / 'plot' / subject.id)
-

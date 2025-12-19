@@ -3,7 +3,7 @@ import time
 from pathlib import Path
 from hrtf_relearning.experiment.misc.training_helpers import meta_motion
 from analysis.localization import *
-from hrtf_relearning.experiment.misc.make_sequence import *
+from hrtf_relearning.experiment.misc.localization_helpers.make_sequence import *
 from hrtf_relearning.hrtf.binsim.hrtf2binsim import hrtf2binsim
 from hrtf_relearning.experiment.Subject import Subject
 date = datetime.datetime.now()

@@ -44,14 +44,14 @@ sequence = subject.last_sequence
 
 # Game settings
 settings = dict(
-    target_size=4,
+    target_size=3,
     target_time=0.5,
     az_range=sequence.settings["azimuth_range"] if sequence else (-35,35),
-    ele_range=sequence.settings["elevation_range"] if sequence else (-35,35
-                                                                     ),
+    ele_range=sequence.settings["elevation_range"] if sequence else (-35,35),
     min_dist=30,
     game_time=90,
     trial_time=15,
+    score_time=6,
     gain=.15)
 
 # -------------------- Helpers --------------------
@@ -243,8 +243,7 @@ def head_tracker(distance, target, sensor_state, pose_queue, current_trial, plot
         time.sleep(0.01)
 
 def play_trial(subject, trial_idx, current_trial, target, distance, pulse_interval, pulse_state, sensor_state,
-               game_time_left, trial_time, game_time, game_timer,
-               target_size, target_time, session_total, last_goal_points, pose_queue):
+               game_time_left, game_timer, session_total, last_goal_points, pose_queue):
     """
     Returns: (game_timer, score)
     """
@@ -273,29 +272,29 @@ def play_trial(subject, trial_idx, current_trial, target, distance, pulse_interv
 
     logging.debug("Starting trial")
     t0 = time.time()
-    while trial_timer < trial_time:
+    while trial_timer < settings['trial_time']:
         trial_timer = time.time() - t0
-        if game_timer + trial_timer > game_time:
+        if game_timer + trial_timer > settings['game_time']:
             break
 
         # update UI timer
-        game_time_left.value = max(0.0, game_time - (game_timer + trial_timer))
+        game_time_left.value = max(0.0, settings['game_time'] - (game_timer + trial_timer))
 
         # pulse interval based on distance
         pulse_interval.value = distance_to_interval(distance.value)
 
         # target window / scoring
-        if distance.value < target_size:
+        if distance.value < settings['target_size']:
             if not count_down:
                 time_on_target, count_down = time.time(), True
         else:
             time_on_target, count_down = time.time(), False
 
-        if count_down and time.time() > time_on_target + target_time:  # goal condition
+        if count_down and time.time() > time_on_target + settings['target_time']:  # goal condition
             pulse_state.value = 1  # stop pulse loop (idle but don't mute)
 
             # Decide score & file
-            if trial_timer <= 3.0:
+            if trial_timer <= settings['score_time']:
                 score = 2
                 sfile = 'coins.wav'
                 min_audible = 0.35   # let the double-coin poke through
@@ -457,10 +456,9 @@ def play_session():
                 ui_state.value = 2
                 enter_pressed.value = 0
 
-                game_timer, score = play_trial(subject, trial_idx, current_trial, target, distance, pulse_interval, pulse_state, sensor_state,
-                                            game_time_left,settings["trial_time"], settings["game_time"], game_timer,
-                                            settings["target_size"], settings["target_time"], session_total, last_goal_points,
-                                               pose_queue)
+                game_timer, score = play_trial(subject, trial_idx, current_trial, target, distance, pulse_interval,
+                                               pulse_state, sensor_state, game_time_left, game_timer, session_total,
+                                               last_goal_points, pose_queue)
                 scores.append(score)
                 # update high score live; persist to Subject
                 if session_total.value > highscore.value:

@@ -37,6 +37,7 @@ def sector_targets(settings, hrir_sources=None):
     azimuth_size, elevation_size = sector_size
     num_azimuth_sectors = int(azimuth_range[1] - azimuth_range[0]) // azimuth_size
 
+    # I build grid of sector centers based on params
     if elevation_range == (0,0):  # only place targets on the horizontal plane
         sector_centers = [
             (azimuth_range[0] + (i + 0.5) * azimuth_size, 0)
@@ -54,7 +55,7 @@ def sector_targets(settings, hrir_sources=None):
         ]
         random.shuffle(sector_centers)
 
-    # Select sectors ensuring minimum distance constraint
+    # II build sequence of sectors centers ensuring minimum distance constraint
     selected_sectors = []
     while not len(selected_sectors) == num_sectors:  # repeat until full sequence was acquired
         selected_sectors = []
@@ -77,7 +78,7 @@ def sector_targets(settings, hrir_sources=None):
                                   'Check min distance and target range.')
                     break  # Stop if no valid sector is found
 
-    # pick random targets from the hrir sources within each selected sector
+    # III pick random targets from the HRIR sources within each selected sector
     src_az = numpy.asarray(hrir_sources[:, 0], dtype=float)
     src_el = numpy.asarray(hrir_sources[:, 1], dtype=float)
 
@@ -115,24 +116,19 @@ def sector_targets(settings, hrir_sources=None):
         # shuffle for randomness
         idx = numpy.random.permutation(idx).tolist()
         sector_candidates.append(idx)
-
     # Global-unique sampling across sectors (round-robin)
-    num_sectors = len(selected_sectors)
-    T = targets_per_sector
     used = set()
     sector_picks = [[] for _ in range(num_sectors)]
-
-    for t in range(T):  # pass t: give each sector 1 pick
+    for t in range(targets_per_sector):  # pass t: give each sector 1 pick
         for s in range(num_sectors):
             cand = sector_candidates[s]
-
             if settings['replace']:
                 # Mit Zurücklegen: wir ignorieren "used" und ziehen einfach zufällig aus cand
                 if not cand:
                     caz, cel = selected_sectors[s]
                     logging.error(
                         f'No candidate sources in sector (az={caz:.2f}, el={cel:.2f}) '
-                        f'for pass {t + 1}/{T} with replace=True.'
+                        f'for pass {t + 1}/{num_sectors} with replace=True.'
                     )
                     raise ValueError('Empty candidate list for sector with replace=True.')
                 pick = int(numpy.random.choice(cand))
@@ -141,7 +137,6 @@ def sector_targets(settings, hrir_sources=None):
                 # Ohne Zurücklegen: sicherstellen, dass wir keinen Index doppelt nehmen
                 while cand and cand[-1] in used:
                     cand.pop()
-
                 if not cand:
                     # No unused left for this sector → cannot satisfy global uniqueness
                     caz, cel = selected_sectors[s]
@@ -150,22 +145,22 @@ def sector_targets(settings, hrir_sources=None):
                         f'at pass {t + 1}/{T}. Try increasing sector_size or lowering targets_per_sector.'
                     )
                     raise ValueError('Not enough unique grid points across overlapping sectors.')
-
                 pick = cand.pop()  # take one unused
                 used.add(pick)
                 sector_picks[s].append(pick)
 
-    # Interleave to preserve min-distance between consecutive sectors
+    # IV Interleave to preserve min-distance between consecutive sectors
     chosen_indices = []
     for t in range(T):
         for s in range(num_sectors):
             chosen_indices.append(sector_picks[s][t])
 
-    # Build (az, el) points from unique picks
+    # V Build (az, el) points from unique picks
     points = numpy.column_stack([src_az[chosen_indices], src_el[chosen_indices]])
     points = numpy.round(points, 2)  # only keep 2nd decimal
     points[:, 0] = (points[:, 0] + 180) % 360 - 180  # wrap to (-180,180)
     sequence = slab.Trialsequence(points)
+    sequence.trials = numpy.arange(1, len(points)+1)  # hack to prevent slab from randomizing trial order
     sequence.settings = settings  # ← store all parameters here
     sequence.settings['sector_centers'] = sector_centers
     return sequence

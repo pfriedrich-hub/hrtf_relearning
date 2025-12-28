@@ -92,14 +92,11 @@ class Recordings(SpeakerGridBase):
     # -------------------- Recording ----------------------------------
 
     @classmethod
-    def record_dome(cls, n_directions=5, n_recordings=5, hp_freq=120, fs=48828):
+    def record_dome(cls, id=None, n_directions=5, n_recordings=5, hp_freq=120, fs=48828):
 
-        if freefield.PROCESSORS.mode != "play_birec":
-            freefield.initialize("dome", "play_birec")
-
-        # excitation
+        # excitation signal
         sig_params = dict(
-            type="slab.Sound.chirp",
+            kind="logarithmic",
             duration=0.2,
             level=85,
             from_frequency=120,
@@ -108,26 +105,38 @@ class Recordings(SpeakerGridBase):
         )
         signal = slab.Sound.chirp(**sig_params)
         signal = signal.ramp(when="both", duration=0.001)
-        signal.params = sig_params
+        filt = slab.Filter.band("hp", frequency=hp_freq, samplerate=fs)
 
-        filt = slab.Filter.band("hp", hp_freq, fs)
-
-        speakers = cls._select_speakers(
-            freefield.read_speaker_table(), azimuth=0, elevation=(50, -37.5)
-        )
-
+        # dome setup
+        if freefield.PROCESSORS.mode != "play_birec":
+            freefield.initialize("dome", "play_birec")
+        speakers = cls._select_speakers(freefield.read_speaker_table(), azimuth=0, elevation=(50, -37.5))
+        [led_speaker] = freefield.pick_speakers(23)  # get object for center speaker LED
+        res = abs(speakers[0].elevation - speakers[1].elevation) / n_directions
+        min_el = min(spk.elevation for spk in speakers)
         data = {}
+        for n in range(n_directions):
+            elevation_step = n * res
+            if n_directions > 1:  # skip for reference recordings
+                freefield.write(tag='bitmask', value=led_speaker.digital_channel,
+                                processors=led_speaker.digital_proc)  # illuminate LED
+                input(f"Press Enter when head is at {0 + elevation_step}° elevation ...")
+            for base_spk in speakers:
+                [spk] = copy.deepcopy(freefield.pick_speakers(base_spk.index))
+                spk.elevation -= elevation_step
+                if spk.elevation >= min_el:
+                    logging.info(f"Recording from Speaker {spk.index} at {spk.elevation:.1f}° elevation")
+                    key = f"{spk.index}_{spk.azimuth}_{spk.elevation}"
+                    recs = cls.record_speaker(spk, signal, n_recordings, fs)
+                    processed = []
+                    for r in recs:
+                        processed.append(filt.apply(r))
+                    data[key] = processed
+            freefield.write(tag='bitmask', value=0, processors=led_speaker.digital_proc)  # turn off LED
 
-        for spk in speakers:
-            key = f"{spk.index}_{spk.azimuth}_{spk.elevation}"
-            recs = cls.record_speaker(spk, signal, n_recordings, fs * 2)
-            processed = []
-            for r in recs:
-                r.data -= numpy.mean(r.data, axis=0)
-                processed.append(filt.apply(r))
-            data[key] = processed
-
+        # store parameters
         params = dict(
+            id = id,
             fs=fs,
             n_recordings=n_recordings,
             n_directions=n_directions,
@@ -229,7 +238,7 @@ def parse_params_file(path, filename="params.txt"):
             else:
                 if current is not None:
                     k, v = line.strip().split(":", 1)
-                    current[k] = _parse_value(v)
+                    current[k] = _parse_value(v.strip())
     return params
 
 def _parse_value(v):

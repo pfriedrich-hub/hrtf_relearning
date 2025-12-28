@@ -7,6 +7,8 @@ Responsibilities:
 - calling recording + processing steps in the correct order
 - no signal processing code lives here
 """
+import matplotlib
+matplotlib.use('TkAgg')
 from hrtf_relearning.hrtf.record.recordings import *
 from hrtf_relearning.hrtf.record.processing import *
 import hrtf_relearning
@@ -17,12 +19,13 @@ subject_id = 'kemar_test'
 reference_id = 'kemar_reference'
 overwrite = False
 n_directions = 1
-n_recordings = 20
+n_recordings = 10
 n_samples_out = 256
 fs = 48828  # 97656
 hp_freq = 120
-
 show = True
+
+save_wath = True
 
 slab.set_default_samplerate(fs)
 freefield.set_logger("info")
@@ -79,12 +82,11 @@ def record_hrir(
         subj_dir.mkdir(parents=True, exist_ok=True)
 
         subject_rec = Recordings.record_dome(
+            id=subject_id,
             n_directions=n_directions,
             n_recordings=n_recordings,
             hp_freq=hp_freq,
-            fs=fs,
-        )
-        subject_rec.params["subject_id"] = subject_id
+            fs=fs)
         subject_rec.to_wav(subj_dir, overwrite=overwrite)
     else:
         logging.info("Loading subject recordings from disk")
@@ -96,14 +98,12 @@ def record_hrir(
     if overwrite or not ref_dir.exists():
         logging.info("Recording reference")
         ref_dir.mkdir(parents=True, exist_ok=True)
-
         reference_rec = Recordings.record_dome(
+            id=reference_id,
             n_directions=1,
             n_recordings=n_recordings,
             hp_freq=hp_freq,
-            fs=fs,
-        )
-        reference_rec.params["subject_id"] = reference_id
+            fs=fs)
         reference_rec.to_wav(ref_dir, overwrite=overwrite)
     else:
         logging.info("Loading reference recordings from disk")
@@ -113,8 +113,8 @@ def record_hrir(
     # 3) Deconvolution: sweeps -> IRs
     # -----------------------------------------------------------------
     logging.info("Computing impulse responses")
-    subject_ir = compute_ir(subject_rec)
-    reference_ir = compute_ir(reference_rec)
+    subject_ir = compute_ir(subject_rec, inversion_range_hz=(hp_freq, 20e3))
+    reference_ir = compute_ir(reference_rec, inversion_range_hz=(hp_freq, 20e3))
 
     # -----------------------------------------------------------------
     # 4) Equalization

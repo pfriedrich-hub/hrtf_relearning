@@ -9,8 +9,8 @@ import pyfar
 import pickle
 from copy import deepcopy
 import hrtf_relearning
-from pathlib import Path
-ROOT = Path(hrtf_relearning.__file__).resolve().parent
+ROOT = hrtf_relearning.PATH
+
 # ------------------------ CONFIG ------------------------
 
 SPEAKERS = 'center'
@@ -92,7 +92,7 @@ def record_speakers(
                 sound=sig,
                 compensate_delay=True,
                 equalize=False,              # IMPORTANT
-                recording_samplerate=FS * 2  # TDT workaround
+                recording_samplerate=FS  # TDT workaround
             )
 
             recs.append(rec.data)

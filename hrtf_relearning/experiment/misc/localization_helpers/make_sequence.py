@@ -56,7 +56,7 @@ def sector_targets(settings, hrir_sources=None):
 
     # Select sectors ensuring minimum distance constraint
     selected_sectors = []
-    while not len(selected_sectors) == num_sectors:  # do it until full sequence can be acquired
+    while not len(selected_sectors) == num_sectors:  # repeat until full sequence was acquired
         selected_sectors = []
         remaining_sectors = sector_centers[:]
         while len(selected_sectors) < num_sectors:

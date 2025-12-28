@@ -82,7 +82,6 @@ def sector_targets(settings, hrir_sources):
         [0] if el_range == (0, 0)
         else numpy.arange(el_range[0] + el_size / 2, el_range[1], el_size)
     )
-
     sector_centers = [(az, el) for az in az_centers for el in el_centers]
 
     # --- candidate sources per sector ---
@@ -140,7 +139,6 @@ def sector_targets(settings, hrir_sources):
     # --- formatting ---
     points = numpy.round(points, 2)
     points[:, 0] = (points[:, 0] + 180) % 360 - 180
-
     seq = slab.Trialsequence(points)
     seq.trials = numpy.arange(1, len(points) + 1)
     seq.settings = settings
@@ -274,10 +272,8 @@ def std_targets(settings, hrir_sources, max_tries=1000):
             # --------------------------------------------------
             az_span = az_range[1] - az_range[0]
             el_span = el_range[1] - el_range[0]
-
             num_az = max(1, int(round(az_span / az_step)))
             num_el = max(1, int(round(el_span / el_step)))
-
             sector_centers = [
                 (
                     az_range[0] + (i + 0.5) * az_step,
@@ -288,7 +284,6 @@ def std_targets(settings, hrir_sources, max_tries=1000):
             ]
 
             sequence = slab.Trialsequence(points)
-
             # Start from existing settings, then fill/overwrite what we know
             settings_out = dict(settings)
             settings_out.update({
@@ -301,9 +296,7 @@ def std_targets(settings, hrir_sources, max_tries=1000):
                 "sector_size": sector_size,
                 "sector_centers": sector_centers,
             })
-
             sequence.settings = settings_out
-
             return sequence
 
     raise RuntimeError(

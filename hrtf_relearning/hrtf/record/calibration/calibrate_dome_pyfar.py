@@ -18,7 +18,7 @@ FS = 48828
 FILTER_LENGTH = 1024
 LOW_FREQ = 20
 HIGH_FREQ = FS / 2
-N_REPEATS = 3
+N_REPEATS = 5
 BETA = 0.1
 SHOW = False
 
@@ -48,7 +48,7 @@ def select_speakers():
 def make_excitation():
     sig = slab.Sound.chirp(
         duration=1.0,
-        level=80,
+        level=85,
         from_frequency=LOW_FREQ,
         to_frequency=FS / 2,
         kind="logarithmic",
@@ -71,19 +71,15 @@ def record_speakers(
         logging.info(f"Recording speaker {idx}")
 
         recs = []
-
         for _ in range(N_REPEATS):
             sig = excitation
 
-            if equalize:
+            if equalize:  # apply equalization
                 if calibration is None:
                     raise ValueError("Calibration required when equalize=True")
-
                 sig = deepcopy(excitation)
-
                 # apply level
                 sig.level += calibration[idx]["level"]
-
                 # apply FIR
                 sig = calibration[idx]["filter"].apply(sig)
 
@@ -92,10 +88,11 @@ def record_speakers(
                 sound=sig,
                 compensate_delay=True,
                 equalize=False,              # IMPORTANT
-                recording_samplerate=FS  # TDT workaround
+                recording_samplerate=FS
             )
+            recs.append(rec)
 
-            recs.append(rec.data)
+        recs, shifts = align_recordings(recs)
 
         recordings[idx] = slab.Sound(
             data=numpy.mean(recs, axis=0),
@@ -105,6 +102,75 @@ def record_speakers(
     return recordings
 
 
+def align_recordings(
+    recordings: list,
+    max_shift: int = 10,
+    ref_index: int = 0,
+):
+    """
+    Align multiple binaural recordings by local (small-shift) correlation.
+
+    Parameters
+    ----------
+    recs : pyfar.Signal
+        Shape (n_rec, 2, n_samples)
+    max_shift : int
+        Maximum absolute shift (in samples) to test, e.g. 1 or 2
+    ref_index : int
+        Index of reference recording
+
+    Returns
+    -------
+    recs_aligned : pyfar.Signal
+        Time-aligned recordings, same shape as input
+    shifts : ndarray
+        Applied shifts in samples, shape (n_rec, 2)
+    """
+    fs = recordings[ref_index].samplerate
+    n_samples = recordings[ref_index].n_samples
+    n_rec = len(recordings)
+    x = numpy.stack([rec.data.T for rec in recordings], axis=0)
+    ref = recordings[ref_index]               # (2, n_samples)
+
+    shifts = numpy.zeros((n_rec), dtype=int)
+    aligned = numpy.empty_like(x)
+
+    # predefine shift candidates
+    shift_candidates = numpy.arange(-max_shift, max_shift + 1)
+
+    for i, rec in enumerate(recordings):
+            # compute correlation scores only for small shifts
+            scores = []
+            for s in shift_candidates:
+                if s < 0:
+                    score = numpy.dot(ref.data[-s:, 0], rec.data[: n_samples + s, 0])
+                elif s > 0:
+                    score = numpy.dot(ref.data[: n_samples - s, 0], rec.data[s:, 0])
+                else:
+                    score = numpy.dot(ref.data[:, 0], rec.data[:, 0])
+                scores.append(score)
+
+            best_shift = shift_candidates[numpy.argmax(scores)]
+            shifts[i] = best_shift
+
+            # apply shift using pyfar (safe, future-proof)
+            sig = pyfar.Signal(rec[None, :], fs)
+            sig_shifted = pyfar.dsp.time_shift(
+                sig,
+                -best_shift,
+                unit="samples",
+            )
+            aligned[i] = sig_shifted.time[0].T
+
+    # rebuild slab.Binaural objects
+    aligned_recordings = [
+        slab.Binaural(aligned[i].T, samplerate=fs)
+        for i in range(n_rec)
+    ]
+
+    if (abs(shifts) > 2).any():
+        logging.warning(f'Time shifts > 2 samples when averaging recordings: \n{shifts}')
+    return aligned_recordings, shifts
 
 # ------------------------ LEVEL EQUALIZATION ------------------------
 

@@ -5,7 +5,7 @@ to validate HRIR recording and processing.
 
 #todo test this with kemar mics and pirates
 
-from hrtf_relearning.hrtf.record.record_hrir import *
+from hrtf_relearning.hrtf.record.deprecated.record_hrir_old import *
 import freefield
 freefield.set_logger('info')
 import slab

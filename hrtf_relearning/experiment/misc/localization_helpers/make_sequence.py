@@ -12,158 +12,140 @@ def make_sequence(settings, hrir_sources):
     elif settings['kind'] == 'sectors':
         return sector_targets(settings, hrir_sources)
 
+def az_el_distance(p, q):
+    """Euclidean distance in az/el with circular azimuth."""
+    daz = (p[0] - q[0] + 180) % 360 - 180
+    del_ = p[1] - q[1]
+    return numpy.hypot(daz, del_)
 
-def sector_targets(settings, hrir_sources=None):
+def sector_targets(settings, hrir_sources):
     """
-    Picks random targets from the HRIR source space within sectors,
-    while ensuring a minimum distance between successive sectors.
+    Generate a localization trial sequence by sampling targets from spatial
+    sectors and enforcing a minimum distance between consecutive targets.
 
-    Parameters:
-    - azimuth_range: tuple (min_azimuth, max_azimuth)
-    - elevation_range: tuple (min_elevation, max_elevation)
-    - sector_size: tuple (azimuth_size, elevation_size) in degrees
-    - min_distance: minimum distance between successive sectors in sequence
-    - targets_per_sector: number of points per sector
-    - hrir_sources: list of HRIR sources (hrir.sources.vertical_polar)
+    The azimuth–elevation space is divided into rectangular sectors. A fixed
+    number of HRIR source positions is sampled from each sector, after which
+    all sampled targets are globally reordered such that the angular distance
+    between successive targets is at least `min_distance`.
 
-    Returns:
-        slab.Trialsequence
+    The minimum-distance constraint is applied at the level of the *actual
+    target positions*, not at the sector level.
+
+    Parameters
+    ----------
+    settings : dict
+        Required keys:
+        - 'azimuth_range' : (min_az, max_az) in degrees
+        - 'elevation_range' : (min_el, max_el) in degrees
+        - 'sector_size' : (az_size, el_size) in degrees
+        - 'targets_per_sector' : int
+        - 'min_distance' : float, minimum allowed distance between consecutive targets
+        - 'replace' : bool, sample HRIR positions with or without replacement
+
+        Additional keys are stored but not interpreted by this function.
+
+    hrir_sources : array-like, shape (N, 2)
+        Available HRIR source positions as (azimuth, elevation) in degrees.
+        Azimuth is treated circularly, elevation linearly.
+
+    Returns
+    -------
+    slab.Trialsequence
+        Trial sequence containing ordered (azimuth, elevation) targets with a
+        fixed order preserving the minimum-distance constraint. All parameters
+        used to generate the sequence are stored in `sequence.settings`.
+
+    Notes
+    -----
+    - Distances are computed as Euclidean distance in azimuth–elevation space
+      with circular azimuth wrapping.
+    - Randomness depends on NumPy's RNG; set `numpy.random.seed(...)` for
+      reproducibility.
+    - An error is raised if the constraints cannot be satisfied.
     """
-    azimuth_range = settings['azimuth_range']
-    elevation_range = settings['elevation_range']
-    sector_size = settings['sector_size']  # (azimuth_size, elevation_size)
-    targets_per_sector = settings['targets_per_sector']
-    min_distance = settings['min_distance']
-    azimuth_size, elevation_size = sector_size
-    num_azimuth_sectors = int(azimuth_range[1] - azimuth_range[0]) // azimuth_size
 
-    # I build grid of sector centers based on params
-    if elevation_range == (0,0):  # only place targets on the horizontal plane
-        sector_centers = [
-            (azimuth_range[0] + (i + 0.5) * azimuth_size, 0)
-            for i in range(num_azimuth_sectors)
-        ]
-        random.shuffle(sector_centers)
-        num_sectors = num_azimuth_sectors
-    else:
-        # Compute sector centers
-        num_elevation_sectors = int((elevation_range[1] - elevation_range[0]) // elevation_size)
-        num_sectors = num_azimuth_sectors * num_elevation_sectors
-        sector_centers = [
-            (azimuth_range[0] + (i + 0.5) * azimuth_size, elevation_range[0] + (j + 0.5) * elevation_size)
-            for i in range(num_azimuth_sectors) for j in range(num_elevation_sectors)
-        ]
-        random.shuffle(sector_centers)
+    az_range = settings['azimuth_range']
+    el_range = settings['elevation_range']
+    az_size, el_size = settings['sector_size']
+    n_per_sector = settings['targets_per_sector']
+    min_dist = settings['min_distance']
+    replace = settings['replace']
 
-    # II build sequence of sectors centers ensuring minimum distance constraint
-    selected_sectors = []
-    while not len(selected_sectors) == num_sectors:  # repeat until full sequence was acquired
-        selected_sectors = []
-        remaining_sectors = sector_centers[:]
-        while len(selected_sectors) < num_sectors:
-            if not selected_sectors:
-                selected_sectors.append(remaining_sectors.pop(0))
-            else:
-                last_sector = selected_sectors[-1]
-                valid_sectors = [
-                    sec for sec in remaining_sectors
-                    if numpy.linalg.norm(numpy.array(sec) - numpy.array(last_sector)) >= min_distance
-                ]
-                if valid_sectors:
-                    selected_sector = valid_sectors.pop(0)
-                    selected_sectors.append(selected_sector)
-                    remaining_sectors.remove(selected_sector)
-                else:
-                    logging.error('Can not create target sequence with given settings. '
-                                  'Check min distance and target range.')
-                    break  # Stop if no valid sector is found
+    src_az = numpy.asarray(hrir_sources[:, 0], float)
+    src_el = numpy.asarray(hrir_sources[:, 1], float)
 
-    # III pick random targets from the HRIR sources within each selected sector
-    src_az = numpy.asarray(hrir_sources[:, 0], dtype=float)
-    src_el = numpy.asarray(hrir_sources[:, 1], dtype=float)
+    # --- build sector centers ---
+    az_centers = numpy.arange(
+        az_range[0] + az_size / 2, az_range[1], az_size
+    )
+    el_centers = (
+        [0] if el_range == (0, 0)
+        else numpy.arange(el_range[0] + el_size / 2, el_range[1], el_size)
+    )
 
-    def _wrap_diff(a, b):
-        """Smallest signed difference a-b on a 360° circle, result in [-180, 180)."""
-        d = (a - b + 180.0) % 360.0 - 180.0
-        return d
+    sector_centers = [(az, el) for az in az_centers for el in el_centers]
 
-    def sources_in_sector(center_az, center_el):
-        """
-        Return indices of sources that fall inside the az/el rectangular sector
-        centered at (center_az, center_el) with half-sizes azimuth_size/2, elevation_size/2.
-        Azimuth is treated circularly (0..360). Elevation is linear.
-        """
-        # Azimuth within bounds (circular)
-        d_az = numpy.abs(_wrap_diff(src_az, center_az))
-        az_ok = d_az <= (azimuth_size / 2.0)
-        # Elevation within bounds (linear)
-        el_min = center_el - (elevation_size / 2.0)
-        el_max = center_el + (elevation_size / 2.0)
-        el_ok = (src_el >= el_min) & (src_el <= el_max)
-        return numpy.nonzero(az_ok & el_ok)[0]
+    # --- candidate sources per sector ---
+    def sources_in_sector(caz, cel):
+        daz = numpy.abs((src_az - caz + 180) % 360 - 180)
+        az_ok = daz <= az_size / 2
+        el_ok = (src_el >= cel - el_size / 2) & (src_el <= cel + el_size / 2)
+        return numpy.where(az_ok & el_ok)[0]
 
-    # Build candidate lists per sector (indices into the sources grid)
-    sector_candidates = []
-    for (caz, cel) in selected_sectors:
-        idx = sources_in_sector(caz, cel)
-        if idx.size < targets_per_sector and not settings['replace']:
-            logging.error(
-                f'Not enough sources in sector centered at (az={caz:.2f}, el={cel:.2f}). '
-                f'Required {targets_per_sector}, found {idx.size}. '
-                'Consider enlarging sector_size, adjusting ranges, or lowering targets_per_sector.'
-            )
-            raise ValueError('Insufficient sources in one or more sectors for requested targets_per_sector.')
-        # shuffle for randomness
-        idx = numpy.random.permutation(idx).tolist()
-        sector_candidates.append(idx)
-    # Global-unique sampling across sectors (round-robin)
+    sector_samples = []
     used = set()
-    sector_picks = [[] for _ in range(num_sectors)]
-    for t in range(targets_per_sector):  # pass t: give each sector 1 pick
-        for s in range(num_sectors):
-            cand = sector_candidates[s]
-            if settings['replace']:
-                # Mit Zurücklegen: wir ignorieren "used" und ziehen einfach zufällig aus cand
-                if not cand:
-                    caz, cel = selected_sectors[s]
-                    logging.error(
-                        f'No candidate sources in sector (az={caz:.2f}, el={cel:.2f}) '
-                        f'for pass {t + 1}/{num_sectors} with replace=True.'
-                    )
-                    raise ValueError('Empty candidate list for sector with replace=True.')
-                pick = int(numpy.random.choice(cand))
-                sector_picks[s].append(pick)
-            else:
-                # Ohne Zurücklegen: sicherstellen, dass wir keinen Index doppelt nehmen
-                while cand and cand[-1] in used:
-                    cand.pop()
-                if not cand:
-                    # No unused left for this sector → cannot satisfy global uniqueness
-                    caz, cel = selected_sectors[s]
-                    logging.error(
-                        f'Global-unique sampling failed for sector (az={caz:.2f}, el={cel:.2f}) '
-                        f'at pass {t + 1}/{T}. Try increasing sector_size or lowering targets_per_sector.'
-                    )
-                    raise ValueError('Not enough unique grid points across overlapping sectors.')
-                pick = cand.pop()  # take one unused
-                used.add(pick)
-                sector_picks[s].append(pick)
 
-    # IV Interleave to preserve min-distance between consecutive sectors
-    chosen_indices = []
-    for t in range(T):
-        for s in range(num_sectors):
-            chosen_indices.append(sector_picks[s][t])
+    for caz, cel in sector_centers:
+        idx = sources_in_sector(caz, cel)
+        if len(idx) < n_per_sector and not replace:
+            raise ValueError(f"Not enough sources in sector ({caz},{cel})")
 
-    # V Build (az, el) points from unique picks
-    points = numpy.column_stack([src_az[chosen_indices], src_el[chosen_indices]])
-    points = numpy.round(points, 2)  # only keep 2nd decimal
-    points[:, 0] = (points[:, 0] + 180) % 360 - 180  # wrap to (-180,180)
-    sequence = slab.Trialsequence(points)
-    sequence.trials = numpy.arange(1, len(points)+1)  # hack to prevent slab from randomizing trial order
-    sequence.settings = settings  # ← store all parameters here
-    sequence.settings['sector_centers'] = sector_centers
-    return sequence
+        picks = []
+        for _ in range(n_per_sector):
+            cand = idx if replace else [i for i in idx if i not in used]
+            if not cand:
+                raise ValueError("Global uniqueness violated")
+            p = int(numpy.random.choice(cand))
+            picks.append(p)
+            used.add(p)
+        sector_samples.extend(picks)
+
+    # --- build point list ---
+    points = numpy.column_stack([src_az[sector_samples], src_el[sector_samples]])
+
+    # --- constrained ordering (greedy with restart) ---
+    def order_with_min_distance(points, max_tries=500):
+        N = len(points)
+        for _ in range(max_tries):
+            remaining = list(range(N))
+            order = [remaining.pop(numpy.random.randint(len(remaining)))]
+            while remaining:
+                last = order[-1]
+                valid = [
+                    i for i in remaining
+                    if az_el_distance(points[last], points[i]) >= min_dist
+                ]
+                if not valid:
+                    break
+                nxt = numpy.random.choice(valid)
+                order.append(nxt)
+                remaining.remove(nxt)
+            if len(order) == N:
+                return order
+        raise RuntimeError("Could not satisfy min_distance constraint")
+
+    order = order_with_min_distance(points)
+    points = points[order]
+
+    # --- formatting ---
+    points = numpy.round(points, 2)
+    points[:, 0] = (points[:, 0] + 180) % 360 - 180
+
+    seq = slab.Trialsequence(points)
+    seq.trials = numpy.arange(1, len(points) + 1)
+    seq.settings = settings
+    seq.settings['sector_centers'] = sector_centers
+    return seq
 
 def std_targets(settings, hrir_sources, max_tries=1000):
     """

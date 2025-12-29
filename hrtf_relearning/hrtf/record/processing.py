@@ -25,7 +25,6 @@ from .recordings import Recordings, SpeakerGridBase
 # =====================================================================
 # Deconvolution: Lists of Recordings -> ImpulseResponses
 # =====================================================================
-
 def compute_ir(
     recordings: Recordings,
     onset_threshold_db: float = 15.0,
@@ -35,47 +34,18 @@ def compute_ir(
     Deconvolve sweep recordings into impulse responses.
 
     Pipeline:
-    - regularized spectrum inversion of excitation
-    - per-take deconvolution
-    - onset alignment
-    - time-domain averaging
+    - temporally align recordings per speaker and ear
+    - time-domain average recordings
+    - regularized spectrum inversion of excitation signal
+    - deconvolution -> IR
+    - time alignment of impulse responses
 
     No windowing, no cropping.
     """
-    if not recordings.data:
-        raise ValueError("compute_ir: empty recordings")
-
-    if recordings.signal is None:
-        raise ValueError("compute_ir: missing excitation signal")
-
     fs = int(recordings.params["fs"])
     sig_params = recordings.params["signal"]
-
-    if inversion_range_hz is None:
-        inversion_range_hz = (
-            sig_params["from_frequency"],
-            sig_params["to_frequency"],
-        )
-
-    # --- build binaural excitation ---
-    sig = recordings.signal
-    exc = pyfar.Signal(sig.data.T, fs)
-    ref_inv = pyfar.dsp.regularized_spectrum_inversion(exc, frequency_range=inversion_range_hz)
-    ir_dict = {}
-    for key, rec_list in recordings.data.items():
-        # time align and average recordings for each loudspeaker
-        recs = pyfar.Signal(numpy.stack([rec.data.T for rec in rec_list], axis=0), fs)  # convert to pyfar
-        recs_aligned, shifts = align_recordings(recs)
-        recs_averaged = pyfar.Signal(numpy.mean(recs_aligned.time, axis=0), sampling_rate=fs)
-
-        # convolve with excitation signal to compute IR and store as slab Filter
-        ir = recs_averaged * ref_inv
-        ir_dict[key] = slab.Filter(
-            data=ir.time.T,
-            samplerate=fs,
-            fir="IR")
-
-    params = {
+    params = copy.deepcopy(recordings.params)
+    params.update({
         "fs": fs,
         "signal": sig_params,
         "compute_ir": {
@@ -83,8 +53,111 @@ def compute_ir(
             "inversion_range_hz": list(inversion_range_hz),
             "date": datetime.now().isoformat(),
         },
-    }
-    return ImpulseResponses(data=ir_dict, params=params)
+    })
+
+    # time align and average recordings per loudspeaker
+    recordings = average_recordings(recordings)
+
+    # --- invert excitation signal ---
+    sig = recordings.signal
+    exc = pyfar.Signal(sig.data.T, fs)
+    ref_inv = pyfar.dsp.regularized_spectrum_inversion(exc, frequency_range=inversion_range_hz)
+
+    # --- convolve to obtain IR ---
+    ir_dict = {}
+    for key, recording in recordings.data.items():
+        ir = recording * ref_inv
+        ir_dict[key] = ir
+    irs = ImpulseResponses(data=ir_dict, params=params)
+
+    # --- temporal alignment ---
+    irs = time_align_irs(irs, center_key='23_0.0_0.0', desired_onset_s=.001)
+    return irs
+
+def time_align_irs(
+    irs,
+    *,
+    center_key: str | None = '23_0.0_0.0',
+    onset_threshold_db: float = 15.0,
+    desired_onset_s: float = 0.001,
+    onset_mode: str = "earliest",   # "earliest" or "sum"
+):
+    """
+    Global time anchoring for a set of IRs:
+    - pick one reference direction (center_key or first entry)
+    - find onset on that reference
+    - shift ALL IRs by the same amount so onset lands at desired_onset_s
+
+    ITD-safe: does not alter interaural timing because the same shift is
+    applied to both ears and all positions.
+    """
+
+    fs = int(irs.params["fs"])
+    keys = list(irs.data.keys())
+    if len(keys) == 0:
+        raise ValueError("time_align_irs_global: empty IR set")
+
+    # --- select reference direction ---
+    if center_key is not None and center_key in irs.data:
+        ref_key = center_key
+    else:
+        if center_key is not None:
+            logging.warning("Center key '%s' not found; using '%s' instead.", center_key, keys[4])
+        ref_key = keys[0]
+
+    ref_sig = irs.data[ref_key]
+    if ref_sig.cshape != (2,):
+        raise ValueError(f"Expected binaural pyfar.Signal with cshape (2,), got {ref_sig.cshape} for {ref_key}")
+
+    # --- compute onset for reference direction ---
+    if onset_mode == "earliest":
+        # onset per ear; anchor to earliest ear to avoid ITD distortion
+        on = pyfar.dsp.find_impulse_response_start(ref_sig, threshold=onset_threshold_db)
+        onset_samples = int(numpy.min(on))
+    elif onset_mode == "sum":
+        # onset on mono sum of both ears (often robust)
+        mono = pyfar.Signal(ref_sig.time[0] + ref_sig.time[1], fs)
+        on = pyfar.dsp.find_impulse_response_start(mono, threshold=onset_threshold_db)
+        onset_samples = int(on)
+    else:
+        raise ValueError("onset_mode must be 'earliest' or 'sum'")
+
+    onset_s = onset_samples / fs
+    shift_s = desired_onset_s - onset_s
+
+    # --- apply the same shift to ALL IRs ---
+    out = copy.deepcopy(irs)
+    for k in keys:
+        out.data[k] = pyfar.dsp.time_shift(out.data[k], shift_s, unit="s")
+
+    out.params.setdefault("time_alignment", {})
+    out.params["time_alignment"].update({
+        "method": "global_reference_onset",
+        "reference_key": ref_key,
+        "onset_mode": onset_mode,
+        "onset_threshold_db": float(onset_threshold_db),
+        "desired_onset_s": float(desired_onset_s),
+        "reference_onset_samples": int(onset_samples),
+        "applied_shift_s": float(shift_s),
+        "date": datetime.now().isoformat(),
+    })
+    return out
+
+def average_recordings(recordings: Recordings):
+    """
+    Time align, average slab binaural recordings and convert to pyfar Signal.
+    :param recordings:
+    :return:
+    """
+    fs = recordings.params["fs"]
+    out = copy.deepcopy(recordings)
+    for key, rec_list in out.data.items():
+        # time align and average recordings for each loudspeaker
+        recs = pyfar.Signal(numpy.stack([rec.data.T for rec in rec_list], axis=0), fs)  # convert to pyfar
+        recs_aligned, shifts = align_recordings(recs)
+        recs_averaged = pyfar.Signal(numpy.mean(recs_aligned.time, axis=0), sampling_rate=fs)
+        out.data[key] = recs_averaged
+    return out
 
 def align_recordings(
     recs: pyfar.Signal,
@@ -127,34 +200,28 @@ def align_recordings(
     shift_candidates = numpy.arange(-max_shift, max_shift + 1)
 
     for i in range(n_rec):
-        for ear in range(n_ears):
+        # compute best_shift ONCE per recording
+        r = ref[0] + ref[1]
+        y = x[i, 0] + x[i, 1]
 
-            # reference and target
-            r = ref[ear]
-            y = x[i, ear]
+        scores = []
+        for s in shift_candidates:
+            if s < 0:
+                score = numpy.dot(r[-s:], y[: n_samples + s])
+            elif s > 0:
+                score = numpy.dot(r[: n_samples - s], y[s:])
+            else:
+                score = numpy.dot(r, y)
+            scores.append(score)
+        best_shift = shift_candidates[numpy.argmax(scores)]
 
-            # compute correlation scores only for small shifts
-            scores = []
-            for s in shift_candidates:
-                if s < 0:
-                    score = numpy.dot(r[-s:], y[: n_samples + s])
-                elif s > 0:
-                    score = numpy.dot(r[: n_samples - s], y[s:])
-                else:
-                    score = numpy.dot(r, y)
-                scores.append(score)
-
-            best_shift = shift_candidates[numpy.argmax(scores)]
-            shifts[i, ear] = best_shift
-
-            # apply shift using pyfar (safe, future-proof)
-            sig = pyfar.Signal(y[None, :], fs)
-            sig_shifted = pyfar.dsp.time_shift(
-                sig,
-                -best_shift,
-                unit="samples",
-            )
+        # apply identical shift to both ears
+        for ear in range(2):
+            sig = pyfar.Signal(x[i, ear][None, :], fs)
+            sig_shifted = pyfar.dsp.time_shift(sig, -best_shift, unit="samples")
             aligned[i, ear] = sig_shifted.time[0]
+
+        shifts[i, :] = best_shift
 
     recs_aligned = pyfar.Signal(aligned, fs)
     if (abs(shifts) > 2).any():
@@ -258,6 +325,280 @@ def lowfreq_extrapolate(
 
     hrir.freq = mag_interp * numpy.exp(1j * phase)
     return _pyfar_to_irs(irs, keys, hrir.time, fs)
+
+# =====================================================================
+# Containers (imported here to avoid circulars)
+# =====================================================================
+
+class ImpulseResponses(SpeakerGridBase):
+    """
+      Directional impulse responses over the speaker dome.
+      Values are `slab.Filter` (FIR).
+      """
+
+    def __init__(self, data=None, params=None):
+        super().__init__(data=data, params=params)
+
+    # =====================================================================
+    # plotting
+    # =====================================================================
+
+    def waterfall(self,azimuth=0,linesep=20,xscale="log",axis=None):
+        """
+        Waterfall plot of left + right ear spectra from in-ear impulse responses.
+        Elevations determine vertical offset (one curve per elevation).
+        Left ear = dark gray, right = lighter gray.
+        """
+
+        import numpy
+        import matplotlib
+        matplotlib.use("TkAgg")
+        import matplotlib.pyplot as plt
+
+        xlim = (
+            self.params["signal"]["from_frequency"],
+            self.params["signal"]["to_frequency"],
+        )
+
+        # ------------------------------------------------------------
+        # Axis handling
+        # ------------------------------------------------------------
+        if axis is None:
+            fig, axis = plt.subplots(figsize=(7, 6))
+        else:
+            fig = axis.figure
+
+        keys = list(self.data.keys())
+
+        elevations = []
+        specs_L = []
+        specs_R = []
+        freqs_saved = None
+
+        # ------------------------------------------------------------
+        # Extract spectra
+        # ------------------------------------------------------------
+        for key in keys:
+            _, _, el = self.parse_key(key)
+            sig = self.data[key]  # pyfar.Signal, shape (2, n_samples)
+
+            # FFT via pyfar
+            H = sig.freq  # complex spectrum, shape (2, n_freqs)
+            freqs = sig.frequencies
+
+            # magnitude in dB
+            Hl = 20 * numpy.log10(numpy.abs(H[0]) + 1e-12)
+            Hr = 20 * numpy.log10(numpy.abs(H[1]) + 1e-12)
+
+            if freqs_saved is None:
+                freqs_saved = freqs
+
+            elevations.append(el)
+            specs_L.append(Hl)
+            specs_R.append(Hr)
+
+        elevations = numpy.asarray(elevations)
+        specs_L = numpy.asarray(specs_L)
+        specs_R = numpy.asarray(specs_R)
+
+        # ------------------------------------------------------------
+        # Baseline correction (common average)
+        # ------------------------------------------------------------
+        baseline = numpy.mean((specs_L + specs_R) / 2.0)
+        specs_L = specs_L - baseline
+        specs_R = specs_R - baseline
+
+        # ------------------------------------------------------------
+        # Sort by elevation
+        # ------------------------------------------------------------
+        idx = numpy.argsort(elevations)
+        elevations = elevations[idx]
+        specs_L = specs_L[idx]
+        specs_R = specs_R[idx]
+
+        # Vertical offsets
+        vlines = numpy.arange(len(elevations)) * (linesep + 20)
+
+        # ------------------------------------------------------------
+        # Plot waterfall
+        # ------------------------------------------------------------
+        for i, (Hl, Hr) in enumerate(zip(specs_L, specs_R)):
+            axis.plot(
+                freqs_saved,
+                Hl + vlines[i],
+                color="0.25",
+                linewidth=0.8,
+                alpha=0.9,
+                label="Left" if i == 0 else None,
+            )
+            axis.plot(
+                freqs_saved,
+                Hr + vlines[i],
+                color="0.65",
+                linewidth=0.8,
+                alpha=0.9,
+                label="Right" if i == 0 else None,
+            )
+
+        # ------------------------------------------------------------
+        # Elevation labels
+        # ------------------------------------------------------------
+        ticks = vlines[::2]
+        labels = elevations[::2].astype(int)
+
+        axis.set_yticks(ticks)
+        axis.set_yticklabels(labels)
+        axis.set_ylabel("Elevation (°)")
+
+        # ------------------------------------------------------------
+        # dB scale bar
+        # ------------------------------------------------------------
+        scale_x = xlim[0] + 300
+        scale_y0 = vlines[-1] + 40
+        scale_y1 = scale_y0 + linesep
+
+        axis.plot(
+            [scale_x, scale_x],
+            [scale_y0, scale_y1],
+            color="0.1",
+            linewidth=1.2,
+        )
+        axis.text(
+            scale_x + 90,
+            scale_y0 + linesep / 2,
+            f"{linesep} dB",
+            va="center",
+            fontsize=7,
+            color="0.1",
+        )
+
+        # ------------------------------------------------------------
+        # Axis formatting
+        # ------------------------------------------------------------
+        axis.set_xlim(xlim)
+        axis.set_xscale(xscale)
+
+        if xscale == "log":
+            axis.xaxis.set_minor_locator(
+                matplotlib.ticker.LogLocator(base=10.0, subs="all")
+            )
+            axis.xaxis.set_minor_formatter(
+                matplotlib.ticker.LogFormatter(base=10.0, labelOnlyBase=False)
+            )
+            axis.grid(axis="x", which="both", linestyle=":", linewidth=0.3)
+            axis.set_xticks(
+                [20, 40, 60, 100, 200, 400, 600, 1000, 2000, 4000, 6000, 10000, 20000]
+            )
+            axis.set_xticklabels(
+                [20, 40, 60, 100, 200, 400, 600, "1k", "2k", "4k", "6k", "10k", "20k"]
+            )
+            axis.set_xlim(1e3, xlim[1])
+
+        axis.grid(axis="y", linestyle=":", linewidth=0.3)
+        axis.legend(loc="upper right", fontsize=7)
+
+        plt.show()
+        return fig
+
+
+    def time_freq(
+            self,
+            *,
+            max_plots: int | None = None,
+            title: str | None = None,
+    ):
+        """
+        Plot all binaural impulse responses into a single figure using
+        pyfar.plot.time_freq.
+
+        Intended for debugging / inspection (not publication).
+
+        Parameters
+        ----------
+        max_plots : int or None
+            Optional limit on number of IRs to plot.
+        title : str or None
+            Optional figure title.
+        """
+
+        import matplotlib.pyplot as plt
+        import pyfar
+
+        keys = list(self.data.keys())
+        if max_plots is not None:
+            keys = keys[:max_plots]
+
+        if len(keys) == 0:
+            raise ValueError("No impulse responses to plot.")
+
+        fig = plt.figure(figsize=(8, 10))
+
+        for i, key in enumerate(keys):
+            sig = self.data[key]
+
+            if sig.cshape != (2,):
+                raise ValueError(
+                    f"{key}: expected binaural pyfar.Signal with cshape (2,), "
+                    f"got {sig.cshape}"
+                )
+
+            ax_t, ax_f = pyfar.plot.time_freq(
+                sig,
+                figure=fig)
+
+            # Label ears only once
+            if i == 0:
+                ax_t.get_lines()[0].set_label("Left")
+                ax_t.get_lines()[1].set_label("Right")
+                ax_t.legend(fontsize=8)
+                ax_f.legend(fontsize=8)
+
+        if title is not None:
+            fig.suptitle(title)
+
+        plt.show()
+        return fig
+
+
+# =====================================================================
+# pyfar <-> slab helpers
+# =====================================================================
+
+def _irs_to_pyfar(irs: ImpulseResponses):
+    fs = int(irs.params["fs"])
+    keys = list(irs.data.keys())
+    data = numpy.stack([irs.data[k].data.T for k in keys], axis=0)
+    sig = pyfar.Signal(data, fs)
+
+    sources = irs.get_sources()
+    coords = pyfar.Coordinates(
+        sources[:, 0],
+        sources[:, 1],
+        sources[:, 2],
+        domain="sph",
+        convention="top_elev",
+        unit="deg",
+    )
+    return sig, coords, keys, fs
+
+
+def _pyfar_to_irs(template: ImpulseResponses, keys, time_data, fs):
+    out = copy.deepcopy(template)
+    for key, td in zip(keys, time_data):
+        out.data[key] = slab.Filter(td.T, fs, fir="IR")
+    return out
+
+
+def _spherical_head_for(coords, n_samples, fs, head_radius=None):
+    from hrtf_relearning.hrtf.processing.spherical_head import spherical_head
+    return spherical_head(
+        coords,
+        n_samples=n_samples,
+        sampling_rate=fs,
+        head=None if head_radius is None else head_radius,
+    )
+
+
 
 def expand_azimuths_with_binaural_cues(
     hrir,
@@ -485,203 +826,3 @@ def _wrap_az_deg_ccw(az):
     az = numpy.mod(az, 360.0)
     az[az < 0] += 360.0
     return az
-
-# =====================================================================
-# Containers (imported here to avoid circulars)
-# =====================================================================
-
-class ImpulseResponses(SpeakerGridBase):
-    
-    # =====================================================================
-    # plotting
-    # =====================================================================
-
-    def tf(
-            self,
-            azimuth=0,
-            linesep=20,
-            xscale="log",
-            axis=None,
-    ):
-        """
-        Waterfall plot of left + right ear spectra from in-ear recordings.
-        Elevations determine vertical offset (one curve per elevation).
-        Left ear = dark gray, right = lighter gray.
-
-        Parameters
-        ----------
-        xlim : tuple
-            Frequency axis limits.
-        n_bins : int or None
-            FFT resolution for spectrum().
-        linesep : float
-            Vertical separation in dB between stacked spectra.
-        xscale : 'linear' or 'log'
-            Frequency axis scaling.
-        show : bool
-            Show the plot immediately.
-        axis : matplotlib axis or None
-            Insert plot into an existing axis.
-        """
-        xlim = (self.params['signal']['from_frequency'], self.params['signal']['to_frequency'])
-        # Create axis
-        if axis is None:
-            fig, axis = plt.subplots(figsize=(7, 6))
-        else:
-            fig = axis.figure
-
-        keys = list(self.data.keys())
-
-        elevations = []
-        specs_L = []  # left ear spectra
-        specs_R = []  # right ear spectra
-        freqs_saved = None
-
-        # ------------------------------------------------------------------
-        # Extract spectra from all recordings
-        # ------------------------------------------------------------------
-        for key in keys:
-            _, _, el = self.parse_key(key)
-            filt = self.data[key]  # slab.Binaural
-
-            # left ear
-            freqs, Hl = filt.channel(0).tf(show=False)
-            # right ear
-            _, Hr = filt.channel(1).tf(show=False)
-
-            if freqs_saved is None:
-                freqs_saved = freqs
-
-            elevations.append(el)
-            specs_L.append(Hl)
-            specs_R.append(Hr)
-
-        elevations = numpy.asarray(elevations)
-        specs_L = numpy.asarray(specs_L)
-        specs_R = numpy.asarray(specs_R)
-
-        # baseline correction (compute common baseline from original data)
-        baseline = numpy.mean((specs_L + specs_R) / 2)
-
-        specs_L = specs_L - baseline
-        specs_R = specs_R - baseline
-
-        # ------------------------------------------------------------------
-        # Sort by elevation
-        # ------------------------------------------------------------------
-        idx = numpy.argsort(elevations)
-        elevations = elevations[idx]
-        specs_L = specs_L[idx]
-        specs_R = specs_R[idx]
-
-        # Compute vertical offsets
-        vlines = numpy.arange(len(elevations)) * (linesep + 20)
-
-        # ------------------------------------------------------------------
-        # Plot waterfall curves
-        # ------------------------------------------------------------------
-        for i, (Hl, Hr) in enumerate(zip(specs_L, specs_R)):
-            axis.plot(
-                freqs_saved, Hl + vlines[i],
-                color="0.25", linewidth=0.8, alpha=0.9, label="Left" if i == 0 else None,
-            )
-            axis.plot(
-                freqs_saved, Hr + vlines[i],
-                color="0.65", linewidth=0.8, alpha=0.9, label="Right" if i == 0 else None,
-            )
-
-        # ------------------------------------------------------------------
-        # Elevation labels
-        # ------------------------------------------------------------------
-        ticks = vlines[::2]
-        labels = elevations[::2].astype(int)
-
-        axis.set_yticks(ticks)
-        axis.set_yticklabels(labels)
-        axis.set_ylabel("Elevation (°)")
-
-        # ------------------------------------------------------------------
-        # dB scale bar (height = linesep)
-        # ------------------------------------------------------------------
-        scale_x = xlim[0] + 300
-        scale_y0 = vlines[-1] + 40
-        scale_y1 = scale_y0 + linesep
-
-        axis.plot([scale_x, scale_x], [scale_y0, scale_y1],
-                  color="0.1", linewidth=1.2)
-        axis.text(
-            scale_x + 90,
-            scale_y0 + linesep / 2,
-            f"{linesep} dB",
-            va="center", fontsize=7, color="0.1"
-        )
-
-        # ------------------------------------------------------------------
-        # Formatting utilities
-        # ------------------------------------------------------------------
-        axis.set_xlim(xlim)
-        axis.set_xscale(xscale)
-        if xscale == "log":
-            axis.set_xscale("log")
-            # optionally: let matplotlib choose ticks/formatter
-            axis.xaxis.set_minor_locator(matplotlib.ticker.LogLocator(base=10.0, subs="all"))
-            axis.xaxis.set_minor_formatter(matplotlib.ticker.LogFormatter(base=10.0,
-                                                                          labelOnlyBase=False))
-            axis.grid(axis='x', which='both', linestyle=':', linewidth=0.3, alpha=1)
-            axis.set_xticks([20, 40, 60, 100, 200, 400, 600, 1000, 2e3, 4e3, 6e3, 10e3, 20e3])
-            axis.set_xticklabels([20, 40, 60, 100, 200, 400, 600, '1k', '2k', '4k', '6k', '10k', '20k'])
-            axis.set_xlim(1e3, 18e3)  # works better
-
-        # axis.set_xscale(xscale)
-        # # Format frequency labels as kHz
-        # axis.xaxis.set_major_formatter(
-        #     matplotlib.ticker.FuncFormatter(lambda x, pos: f"{int(x / 1000)}")
-        # )
-        # axis.set_xlabel("Frequency [kHz]")
-
-        axis.grid(axis="y", linestyle=":", linewidth=0.3, alpha=1)
-        axis.legend(loc="upper right", fontsize=7)
-        plt.show()
-        return fig
-    
-
-
-# =====================================================================
-# pyfar <-> slab helpers
-# =====================================================================
-
-def _irs_to_pyfar(irs: ImpulseResponses):
-    fs = int(irs.params["fs"])
-    keys = list(irs.data.keys())
-    data = numpy.stack([irs.data[k].data.T for k in keys], axis=0)
-    sig = pyfar.Signal(data, fs)
-
-    sources = irs.get_sources()
-    coords = pyfar.Coordinates(
-        sources[:, 0],
-        sources[:, 1],
-        sources[:, 2],
-        domain="sph",
-        convention="top_elev",
-        unit="deg",
-    )
-    return sig, coords, keys, fs
-
-
-def _pyfar_to_irs(template: ImpulseResponses, keys, time_data, fs):
-    out = copy.deepcopy(template)
-    for key, td in zip(keys, time_data):
-        out.data[key] = slab.Filter(td.T, fs, fir="IR")
-    return out
-
-
-def _spherical_head_for(coords, n_samples, fs, head_radius=None):
-    from hrtf_relearning.hrtf.processing.spherical_head import spherical_head
-    return spherical_head(
-        coords,
-        n_samples=n_samples,
-        sampling_rate=fs,
-        head=None if head_radius is None else head_radius,
-    )
-
-

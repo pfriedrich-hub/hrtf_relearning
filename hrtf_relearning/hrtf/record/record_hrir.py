@@ -24,7 +24,7 @@ n_samples_out = 256
 fs = 48828  # 97656
 hp_freq = 120
 show = True
-
+equalize_dome = True
 save_wath = True
 
 slab.set_default_samplerate(fs)
@@ -42,6 +42,7 @@ def record_hrir(
     fs: int = 48828,
     hp_freq: float = 120,
     n_samples_out: int = 256,
+    equalize_dome: bool = False,
     overwrite: bool = False,
     show: bool = False,
     base_dir: Path | str | None = None,
@@ -86,7 +87,8 @@ def record_hrir(
             n_directions=n_directions,
             n_recordings=n_recordings,
             hp_freq=hp_freq,
-            fs=fs)
+            fs=fs,
+            equalize=equalize_dome)
         subject_rec.to_wav(subj_dir, overwrite=overwrite)
     else:
         logging.info("Loading subject recordings from disk")
@@ -103,7 +105,8 @@ def record_hrir(
             n_directions=1,
             n_recordings=n_recordings,
             hp_freq=hp_freq,
-            fs=fs)
+            fs=fs,
+            equalize=equalize_dome)
         reference_rec.to_wav(ref_dir, overwrite=overwrite)
     else:
         logging.info("Loading reference recordings from disk")
@@ -116,8 +119,9 @@ def record_hrir(
     subject_ir = compute_ir(subject_rec, inversion_range_hz=(hp_freq, 20e3))
     reference_ir = compute_ir(reference_rec, inversion_range_hz=(hp_freq, 20e3))
 
+
     # -----------------------------------------------------------------
-    # 4) Equalization
+    # 4) Equalization + windowing
     # -----------------------------------------------------------------
     logging.info("Applying equalization")
     hrir = equalize(

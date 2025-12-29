@@ -5,7 +5,6 @@ import datetime
 import time
 from pathlib import Path
 from pythonosc import udp_client
-
 from hrtf_relearning.experiment.misc.localization_helpers.uso_generation import generate_uso
 from hrtf_relearning.experiment.misc.training_helpers import meta_motion
 from hrtf_relearning.experiment.misc.localization_helpers.make_sequence import *
@@ -41,7 +40,7 @@ class Localization:
         self.settings = {'kind': 'sectors',
                          'azimuth_range': (-35, 35), 'elevation_range': (-35, 35),
                          'sector_size': (14, 14),
-                         'targets_per_sector': 3, 'replace': False, 'min_distance': 15,
+                         'targets_per_sector': 3, 'replace': False, 'min_distance': 30,
                          'gain': .2}
         # alternative setting: play 3 times from each source in the hrir (works well for dome recorded hrirs)
         #self.settings = {'kind': 'standard', 'azimuth_range': (-45, 45), 'elevation_range': (-45, 45),

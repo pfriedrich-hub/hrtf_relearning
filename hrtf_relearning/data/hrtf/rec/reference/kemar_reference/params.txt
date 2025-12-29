@@ -1,0 +1,13 @@
+id: kemar_reference
+fs: 48828
+n_recordings: 10
+n_directions: 1
+signal:
+  kind: logarithmic
+  duration: 0.2
+  level: 85
+  from_frequency: 120
+  to_frequency: 24414.0
+  samplerate: 48828
+highpass_frequency: 120
+datetime: 2025-12-28T18:27:34.942699

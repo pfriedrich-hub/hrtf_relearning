@@ -1,4 +1,7 @@
 # recordings.py
+import matplotlib
+matplotlib.use('TkAgg')
+import matplotlib.pyplot as plt
 import logging
 import copy
 from pathlib import Path
@@ -7,6 +10,7 @@ import numpy
 import slab
 import freefield
 import soundfile as sf
+import pyfar
 
 # ---------------------------------------------------------------------
 # Base grid container
@@ -92,7 +96,7 @@ class Recordings(SpeakerGridBase):
     # -------------------- Recording ----------------------------------
 
     @classmethod
-    def record_dome(cls, id=None, n_directions=5, n_recordings=5, hp_freq=120, fs=48828):
+    def record_dome(cls, id=None, n_directions=5, n_recordings=5, hp_freq=120, fs=48828, equalize=False):
 
         # excitation signal
         sig_params = dict(
@@ -100,11 +104,12 @@ class Recordings(SpeakerGridBase):
             duration=0.2,
             level=85,
             from_frequency=120,
-            to_frequency=fs / 2,
+            to_frequency=22e3,
             samplerate=fs,
         )
         signal = slab.Sound.chirp(**sig_params)
         signal = signal.ramp(when="both", duration=0.001)
+
         filt = slab.Filter.band("hp", frequency=hp_freq, samplerate=fs)
 
         # dome setup
@@ -127,7 +132,7 @@ class Recordings(SpeakerGridBase):
                 if spk.elevation >= min_el:
                     logging.info(f"Recording from Speaker {spk.index} at {spk.elevation:.1f}° elevation")
                     key = f"{spk.index}_{spk.azimuth}_{spk.elevation}"
-                    recs = cls.record_speaker(spk, signal, n_recordings, fs)
+                    recs = cls.record_speaker(spk, signal, n_recordings, fs, equalize)
                     processed = []
                     for r in recs:
                         processed.append(filt.apply(r))
@@ -142,20 +147,21 @@ class Recordings(SpeakerGridBase):
             n_directions=n_directions,
             signal=sig_params,
             highpass_frequency=hp_freq,
+            equalize_dome=equalize,
             datetime=datetime.now().isoformat(),
         )
 
         return cls(data=data, params=params, signal=signal)
 
     @staticmethod
-    def record_speaker(speaker, signal, n_recordings, fs):
+    def record_speaker(speaker, signal, n_recordings, fs, equalize):
         out = []
         for _ in range(n_recordings):
             rec = freefield.play_and_record(
                 speaker=speaker,
                 sound=signal,
                 compensate_delay=True,
-                equalize=False,
+                equalize=equalize,
                 recording_samplerate=fs,
             )
             out.append(slab.Binaural(rec))
@@ -213,7 +219,19 @@ class Recordings(SpeakerGridBase):
 
         return cls(data=data, params=params, signal=signal)
 
-
+    def plot(self, speaker_idx=4):
+        plt.figure(figsize=(12, 8))
+        fs = self.params["fs"]
+        for r in self[speaker_idx]:
+            if isinstance(r, slab.Binaural):
+                rec_l = pyfar.Signal(r.channel(0).data.T, fs)
+                rec_r = pyfar.Signal(r.channel(1).data.T, fs)
+            elif isinstance(r, pyfar.Signal):
+                rec_l = r[0]
+                rec_r = r[1]
+            pyfar.plot.time_freq(rec_l, color='red', unit='samples')
+            pyfar.plot.time_freq(rec_r, color='blue', unit='samples')
+            plt.title(f"Speaker {speaker_idx}")
 # ---------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------

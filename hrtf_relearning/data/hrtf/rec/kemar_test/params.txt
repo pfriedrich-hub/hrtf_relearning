@@ -7,7 +7,8 @@ signal:
   duration: 0.2
   level: 85
   from_frequency: 120
-  to_frequency: 24414.0
+  to_frequency: 22000.0
   samplerate: 48828
 highpass_frequency: 120
-datetime: 2025-12-28T18:49:40.236513
+equalize_dome: True
+datetime: 2025-12-29T15:43:27.179528

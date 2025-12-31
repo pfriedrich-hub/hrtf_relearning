@@ -11,7 +11,8 @@ try:
     HAS_QTSVG = True
 except Exception:
     HAS_QTSVG = False
-
+import hrtf_relearning
+ROOT = hrtf_relearning.PATH
 
 # ────────────────────────────────────────────────────────────────
 # Shared structure for multiprocessing.Values
@@ -36,8 +37,8 @@ def fmt_time(seconds: float) -> str:
 
 def find_coin_path() -> Optional[Path]:
     for p in (
-        Path.cwd() / "data" / "img" / "ui" / "mario-coin.svg",
-        Path.cwd() / "data" / "ui"  / "mario-coin.png",
+        ROOT / "data" / "img" / "ui" / "mario-coin.svg",
+        ROOT / "data" / "ui"  / "mario-coin.png",
     ):
         if p.exists():
             return p

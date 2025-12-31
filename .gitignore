@@ -4,6 +4,7 @@
 /hrtf_relearning.egg-info/requires.txt
 /hrtf_relearning.egg-info/SOURCES.txt
 /hrtf_relearning.egg-info/top_level.txt
+hrtf_relearning/data/hrtf/rec/universal_hrtf
 # Default ignored files
 /shelf/
 /workspace.xml

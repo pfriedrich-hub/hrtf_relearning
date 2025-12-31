@@ -10,21 +10,16 @@ import logging
 from pathlib import Path
 import multiprocessing as mp
 from pythonosc import udp_client
-
-from hrtf_relearning.experiment.Subject import Subject
 from hrtf_relearning.hrtf.binsim.hrtf2binsim import hrtf2binsim
 from hrtf_relearning.experiment.misc.training_helpers import meta_motion
 
 logging.getLogger().setLevel('INFO')
+import hrtf_relearning
 
 # ------------------------ CONFIG ------------------------
 
-# Subject / last localization sequence (for training ranges & probabilities)
-subject_id = 'test'
-sequence = Subject(subject_id).last_sequence  # must contain .settings and .data
-
 # HRTF selection
-sofa_name = 'laras_pf_in_ear_mic'
+sofa_name = 'universal'
 
 # unilateral vs. binaural
 ear = None
@@ -45,7 +40,7 @@ show = 'IR'
 
 hrir = hrtf2binsim(sofa_name, ear, overwrite=False)
 slab.set_default_samplerate(hrir.samplerate)
-hrir_dir = Path.cwd() / 'data' / 'hrtf' / 'binsim' / hrir.name
+hrir_dir = hrtf_relearning.PATH / 'data' / 'hrtf' / 'binsim' / hrir.name
 
 
 # ------------------------ MAIN LOOP ------------------------

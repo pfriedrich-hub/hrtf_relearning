@@ -15,12 +15,12 @@ from __future__ import annotations
 import copy
 import numpy
 from datetime import datetime
-import slab
 import pyfar
 import warnings
 warnings.filterwarnings("ignore", category=pyfar._utils.PyfarDeprecationWarning)
 from .recordings import Recordings, SpeakerGridBase
-
+import logging
+import slab
 
 # =====================================================================
 # Deconvolution: Lists of Recordings -> ImpulseResponses
@@ -236,6 +236,7 @@ def equalize(
     measured: "ImpulseResponses",
     reference: "ImpulseResponses",
     n_samples_out: int,
+    inversion_range_hz,
     onset_threshold_db: float = 15.0,
 ) -> "ImpulseResponses":
     """
@@ -257,19 +258,45 @@ def equalize(
             if k.startswith(spk_id + "_")
         )
 
-        H = pyfar.Signal(filt.data.T, fs)
-        R = pyfar.Signal(reference.data[ref_key].data.T, fs)
-
+        H = filt
+        R = reference.data[ref_key]
+        # convolve
         R_inv = pyfar.dsp.regularized_spectrum_inversion(
-            R, frequency_range=(200, 18000)
+            R, frequency_range=inversion_range_hz
         )
-
         H_eq = H * R_inv
-        out[key] = slab.Filter(
-            data=H_eq.time[:, :n_samples_out].T,
-            samplerate=fs,
-            fir="IR",
-        )
+
+        # onset align
+        onsets = pyfar.dsp.find_impulse_response_start(H_eq, threshold=onset_threshold_db)
+        H_aligned = pyfar.dsp.time_shift(
+            H_eq, -numpy.min(onsets) / H_eq.sampling_rate + .001,
+            unit='s')
+
+        # window
+        onset = pyfar.dsp.find_impulse_response_start(H_aligned, threshold=onset_threshold_db)
+        onset_min = numpy.min(onset) / H_aligned.sampling_rate  # onset in seconds
+        times = (onset_min - .00025,  # start of fade-in
+                 onset_min,  # end if fade-in
+                 onset_min + .0048,  # start of fade_out
+                 onset_min + .0058)  # end of_fade_out
+        H_windowed, window = pyfar.dsp.time_window(
+            H_aligned, times, 'hann', unit='s', crop='end', return_window=True)
+
+        # low freq extrapolation
+        # H_extrapol =
+
+        # crop
+        times = [0, 10, 246, n_samples_out-1]
+        H_final = pyfar.dsp.time_window(
+            H_windowed, times, 'hann', crop='end')
+
+        out[key] = H_final
+
+        # out[key] = slab.Filter(
+        #     data=H_eq.time[:, :n_samples_out].T,
+        #     samplerate=fs,
+        #     fir="IR",
+        # )
 
     params = {
         "fs": fs,
@@ -291,7 +318,7 @@ def lowfreq_extrapolate(
     irs: "ImpulseResponses",
     f_extrap: float = 400.0,
     f_target: float = 150.0,
-    head_radius: float | None = None,
+    head_radius: float | None = 0.0875,
 ) -> "ImpulseResponses":
     """
     Replace low-frequency magnitude using spherical-head anchors.
@@ -326,6 +353,17 @@ def lowfreq_extrapolate(
     hrir.freq = mag_interp * numpy.exp(1j * phase)
     return _pyfar_to_irs(irs, keys, hrir.time, fs)
 
+def _spherical_head_for(coords, n_samples, fs, head_radius=None):
+    """
+    Wrap spherical_head() and, if head_radius is given, construct the expected
+    spharpy/SOFAR SamplingSphere with two ear nodes (±90° az, 0° el).
+    """
+    from hrtf_relearning.hrtf.processing.spherical_head import spherical_head as _spherical_head
+    if head_radius is None:  # use default head radius: .0875 m
+        return _spherical_head(coords, n_samples=n_samples, sampling_rate=fs)
+    head = pyfar.Coordinates(0, [head_radius, -head_radius], 0)
+    return _spherical_head(coords,head=head,n_samples=n_samples,sampling_rate=fs)
+
 # =====================================================================
 # Containers (imported here to avoid circulars)
 # =====================================================================
@@ -339,6 +377,62 @@ class ImpulseResponses(SpeakerGridBase):
     def __init__(self, data=None, params=None):
         super().__init__(data=data, params=params)
 
+    def to_slab_hrtf(
+        self,
+        fs: int | None = None,
+        datatype: str = "FIR",
+    ) -> slab.HRTF:
+        """
+        Convert this ImpulseResponses object into a slab.HRTF.
+
+        Assumes that self.data is a dict mapping keys like
+        '23_0.0_40.0' → slab.Filter with shape (n_samples, n_channels).
+
+        The resulting HRTF has shape (n_positions, n_samples, n_channels)
+        and sources from self.get_sources().
+
+        Parameters
+        ----------
+        fs
+            Samplerate for the HRTF. If None, tries self.params["fs"],
+            then the samplerate of the first Filter.
+        datatype
+            Passed to slab.HRTF (e.g. 'FIR').
+
+        Returns
+        -------
+        hrtf : slab.HRTF
+        """
+        if not self.data:
+            raise ValueError("to_slab_hrtf: no filters in self.data")
+
+        # samplerate
+        if fs is None:
+            if "fs" in self.params:
+                fs = int(self.params["fs"])
+            else:
+                # fall back to first filter's samplerate
+                first_key = next(iter(self.data.keys()))
+                fs = int(self.data[first_key].samplerate)
+
+        # ensure a stable order: use keys list once for data and coordinates
+        keys = list(self.data.keys())
+
+        # stack filters: (n_positions, n_samples, n_channels)
+        data = numpy.stack([self.data[k].time for k in keys], axis=0)
+
+        # sources: (n_positions, 3) -> [az, el, r]
+        # uses the same internal order as self.data, so things stay aligned
+        sources = self.get_sources()
+
+        hrir = slab.HRTF(
+            data=data,
+            sources=sources,
+            samplerate=fs,
+            datatype=datatype,
+        )
+
+        return hrir
     # =====================================================================
     # plotting
     # =====================================================================
@@ -567,9 +661,7 @@ class ImpulseResponses(SpeakerGridBase):
 def _irs_to_pyfar(irs: ImpulseResponses):
     fs = int(irs.params["fs"])
     keys = list(irs.data.keys())
-    data = numpy.stack([irs.data[k].data.T for k in keys], axis=0)
-    sig = pyfar.Signal(data, fs)
-
+    data = pyfar.Signal([irs[k].time for k in keys], sampling_rate=fs)
     sources = irs.get_sources()
     coords = pyfar.Coordinates(
         sources[:, 0],
@@ -579,24 +671,24 @@ def _irs_to_pyfar(irs: ImpulseResponses):
         convention="top_elev",
         unit="deg",
     )
-    return sig, coords, keys, fs
+    return data, coords, keys, fs
 
 
 def _pyfar_to_irs(template: ImpulseResponses, keys, time_data, fs):
     out = copy.deepcopy(template)
     for key, td in zip(keys, time_data):
-        out.data[key] = slab.Filter(td.T, fs, fir="IR")
+        out.data[key] = pyfar.Signal(td, fs)
     return out
 
 
-def _spherical_head_for(coords, n_samples, fs, head_radius=None):
-    from hrtf_relearning.hrtf.processing.spherical_head import spherical_head
-    return spherical_head(
-        coords,
-        n_samples=n_samples,
-        sampling_rate=fs,
-        head=None if head_radius is None else head_radius,
-    )
+# def _spherical_head_for(coords, n_samples, fs, head_radius=None):
+#     from hrtf_relearning.hrtf.processing.spherical_head import spherical_head
+#     return spherical_head(
+#         coords,
+#         n_samples=n_samples,
+#         sampling_rate=fs,
+#         head=None if head_radius is None else head_radius,
+#     )
 
 
 

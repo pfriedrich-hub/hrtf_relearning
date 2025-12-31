@@ -20,7 +20,7 @@ logging.getLogger().setLevel('INFO')
 
 # -------------------- Config --------------------
 SUBJECT_ID = "paul"
-HRIR_NAME = "universal"  # 'KU100', 'kemar', etc.
+HRIR_NAME = "kemar_test"  # 'KU100', 'kemar', etc.
 EAR = None              # or None for binaural
 
 # Sound

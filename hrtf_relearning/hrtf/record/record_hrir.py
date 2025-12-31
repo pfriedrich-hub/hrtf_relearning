@@ -128,6 +128,7 @@ def record_hrir(
         measured=subject_ir,
         reference=reference_ir,
         n_samples_out=n_samples_out,
+        inversion_range_hz=(hp_freq, 18e3)
     )
 
     # -----------------------------------------------------------------
@@ -157,6 +158,7 @@ def record_hrir(
     # -----------------------------------------------------------------
     logging.info("Converting to slab.HRTF")
     hrtf = hrir.to_slab_hrtf(datatype="FIR")
+    hrtf.write_sofa(base_dir / 'sofa' / f'{subject_id}.sofa')
 
     if show:
         import matplotlib.pyplot as plt

@@ -1495,7 +1495,7 @@ def lowfreq_extrapolate(
     irs,
     f_extrap: float = 400.0,
     f_target: float = 150.0,
-    head_radius: float | None = None,
+    head_radius: float | None = .0875,
     show: bool = False,
     probe_index: int | None = None,
 ):

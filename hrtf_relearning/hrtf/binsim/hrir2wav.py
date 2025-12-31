@@ -1,4 +1,5 @@
 import numpy
+from scipy.io import savemat
 import slab
 import logging
 import pyfar
@@ -17,7 +18,163 @@ def resample_sounds(target_samplerate, target_directory):
             sound = sound.resample(target_samplerate)
         sound.write(target_directory / file.name, normalise=True)
 
-def write_ds_filter(hrir):
+# ---- mat writers ---- #
+
+def write_filters(hrir, lr_ir, hp_ir, mat_path):
+    """
+    Write a pyBinSim-compatible MAT database matching FilterStorage.parse_and_load_matfile()
+
+    Fields expected by pyBinSim (per row):
+      - type
+      - listenerOrientation (1x3)
+      - listenerPosition (1x3)
+      - sourceOrientation (1x3)
+      - sourcePosition (1x3)   (az, el, r) in your convention
+      - custom (1x3)
+      - ir  (nSamples x 2)
+    """
+
+    # structured dtype with all required fields
+    dtype = numpy.dtype([
+        ("type", "U2"),
+        ("listenerOrientation", "O"),
+        ("listenerPosition", "O"),
+        ("sourceOrientation", "O"),
+        ("sourcePosition", "O"),
+        ("custom", "O"),
+        ("filter", "O"),
+    ])
+
+    rows = []
+
+    zeros3 = numpy.zeros(3, dtype=numpy.float32)
+
+    # ---------- DS rows ----------
+    for src_idx in range(hrir.n_sources):
+        az, el, _ = hrir.sources.vertical_polar[src_idx]
+
+        rows.append((
+            "DS",
+            zeros3.copy(),                 # listenerOrientation
+            zeros3.copy(),                 # listenerPosition
+            zeros3.copy(),                 # sourceOrientation
+            numpy.array([az, el, 0.0], dtype=numpy.float32),  # sourcePosition
+            zeros3.copy(),                 # custom
+            hrir[src_idx].data.astype(numpy.float32),         # ir
+        ))
+
+    # ---------- LR row ----------
+    rows.append((
+        "LR",
+        zeros3.copy(),
+        zeros3.copy(),
+        zeros3.copy(),
+        zeros3.copy(),
+        zeros3.copy(),
+        lr_ir.astype(numpy.float32),
+    ))
+
+    # ---------- HP row ----------
+    rows.append((
+        "HP",
+        zeros3.copy(),
+        zeros3.copy(),
+        zeros3.copy(),
+        zeros3.copy(),
+        zeros3.copy(),
+        hp_ir.astype(numpy.float32),
+    ))
+
+    filters = numpy.zeros((1, len(rows)), dtype=dtype)
+    for i, r in enumerate(rows):
+        filters[0, i]["type"] = r[0]
+        filters[0, i]["listenerOrientation"] = r[1]
+        filters[0, i]["listenerPosition"] = r[2]
+        filters[0, i]["sourceOrientation"] = r[3]
+        filters[0, i]["sourcePosition"] = r[4]
+        filters[0, i]["custom"] = r[5]
+        filters[0, i]["filter"] = r[6]
+
+    savemat(mat_path, {"filters": filters}, do_compression=True)
+
+def write_filter_list(hrir):
+    pose = "0 0 0  0 0 0  0 0 0  0 0 0  0 0 0"
+    fname = wav_path / hrir.name / f"filter_list_{hrir.name}.txt"
+
+    with open(fname, "w") as f:
+        f.write(f"DS {pose}\n")
+        f.write(f"LR {pose}\n")
+        f.write("HP\n")
+
+    return fname
+
+def compute_lr_ir(hrir,drr=20, block_size=256):
+    """
+    Compute late reverb IR (binaural) without writing WAV
+    Returns numpy array [nSamples, 2]
+    """
+    reverb = slab.Sound(
+        wav_path / hrir.name / 'sounds' / 'reverb.wav'
+    ).data
+
+    cropped_len = int(
+        (int(hrir.samplerate * 0.3) // int(block_size))
+        * int(block_size)
+    )
+    reverb = reverb[:cropped_len]
+
+    reverb = slab.Sound(reverb).ramp(
+        duration=0.005, when='onset'
+    ).data
+
+    mean_ir_onset = int(numpy.mean([
+        numpy.argmax(hrir[idx].data)
+        for idx in range(hrir.n_sources)
+    ]))
+
+    reverb = numpy.concatenate(
+        (numpy.zeros((mean_ir_onset, 2)), reverb[:-mean_ir_onset]),
+        axis=0
+    )
+
+    mean_ir_level = numpy.mean([
+        20 * numpy.log10(
+            max(numpy.sqrt(numpy.mean(hrir[idx].data ** 2)), 1e-12)
+        )
+        for idx in range(hrir.n_sources)
+    ])
+
+    reverb = slab.Sound(reverb)
+    reverb.level = mean_ir_level - drr
+
+    return reverb.data.astype(numpy.float32)
+
+def compute_hp_ir(hrir, fname, block_size=256):
+    """
+    Load and crop headphone filter, return IR array [nSamples, 2]
+    """
+    hp = pyfar.io.read_audio(
+        wav_path / hrir.name / 'sounds' / fname
+    )
+
+    n_samp_out = int(
+        (int(hrir.samplerate * 0.02) // int(block_size))
+        * int(block_size)
+    )
+
+    hp = pyfar.dsp.time_window(
+        hp,
+        [0, n_samp_out - 1],
+        shape="right",
+        window='boxcar',
+        crop='window'
+    )
+
+    return hp.time.astype(numpy.float32).T
+
+# ---- wav writers ------ #
+
+def write_ds_filter_wav(hrir):
     # zero pad and write IR to wav and coordinates to filter_list.txt
     logging.info(f'Writing HRIR filters to wav and filter_list for {hrir.name}')
     scaling_factor = min(1.0, 0.95 / numpy.max([hrir[idx].data for idx in range(hrir.n_sources)]))  # scaling factor
@@ -37,7 +194,7 @@ def write_ds_filter(hrir):
                        f' 0 0 0'  # Value 13 - 15: custom values[a, b, c]
                        f' {fname}\n')
 
-def write_lr_filter(hrir, drr=20):
+def write_lr_filter_wav(hrir, drr=20):
     logging.info(f'Writing reverb filter to wav (DRR = {drr} dB)')
     fname_out = wav_path / hrir.name / 'sounds' / 'scaled_reverb.wav'  # output file name (level adjusted)
     reverb = slab.Sound(wav_path / hrir.name / 'sounds' / 'reverb.wav').data  # load reverb
@@ -67,7 +224,7 @@ def write_lr_filter(hrir, drr=20):
                    f' {fname_out}\n')
     # plot_reverb(hrir, reverb)
 
-def write_hp_filter(hrir, fname):
+def write_hp_filter_wav(hrir, fname):
     """
     Crop HP Filter to around 5 ms and write filter list entry
     """
@@ -81,22 +238,3 @@ def write_hp_filter(hrir, fname):
     pyfar.io.write_audio(hp_filt, str(fname_out))
     with open(wav_path / hrir.name / f"filter_list_{hrir.name}.txt", 'a') as file:  # write filename to filter list
         file.write(f'HP {fname_out}\n')
-#
-# def write_hp_filter(hrir, mute_ear=None):
-#     """
-#     Apply headphone filter to mute a channel
-#     Arguments:
-#         mute_ear (String): Whether to mute the left or the right ear. If None, don't apply the HP filter.
-#     """
-#     logging.info(f'Writing headphone filters')
-#     fname = wav_path / hrir.name / 'sounds' / 'hp_filter.wav'
-#     hp_filter = numpy.zeros((2, hrir[0].n_samples))
-#     hp_filter[:,0] = 1
-#     if mute_ear == 'left':
-#         hp_filter[0] *= 0
-#     elif mute_ear == 'right':
-#         hp_filter[1] *= 0
-#     hp_filter = slab.Sound(data=hp_filter)
-#     hp_filter.write(fname, normalise=False)  # write hp filter to wav
-#     with open(wav_path / hrir.name / f"filter_list_{hrir.name}.txt", 'a') as file:  # write filename to filter list
-#         file.write(f'HP {fname}\n')

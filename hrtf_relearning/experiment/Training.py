@@ -1,31 +1,26 @@
 import matplotlib
 from matplotlib import pyplot as plt
-import logging
+import numpy
 import time
-from pathlib import Path
 import multiprocessing as mp
 from queue import Empty
-import numpy
-import slab
 from pythonosc import udp_client
 import datetime
 date = datetime.datetime.now()
-import pybinsim
 import hrtf_relearning
-ROOT = Path(hrtf_relearning.__file__).resolve().parent
+ROOT = hrtf_relearning.PATH
 
 from hrtf_relearning.experiment.misc.training_helpers import meta_motion, game_ui
 from hrtf_relearning.experiment.Subject import Subject
 from hrtf_relearning.experiment.misc.training_helpers.training_targets import set_target_probabilistic
-from hrtf_relearning.hrtf.binsim.hrtf2binsim import hrtf2binsim
-
+from hrtf_relearning.hrtf.binsim.hrtf2binsim import *
 matplotlib.rcParams['figure.raise_window'] = False
 logging.getLogger().setLevel('INFO')
 
 
 # -------------------- Config --------------------
-SUBJECT_ID = "AvS"
-HRIR_NAME = "KU100"  # 'KU100', 'kemar', etc.
+SUBJECT_ID = "paul"
+HRIR_NAME = "universal"  # 'KU100', 'kemar', etc.
 EAR = None              # or None for binaural
 
 # Sound
@@ -34,25 +29,25 @@ SOUND_FILE = None         # None -> pink noise pulses; or 'uso_225ms_9_.wav', et
 show_ui = True  # todo
 SHOW_TF = False  # set to TF or IR to spawn live filter plot
 
-# -------------------- Global HRIR/Sequence --------------------
-hrir = hrtf2binsim(HRIR_NAME, EAR, reverb=True, hp_filter=True,
-                   convolution='cpu', storage='cpu', overwrite=False)
-slab.set_default_samplerate(hrir.samplerate)
-HRIR_DIR = ROOT / "data" / "hrtf" / "binsim" / hrir.name
-subject = Subject(SUBJECT_ID)
-sequence = subject.last_sequence
-
 # Game settings
 settings = dict(
     target_size=3,
     target_time=0.5,
-    az_range=sequence.settings["azimuth_range"] if sequence else (-35,35),
-    ele_range=sequence.settings["elevation_range"] if sequence else (-35,35),
     min_dist=30,
     game_time=90,
     trial_time=15,
     score_time=6,
     gain=.15)
+
+# -------------------- Global HRIR/Sequence --------------------
+hrir = hrtf2binsim(HRIR_NAME, EAR,
+    reverb=True, drr=20,
+    hp_filter=True, hp_file="DT990_equalization.wav",
+    convolution="cuda", storage="cuda")
+slab.set_default_samplerate(hrir.samplerate)
+HRIR_DIR = ROOT / "data" / "hrtf" / "binsim" / hrir.name
+
+
 
 # -------------------- Helpers --------------------
 def make_osc_client(port, ip="127.0.0.1"):
@@ -165,7 +160,7 @@ def plot_current_tf(filter_idx_shared, redraw_interval_s=0.05, kind=SHOW_TF):
 
 # -------------------- Subprocess workers --------------------
 def binsim_stream():
-    # import pybinsim
+    import pybinsim
     pybinsim.logger.setLevel(logging.WARNING)
     logging.info(f"Loading {hrir.name}")
     binsim = pybinsim.BinSim(HRIR_DIR / f"{hrir.name}_training_settings.txt")
@@ -191,7 +186,7 @@ def pulse_maker(pulse_interval, pulse_state):
                 play_sound(osc, soundfile=SOUND_FILE, duration=float(interval), sleep=True)
                 time.sleep(interval)
                 target_sound = False
-        time.sleep(0.01)
+        time.sleep(0.02)
 
 def head_tracker(distance, target, sensor_state, pose_queue, current_trial, plot_filter_idx):
     import logging
@@ -233,14 +228,14 @@ def head_tracker(distance, target, sensor_state, pose_queue, current_trial, plot
             rel_target = numpy.array((rel[0], rel[1], hrtf_sources[0, 2]))
             filter_idx = numpy.argmin(numpy.linalg.norm(rel_target - hrtf_sources, axis=1))
             rel_hrtf_coords = hrtf_sources[filter_idx]
-            osc.send_message('/pyBinSim_ds_Filter', [0,0,0,0,0,0,0,0,0,0,
-                                                     float(rel_hrtf_coords[0]), float(rel_hrtf_coords[1]), 0,
-                                                     0,0,0])
             if filter_idx != last_idx:
+                osc.send_message('/pyBinSim_ds_Filter', [0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                                                         float(rel_hrtf_coords[0]), float(rel_hrtf_coords[1]), 0,
+                                                         0, 0, 0])
                 last_idx = filter_idx
                 if plot_filter_idx is not None:
                     plot_filter_idx.value = int(filter_idx)
-        time.sleep(0.01)
+        time.sleep(0.02)
 
 def play_trial(subject, trial_idx, current_trial, target, distance, pulse_interval, pulse_state, sensor_state,
                game_time_left, game_timer, session_total, last_goal_points, pose_queue):
@@ -320,7 +315,7 @@ def play_trial(subject, trial_idx, current_trial, target, distance, pulse_interv
 
             break
 
-        time.sleep(0.01)
+        time.sleep(0.02)
 
     t1 = time.time()
     logging.info(f"Score: {score}")
@@ -361,6 +356,20 @@ def play_session():
     """
     global osc_client
     osc_client = make_osc_client(port=10003)
+    subject = Subject(SUBJECT_ID)
+    sequence = subject.last_sequence
+
+    if sequence:
+        az_range = tuple(sequence.settings["azimuth_range"])
+        ele_range = tuple(sequence.settings["elevation_range"])
+        logging.info("Using sequence-based target ranges: az=%s el=%s", az_range, ele_range)
+    else:
+        az_range = (-35, 35)
+        ele_range = (-35, 35)
+        logging.info("Using default target ranges: az=%s el=%s", az_range, ele_range)
+
+    global settings
+    settings = dict(settings, az_range=az_range, ele_range=ele_range)
 
     # Shared state for workers
     sensor_state    = mp.Value("i", 0)

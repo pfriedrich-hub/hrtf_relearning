@@ -4,7 +4,7 @@ import pyfar as pf
 import sofar as sf
 import matplotlib.pyplot as plt
 import os
-%matplotlib inline
+# %matplotlib inline
 
 print(f'last tested with pyfar v{pf.__version__} and sofar v{sf.__version__}')
 

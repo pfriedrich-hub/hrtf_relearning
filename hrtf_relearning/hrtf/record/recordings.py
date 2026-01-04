@@ -121,6 +121,11 @@ class Recordings(SpeakerGridBase):
         min_el = min(spk.elevation for spk in speakers)
         data = {}
         for n in range(n_directions):
+            
+            freefield.play_start_sound()
+            print('Press Button to start')
+            freefield.wait_for_button()
+
             elevation_step = n * res
             if n_directions > 1:  # skip for reference recordings
                 freefield.write(tag='bitmask', value=led_speaker.digital_channel,
@@ -183,6 +188,7 @@ class Recordings(SpeakerGridBase):
     # -------------------- WAV I/O -------------------------------------
 
     def to_wav(self, path, overwrite=False):
+        logging.info(f'Writing recordings to .wav: {path}.')
         path = Path(path)
         path.mkdir(exist_ok=True, parents=True)
         self.write_params_file(path)

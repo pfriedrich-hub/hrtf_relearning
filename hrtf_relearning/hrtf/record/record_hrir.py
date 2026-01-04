@@ -15,7 +15,7 @@ import hrtf_relearning
 base_dir = hrtf_relearning.PATH / "data" / "hrtf"
 import logging
 
-subject_id = 'kemar_test'
+subject_id = 'PF'
 reference_id = 'kemar_reference'
 overwrite = False
 n_directions = 1
@@ -25,7 +25,7 @@ fs = 48828  # 97656
 hp_freq = 120
 show = True
 equalize_dome = True
-save_wath = True
+# save_wath = True
 
 slab.set_default_samplerate(fs)
 freefield.set_logger("info")
@@ -150,7 +150,7 @@ def record_hrir(
         hrir,
         az_range=(-50, 50),
         head_radius=0.0875,
-        show=show,
+        show=False,
     )
 
     # -----------------------------------------------------------------

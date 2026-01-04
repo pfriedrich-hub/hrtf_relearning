@@ -22,7 +22,7 @@ def generate_uso(samplerate, duration=0.225, base=numpy.random.randint(0, 6), n_
                'stapler', 'punch']
     sout = slab.Sound.read(input_folder / str(bases[base] + '.wav'))
     base_sr = sout.samplerate
-    base_level = sout.level
+    sout.level += 6
     length = int(base_sr * duration)
     sout = sout.data[:, 0]
     sout = sout[numpy.where((sout > 0.03) == True)[0][0]:numpy.where((sout > 0.03) == True)[0][-1]][1000:length+1000]

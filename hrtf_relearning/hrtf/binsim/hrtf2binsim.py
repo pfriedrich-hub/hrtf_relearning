@@ -160,12 +160,12 @@ def hrtf2binsim(
     ear: Optional[str] = None,
     *,
     drr: float = 5.0,
-    hp_file: str = "MYSPHERE_equalization.wav",
+    hp: str = "MYSPHERE",
     reverb: bool = True,
     hp_filter: bool = True,
     convolution: str = "cpu",
     storage: str = "cpu",
-    overwrite: bool = False,
+    overwrite: bool = True,
 ):
     """
     Convert a SOFA HRTF to a pyBinSim-compatible MAT database and write settings.
@@ -176,7 +176,7 @@ def hrtf2binsim(
 
     logger.info(
         "hrtf2binsim | HRTF=%s ear=%s drr=%.1f hp_file=%s",
-        sofa_name, ear or "binaural", drr, hp_file,
+        sofa_name, ear or "binaural", drr, hp,
     )
 
     hrir = slab.HRTF(data_dir / "sofa" / f"{sofa_name}.sofa")
@@ -211,10 +211,10 @@ def hrtf2binsim(
         )
 
     # ALWAYS recompute LR + HP
-    logger.info("Writing DS / LR / HP filters | DRR=%.1f HP=%s", drr, hp_file)
+    logger.info("Writing DS / LR / HP filters | DRR=%.1f HP=%s", drr, hp)
 
     lr_ir = compute_lr_ir(hrir, drr=drr, block_size=block_size)
-    hp_ir = compute_hp_ir(hrir, fname=hp_file, block_size=block_size)
+    hp_ir = compute_hp_ir(hrir, hp=hp, block_size=block_size)
 
     write_filters(hrir, lr_ir, hp_ir, mat_path)
     write_filter_list(hrir)

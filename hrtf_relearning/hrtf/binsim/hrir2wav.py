@@ -149,10 +149,11 @@ def compute_lr_ir(hrir,drr=20, block_size=256):
 
     return reverb.data.astype(numpy.float32)
 
-def compute_hp_ir(hrir, fname, block_size=256):
+def compute_hp_ir(hrir, hp, block_size=256):
     """
     Load and crop headphone filter, return IR array [nSamples, 2]
     """
+    fname = f"{hp}_equalization.wav"
     hp = pyfar.io.read_audio(
         wav_path / hrir.name / 'sounds' / fname
     )

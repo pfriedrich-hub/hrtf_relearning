@@ -9,7 +9,8 @@ import re
 
 base = hrtf_relearning.PATH / 'data' / 'hrtf'
 pattern = re.compile(r"hrir_az(?P<az>[+-]?\d+\.\d)_el(?P<el>[+-]?\d+\.\d)\.wav")
-wav_files = sorted((base / 'rec' / 'universal_hrtf').glob("hrir_az*_el*.wav"))
+wav_files = sorted((base / 'rec' / 'universal').glob("hrir_az*_el*.wav"))
+
 fs = 48000
 dist = 1.0
 
@@ -37,13 +38,13 @@ hrtf.write_sofa(base / 'sofa' / 'universal.sofa')
 """
 Write sources txt for use in unity from numpy array
 """
-from pathlib import Path
-import numpy
-from hrtf_relearning.hrtf.processing.make.spherical_sources import *
 
 import slab
 import hrtf_relearning
 hrtf_dir = hrtf_relearning.PATH / 'data' / 'hrtf' / 'sofa'
+from pathlib import Path
+from hrtf_relearning.hrtf.processing.make.spherical_sources import *
+
 
 sources = spherical_sources(resolution_deg=5)
 

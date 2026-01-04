@@ -17,16 +17,18 @@ logging.getLogger().setLevel('INFO')
 ROOT = Path(hrtf_relearning.__file__).resolve().parent
 
 # --- settings ----
-SUBJECT_ID = "AvS"
-HRIR_NAME = "KU100"  # 'KU100', 'kemar', etc.
+SUBJECT_ID = "PF"
+HRIR_NAME = "PF"  # 'KU100', 'kemar', etc.
 EAR = None
-STIM = 'noise_burst'  # 'uso'
+STIM = 'noise'  # 'noise' or 'uso'
+HP = 'MYSPHERE'
 
 # --- load and process HRIR
-hrir = hrtf2binsim(HRIR_NAME, EAR, reverb=True, hp_filter=True,
-                   convolution='cpu', storage='cpu', overwrite=False)
+hrir = hrtf2binsim(HRIR_NAME, EAR, reverb=True, hp=HP,
+                   convolution='cuda', storage='cuda', overwrite=False)
 slab.set_default_samplerate(hrir.samplerate)
-HRIR_DIR = ROOT / "data" / "hrtf" / "binsim" / hrir.name
+HRIR_DIR = (ROOT / "data" / "hrtf" / "binsim"
+            / hrir.name)
 subject = Subject(SUBJECT_ID)
 
 class Localization:
@@ -37,14 +39,14 @@ class Localization:
     def __init__(self, subject, hrir):
         # make trial sequence and write to subject
 
-        self.settings = {'kind': 'sectors',
-                         'azimuth_range': (-35, 35), 'elevation_range': (-35, 35),
-                         'sector_size': (14, 14),
-                         'targets_per_sector': 3, 'replace': False, 'min_distance': 30,
-                         'gain': .2}
+        # self.settings = {'kind': 'sectors',
+        #                  'azimuth_range': (-35, 35), 'elevation_range': (-35, 35),
+        #                  'sector_size': (14, 14),
+        #                  'targets_per_sector': 3, 'replace': False, 'min_distance': 30,
+        #                  'gain': .2}
         # alternative setting: play 3 times from each source in the hrir (works well for dome recorded hrirs)
-        #self.settings = {'kind': 'standard', 'azimuth_range': (-45, 45), 'elevation_range': (-45, 45),
-         #                 'targets_per_speaker': 2, 'min_distance': 30, 'gain': .4}
+        self.settings = {'kind': 'standard', 'azimuth_range': (-1, 1), 'elevation_range': (-35, 35),
+                         'targets_per_speaker': 3, 'min_distance': 10, 'gain': .2}
         self.subject = subject
         self.filename = subject.id + f'_{hrir.name}' + '_loc_' + date
         # metadata

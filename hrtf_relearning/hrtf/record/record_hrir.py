@@ -1,11 +1,6 @@
 """
-High-level HRIR recording + processing wrapper.
-
-Responsibilities:
 - directory handling
-- overwrite / reload logic
-- calling recording + processing steps in the correct order
-- no signal processing code lives here
+- recording + processing
 """
 import matplotlib
 matplotlib.use('TkAgg')

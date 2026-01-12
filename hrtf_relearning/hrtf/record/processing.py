@@ -17,6 +17,7 @@ import numpy
 from datetime import datetime
 import pyfar
 import warnings
+import logging
 warnings.filterwarnings("ignore", category=pyfar._utils.PyfarDeprecationWarning)
 from .recordings import Recordings, SpeakerGridBase
 import logging

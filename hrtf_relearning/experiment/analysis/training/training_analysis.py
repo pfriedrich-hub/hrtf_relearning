@@ -6,9 +6,8 @@ after localization training.
 from pathlib import Path
 import matplotlib
 matplotlib.use('tkagg')
-import matplotlib.pyplot as plt
 from hrtf_relearning.experiment.Subject import Subject
-from hrtf_relearning.analysis.training import PoseAnalysis
+from hrtf_relearning.experiment.analysis.training.training import PoseAnalysis
 
 
 # ------------------------------------------------------

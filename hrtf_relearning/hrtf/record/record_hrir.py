@@ -17,8 +17,8 @@ import logging
 
 subject_id = 'PF'
 reference_id = 'kemar_reference'
-overwrite = False
-n_directions = 1
+overwrite = True
+n_directions = 2
 n_recordings = 10
 n_samples_out = 256
 fs = 48828  # 97656
@@ -149,7 +149,7 @@ def record_hrir(
     hrir = expand_azimuths_with_binaural_cues(
         hrir,
         az_range=(-50, 50),
-        head_radius=0.0875,
+        head_radius=0.08,
         show=False,
     )
 

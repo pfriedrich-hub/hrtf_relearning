@@ -1,34 +1,36 @@
 import multiprocessing as mp
-import hrtf_relearning
+import hrtf_relearning as hr
 import datetime
 import time
-from pathlib import Path
+import logging
+import slab
+import numpy
 from pythonosc import udp_client
 from hrtf_relearning.experiment.misc.localization_helpers.uso_generation import generate_uso
 from hrtf_relearning.experiment.misc.training_helpers import meta_motion
-from hrtf_relearning.experiment.misc.localization_helpers.make_sequence import *
 from hrtf_relearning.hrtf.binsim.hrtf2binsim import hrtf2binsim
-from hrtf_relearning.experiment.Subject import Subject
 from pynput import keyboard
 date = datetime.datetime.now()
 date = f'{date.strftime("%d")}.{date.strftime("%m")}_{date.strftime("%H")}:{date.strftime("%M")}'
 logging.getLogger().setLevel('INFO')
-ROOT = Path(hrtf_relearning.__file__).resolve().parent
+ROOT = hr.PATH
 
 # --- settings ----
 SUBJECT_ID = "PF"
 HRIR_NAME = "PF"  # 'KU100', 'kemar', etc.
 EAR = None
 STIM = 'noise'  # 'noise' or 'uso'
-HP = 'MYSPHERE'
+HP = 'DT990'
 
 # --- load and process HRIR
-hrir = hrtf2binsim(HRIR_NAME, EAR, reverb=True, hp=HP,
-                   convolution='cuda', storage='cuda', overwrite=False)
+hrir = hrtf2binsim(HRIR_NAME, EAR,
+    reverb=True, drr=20,
+    hp_filter=True, hp=HP,
+    convolution="cpu", storage="cpu")
 slab.set_default_samplerate(hrir.samplerate)
 HRIR_DIR = (ROOT / "data" / "hrtf" / "binsim"
             / hrir.name)
-subject = Subject(SUBJECT_ID)
+subject = hr.Subject(SUBJECT_ID)
 
 class Localization:
     """
@@ -55,7 +57,7 @@ class Localization:
         self.target = None
 
         # make sequence
-        self.sequence = make_sequence(self.settings, self.hrir_sources)
+        self.sequence = hr.make_sequence(self.settings, self.hrir_sources)
         self.sequence.name = self.filename
         self.sequence.hrir = hrir.name
         self.sequence.ear = EAR
@@ -82,7 +84,7 @@ class Localization:
             self.motion_sensor.calibrate()
             self.play_trial()  # generate and play stim, get pose response and write to file
         self.subject.last_sequence = self.sequence
-        self.sequence.response_errors = target_p(self.sequence, show=False)
+        self.sequence.response_errors = hr.target_p(self.sequence, show=False)
         self.write()
         logging.info('Finished.')
         return
@@ -191,5 +193,5 @@ if __name__ == "__main__":
     loc_test = Localization(subject, hrir)
     loc_test.run()
     sequence = subject.localization[loc_test.filename]
-    plot_localization(sequence, report_stats=['azimuth', 'elevation'], filepath=ROOT / 'data'  / 'results' / 'plot' / subject.id)
-    plot_elevation_response(sequence, filepath=ROOT / 'data'  / 'results' / 'plot' / subject.id)
+    hr.plot_localization(sequence, report_stats=['azimuth', 'elevation'], filepath=ROOT / 'data'  / 'results' / 'plot' / subject.id)
+    hr.plot_elevation_response(sequence, filepath=ROOT / 'data'  / 'results' / 'plot' / subject.id)

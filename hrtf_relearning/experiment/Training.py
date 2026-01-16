@@ -19,11 +19,12 @@ logging.getLogger().setLevel('INFO')
 
 
 # -------------------- Config --------------------
-SUBJECT_ID = "paul"
-HRIR_NAME = "universal"  # 'KU100', 'kemar', etc.
+SUBJECT_ID = "PF"
+HRIR_NAME = "PF"  # 'KU100', 'kemar', etc.
 EAR = None              # or None for binaural
 
 # Sound
+HP = 'DT990'
 SOUND_FILE = None         # None -> pink noise pulses; or 'uso_225ms_9_.wav', etc.
 # Graphics
 show_ui = True  # todo
@@ -42,8 +43,8 @@ settings = dict(
 # -------------------- Global HRIR/Sequence --------------------
 hrir = hrtf2binsim(HRIR_NAME, EAR,
     reverb=True, drr=20,
-    hp_filter=True, hp_file="DT990_equalization.wav",
-    convolution="cuda", storage="cuda")
+    hp_filter=True, hp=HP,
+    convolution="cpu", storage="cpu")
 slab.set_default_samplerate(hrir.samplerate)
 HRIR_DIR = ROOT / "data" / "hrtf" / "binsim" / hrir.name
 

@@ -2,11 +2,11 @@ import multiprocessing as mp
 import hrtf_relearning as hr
 import datetime
 import time
-import logging
-import slab
-import numpy
-from pythonosc import udp_client
+from pathlib import Path
+from hrtf_relearning.experiment.analysis.localization.localization_analysis import *
+from hrtf_relearning.experiment.misc.localization_helpers.make_sequence import *
 from hrtf_relearning.experiment.misc.localization_helpers.uso_generation import generate_uso
+from pythonosc import udp_client
 from hrtf_relearning.experiment.misc.training_helpers import meta_motion
 from hrtf_relearning.hrtf.binsim.hrtf2binsim import hrtf2binsim
 from pynput import keyboard
@@ -16,11 +16,11 @@ logging.getLogger().setLevel('INFO')
 ROOT = hr.PATH
 
 # --- settings ----
-SUBJECT_ID = "PF"
-HRIR_NAME = "PF"  # 'KU100', 'kemar', etc.
+SUBJECT_ID = "MB"
+HRIR_NAME = "universal"  # 'KU100', 'kemar', etc.
 EAR = None
 STIM = 'noise'  # 'noise' or 'uso'
-HP = 'DT990'
+HP = 'MYSPHERE'
 
 # --- load and process HRIR
 hrir = hrtf2binsim(HRIR_NAME, EAR,
@@ -40,14 +40,14 @@ class Localization:
     def __init__(self, subject, hrir):
         # make trial sequence and write to subject
 
-        # self.settings = {'kind': 'sectors',
-        #                  'azimuth_range': (-35, 35), 'elevation_range': (-35, 35),
-        #                  'sector_size': (14, 14),
-        #                  'targets_per_sector': 3, 'replace': False, 'min_distance': 30,
-        #                  'gain': .2}
+        self.settings = {'kind': 'sectors',
+                         'azimuth_range': (-35, 35), 'elevation_range': (-35, 35),
+                         'sector_size': (14, 14),
+                         'targets_per_sector': 3, 'replace': False, 'min_distance': 30,
+                         'gain': .2}
         # alternative setting: play 3 times from each source in the hrir (works well for dome recorded hrirs)
-        self.settings = {'kind': 'standard', 'azimuth_range': (-1, 1), 'elevation_range': (-35, 35),
-                         'targets_per_speaker': 3, 'min_distance': 10, 'gain': .2}
+        # self.settings = {'kind': 'standard', 'azimuth_range': (-1, 1), 'elevation_range': (-35, 35),
+        #                  'targets_per_speaker': 3, 'min_distance': 10, 'gain': .2}
         self.subject = subject
         self.filename = subject.id + date
         # metadata
@@ -57,7 +57,7 @@ class Localization:
         self.target = None
 
         # make sequence
-        self.sequence = hr.make_sequence(self.settings, self.hrir_sources)
+        self.sequence = make_sequence(self.settings, self.hrir_sources)
         self.sequence.name = self.filename
         self.sequence.hrir = hrir.name
         self.sequence.ear = EAR
@@ -84,7 +84,7 @@ class Localization:
             self.motion_sensor.calibrate()
             self.play_trial()  # generate and play stim, get pose response and write to file
         self.subject.last_sequence = self.sequence
-        self.sequence.response_errors = hr.target_p(self.sequence, show=False)
+        self.sequence.response_errors = target_p(self.sequence, show=False)
         self.write()
         logging.info('Finished.')
         return
@@ -193,5 +193,5 @@ if __name__ == "__main__":
     loc_test = Localization(subject, hrir)
     loc_test.run()
     sequence = subject.localization[loc_test.filename]
-    hr.plot_localization(sequence, report_stats=['azimuth', 'elevation'], filepath=ROOT / 'data'  / 'results' / 'plot' / subject.id)
-    hr.plot_elevation_response(sequence, filepath=ROOT / 'data'  / 'results' / 'plot' / subject.id)
+    plot_localization(sequence, report_stats=['azimuth', 'elevation'], filepath=ROOT / 'data'  / 'results' / 'plot' / subject.id)
+    plot_elevation_response(sequence, filepath=ROOT / 'data'  / 'results' / 'plot' / subject.id)

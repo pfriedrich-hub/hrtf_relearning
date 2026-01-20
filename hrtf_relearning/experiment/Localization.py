@@ -1,34 +1,36 @@
 import multiprocessing as mp
-import hrtf_relearning
+import hrtf_relearning as hr
 import datetime
 import time
 from pathlib import Path
-from pythonosc import udp_client
-from hrtf_relearning.experiment.misc.localization_helpers.uso_generation import generate_uso
-from hrtf_relearning.experiment.misc.training_helpers import meta_motion
+from hrtf_relearning.experiment.analysis.localization.localization_analysis import *
 from hrtf_relearning.experiment.misc.localization_helpers.make_sequence import *
+from hrtf_relearning.experiment.misc.localization_helpers.uso_generation import generate_uso
+from pythonosc import udp_client
+from hrtf_relearning.experiment.misc.training_helpers import meta_motion
 from hrtf_relearning.hrtf.binsim.hrtf2binsim import hrtf2binsim
-from hrtf_relearning.experiment.Subject import Subject
 from pynput import keyboard
 date = datetime.datetime.now()
 date = f'{date.strftime("%d")}.{date.strftime("%m")}_{date.strftime("%H")}:{date.strftime("%M")}'
 logging.getLogger().setLevel('INFO')
-ROOT = Path(hrtf_relearning.__file__).resolve().parent
+ROOT = hr.PATH
 
 # --- settings ----
-SUBJECT_ID = "PF"
-HRIR_NAME = "PF"  # 'KU100', 'kemar', etc.
+SUBJECT_ID = "MB"
+HRIR_NAME = "universal"  # 'KU100', 'kemar', etc.
 EAR = None
 STIM = 'noise'  # 'noise' or 'uso'
 HP = 'MYSPHERE'
 
 # --- load and process HRIR
-hrir = hrtf2binsim(HRIR_NAME, EAR, reverb=True, hp=HP,
-                   convolution='cuda', storage='cuda', overwrite=False)
+hrir = hrtf2binsim(HRIR_NAME, EAR,
+    reverb=True, drr=20,
+    hp_filter=True, hp=HP,
+    convolution="cpu", storage="cpu")
 slab.set_default_samplerate(hrir.samplerate)
 HRIR_DIR = (ROOT / "data" / "hrtf" / "binsim"
             / hrir.name)
-subject = Subject(SUBJECT_ID)
+subject = hr.Subject(SUBJECT_ID)
 
 class Localization:
     """
@@ -38,14 +40,14 @@ class Localization:
     def __init__(self, subject, hrir):
         # make trial sequence and write to subject
 
-        # self.settings = {'kind': 'sectors',
-        #                  'azimuth_range': (-35, 35), 'elevation_range': (-35, 35),
-        #                  'sector_size': (14, 14),
-        #                  'targets_per_sector': 3, 'replace': False, 'min_distance': 30,
-        #                  'gain': .2}
+        self.settings = {'kind': 'sectors',
+                         'azimuth_range': (-35, 35), 'elevation_range': (-35, 35),
+                         'sector_size': (14, 14),
+                         'targets_per_sector': 3, 'replace': False, 'min_distance': 30,
+                         'gain': .2}
         # alternative setting: play 3 times from each source in the hrir (works well for dome recorded hrirs)
-        self.settings = {'kind': 'standard', 'azimuth_range': (-1, 1), 'elevation_range': (-35, 35),
-                         'targets_per_speaker': 3, 'min_distance': 10, 'gain': .2}
+        # self.settings = {'kind': 'standard', 'azimuth_range': (-1, 1), 'elevation_range': (-35, 35),
+        #                  'targets_per_speaker': 3, 'min_distance': 10, 'gain': .2}
         self.subject = subject
         self.filename = subject.id + date
         # metadata

@@ -19,9 +19,10 @@ logging.getLogger().setLevel('INFO')
 
 
 # -------------------- Config --------------------
-SUBJECT_ID = "paul"
+SUBJECT_ID = "MB"
 HRIR_NAME = "universal"  # 'KU100', 'kemar', etc.
 EAR = None              # or None for binaural
+HP = 'MYSPHERE'
 
 # Sound
 SOUND_FILE = None         # None -> pink noise pulses; or 'uso_225ms_9_.wav', etc.
@@ -31,19 +32,23 @@ SHOW_TF = False  # set to TF or IR to spawn live filter plot
 
 # Game settings
 settings = dict(
-    target_size=3,
+    target_size=6,
+
     target_time=0.5,
     min_dist=30,
     game_time=90,
-    trial_time=15,
+    trial_time=20,
     score_time=6,
     gain=.15)
 
 # -------------------- Global HRIR/Sequence --------------------
+
+# --- load and process HRIR
 hrir = hrtf2binsim(HRIR_NAME, EAR,
     reverb=True, drr=20,
-    hp_filter=True, hp_file="DT990_equalization.wav",
+    hp_filter=True, hp=HP,
     convolution="cuda", storage="cuda")
+
 slab.set_default_samplerate(hrir.samplerate)
 HRIR_DIR = ROOT / "data" / "hrtf" / "binsim" / hrir.name
 

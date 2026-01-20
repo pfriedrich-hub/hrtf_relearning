@@ -16,7 +16,7 @@ def flatten_dtf(hrir, ear='left', method='energy', window_ms=None, onset_thresh=
     ----------
     hrir : slab.HRTF
         Input HRIR object (in the time domain).
-    flatten_ear : {'left', 'right'}, default='left'
+    ear : {'left', 'right'}, default='left'
         Which ear to flatten (the other ear is left unchanged).
     method : {'energy', 'rms'}, default='energy'
         Defines how to set the single-sample amplitude:

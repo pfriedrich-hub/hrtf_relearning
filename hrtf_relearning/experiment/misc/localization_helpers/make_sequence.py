@@ -284,6 +284,7 @@ def std_targets(settings, hrir_sources, max_tries=1000):
             ]
 
             sequence = slab.Trialsequence(points)
+            sequence.trials = numpy.arange(1, len(points) + 1)
             # Start from existing settings, then fill/overwrite what we know
             settings_out = dict(settings)
             settings_out.update({

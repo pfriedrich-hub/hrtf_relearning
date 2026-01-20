@@ -17,13 +17,13 @@ ROOT = hr.PATH
 
 # --- settings ----
 SUBJECT_ID = "PF"
-HRIR_NAME = "PF"  # 'KU100', 'kemar', etc.
-EAR = None
+HRIR_NAME = "universal"  # 'KU100', 'kemar', etc.
+EAR = 'left'  # 'left' 'right' None
 STIM = 'noise'  # 'noise' or 'uso'
 HP = 'DT990'
 
 # --- load and process HRIR
-hrir = hrtf2binsim(HRIR_NAME, EAR,
+hrir = hrtf2binsim(HRIR_NAME, ear=EAR,
     reverb=True, drr=20,
     hp_filter=True, hp=HP,
     convolution="cpu", storage="cpu")
@@ -38,16 +38,24 @@ class Localization:
         Test localization at uniformly random positions within sectors
     """
     def __init__(self, subject, hrir):
-        # make trial sequence and write to subject
 
         # self.settings = {'kind': 'sectors',
         #                  'azimuth_range': (-35, 35), 'elevation_range': (-35, 35),
         #                  'sector_size': (14, 14),
         #                  'targets_per_sector': 3, 'replace': False, 'min_distance': 30,
-        #                  'gain': .2}
-        # alternative setting: play 3 times from each source in the hrir (works well for dome recorded hrirs)
-        self.settings = {'kind': 'standard', 'azimuth_range': (-1, 1), 'elevation_range': (-35, 35),
-                         'targets_per_speaker': 3, 'min_distance': 10, 'gain': .2}
+        #                  'gain': .3}
+
+        # alternative kind 'standard': play 3 times from each source (for dome recorded hrirs with few sources)
+        # self.settings = {'kind': 'standard', 'azimuth_range': (-35, 35), 'elevation_range': (-35, 35),
+        #                  'targets_per_speaker': 3, 'min_distance': 15, 'gain': .2}
+
+        # monaural training
+        self.settings = {'kind': 'sectors',
+                         'azimuth_range': (-35, 0), 'elevation_range': (-35, 35),
+                         'sector_size': (8.75, 8.75),
+                         'targets_per_sector': 3, 'replace': False, 'min_distance': 15,
+                         'gain': .3}
+
         self.subject = subject
         self.filename = subject.id + date
         # metadata

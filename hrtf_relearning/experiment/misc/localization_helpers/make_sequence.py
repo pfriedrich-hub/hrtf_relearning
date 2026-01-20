@@ -170,6 +170,7 @@ def std_targets(settings, hrir_sources, max_tries=1000):
 
     # initial extraction
     src_az = src[:, 0].astype(float)
+    src_az = (src_az + 180) % 360 - 180  # wrap around (-180, 180)
     src_el = src[:, 1].astype(float)
 
     # -------------------------------------------

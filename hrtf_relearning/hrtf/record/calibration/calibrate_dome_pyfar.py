@@ -13,7 +13,7 @@ ROOT = hrtf_relearning.PATH
 
 # ------------------------ CONFIG ------------------------
 
-SPEAKERS = 'center'
+SPEAKERS = 'full'
 FS = 48828
 FILTER_LENGTH = 1024
 LOW_FREQ = 20

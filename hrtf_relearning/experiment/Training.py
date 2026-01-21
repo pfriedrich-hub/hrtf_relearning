@@ -32,12 +32,11 @@ SHOW_TF = False  # set to TF or IR to spawn live filter plot
 
 # Game settings
 settings = dict(
-    target_size=6,
-
+    target_size=3,
     target_time=0.5,
     min_dist=30,
     game_time=90,
-    trial_time=20,
+    trial_time=10,
     score_time=6,
     gain=.15)
 

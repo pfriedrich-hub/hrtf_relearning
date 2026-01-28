@@ -62,9 +62,6 @@ hrir_settings = dict(
 hrir = hrtf2binsim(hrir_settings, overwrite=True)
 """
 
-slab.set_default_samplerate(hrir.samplerate)
-HRIR_DIR = ROOT / "data" / "hrtf" / "binsim" / hrir.name
-
 
 # -------------------- Helpers --------------------
 def make_osc_client(port, ip="127.0.0.1"):
@@ -371,9 +368,13 @@ def play_session():
     """
     Main loop: start workers, then run until game_time.
     """
-    global osc_client
+    global osc_client, hrir, HRIR_DIR
     osc_client = make_osc_client(port=10003)
+
     hrir = hrtf2binsim(hrir_settings)
+    slab.set_default_samplerate(hrir.samplerate)
+    HRIR_DIR = ROOT / "data" / "hrtf" / "binsim" / hrir.name
+
     subject = Subject(SUBJECT_ID)
     sequence = subject.last_sequence
 

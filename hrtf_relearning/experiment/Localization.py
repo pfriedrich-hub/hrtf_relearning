@@ -22,14 +22,10 @@ EAR = 'left'
 STIM = 'noise'  # 'noise' or 'uso'
 HP = 'MYSPHERE'
 
-# --- load and process HRIR
-hrir = hrtf2binsim(HRIR_NAME, EAR,
-    reverb=True, drr=20,
-    hp_filter=True, hp=HP,
-    convolution="cuda", storage="cuda")
-slab.set_default_samplerate(hrir.samplerate)
-HRIR_DIR = (ROOT / "data" / "hrtf" / "binsim"
-            / hrir.name)
+# --- load HRIR and Subject
+hrir_settings = dict(name=HRIR_NAME, ear=EAR, reverb=True, drr=20,
+                     hp_filter=True, hp=HP, convolution="cuda",storage="cuda")
+hrir = hrtf2binsim(hrir_settings, overwrite=True)
 subject = hr.Subject(SUBJECT_ID)
 
 class Localization:
@@ -41,7 +37,7 @@ class Localization:
         # make trial sequence and write to subject
 
         self.settings = {'kind': 'sectors',
-                         'azimuth_range': (-35, 35), 'elevation_range': (-35, 35),
+                         'azimuth_range': (-35, 0), 'elevation_range': (-35, 35),
                          'sector_size': (14, 14),
                          'targets_per_sector': 3, 'replace': False, 'min_distance': 30,
                          'gain': .2}

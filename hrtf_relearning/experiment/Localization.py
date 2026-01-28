@@ -16,7 +16,7 @@ logging.getLogger().setLevel('INFO')
 ROOT = hr.PATH
 
 # --- settings ----
-SUBJECT_ID = "MB"
+SUBJECT_ID = "JZ"
 HRIR_NAME = "universal"  # 'KU100', 'kemar', etc.
 EAR = None
 STIM = 'noise'  # 'noise' or 'uso'
@@ -26,7 +26,7 @@ HP = 'MYSPHERE'
 hrir = hrtf2binsim(HRIR_NAME, EAR,
     reverb=True, drr=20,
     hp_filter=True, hp=HP,
-    convolution="cpu", storage="cpu")
+    convolution="cuda", storage="cuda")
 slab.set_default_samplerate(hrir.samplerate)
 HRIR_DIR = (ROOT / "data" / "hrtf" / "binsim"
             / hrir.name)
@@ -46,7 +46,7 @@ class Localization:
                          'targets_per_sector': 3, 'replace': False, 'min_distance': 30,
                          'gain': .2}
         # alternative setting: play 3 times from each source in the hrir (works well for dome recorded hrirs)
-        # self.settings = {'kind': 'standard', 'azimuth_range': (-1, 1), 'elevation_range': (-35, 35),
+        # self.settings = {'kind': 'standard', 'azimuth_range': (-60, 60), 'elevation_range': (-40, 40),
         #                  'targets_per_speaker': 3, 'min_distance': 10, 'gain': .2}
         self.subject = subject
         self.filename = subject.id + date

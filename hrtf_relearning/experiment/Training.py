@@ -19,9 +19,9 @@ logging.getLogger().setLevel('INFO')
 
 
 # -------------------- Config --------------------
-SUBJECT_ID = "MB"
-HRIR_NAME = "universal"  # 'KU100', 'kemar', etc.
-EAR = None              # or None for binaural
+SUBJECT_ID = "JZ"
+HRIR_NAME = "JZ"  # 'KU100', 'kemar', etc.
+EAR = 'left'              # or None for binaural
 HP = 'MYSPHERE'
 
 # Sound
@@ -38,19 +38,32 @@ settings = dict(
     game_time=90,
     trial_time=10,
     score_time=6,
-    gain=.15)
+    gain=.15,
+    azimuth_range=None,
+    elevation_range=None,
+)
+
+#HRIR settings for hrtf2binsim
+hrir_settings = dict(
+    name=HRIR_NAME,
+    ear=EAR,
+    reverb=True,
+    drr=20,
+    hp_filter=True,
+    hp=HP,
+    convolution="cuda",
+    storage="cuda"
+)
 
 # -------------------- Global HRIR/Sequence --------------------
 
 # --- load and process HRIR
-hrir = hrtf2binsim(HRIR_NAME, EAR,
-    reverb=True, drr=20,
-    hp_filter=True, hp=HP,
-    convolution="cuda", storage="cuda")
+"""
+hrir = hrtf2binsim(hrir_settings, overwrite=True)
+"""
 
 slab.set_default_samplerate(hrir.samplerate)
 HRIR_DIR = ROOT / "data" / "hrtf" / "binsim" / hrir.name
-
 
 
 # -------------------- Helpers --------------------
@@ -360,10 +373,11 @@ def play_session():
     """
     global osc_client
     osc_client = make_osc_client(port=10003)
+    hrir = hrtf2binsim(hrir_settings)
     subject = Subject(SUBJECT_ID)
     sequence = subject.last_sequence
 
-    if sequence:
+    if sequence or (settings['azimuth_range'] and settings['elevation_range']):
         az_range = tuple(sequence.settings["azimuth_range"])
         ele_range = tuple(sequence.settings["elevation_range"])
         logging.info("Using sequence-based target ranges: az=%s el=%s", az_range, ele_range)
@@ -473,12 +487,6 @@ def play_session():
                                                pulse_state, sensor_state, game_time_left, game_timer, session_total,
                                                last_goal_points, pose_queue)
                 scores.append(score)
-                # update high score live; persist to Subject
-                if session_total.value > highscore.value:
-                    play_sound(osc_client, soundfile='hi_score.wav', duration=None, sleep=True)
-                    highscore.value = int(session_total.value)
-                    setattr(subject, "highscore", int(highscore.value))
-                    subject.write()  # your Subject.write() persists object
 
                 # if time is up, break
                 if game_timer >= settings["game_time"]:
@@ -487,7 +495,15 @@ def play_session():
             # end
             ui_state.value = 3
             pulse_state.value = 1  # idle
-            play_sound(osc_client, soundfile='buzzer.wav', duration=None, sleep=True)
+
+            # update high score live; persist to Subject
+            if session_total.value > highscore.value:
+                play_sound(osc_client, soundfile='hi_score.wav', duration=None, sleep=True)
+                highscore.value = int(session_total.value)
+                setattr(subject, "highscore", int(highscore.value))
+                subject.write()  # your Subject.write() persists object
+            else:
+                play_sound(osc_client, soundfile='buzzer.wav', duration=None, sleep=True)
             logging.info(f"Game Over! Total Score: {int(session_total.value)}")
 
             # Show play-again prompt (same big overlay, different text)

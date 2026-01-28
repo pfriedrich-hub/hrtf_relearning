@@ -155,24 +155,21 @@ def write_settings(
 # Main entry point
 # ---------------------------------------------------------------------
 
-def hrtf2binsim(
-    sofa_name: str,
-    ear: Optional[str] = None,
-    *,
-    drr: float = 5.0,
-    hp: str = "MYSPHERE",
-    reverb: bool = True,
-    hp_filter: bool = True,
-    convolution: str = "cpu",
-    storage: str = "cpu",
-    overwrite: bool = True,
-):
+def hrtf2binsim(hrir_settings, overwrite: bool = True):
     """
     Convert a SOFA HRTF to a pyBinSim-compatible MAT database and write settings.
 
     DS filters are written only if the database does not exist or overwrite=True.
     LR / HP filters and settings are updated on every call.
     """
+    sofa_name = hrir_settings["name"]
+    ear = hrir_settings["ear"]
+    reverb = hrir_settings["reverb"]
+    drr = hrir_settings["drr"]
+    hp_filter = hrir_settings["hp_filter"]
+    hp = hrir_settings["hp"]
+    convolution = hrir_settings["convolution"]
+    storage = hrir_settings["storage"]
 
     logger.info(
         "hrtf2binsim | HRTF=%s ear=%s drr=%.1f hp_file=%s",

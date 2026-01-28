@@ -19,9 +19,9 @@ logging.getLogger().setLevel('INFO')
 
 
 # -------------------- Config --------------------
-SUBJECT_ID = "MB"
-HRIR_NAME = "universal"  # 'KU100', 'kemar', etc.
-EAR = None              # or None for binaural
+SUBJECT_ID = "JZ"
+HRIR_NAME = "JZ"  # 'KU100', 'kemar', etc.
+EAR = 'left'              # or None for binaural
 HP = 'MYSPHERE'
 
 # Sound

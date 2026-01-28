@@ -12,6 +12,7 @@ hrtf_relearning/data/hrtf/rec/universal_hrtf
 /httpRequests/
 
 **/data/hrtf/binsim
+**/data/hrtf/rec
 
 **misc.xml
 **/hrtf_relearning.iml

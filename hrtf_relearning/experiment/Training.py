@@ -475,6 +475,7 @@ def play_session():
                 scores.append(score)
                 # update high score live; persist to Subject
                 if session_total.value > highscore.value:
+                    play_sound(osc_client, soundfile='hi_score.wav', duration=None, sleep=True)
                     highscore.value = int(session_total.value)
                     setattr(subject, "highscore", int(highscore.value))
                     subject.write()  # your Subject.write() persists object

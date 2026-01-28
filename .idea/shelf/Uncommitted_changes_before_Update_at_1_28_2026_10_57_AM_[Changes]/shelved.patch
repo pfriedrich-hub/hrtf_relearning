@@ -1,0 +1,267 @@
+Index: hrtf_relearning/hrtf/record/recordings.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+># recordings.py\r\nimport matplotlib\r\nmatplotlib.use('TkAgg')\r\nimport matplotlib.pyplot as plt\r\nimport logging\r\nimport copy\r\nfrom pathlib import Path\r\nfrom datetime import datetime\r\nimport numpy\r\nimport slab\r\nimport freefield\r\nimport soundfile as sf\r\nimport pyfar\r\n\r\n# ---------------------------------------------------------------------\r\n# Base grid container\r\n# ---------------------------------------------------------------------\r\n\r\nclass SpeakerGridBase:\r\n    \"\"\"\r\n    Base container for data defined on a loudspeaker grid.\r\n    Keys: 'idx_az_el' → values (recordings, filters, etc.)\r\n    \"\"\"\r\n\r\n    def __init__(self, data=None, params=None):\r\n        self.data = data or {}\r\n        self.params = params or {}\r\n\r\n    # --- dict-like -----------------------------------------------------\r\n    def __getitem__(self, key):\r\n        if isinstance(key, int):\r\n            return list(self.data.values())[key]\r\n        if isinstance(key, slice):\r\n            return list(self.data.values())[key]\r\n        return self.data[key]\r\n\r\n    def __setitem__(self, key, value):\r\n        self.data[key] = value\r\n\r\n    def __iter__(self):\r\n        return iter(self.data)\r\n\r\n    def items(self):\r\n        return self.data.items()\r\n\r\n    def keys(self):\r\n        return self.data.keys()\r\n\r\n    def values(self):\r\n        return self.data.values()\r\n\r\n    def __len__(self):\r\n        return len(self.data)\r\n\r\n    # --- helpers -------------------------------------------------------\r\n    @staticmethod\r\n    def parse_key(key):\r\n        idx, az, el = key.split(\"_\")\r\n        return int(idx), float(az), float(el)\r\n\r\n    def get_sources(self, distance=1.4):\r\n        coords = []\r\n        for key in self.data:\r\n            _, az, el = self.parse_key(key)\r\n            coords.append([az, el, distance])\r\n        return numpy.asarray(coords, dtype=float)\r\n\r\n    # --- params I/O ----------------------------------------------------\r\n    def write_params_file(self, path, filename=\"params.txt\"):\r\n        path = Path(path)\r\n        path.mkdir(exist_ok=True, parents=True)\r\n        with (path / filename).open(\"w\") as f:\r\n            for k, v in self.params.items():\r\n                if isinstance(v, dict):\r\n                    f.write(f\"{k}:\\n\")\r\n                    for sk, sv in v.items():\r\n                        f.write(f\"  {sk}: {sv}\\n\")\r\n                else:\r\n                    f.write(f\"{k}: {v}\\n\")\r\n\r\n\r\n# ---------------------------------------------------------------------\r\n# Recordings (raw binaural sweeps)\r\n# ---------------------------------------------------------------------\r\n\r\nclass Recordings(SpeakerGridBase):\r\n    \"\"\"\r\n    Raw in-ear sweep recordings.\r\n    data[key] = list[slab.Binaural]\r\n    \"\"\"\r\n\r\n    def __init__(self, data=None, params=None, signal=None):\r\n        super().__init__(data, params)\r\n        self.signal = signal\r\n\r\n    # -------------------- Recording ----------------------------------\r\n\r\n    @classmethod\r\n    def record_dome(cls, id=None, n_directions=5, n_recordings=5, hp_freq=120, fs=48828, equalize=False):\r\n\r\n        # excitation signal\r\n        sig_params = dict(\r\n            kind=\"logarithmic\",\r\n            duration=0.2,\r\n            level=85,\r\n            from_frequency=120,\r\n            to_frequency=22e3,\r\n            samplerate=fs,\r\n        )\r\n        signal = slab.Sound.chirp(**sig_params)\r\n        signal = signal.ramp(when=\"both\", duration=0.001)\r\n\r\n        filt = slab.Filter.band(\"hp\", frequency=hp_freq, samplerate=fs)\r\n\r\n        # dome setup\r\n        if freefield.PROCESSORS.mode != \"play_birec\":\r\n            freefield.initialize(\"dome\", \"play_birec\")\r\n        speakers = cls._select_speakers(freefield.read_speaker_table(), azimuth=0, elevation=(50, -37.5))\r\n        [led_speaker] = freefield.pick_speakers(23)  # get object for center speaker LED\r\n        res = abs(speakers[0].elevation - speakers[1].elevation) / n_directions\r\n        min_el = min(spk.elevation for spk in speakers)\r\n        data = {}\r\n        for n in range(n_directions):\r\n            \r\n            freefield.play_start_sound()\r\n            print('Press Button to start')\r\n            freefield.wait_for_button()\r\n\r\n            elevation_step = n * res\r\n            if n_directions > 1:  # skip for reference recordings\r\n                freefield.write(tag='bitmask', value=led_speaker.digital_channel,\r\n                                processors=led_speaker.digital_proc)  # illuminate LED\r\n                input(f\"Press Enter when head is at {0 + elevation_step}° elevation ...\")\r\n            for base_spk in speakers:\r\n                [spk] = copy.deepcopy(freefield.pick_speakers(base_spk.index))\r\n                spk.elevation -= elevation_step\r\n                if spk.elevation >= min_el:\r\n                    logging.info(f\"Recording from Speaker {spk.index} at {spk.elevation:.1f}° elevation\")\r\n                    key = f\"{spk.index}_{spk.azimuth}_{spk.elevation}\"\r\n                    recs = cls.record_speaker(spk, signal, n_recordings, fs, equalize)\r\n                    processed = []\r\n                    for r in recs:\r\n                        processed.append(filt.apply(r))\r\n                    data[key] = processed\r\n            freefield.write(tag='bitmask', value=0, processors=led_speaker.digital_proc)  # turn off LED\r\n\r\n        # store parameters\r\n        params = dict(\r\n            id = id,\r\n            fs=fs,\r\n            n_recordings=n_recordings,\r\n            n_directions=n_directions,\r\n            signal=sig_params,\r\n            highpass_frequency=hp_freq,\r\n            equalize_dome=equalize,\r\n            datetime=datetime.now().isoformat(),\r\n        )\r\n\r\n        return cls(data=data, params=params, signal=signal)\r\n\r\n    @staticmethod\r\n    def record_speaker(speaker, signal, n_recordings, fs, equalize):\r\n        out = []\r\n        for _ in range(n_recordings):\r\n            rec = freefield.play_and_record(\r\n                speaker=speaker,\r\n                sound=signal,\r\n                compensate_delay=True,\r\n                equalize=equalize,\r\n                recording_samplerate=fs,\r\n            )\r\n            out.append(slab.Binaural(rec))\r\n        return out\r\n\r\n    @staticmethod\r\n    def _select_speakers(speakers, azimuth=None, elevation=None):\r\n        out = []\r\n        for s in speakers:\r\n            if azimuth is not None and s.azimuth != azimuth:\r\n                continue\r\n            if elevation is not None:\r\n                lo, hi = min(elevation), max(elevation)\r\n                if not (lo <= s.elevation <= hi):\r\n                    continue\r\n            out.append(s)\r\n        return out\r\n\r\n    # -------------------- WAV I/O -------------------------------------\r\n\r\n    def to_wav(self, path, overwrite=False):\r\n        logging.info(f'Writing recordings to .wav: {path}.')\r\n        path = Path(path)\r\n        path.mkdir(exist_ok=True, parents=True)\r\n        self.write_params_file(path)\r\n\r\n        for key, recs in self.data.items():\r\n            kdir = path / key\r\n            kdir.mkdir(exist_ok=True)\r\n            for i, r in enumerate(recs):\r\n                fname = kdir / f\"rec_{i:03d}.wav\"\r\n                if fname.exists() and not overwrite:\r\n                    continue\r\n                sf.write(fname, r.data.astype(\"float32\"), r.samplerate, subtype=\"FLOAT\")\r\n\r\n    @classmethod\r\n    def from_wav(cls, path):\r\n        path = Path(path)\r\n        params = parse_params_file(path)\r\n        data = {}\r\n\r\n        for kdir in path.iterdir():\r\n            if not kdir.is_dir():\r\n                continue\r\n            recs = []\r\n            for f in sorted(kdir.glob(\"rec_*.wav\")):\r\n                x, fs = sf.read(f, dtype=\"float32\", always_2d=True)\r\n                recs.append(slab.Binaural(x, fs))\r\n            if recs:\r\n                data[kdir.name] = recs\r\n\r\n        signal = None\r\n        if \"signal\" in params:\r\n            sp = params[\"signal\"]\r\n            signal = slab.Sound.chirp(**sp).ramp(when=\"both\", duration=0.001)\r\n\r\n        return cls(data=data, params=params, signal=signal)\r\n\r\n    def plot(self, speaker_idx=4):\r\n        plt.figure(figsize=(12, 8))\r\n        fs = self.params[\"fs\"]\r\n        for r in self[speaker_idx]:\r\n            if isinstance(r, slab.Binaural):\r\n                rec_l = pyfar.Signal(r.channel(0).data.T, fs)\r\n                rec_r = pyfar.Signal(r.channel(1).data.T, fs)\r\n            elif isinstance(r, pyfar.Signal):\r\n                rec_l = r[0]\r\n                rec_r = r[1]\r\n            pyfar.plot.time_freq(rec_l, color='red', unit='samples')\r\n            pyfar.plot.time_freq(rec_r, color='blue', unit='samples')\r\n            plt.title(f\"Speaker {speaker_idx}\")\r\n# ---------------------------------------------------------------------\r\n# Helpers\r\n# ---------------------------------------------------------------------\r\n\r\ndef parse_params_file(path, filename=\"params.txt\"):\r\n    path = Path(path)\r\n    params = {}\r\n    current = None\r\n    with (path / filename).open() as f:\r\n        for line in f:\r\n            if not line.strip():\r\n                continue\r\n            if not line.startswith(\" \"):\r\n                if line.endswith(\":\\n\"):\r\n                    key = line[:-2]\r\n                    params[key] = {}\r\n                    current = params[key]\r\n                else:\r\n                    k, v = line.split(\":\", 1)\r\n                    params[k.strip()] = _parse_value(v.strip())\r\n                    current = None\r\n            else:\r\n                if current is not None:\r\n                    k, v = line.strip().split(\":\", 1)\r\n                    current[k] = _parse_value(v.strip())\r\n    return params\r\n\r\ndef _parse_value(v):\r\n    for t in (int, float):\r\n        try:\r\n            return t(v)\r\n        except ValueError:\r\n            pass\r\n    if v.lower() in (\"true\", \"false\"):\r\n        return v.lower() == \"true\"\r\n    return v\r\n
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/hrtf_relearning/hrtf/record/recordings.py b/hrtf_relearning/hrtf/record/recordings.py
+--- a/hrtf_relearning/hrtf/record/recordings.py	(revision a24ca8c0d6fb30cfb9f75791470e4b4a44fe9b1a)
++++ b/hrtf_relearning/hrtf/record/recordings.py	(date 1768996564811)
+@@ -96,7 +96,8 @@
+     # -------------------- Recording ----------------------------------
+ 
+     @classmethod
+-    def record_dome(cls, id=None, n_directions=5, n_recordings=5, hp_freq=120, fs=48828, equalize=False):
++    def record_dome(cls, id=None, azimuth=0, elevation=(37.5, -37.5),
++                    n_directions=2, n_recordings=5, hp_freq=120, fs=48828, equalize=False):
+ 
+         # excitation signal
+         sig_params = dict(
+@@ -115,27 +116,28 @@
+         # dome setup
+         if freefield.PROCESSORS.mode != "play_birec":
+             freefield.initialize("dome", "play_birec")
+-        speakers = cls._select_speakers(freefield.read_speaker_table(), azimuth=0, elevation=(50, -37.5))
++        speakers = cls._select_speakers(freefield.read_speaker_table(), azimuth, elevation)
+         [led_speaker] = freefield.pick_speakers(23)  # get object for center speaker LED
+         res = abs(speakers[0].elevation - speakers[1].elevation) / n_directions
+         min_el = min(spk.elevation for spk in speakers)
+         data = {}
+         for n in range(n_directions):
+-            
+-            freefield.play_start_sound()
+-            print('Press Button to start')
+-            freefield.wait_for_button()
+ 
+             elevation_step = n * res
+-            if n_directions > 1:  # skip for reference recordings
+-                freefield.write(tag='bitmask', value=led_speaker.digital_channel,
+-                                processors=led_speaker.digital_proc)  # illuminate LED
+-                input(f"Press Enter when head is at {0 + elevation_step}° elevation ...")
++            # freefield.write(tag='bitmask', value=led_speaker.digital_channel,
++            #                 processors=led_speaker.digital_proc)  # illuminate LED
++            # input(f"Press Enter when head is at {0 + elevation_step}° elevation ...")
++
++            # freefield.play_start_sound()
++            print(f"Press Button when head is at {0 + elevation_step}° elevation ...")
++            freefield.wait_for_button()
++
+             for base_spk in speakers:
+                 [spk] = copy.deepcopy(freefield.pick_speakers(base_spk.index))
+                 spk.elevation -= elevation_step
+                 if spk.elevation >= min_el:
+-                    logging.info(f"Recording from Speaker {spk.index} at {spk.elevation:.1f}° elevation")
++                    logging.info(f"Recording from Speaker {spk.index} at {spk.azimuth:.1f}° azimuth"
++                                 f" and {spk.elevation:.1f}° elevation")
+                     key = f"{spk.index}_{spk.azimuth}_{spk.elevation}"
+                     recs = cls.record_speaker(spk, signal, n_recordings, fs, equalize)
+                     processed = []
+@@ -176,8 +178,10 @@
+     def _select_speakers(speakers, azimuth=None, elevation=None):
+         out = []
+         for s in speakers:
+-            if azimuth is not None and s.azimuth != azimuth:
+-                continue
++            if azimuth is not None:
++                lo, hi = min(azimuth), max(azimuth)
++                if not (lo <= s.azimuth <= hi):
++                    continue
+             if elevation is not None:
+                 lo, hi = min(elevation), max(elevation)
+                 if not (lo <= s.elevation <= hi):
+Index: hrtf_relearning/hrtf/record/record_hrir.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>\"\"\"\r\n- directory handling\r\n- recording + processing\r\n\"\"\"\r\nimport matplotlib\r\nmatplotlib.use('TkAgg')\r\nfrom hrtf_relearning.hrtf.record.recordings import *\r\nfrom hrtf_relearning.hrtf.record.processing import *\r\nimport hrtf_relearning\r\nbase_dir = hrtf_relearning.PATH / \"data\" / \"hrtf\"\r\nimport logging\r\n\r\nsubject_id = 'PF'\r\nreference_id = 'kemar_reference'\r\noverwrite = True\r\nn_directions = 2\r\nn_recordings = 10\r\nn_samples_out = 256\r\nfs = 48828  # 97656\r\nhp_freq = 120\r\nshow = True\r\nequalize_dome = True\r\n# save_wath = True\r\n\r\nslab.set_default_samplerate(fs)\r\nfreefield.set_logger(\"info\")\r\n# ---------------------------------------------------------------------\r\n# Main wrapper\r\n# ---------------------------------------------------------------------\r\n\r\ndef record_hrir(\r\n    subject_id: str,\r\n    reference_id: str,\r\n    *,\r\n    n_directions: int = 5,\r\n    n_recordings: int = 5,\r\n    fs: int = 48828,\r\n    hp_freq: float = 120,\r\n    n_samples_out: int = 256,\r\n    equalize_dome: bool = False,\r\n    overwrite: bool = False,\r\n    show: bool = False,\r\n    base_dir: Path | str | None = None,\r\n) -> slab.HRTF:\r\n    \"\"\"\r\n    Full HRIR acquisition + processing pipeline for one subject.\r\n\r\n    Steps:\r\n    1) Record (or load) subject ear-pressure sweeps\r\n    2) Record (or load) reference sweeps\r\n    3) Deconvolve sweeps -> IRs\r\n    4) Equalize subject IRs using reference IRs\r\n    5) Low-frequency extrapolation (spherical head)\r\n    6) Azimuth expansion + binaural cue imposition\r\n    7) Export to slab.HRTF\r\n\r\n    No DSP logic is implemented here – only orchestration.\r\n    \"\"\"\r\n\r\n    logging.info(f\"Starting HRIR pipeline for subject '{subject_id}'\")\r\n\r\n    # -----------------------------------------------------------------\r\n    # Paths\r\n    # -----------------------------------------------------------------\r\n    if base_dir is None:\r\n        base_dir = Path.cwd() / \"data\" / \"hrtf\"\r\n    else:\r\n        base_dir = Path(base_dir)\r\n\r\n    subj_dir = base_dir / \"rec\" / subject_id\r\n    ref_dir = base_dir / \"rec\" / \"reference\" / reference_id\r\n\r\n    # -----------------------------------------------------------------\r\n    # 1) Subject recordings\r\n    # -----------------------------------------------------------------\r\n    if overwrite or not subj_dir.exists():\r\n        logging.info(\"Recording subject ear pressure\")\r\n        subj_dir.mkdir(parents=True, exist_ok=True)\r\n\r\n        subject_rec = Recordings.record_dome(\r\n            id=subject_id,\r\n            n_directions=n_directions,\r\n            n_recordings=n_recordings,\r\n            hp_freq=hp_freq,\r\n            fs=fs,\r\n            equalize=equalize_dome)\r\n        subject_rec.to_wav(subj_dir, overwrite=overwrite)\r\n    else:\r\n        logging.info(\"Loading subject recordings from disk\")\r\n        subject_rec = Recordings.from_wav(subj_dir)\r\n\r\n    # -----------------------------------------------------------------\r\n    # 2) Reference recordings\r\n    # -----------------------------------------------------------------\r\n    if overwrite or not ref_dir.exists():\r\n        logging.info(\"Recording reference\")\r\n        ref_dir.mkdir(parents=True, exist_ok=True)\r\n        reference_rec = Recordings.record_dome(\r\n            id=reference_id,\r\n            n_directions=1,\r\n            n_recordings=n_recordings,\r\n            hp_freq=hp_freq,\r\n            fs=fs,\r\n            equalize=equalize_dome)\r\n        reference_rec.to_wav(ref_dir, overwrite=overwrite)\r\n    else:\r\n        logging.info(\"Loading reference recordings from disk\")\r\n        reference_rec = Recordings.from_wav(ref_dir)\r\n\r\n    # -----------------------------------------------------------------\r\n    # 3) Deconvolution: sweeps -> IRs\r\n    # -----------------------------------------------------------------\r\n    logging.info(\"Computing impulse responses\")\r\n    subject_ir = compute_ir(subject_rec, inversion_range_hz=(hp_freq, 20e3))\r\n    reference_ir = compute_ir(reference_rec, inversion_range_hz=(hp_freq, 20e3))\r\n\r\n\r\n    # -----------------------------------------------------------------\r\n    # 4) Equalization + windowing\r\n    # -----------------------------------------------------------------\r\n    logging.info(\"Applying equalization\")\r\n    hrir = equalize(\r\n        measured=subject_ir,\r\n        reference=reference_ir,\r\n        n_samples_out=n_samples_out,\r\n        inversion_range_hz=(hp_freq, 18e3)\r\n    )\r\n\r\n    # -----------------------------------------------------------------\r\n    # 5) Low-frequency extrapolation\r\n    # -----------------------------------------------------------------\r\n    logging.info(\"Low-frequency extrapolation\")\r\n    hrir = lowfreq_extrapolate(\r\n        hrir,\r\n        f_extrap=400.0,\r\n        f_target=150.0,\r\n        head_radius=0.0875,\r\n    )\r\n\r\n    # -----------------------------------------------------------------\r\n    # 6) Azimuth expansion + binaural cues\r\n    # -----------------------------------------------------------------\r\n    logging.info(\"Expanding azimuths and imposing binaural cues\")\r\n    hrir = expand_azimuths_with_binaural_cues(\r\n        hrir,\r\n        az_range=(-50, 50),\r\n        head_radius=0.08,\r\n        show=False,\r\n    )\r\n\r\n    # -----------------------------------------------------------------\r\n    # 7) Export to slab.HRTF\r\n    # -----------------------------------------------------------------\r\n    logging.info(\"Converting to slab.HRTF\")\r\n    hrtf = hrir.to_slab_hrtf(datatype=\"FIR\")\r\n    hrtf.write_sofa(base_dir / 'sofa' / f'{subject_id}.sofa')\r\n\r\n    if show:\r\n        import matplotlib.pyplot as plt\r\n        fig, ax = plt.subplots()\r\n        hrtf.plot_tf(hrtf.cone_sources(0), axis=ax)\r\n        plt.show()\r\n\r\n    logging.info(\"HRIR pipeline finished successfully\")\r\n    return hrtf\r\n\r\n\r\nfrom pynput import keyboard\r\ndef wait_for_button(msg=None):\r\n    if msg:\r\n        logging.info(msg)\r\n\r\n    def on_press(key):\r\n        if key == keyboard.Key.enter:\r\n            listener.stop()\r\n\r\n    with keyboard.Listener(on_press=on_press) as listener:\r\n        listener.join()\r\n
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/hrtf_relearning/hrtf/record/record_hrir.py b/hrtf_relearning/hrtf/record/record_hrir.py
+--- a/hrtf_relearning/hrtf/record/record_hrir.py	(revision a24ca8c0d6fb30cfb9f75791470e4b4a44fe9b1a)
++++ b/hrtf_relearning/hrtf/record/record_hrir.py	(date 1769593536537)
+@@ -10,11 +10,13 @@
+ base_dir = hrtf_relearning.PATH / "data" / "hrtf"
+ import logging
+ 
+-subject_id = 'PF'
++subject_id = 'OS'
+ reference_id = 'kemar_reference'
+-overwrite = True
++overwrite = False
+ n_directions = 2
+ n_recordings = 10
++azimuth = (-1, 1)
++elevation = (-37.5, 37.5)
+ n_samples_out = 256
+ fs = 48828  # 97656
+ hp_freq = 120
+@@ -34,6 +36,8 @@
+     *,
+     n_directions: int = 5,
+     n_recordings: int = 5,
++    azimuth: int | tuple = (-35, 35),
++    elevation: int | tuple = (-37.5, 37.5),
+     fs: int = 48828,
+     hp_freq: float = 120,
+     n_samples_out: int = 256,
+@@ -79,6 +83,8 @@
+ 
+         subject_rec = Recordings.record_dome(
+             id=subject_id,
++            azimuth=azimuth,
++            elevation=elevation,
+             n_directions=n_directions,
+             n_recordings=n_recordings,
+             hp_freq=hp_freq,
+@@ -97,6 +103,8 @@
+         ref_dir.mkdir(parents=True, exist_ok=True)
+         reference_rec = Recordings.record_dome(
+             id=reference_id,
++            azimuth=azimuth,
++            elevation=elevation,
+             n_directions=1,
+             n_recordings=n_recordings,
+             hp_freq=hp_freq,
+Index: .idea/shelf/Uncommitted_changes_before_Update_at_1_2_2026_5_52_PM_[Changes]/shelved.patch
+===================================================================
+diff --git a/.idea/shelf/Uncommitted_changes_before_Update_at_1_2_2026_5_52_PM_[Changes]/shelved.patch b/.idea/shelf/Uncommitted_changes_before_Update_at_1_2_2026_5_52_PM_[Changes]/shelved.patch
+deleted file mode 100644
+--- a/.idea/shelf/Uncommitted_changes_before_Update_at_1_2_2026_5_52_PM_[Changes]/shelved.patch	(revision a24ca8c0d6fb30cfb9f75791470e4b4a44fe9b1a)
++++ /dev/null	(revision a24ca8c0d6fb30cfb9f75791470e4b4a44fe9b1a)
+@@ -1,92 +0,0 @@
+-Index: hrtf_relearning/experiment/Localization.py
+-IDEA additional info:
+-Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+-<+>from hrtf_relearning.analysis.localization import *  # also set mpl backend\r\nimport multiprocessing as mp\r\nimport hrtf_relearning\r\nimport datetime\r\nimport time\r\nfrom pathlib import Path\r\nfrom pythonosc import udp_client\r\n\r\nfrom hrtf_relearning.experiment.misc.localization_helpers.uso_generation import generate_uso\r\nfrom hrtf_relearning.experiment.misc.training_helpers import meta_motion\r\nfrom hrtf_relearning.experiment.misc.localization_helpers.make_sequence import *\r\nfrom hrtf_relearning.hrtf.binsim.hrtf2binsim import hrtf2binsim\r\nfrom hrtf_relearning.experiment.Subject import Subject\r\nfrom pynput import keyboard\r\ndate = datetime.datetime.now()\r\ndate = f'{date.strftime(\"%d\")}.{date.strftime(\"%m\")}_{date.strftime(\"%H\")}:{date.strftime(\"%M\")}'\r\nlogging.getLogger().setLevel('INFO')\r\nROOT = Path(hrtf_relearning.__file__).resolve().parent\r\n\r\n# --- settings ----\r\nSUBJECT_ID = \"AvS\"\r\nHRIR_NAME = \"KU100\"  # 'KU100', 'kemar', etc.\r\nEAR = None\r\nSTIM = 'noise_burst'  # 'uso'\r\n\r\n# --- load and process HRIR\r\nhrir = hrtf2binsim(HRIR_NAME, EAR, reverb=True, hp_filter=True,\r\n                   convolution='cpu', storage='cpu', overwrite=False)\r\nslab.set_default_samplerate(hrir.samplerate)\r\nHRIR_DIR = ROOT / \"data\" / \"hrtf\" / \"binsim\" / hrir.name\r\nsubject = Subject(SUBJECT_ID)\r\n\r\nclass Localization:\r\n    \"\"\"\r\n    Localization test:\r\n        Test localization at uniformly random positions within sectors\r\n    \"\"\"\r\n    def __init__(self, subject, hrir):\r\n        # make trial sequence and write to subject\r\n\r\n        self.settings = {'kind': 'sectors',\r\n                         'azimuth_range': (-35, 35), 'elevation_range': (-35, 35),\r\n                         'sector_size': (14, 14),\r\n                         'targets_per_sector': 3, 'replace': False, 'min_distance': 15,\r\n                         'gain': .2}\r\n        # alternative setting: play 3 times from each source in the hrir (works well for dome recorded hrirs)\r\n        #self.settings = {'kind': 'standard', 'azimuth_range': (-45, 45), 'elevation_range': (-45, 45),\r\n         #                 'targets_per_speaker': 2, 'min_distance': 30, 'gain': .4}\r\n        self.subject = subject\r\n        self.filename = subject.id + f'_{hrir.name}' + '_loc_' + date\r\n        # metadata\r\n        slab.set_default_samplerate(hrir.samplerate)\r\n        self.hrir_sources = hrir.sources.vertical_polar\r\n        self.sound_path = ROOT / 'data' / 'hrtf' / 'binsim' / hrir.name / 'sounds'\r\n        self.target = None\r\n\r\n        # make sequence\r\n        self.sequence = make_sequence(self.settings, self.hrir_sources)\r\n        # self.sequence = make_sequence(self.settings)\r\n        self.sequence.name = self.filename\r\n\r\n    def write(self):\r\n        self.subject.localization[self.filename] = self.sequence\r\n        self.subject.write()\r\n\r\n    def run(self):\r\n        # init pybinsim\r\n        self.osc_client_1 = self._make_osc_client(port=10000)\r\n        self.osc_client_2 = self._make_osc_client(port=10003)\r\n        self.binsim_worker = mp.Process(target=self._binsim_stream, args=(hrir.name,))\r\n        self.binsim_worker.start()\r\n\r\n        # init motion sensor\r\n        self.motion_sensor = self.init_sensor()\r\n        time.sleep(.2)\r\n\r\n        self.play_sound('beep')\r\n        for self.target in self.sequence:\r\n            self.wait_for_button('Look at the Center and press Enter')\r\n            self.motion_sensor.calibrate()\r\n            self.play_trial()  # generate and play stim, get pose response and write to file\r\n        self.subject.last_sequence = self.sequence\r\n        self.sequence.response_errors = target_p(self.sequence, show=False)\r\n        self.write()\r\n        logging.info('Finished.')\r\n        return\r\n\r\n    def play_trial(self):\r\n        # generate stimulus\r\n        self.stim = self.make_stim()  # generate a new stim each trial\r\n        self.stim.write(self.sound_path / 'localization.wav')\r\n        # play stim\r\n        self.play_stimulus()\r\n        time.sleep(self.stim.duration)\r\n        # get response\r\n        self.wait_for_button()\r\n        response = self.motion_sensor.get_pose()\r\n        progress = self.sequence.this_n / len(self.sequence.conditions) * 100\r\n        logging.info(f'{progress:.1f}% | Target: {self.target} | Response: {response}')\r\n        time.sleep(.25)\r\n        self.sequence.add_response(numpy.array((response, self.target)))\r\n        self.write()  # write to file\r\n\r\n    def play_stimulus(self):\r\n        pose = self.motion_sensor.get_pose()\r\n        relative_coords = self.target - pose  # mimic freefield setup\r\n        # find the closest filter idx and send to pybinsim\r\n        relative_coords[0] = (-relative_coords[0] + 360) % 360  # mirror and convert to HRTF convention [0 < az < 360]\r\n        rel_target = numpy.array((relative_coords[0], relative_coords[1], self.hrir_sources[0, 2]))\r\n        filter_idx = numpy.argmin(numpy.linalg.norm(rel_target - self.hrir_sources, axis=1))\r\n        rel_hrtf_coords = self.hrir_sources[filter_idx]\r\n        self.osc_client_1.send_message('/pyBinSim_ds_Filter', [0, 0, 0, 0, 0, 0, 0, 0, 0, 0,\r\n                                                        float(rel_hrtf_coords[0]), float(rel_hrtf_coords[1]), 0,\r\n                                                        0, 0, 0])\r\n        logging.debug(f'Set filter for {self.hrir_sources[filter_idx]}')\r\n        # play\r\n        self.osc_client_2.send_message('/pyBinSimLoudness', self.settings['gain'])\r\n        self.osc_client_2.send_message('/pyBinSimFile', str(self.sound_path / 'localization.wav'))\r\n        time.sleep(.5)\r\n        self.osc_client_2.send_message('/pyBinSimLoudness', 0)\r\n\r\n    def play_sound(self, kind):\r\n        logging.info(f'Playing {kind} sound')\r\n        name = f'{kind}.wav'\r\n        duration = slab.Sound(self.sound_path / name).duration\r\n        self.osc_client_2.send_message('/pyBinSimLoudness', self.settings['gain'])\r\n        self.osc_client_2.send_message('/pyBinSimFile', str(self.sound_path / name))\r\n        time.sleep(duration)\r\n        self.osc_client_2.send_message('/pyBinSimLoudness', 0)\r\n\r\n    @staticmethod\r\n    def _make_osc_client(port, ip='127.0.0.1'):\r\n        return udp_client.SimpleUDPClient(ip, port)\r\n\r\n    @staticmethod\r\n    def _binsim_stream(hrir_name):\r\n        import pybinsim\r\n        pybinsim.logger.setLevel(logging.ERROR)\r\n        binsim = pybinsim.BinSim(ROOT / 'data'  / 'hrtf' / 'binsim' / hrir_name / f'{hrir_name}_test_settings.txt')\r\n        binsim.stream_start()  # run binsim loop\r\n\r\n    @staticmethod\r\n    def init_sensor():\r\n        # init motion sensor\r\n        device = meta_motion.get_device()  # Ensure this function initializes the hardware correctly\r\n        state = meta_motion.State(device)\r\n        return meta_motion.Sensor(state)\r\n\r\n    @staticmethod\r\n    def make_stim():\r\n        if STIM == 'noise':\r\n            stim = slab.Sound.pinknoise(duration=0.225, level=80).ramp(when='both', duration=0.01)\r\n            n_silent = (numpy.arange(25,221,25).reshape(4,2) * stim.samplerate / 1000).astype(int)\r\n            ramp_len = int(.005 * stim.samplerate)\r\n            half_len = int(ramp_len / 2)\r\n            for start, end in n_silent:\r\n                ramp_up = 0.5 * (1 - numpy.cos(numpy.linspace(0, numpy.pi, ramp_len)))\r\n                ramp_down = 0.5 * (1 - numpy.cos(numpy.linspace(numpy.pi, 0, ramp_len)))\r\n                ramp_up = ramp_up[:, numpy.newaxis]\r\n                ramp_down = ramp_down[:, numpy.newaxis]\r\n                # Apply ramps at the edges of the silent region\r\n                stim.data[start - half_len: start + half_len] *= (1 - ramp_up)\r\n                stim.data[end - half_len: end + half_len] *= (1 - ramp_down)\r\n                # Silence the center\r\n                stim.data[start + half_len: end - half_len] = 0\r\n            # stim = slab.Sound.pinknoise(duration=0.5, level=90).ramp(when='both', duration=0.01)\r\n            # noise = slab.Sound.pinknoise(duration=0.025, level=90)\r\n            # noise = noise.ramp(when='both', duration=0.01)\r\n            # silence = slab.Sound.silence(duration=0.025)\r\n            # stim = slab.Sound.sequence(noise, silence, noise, silence, noise,\r\n            #                            silence, noise, silence, noise)\r\n            # stim.ramp('both', 0.01)\r\n        elif STIM == 'uso':\r\n            stim = generate_uso(samplerate=hrir.samplerate)\r\n        else: raise ValueError('STIM must be \"noise\" or \"uso\".')\r\n        stim.level = 80\r\n        return stim\r\n\r\n    @staticmethod\r\n    def wait_for_button(msg=None):\r\n        if msg: print(msg)\r\n        def on_press(key):\r\n            if key == keyboard.Key.enter:\r\n                listener.stop()  # stop listening once Enter is pressed\r\n        with keyboard.Listener(on_press=on_press) as listener:\r\n            listener.join()  # block until listener.stop() is called\r\n\r\nif __name__ == \"__main__\":\r\n    loc_test = Localization(subject, hrir)\r\n    loc_test.run()\r\n    sequence = subject.localization[loc_test.filename]\r\n    plot_localization(sequence, report_stats=['azimuth', 'elevation'], filepath=ROOT / 'data'  / 'results' / 'plot' / subject.id)\r\n    plot_elevation_response(sequence, filepath=ROOT / 'data'  / 'results' / 'plot' / subject.id)
+-Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+-<+>UTF-8
+-===================================================================
+-diff --git a/hrtf_relearning/experiment/Localization.py b/hrtf_relearning/experiment/Localization.py
+---- a/hrtf_relearning/experiment/Localization.py	(revision 3c1328cced2ec02fa1c89da81a461651598a84dc)
+-+++ b/hrtf_relearning/experiment/Localization.py	(date 1767372769987)
+-@@ -18,16 +18,17 @@
+- ROOT = Path(hrtf_relearning.__file__).resolve().parent
+- 
+- # --- settings ----
+--SUBJECT_ID = "AvS"
+--HRIR_NAME = "KU100"  # 'KU100', 'kemar', etc.
+-+SUBJECT_ID = "test"
+-+HRIR_NAME = "universal"  # 'KU100', 'kemar', etc.
+- EAR = None
+--STIM = 'noise_burst'  # 'uso'
+-+STIM = 'noise'  # 'noise' or 'uso'
+- 
+- # --- load and process HRIR
+- hrir = hrtf2binsim(HRIR_NAME, EAR, reverb=True, hp_filter=True,
+-                    convolution='cpu', storage='cpu', overwrite=False)
+- slab.set_default_samplerate(hrir.samplerate)
+--HRIR_DIR = ROOT / "data" / "hrtf" / "binsim" / hrir.name
+-+HRIR_DIR = (ROOT / "data" / "hrtf" / "binsim"
+-+            / hrir.name)
+- subject = Subject(SUBJECT_ID)
+- 
+- class Localization:
+-Index: hrtf_relearning/experiment/misc/localization_helpers/uso_generation.py
+-IDEA additional info:
+-Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+-<+>import math\r\nimport numpy\r\nimport slab\r\nfrom pathlib import Path\r\nimport random\r\nimport hrtf_relearning\r\nROOT = Path(hrtf_relearning.__file__).resolve().parent\r\ninput_folder = ROOT / 'data' / 'sounds' / 'mitsu_sounds'\r\n\r\ndef generate_uso(samplerate, duration=0.225, base=numpy.random.randint(0, 6), n_sounds=5):\r\n    bases = ['dryer', 'particl2', 'spray', 'shaver', 'tear', 'crumple', 'coffmill']\r\n    files = ['cherry1', 'cherry2', 'cherry3', 'wood2', 'wood3',\r\n               'bank', 'bowl', 'candybwl', 'colacan', 'metal15', 'metal10', 'metal05', 'trashbox',\r\n               'case1', 'case2', 'case3', 'dice2', 'dice3',\r\n               'bottle1', 'bottle2', 'china3', 'china4',\r\n               'saw2', 'sandpp1', 'sandpp2',\r\n               'sticks',\r\n               'clap1', 'clap2', 'cap1', 'cap2', 'snap', 'cracker',\r\n               'bell2', 'bells3', 'coin2', 'coin3',\r\n               'book1', 'book2',\r\n               'castanet', 'maracas', 'drum',\r\n               'stapler', 'punch']\r\n    sout = slab.Sound.read(input_folder / str(bases[base] + '.wav'))\r\n    base_sr = sout.samplerate\r\n    base_level = sout.level\r\n    length = int(base_sr * duration)\r\n    sout = sout.data[:, 0]\r\n    sout = sout[numpy.where((sout > 0.03) == True)[0][0]:numpy.where((sout > 0.03) == True)[0][-1]][1000:length+1000]\r\n    for i in range(n_sounds):\r\n        s = slab.Sound(input_folder / str(random.choice(files) + '.wav'))\r\n        while not any(numpy.abs(s.data) > 0.1):\r\n            s = slab.Sound(input_folder / str(random.choice(files) + '.wav'))\r\n        s_sr = s.samplerate\r\n        start, stop = numpy.where(numpy.abs(s.data) > 0.1)[0][0], numpy.where(numpy.abs(s.data) > 5e-3)[0][-1]\r\n        s = s.data[start:stop]\r\n        if base_sr != s_sr:\r\n            print(\"Error: Samplerates don't match\")\r\n        # offset = math.ceil(numpy.random.randint(low=0, high=50, size=1)/100 * length)\r\n        offset = int(length - length / n_sounds * (i + 1))\r\n        s = numpy.append(numpy.zeros(offset), s)\r\n        s = numpy.append(s, numpy.zeros(length))\r\n        s = s[:length]\r\n        # plt.plot(s)  # nice plot\r\n        sout = numpy.sum((sout, s), axis=0)\r\n    sout = slab.Sound(data=sout, samplerate=48000)\r\n    sout = sout.ramp(when='both', duration=0.01)\r\n    sout.data = (sout.data / sout.data.max()) - 0.01\r\n    sout = sout.resample(samplerate)\r\n    return sout
+-Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+-<+>UTF-8
+-===================================================================
+-diff --git a/hrtf_relearning/experiment/misc/localization_helpers/uso_generation.py b/hrtf_relearning/experiment/misc/localization_helpers/uso_generation.py
+---- a/hrtf_relearning/experiment/misc/localization_helpers/uso_generation.py	(revision 3c1328cced2ec02fa1c89da81a461651598a84dc)
+-+++ b/hrtf_relearning/experiment/misc/localization_helpers/uso_generation.py	(date 1766159113326)
+-@@ -22,7 +22,7 @@
+-                'stapler', 'punch']
+-     sout = slab.Sound.read(input_folder / str(bases[base] + '.wav'))
+-     base_sr = sout.samplerate
+--    base_level = sout.level
+-+    sout.level += 6
+-     length = int(base_sr * duration)
+-     sout = sout.data[:, 0]
+-     sout = sout[numpy.where((sout > 0.03) == True)[0][0]:numpy.where((sout > 0.03) == True)[0][-1]][1000:length+1000]
+-Index: .idea/shelf/Uncommitted_changes_before_Update_at_12_17_2025_5_21_PM_[Changes]/shelved.patch
+-===================================================================
+-diff --git a/.idea/shelf/Uncommitted_changes_before_Update_at_12_17_2025_5_21_PM_[Changes]/shelved.patch b/.idea/shelf/Uncommitted_changes_before_Update_at_12_17_2025_5_21_PM_[Changes]/shelved.patch
+-deleted file mode 100644
+---- a/.idea/shelf/Uncommitted_changes_before_Update_at_12_17_2025_5_21_PM_[Changes]/shelved.patch	(revision 3c1328cced2ec02fa1c89da81a461651598a84dc)
+-+++ /dev/null	(revision 3c1328cced2ec02fa1c89da81a461651598a84dc)
+-@@ -1,22 +0,0 @@
+--Index: hrtf_relearning/data/env config.txt
+--===================================================================
+--diff --git a/hrtf_relearning/data/env config.txt b/hrtf_relearning/data/env config.txt
+--deleted file mode 100644
+----- a/hrtf_relearning/data/env config.txt	(revision a5f0f2be9bbb483146dbd9fe5f5e7afe0aad62c2)
+--+++ /dev/null	(revision a5f0f2be9bbb483146dbd9fe5f5e7afe0aad62c2)
+--@@ -1,14 +0,0 @@
+---pycharm 2025.2
+---python 3.11.9 virtual environment (-add git/bin to PATH variables)
+---
+---
+---pip install git+https://github.com/pfriedrich-hub/slab.git
+--- git+https://github.com/pfriedrich-hub/pybinsim_tuil.git
+--- h5py h5netcdf metawear pyqt5 pynput pyfar
+---
+---
+--- optional:
+---    -for cuda support (>=RTX 30xx):
+---        pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+---        check with: torch.cuda.is_available()
+--- pip install git+https://github.com/pfriedrich-hub/freefield.git
+--\ No newline at end of file
+-Index: .idea/shelf/Uncommitted_changes_before_Update_at_12_17_2025_5_21_PM__Changes_.xml
+-===================================================================
+-diff --git a/.idea/shelf/Uncommitted_changes_before_Update_at_12_17_2025_5_21_PM__Changes_.xml b/.idea/shelf/Uncommitted_changes_before_Update_at_12_17_2025_5_21_PM__Changes_.xml
+-deleted file mode 100644
+---- a/.idea/shelf/Uncommitted_changes_before_Update_at_12_17_2025_5_21_PM__Changes_.xml	(revision 3c1328cced2ec02fa1c89da81a461651598a84dc)
+-+++ /dev/null	(revision 3c1328cced2ec02fa1c89da81a461651598a84dc)
+-@@ -1,4 +0,0 @@
+--<changelist name="Uncommitted_changes_before_Update_at_12_17_2025_5_21_PM_[Changes]" date="1765988508893" recycled="true" deleted="true">
+--  <option name="PATH" value="$PROJECT_DIR$/.idea/shelf/Uncommitted_changes_before_Update_at_12_17_2025_5_21_PM_[Changes]/shelved.patch" />
+--  <option name="DESCRIPTION" value="Uncommitted changes before Update at 12/17/2025 5:21 PM [Changes]" />
+--</changelist>
+-\ No newline at end of file
+Index: hrtf_relearning/data/hrtf/rec/PF/params.txt
+===================================================================
+diff --git a/hrtf_relearning/data/hrtf/rec/PF/params.txt b/hrtf_relearning/data/hrtf/rec/PF/params.txt
+deleted file mode 100644
+--- a/hrtf_relearning/data/hrtf/rec/PF/params.txt	(revision a24ca8c0d6fb30cfb9f75791470e4b4a44fe9b1a)
++++ /dev/null	(revision a24ca8c0d6fb30cfb9f75791470e4b4a44fe9b1a)
+@@ -1,14 +0,0 @@
+-id: PF
+-fs: 48828
+-n_recordings: 10
+-n_directions: 2
+-signal:
+-  kind: logarithmic
+-  duration: 0.2
+-  level: 85
+-  from_frequency: 120
+-  to_frequency: 22000.0
+-  samplerate: 48828
+-highpass_frequency: 120
+-equalize_dome: True
+-datetime: 2026-01-16T12:44:15.866291
+Index: .idea/shelf/Uncommitted_changes_before_Update_at_1_2_2026_5_52_PM__Changes_.xml
+===================================================================
+diff --git a/.idea/shelf/Uncommitted_changes_before_Update_at_1_2_2026_5_52_PM__Changes_.xml b/.idea/shelf/Uncommitted_changes_before_Update_at_1_2_2026_5_52_PM__Changes_.xml
+deleted file mode 100644
+--- a/.idea/shelf/Uncommitted_changes_before_Update_at_1_2_2026_5_52_PM__Changes_.xml	(revision a24ca8c0d6fb30cfb9f75791470e4b4a44fe9b1a)
++++ /dev/null	(revision a24ca8c0d6fb30cfb9f75791470e4b4a44fe9b1a)
+@@ -1,14 +0,0 @@
+-<changelist name="Uncommitted_changes_before_Update_at_1_2_2026_5_52_PM_[Changes]" date="1767372774896" recycled="true" deleted="true">
+-  <option name="PATH" value="$PROJECT_DIR$/.idea/shelf/Uncommitted_changes_before_Update_at_1_2_2026_5_52_PM_[Changes]/shelved.patch" />
+-  <option name="DESCRIPTION" value="Uncommitted changes before Update at 1/2/2026 5:52 PM [Changes]" />
+-  <binary>
+-    <option name="BEFORE_PATH" value="hrtf_relearning/data/results/AvS.pkl" />
+-    <option name="AFTER_PATH" value="hrtf_relearning/data/results/AvS.pkl" />
+-    <option name="SHELVED_PATH" value="$PROJECT_DIR$/.idea/shelf/Uncommitted_changes_before_Update_at_1_2_2026_5_52_PM_[Changes]/AvS.pkl" />
+-  </binary>
+-  <binary>
+-    <option name="BEFORE_PATH" value="hrtf_relearning/data/results/test.pkl" />
+-    <option name="AFTER_PATH" value="hrtf_relearning/data/results/test.pkl" />
+-    <option name="SHELVED_PATH" value="$PROJECT_DIR$/.idea/shelf/Uncommitted_changes_before_Update_at_1_2_2026_5_52_PM_[Changes]/test.pkl" />
+-  </binary>
+-</changelist>
+\ No newline at end of file

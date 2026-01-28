@@ -17,8 +17,8 @@ ROOT = hr.PATH
 
 # --- settings ----
 SUBJECT_ID = "JZ"
-HRIR_NAME = "universal"  # 'KU100', 'kemar', etc.
-EAR = None
+HRIR_NAME = "JZ"  # 'KU100', 'kemar', etc.
+EAR = 'left'
 STIM = 'noise'  # 'noise' or 'uso'
 HP = 'MYSPHERE'
 

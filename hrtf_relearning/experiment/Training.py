@@ -362,7 +362,6 @@ def play_trial(subject, trial_idx, current_trial, target, distance, pulse_interv
     subject.write()
     return game_timer, score
 
-
 def play_session():
     """
     Main loop: start workers, then run until game_time.

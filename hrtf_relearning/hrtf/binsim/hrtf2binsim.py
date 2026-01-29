@@ -3,14 +3,14 @@ matplotlib.use("tkagg")
 
 import logging
 from pathlib import Path
-from typing import Optional
 
 import slab
 import hrtf_relearning
 
-from hrtf_relearning.hrtf.binsim.tf2ir import hrtf2hrir
-from hrtf_relearning.hrtf.binsim.flatten import flatten_dtf
-from hrtf_relearning.hrtf.binsim.hrir2wav import (
+from hrtf_relearning.hrtf.processing.mirror_hrtf import mirror_hrtf
+from hrtf_relearning.hrtf.processing.tf2ir import hrtf2hrir
+from hrtf_relearning.hrtf.processing.flatten import flatten_dtf
+from hrtf_relearning.hrtf.binsim.hrir2mat import (
     resample_sounds,
     compute_lr_ir,
     compute_hp_ir,
@@ -155,24 +155,22 @@ def write_settings(
 # Main entry point
 # ---------------------------------------------------------------------
 
-def hrtf2binsim(
-    sofa_name: str,
-    ear: Optional[str] = None,
-    *,
-    drr: float = 5.0,
-    hp: str = "MYSPHERE",
-    reverb: bool = True,
-    hp_filter: bool = True,
-    convolution: str = "cpu",
-    storage: str = "cpu",
-    overwrite: bool = True,
-):
+def hrtf2binsim(hrir_settings, overwrite: bool = True):
     """
     Convert a SOFA HRTF to a pyBinSim-compatible MAT database and write settings.
 
     DS filters are written only if the database does not exist or overwrite=True.
     LR / HP filters and settings are updated on every call.
     """
+    sofa_name = hrir_settings.get("name", None)
+    ear = hrir_settings.get("ear", None)
+    mirror = hrir_settings.get("mirror", False)
+    reverb = hrir_settings.get("reverb", True)
+    drr = hrir_settings.get("drr", 20)
+    hp_filter = hrir_settings.get("hp_filter", True)
+    hp = hrir_settings.get("hp", 'DT990')
+    convolution = hrir_settings.get("convolution", 'cuda')
+    storage = hrir_settings.get("storage", "cuda")
 
     logger.info(
         "hrtf2binsim | HRTF=%s ear=%s drr=%.1f hp_file=%s",
@@ -190,9 +188,15 @@ def hrtf2binsim(
         hrir = hrtf2hrir(hrir)
 
     if ear:
-        logger.info("Flattening DTF at ear: %s", ear)
+        flattened = "right" if ear == "left" else "left"
+        logger.info("Flattening DTF for %s ear", flattened)
         hrir = flatten_dtf(hrir, ear)
         hrir.name += f"_{ear}"
+
+    if mirror:
+        logger.info("Mirroring HRIR left ↔ right")
+        hrir = mirror_hrtf(hrir)
+        hrir.name += "_mirrored"
 
     base_dir = data_dir / "binsim" / hrir.name
     mat_path = base_dir / f"{hrir.name}_filters.mat"

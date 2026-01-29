@@ -2,7 +2,6 @@ import multiprocessing as mp
 import hrtf_relearning as hr
 import datetime
 import time
-from pathlib import Path
 from hrtf_relearning.experiment.analysis.localization.localization_analysis import *
 from hrtf_relearning.experiment.misc.localization_helpers.make_sequence import *
 from hrtf_relearning.experiment.misc.localization_helpers.uso_generation import generate_uso
@@ -16,20 +15,17 @@ logging.getLogger().setLevel('INFO')
 ROOT = hr.PATH
 
 # --- settings ----
-SUBJECT_ID = "JZ"
-HRIR_NAME = "universal"  # 'KU100', 'kemar', etc.
-EAR = None
+SUBJECT_ID = "test"
+HRIR_NAME = "JZ"  # 'KU100', 'kemar', etc.
+EAR = 'left'
 STIM = 'noise'  # 'noise' or 'uso'
 HP = 'MYSPHERE'
+MIRROR = True # set TRUE to mirror HRIRs left-right
 
-# --- load and process HRIR
-hrir = hrtf2binsim(HRIR_NAME, EAR,
-    reverb=True, drr=20,
-    hp_filter=True, hp=HP,
-    convolution="cuda", storage="cuda")
-slab.set_default_samplerate(hrir.samplerate)
-HRIR_DIR = (ROOT / "data" / "hrtf" / "binsim"
-            / hrir.name)
+# --- load HRIR and Subject
+hrir_settings = dict(name=HRIR_NAME, ear=EAR, mirror=MIRROR,
+                     reverb=True, drr=20, hp_filter=True, hp=HP, convolution="cuda",storage="cuda")
+hrir = hrtf2binsim(hrir_settings, overwrite=True)
 subject = hr.Subject(SUBJECT_ID)
 
 class Localization:
@@ -41,7 +37,7 @@ class Localization:
         # make trial sequence and write to subject
 
         self.settings = {'kind': 'sectors',
-                         'azimuth_range': (-35, 35), 'elevation_range': (-35, 35),
+                         'azimuth_range': (-35, 0), 'elevation_range': (-35, 35),
                          'sector_size': (14, 14),
                          'targets_per_sector': 3, 'replace': False, 'min_distance': 30,
                          'gain': .2}

@@ -271,3 +271,6 @@ def key_time_str(k: str) -> str:
         m = re.search(r"(\d{2}:\d{2})", t)
         return m.group(1) if m else t
     return ""
+
+if __name__ == "__main__":
+    learning_plot(subject_id)

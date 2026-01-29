@@ -19,9 +19,9 @@ logging.getLogger().setLevel('INFO')
 
 
 # -------------------- Config --------------------
-SUBJECT_ID = "MB"
-HRIR_NAME = "universal"  # 'KU100', 'kemar', etc.
-EAR = None              # or None for binaural
+SUBJECT_ID = "JZ"
+HRIR_NAME = "JZ"  # 'KU100', 'kemar', etc.
+EAR = 'left'              # or None for binaural
 HP = 'MYSPHERE'
 
 # Sound
@@ -32,25 +32,34 @@ SHOW_TF = False  # set to TF or IR to spawn live filter plot
 
 # Game settings
 settings = dict(
-    target_size=3,
+    target_size=6,
     target_time=0.5,
     min_dist=30,
     game_time=90,
-    trial_time=10,
+    trial_time=20,
     score_time=6,
-    gain=.15)
+    gain=.15,
+    azimuth_rang=(-35, 0), elevation_range=(-35, 35)
+)
+
+#HRIR settings for hrtf2binsim
+hrir_settings = dict(
+    name=HRIR_NAME,
+    ear=EAR,
+    reverb=True,
+    drr=20,
+    hp_filter=True,
+    hp=HP,
+    convolution="cuda",
+    storage="cuda"
+)
 
 # -------------------- Global HRIR/Sequence --------------------
 
 # --- load and process HRIR
-hrir = hrtf2binsim(HRIR_NAME, EAR,
-    reverb=True, drr=20,
-    hp_filter=True, hp=HP,
-    convolution="cuda", storage="cuda")
-
+hrir = hrtf2binsim(hrir_settings)
 slab.set_default_samplerate(hrir.samplerate)
 HRIR_DIR = ROOT / "data" / "hrtf" / "binsim" / hrir.name
-
 
 
 # -------------------- Helpers --------------------
@@ -157,7 +166,7 @@ def plot_current_tf(filter_idx_shared, redraw_interval_s=0.05, kind=SHOW_TF):
                 ax.cla()
                 ax.text(0.5, 0.5, f"Plot error for idx {idx}:\n{e}", ha='center', va='center')
                 fig.canvas.draw_idle()
-                plt.pause(0.001)
+                plt.pause(0.02)
 
         # Throttle the loop to avoid pegging a CPU core
         plt.pause(redraw_interval_s)
@@ -353,26 +362,24 @@ def play_trial(subject, trial_idx, current_trial, target, distance, pulse_interv
     subject.write()
     return game_timer, score
 
-
 def play_session():
     """
     Main loop: start workers, then run until game_time.
     """
-    global osc_client
+    global osc_client, settings
     osc_client = make_osc_client(port=10003)
     subject = Subject(SUBJECT_ID)
     sequence = subject.last_sequence
 
-    if sequence:
+    if sequence and not(settings['azimuth_range'] and settings['elevation_range']):
         az_range = tuple(sequence.settings["azimuth_range"])
         ele_range = tuple(sequence.settings["elevation_range"])
         logging.info("Using sequence-based target ranges: az=%s el=%s", az_range, ele_range)
     else:
-        az_range = (-35, 35)
-        ele_range = (-35, 35)
-        logging.info("Using default target ranges: az=%s el=%s", az_range, ele_range)
+        az_range = settings['azimuth_range']
+        ele_range = settings['elevation_range']
+        logging.info("Using custom target range: az=%s el=%s", az_range, ele_range)
 
-    global settings
     settings = dict(settings, az_range=az_range, ele_range=ele_range)
 
     # Shared state for workers
@@ -473,11 +480,6 @@ def play_session():
                                                pulse_state, sensor_state, game_time_left, game_timer, session_total,
                                                last_goal_points, pose_queue)
                 scores.append(score)
-                # update high score live; persist to Subject
-                if session_total.value > highscore.value:
-                    highscore.value = int(session_total.value)
-                    setattr(subject, "highscore", int(highscore.value))
-                    subject.write()  # your Subject.write() persists object
 
                 # if time is up, break
                 if game_timer >= settings["game_time"]:
@@ -486,7 +488,15 @@ def play_session():
             # end
             ui_state.value = 3
             pulse_state.value = 1  # idle
-            play_sound(osc_client, soundfile='buzzer.wav', duration=None, sleep=True)
+
+            # update high score live; persist to Subject
+            if session_total.value > highscore.value:
+                play_sound(osc_client, soundfile='hi_score.wav', duration=None, sleep=True)
+                highscore.value = int(session_total.value)
+                setattr(subject, "highscore", int(highscore.value))
+                subject.write()  # your Subject.write() persists object
+            else:
+                play_sound(osc_client, soundfile='buzzer.wav', duration=None, sleep=True)
             logging.info(f"Game Over! Total Score: {int(session_total.value)}")
 
             # Show play-again prompt (same big overlay, different text)

@@ -2,7 +2,6 @@ import multiprocessing as mp
 import hrtf_relearning as hr
 import datetime
 import time
-from pathlib import Path
 from hrtf_relearning.experiment.analysis.localization.localization_analysis import *
 from hrtf_relearning.experiment.misc.localization_helpers.make_sequence import *
 from hrtf_relearning.experiment.misc.localization_helpers.uso_generation import generate_uso
@@ -16,15 +15,16 @@ logging.getLogger().setLevel('INFO')
 ROOT = hr.PATH
 
 # --- settings ----
-SUBJECT_ID = "JZ"
+SUBJECT_ID = "test"
 HRIR_NAME = "JZ"  # 'KU100', 'kemar', etc.
 EAR = 'left'
 STIM = 'noise'  # 'noise' or 'uso'
 HP = 'MYSPHERE'
+MIRROR = True # set TRUE to mirror HRIRs left-right
 
 # --- load HRIR and Subject
-hrir_settings = dict(name=HRIR_NAME, ear=EAR, reverb=True, drr=20,
-                     hp_filter=True, hp=HP, convolution="cuda",storage="cuda")
+hrir_settings = dict(name=HRIR_NAME, ear=EAR, mirror=MIRROR,
+                     reverb=True, drr=20, hp_filter=True, hp=HP, convolution="cuda",storage="cuda")
 hrir = hrtf2binsim(hrir_settings, overwrite=True)
 subject = hr.Subject(SUBJECT_ID)
 

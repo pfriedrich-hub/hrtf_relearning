@@ -2,7 +2,7 @@ import matplotlib as mpl
 mpl.use('Qt5Agg')
 from pathlib import Path
 from sklearn.linear_model import LinearRegression
-from hrtf_relearning.hrtf.binsim.tf2ir import *
+from hrtf_relearning.hrtf.processing.tf2ir import *
 from hrtf_relearning.hrtf.processing.make.add_interaural import *
 filename = 'single_notch'
 sofa_path = Path.cwd() / 'data' / 'hrtf' / 'sofa'

@@ -32,15 +32,14 @@ SHOW_TF = False  # set to TF or IR to spawn live filter plot
 
 # Game settings
 settings = dict(
-    target_size=3,
+    target_size=6,
     target_time=0.5,
     min_dist=30,
     game_time=90,
-    trial_time=10,
+    trial_time=20,
     score_time=6,
     gain=.15,
-    azimuth_range=None,
-    elevation_range=None,
+    azimuth_rang=(-35, 0), elevation_range=(-35, 35)
 )
 
 #HRIR settings for hrtf2binsim
@@ -58,9 +57,9 @@ hrir_settings = dict(
 # -------------------- Global HRIR/Sequence --------------------
 
 # --- load and process HRIR
-"""
-hrir = hrtf2binsim(hrir_settings, overwrite=True)
-"""
+hrir = hrtf2binsim(hrir_settings)
+slab.set_default_samplerate(hrir.samplerate)
+HRIR_DIR = ROOT / "data" / "hrtf" / "binsim" / hrir.name
 
 
 # -------------------- Helpers --------------------
@@ -167,7 +166,7 @@ def plot_current_tf(filter_idx_shared, redraw_interval_s=0.05, kind=SHOW_TF):
                 ax.cla()
                 ax.text(0.5, 0.5, f"Plot error for idx {idx}:\n{e}", ha='center', va='center')
                 fig.canvas.draw_idle()
-                plt.pause(0.001)
+                plt.pause(0.02)
 
         # Throttle the loop to avoid pegging a CPU core
         plt.pause(redraw_interval_s)
@@ -368,26 +367,20 @@ def play_session():
     """
     Main loop: start workers, then run until game_time.
     """
-    global osc_client, hrir, HRIR_DIR
+    global osc_client, settings
     osc_client = make_osc_client(port=10003)
-
-    hrir = hrtf2binsim(hrir_settings)
-    slab.set_default_samplerate(hrir.samplerate)
-    HRIR_DIR = ROOT / "data" / "hrtf" / "binsim" / hrir.name
-
     subject = Subject(SUBJECT_ID)
     sequence = subject.last_sequence
 
-    if sequence or (settings['azimuth_range'] and settings['elevation_range']):
+    if sequence and not(settings['azimuth_range'] and settings['elevation_range']):
         az_range = tuple(sequence.settings["azimuth_range"])
         ele_range = tuple(sequence.settings["elevation_range"])
         logging.info("Using sequence-based target ranges: az=%s el=%s", az_range, ele_range)
     else:
-        az_range = (-35, 35)
-        ele_range = (-35, 35)
-        logging.info("Using default target ranges: az=%s el=%s", az_range, ele_range)
+        az_range = settings['azimuth_range']
+        ele_range = settings['elevation_range']
+        logging.info("Using custom target range: az=%s el=%s", az_range, ele_range)
 
-    global settings
     settings = dict(settings, az_range=az_range, ele_range=ele_range)
 
     # Shared state for workers

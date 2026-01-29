@@ -97,7 +97,7 @@ class Recordings(SpeakerGridBase):
 
     @classmethod
     def record_dome(cls, id=None, azimuth=(-1,1), elevation=(37.5, -37.5),
-                    n_directions=2, n_recordings=5, hp_freq=120, fs=48828, equalize=False):
+                    n_directions=3, n_recordings=10, hp_freq=120, fs=48828, equalize=True):
 
         # excitation signal
         sig_params = dict(
@@ -117,18 +117,15 @@ class Recordings(SpeakerGridBase):
         if freefield.PROCESSORS.mode != "play_birec":
             freefield.initialize("dome", "play_birec")
         speakers = cls._select_speakers(freefield.read_speaker_table(), azimuth, elevation)
-        [led_speaker] = freefield.pick_speakers(23)  # get object for center speaker LED
+        led_bits = ['16', '8', '4']
         res = abs(speakers[0].elevation - speakers[1].elevation) / n_directions
         min_el = min(spk.elevation for spk in speakers)
         data = {}
+
         for n in range(n_directions):
 
             elevation_step = n * res
-            # freefield.write(tag='bitmask', value=led_speaker.digital_channel,
-            #                 processors=led_speaker.digital_proc)  # illuminate LED
-            # input(f"Press Enter when head is at {0 + elevation_step}° elevation ...")
-
-            # freefield.play_start_sound()
+            freefield.write(tag='bitmask', value=led_bits[n], processors='RX81')
             print(f"Press Button when head is at {0 + elevation_step}° elevation ...")
             freefield.wait_for_button()
 

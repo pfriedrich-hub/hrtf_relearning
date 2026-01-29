@@ -113,7 +113,7 @@ def sector_targets(settings, hrir_sources):
     points = numpy.column_stack([src_az[sector_samples], src_el[sector_samples]])
 
     # --- constrained ordering (greedy with restart) ---
-    def order_with_min_distance(points, max_tries=500):
+    def order_with_min_distance(points, max_tries=int(10e3)):
         N = len(points)
         for _ in range(max_tries):
             remaining = list(range(N))

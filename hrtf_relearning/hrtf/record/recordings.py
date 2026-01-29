@@ -96,7 +96,7 @@ class Recordings(SpeakerGridBase):
     # -------------------- Recording ----------------------------------
 
     @classmethod
-    def record_dome(cls, id=None, azimuth=0, elevation=(37.5, -37.5),
+    def record_dome(cls, id=None, azimuth=(-1,1), elevation=(37.5, -37.5),
                     n_directions=2, n_recordings=5, hp_freq=120, fs=48828, equalize=False):
 
         # excitation signal

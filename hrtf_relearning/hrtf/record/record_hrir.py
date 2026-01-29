@@ -10,7 +10,7 @@ import hrtf_relearning
 base_dir = hrtf_relearning.PATH / "data" / "hrtf"
 import logging
 
-subject_id = 'LS_molds'
+subject_id = 'JP'
 reference_id = 'kemar_reference'
 overwrite = True
 n_directions = 2
@@ -157,8 +157,8 @@ def record_hrir(
 
     if show:
         import matplotlib.pyplot as plt
-        fig, ax = plt.subplots()
-        hrtf.plot_tf(hrtf.cone_sources(0), axis=ax)
+        fig, axes = plt.subplots(1,2)
+        hrtf.plot_tf(hrtf.cone_sources(0), axis=axes, ear='both')
         plt.show()
 
     logging.info("HRIR pipeline finished successfully")

@@ -127,7 +127,7 @@ def set_target_probabilistic(target, settings, sequence, hrir, max_sector_hops=1
         if picked is not None:
             # success
             target[:] = picked  # already (-180,180] az; el linear
-            logging.debug("Set Target (prob) to [%.1f, %.1f] in sector (%.1f, %.1f)",
+            logging.info("Set Target (prob) to [%.1f, %.1f] in sector (%.1f, %.1f)",
                          picked[0], picked[1], sector_centers[s,0], sector_centers[s,1])
             return
 

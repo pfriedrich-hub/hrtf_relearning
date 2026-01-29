@@ -682,17 +682,6 @@ def _pyfar_to_irs(template: ImpulseResponses, keys, time_data, fs):
     return out
 
 
-# def _spherical_head_for(coords, n_samples, fs, head_radius=None):
-#     from hrtf_relearning.hrtf.processing.spherical_head import spherical_head
-#     return spherical_head(
-#         coords,
-#         n_samples=n_samples,
-#         sampling_rate=fs,
-#         head=None if head_radius is None else head_radius,
-#     )
-
-
-
 def expand_azimuths_with_binaural_cues(
     hrir,
     az_range: tuple[float, float] = (-50, 50),

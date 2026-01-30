@@ -238,7 +238,7 @@ def equalize(
     reference: "ImpulseResponses",
     n_samples_out: int,
     inversion_range_hz,
-    onset_threshold_db: float = 15.0,
+    onset_threshold_db: float = 20.0,
 ) -> "ImpulseResponses":
     """
     Loudspeaker-wise equalization using reference IRs.
@@ -272,19 +272,16 @@ def equalize(
         H_aligned = pyfar.dsp.time_shift(
             H_eq, -numpy.min(onsets) / H_eq.sampling_rate + .001,
             unit='s')
-
         # window
         onset = pyfar.dsp.find_impulse_response_start(H_aligned, threshold=onset_threshold_db)
         onset_min = numpy.min(onset) / H_aligned.sampling_rate  # onset in seconds
-        times = (onset_min - .00025,  # start of fade-in
+        times = (onset_min - .00025 if (onset_min - .00025) > 0 else 0,  # start of fade-in
                  onset_min,  # end if fade-in
                  onset_min + .0048,  # start of fade_out
                  onset_min + .0058)  # end of_fade_out
         H_windowed, window = pyfar.dsp.time_window(
             H_aligned, times, 'hann', unit='s', crop='end', return_window=True)
-
-        # low freq extrapolation
-        # H_extrapol =
+        print('win')
 
         # crop
         times = [0, 10, 246, n_samples_out-1]

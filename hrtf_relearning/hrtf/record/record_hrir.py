@@ -10,7 +10,7 @@ import hrtf_relearning
 base_dir = hrtf_relearning.PATH / "data" / "hrtf"
 import logging
 
-subject_id = 'test'
+subject_id = 'SW'
 reference_id = 'kemar_reference'
 overwrite = True
 n_directions = 3
@@ -123,7 +123,8 @@ def record_hrir(
         measured=subject_ir,
         reference=reference_ir,
         n_samples_out=n_samples_out,
-        inversion_range_hz=(hp_freq, 18e3)
+        inversion_range_hz=(hp_freq, 18e3),
+        onset_threshold_db=10,
     )
 
     # -----------------------------------------------------------------

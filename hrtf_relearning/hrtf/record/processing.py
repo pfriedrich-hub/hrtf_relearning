@@ -275,7 +275,11 @@ def equalize(
         # window
         onset = pyfar.dsp.find_impulse_response_start(H_aligned, threshold=onset_threshold_db)
         onset_min = numpy.min(onset) / H_aligned.sampling_rate  # onset in seconds
-        times = (onset_min - .00025 if (onset_min - .00025) > 0 else 0,  # start of fade-in
+        # times = (onset_min - .00025 if (onset_min - .00025) > 0 else 0,  # start of fade-in
+        #          onset_min,  # end if fade-in
+        #          onset_min + .0048,  # start of fade_out
+        #          onset_min + .0058)  # end of_fade_out
+        times = (onset_min - .00025,  # start of fade-in
                  onset_min,  # end if fade-in
                  onset_min + .0048,  # start of fade_out
                  onset_min + .0058)  # end of_fade_out

@@ -39,7 +39,7 @@ settings = dict(
     trial_time=20,
     score_time=6,
     gain=.15,
-    azimuth_rang=(-35, 0), elevation_range=(-35, 35)
+    azimuth_range=(-35, 0), elevation_range=(-35, 35)
 )
 
 #HRIR settings for hrtf2binsim

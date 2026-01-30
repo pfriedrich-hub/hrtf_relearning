@@ -141,7 +141,7 @@ class Recordings(SpeakerGridBase):
                     for r in recs:
                         processed.append(filt.apply(r))
                     data[key] = processed
-            freefield.write(tag='bitmask', value=0, processors=led_speaker.digital_proc)  # turn off LED
+            freefield.write(tag='bitmask', value=0, processors='RX81')  # turn off LED
 
         # store parameters
         params = dict(

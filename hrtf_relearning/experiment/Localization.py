@@ -2,6 +2,7 @@ import multiprocessing as mp
 import hrtf_relearning as hr
 import datetime
 import time
+from pathlib import Path
 from hrtf_relearning.experiment.analysis.localization.localization_analysis import *
 from hrtf_relearning.experiment.misc.localization_helpers.make_sequence import *
 from hrtf_relearning.experiment.misc.localization_helpers.uso_generation import generate_uso
@@ -15,12 +16,12 @@ logging.getLogger().setLevel('INFO')
 ROOT = hr.PATH
 
 # --- settings ----
-SUBJECT_ID = "test"
-HRIR_NAME = "JZ"  # 'KU100', 'kemar', etc.
-EAR = 'left'
-STIM = 'noise'  # 'noise' or 'uso'
+SUBJECT_ID = "JR"
+HRIR_NAME = "JR"  # 'KU100', 'kemar', etc.
+EAR = None
 HP = 'MYSPHERE'
-MIRROR = True # set TRUE to mirror HRIRs left-right
+STIM = 'noise'  # 'noise' or 'uso'
+MIRROR = False # set TRUE to mirror HRIRs left-right
 
 # --- load HRIR and Subject
 hrir_settings = dict(name=HRIR_NAME, ear=EAR, mirror=MIRROR,
@@ -37,8 +38,8 @@ class Localization:
         # make trial sequence and write to subject
 
         self.settings = {'kind': 'sectors',
-                         'azimuth_range': (-35, 0), 'elevation_range': (-35, 35),
-                         'sector_size': (14, 14),
+                         'azimuth_range': (-35, 35), 'elevation_range': (-35, 35),
+                         'sector_size': (14, 7),
                          'targets_per_sector': 3, 'replace': False, 'min_distance': 30,
                          'gain': .2}
         # alternative setting: play 3 times from each source in the hrir (works well for dome recorded hrirs)

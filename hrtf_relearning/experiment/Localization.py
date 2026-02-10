@@ -15,11 +15,13 @@ date = f'{date.strftime("%d")}.{date.strftime("%m")}_{date.strftime("%H")}:{date
 logging.getLogger().setLevel('INFO')
 ROOT = hr.PATH
 
+
+
 # --- settings ----
-SUBJECT_ID = "JR"
-HRIR_NAME = "JR"  # 'KU100', 'kemar', etc.
-EAR = None
-HP = 'MYSPHERE'
+SUBJECT_ID = "PFo"
+HRIR_NAME = "PFo"  # 'KU100', 'kemar', etc.
+EAR = 'left'
+HP = 'DT990'
 STIM = 'noise'  # 'noise' or 'uso'
 MIRROR = False # set TRUE to mirror HRIRs left-right
 
@@ -35,11 +37,11 @@ class Localization:
         Test localization at uniformly random positions within sectors
     """
     def __init__(self, subject, hrir):
-        # make trial sequence and write to subject
+        # make trial sequence and write to subject-
 
         self.settings = {'kind': 'sectors',
-                         'azimuth_range': (-35, 35), 'elevation_range': (-35, 35),
-                         'sector_size': (14, 7),
+                         'azimuth_range': (-35, 0), 'elevation_range': (-35, 35),
+                         'sector_size': (14, 14),
                          'targets_per_sector': 3, 'replace': False, 'min_distance': 30,
                          'gain': .2}
         # alternative setting: play 3 times from each source in the hrir (works well for dome recorded hrirs)

@@ -19,26 +19,26 @@ logging.getLogger().setLevel('INFO')
 
 
 # -------------------- Config --------------------
-SUBJECT_ID = "JZ"
-HRIR_NAME = "JZ"  # 'KU100', 'kemar', etc.
+SUBJECT_ID = "PFo"
+HRIR_NAME = "PFo"  # 'KU100', 'kemar', etc.
 EAR = 'left'              # or None for binaural
-HP = 'MYSPHERE'
+HP = 'DT990'
 
 # Sound
 SOUND_FILE = None         # None -> pink noise pulses; or 'uso_225ms_9_.wav', etc.
 # Graphics
 show_ui = True  # todo
-SHOW_TF = False  # set to TF or IR to spawn live filter plot
+SHOW_TF = True  # set to TF or IR to spawn live filter plot
 
 # Game settings
 settings = dict(
-    target_size=6,
+    target_size=5,
     target_time=0.5,
     min_dist=30,
     game_time=90,
-    trial_time=20,
+    trial_time=15,
     score_time=6,
-    gain=.15,
+    gain=.10,
     azimuth_range=(-35, 0), elevation_range=(-35, 35)
 )
 

@@ -10,7 +10,7 @@ import hrtf_relearning
 base_dir = hrtf_relearning.PATH / "data" / "hrtf"
 import logging
 
-subject_id = 'PFo'
+subject_id = 'RK'
 reference_id = 'kemar_reference'
 overwrite = True
 n_directions = 3

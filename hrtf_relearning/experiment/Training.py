@@ -28,7 +28,7 @@ HP = 'DT990'
 SOUND_FILE = None         # None -> pink noise pulses; or 'uso_225ms_9_.wav', etc.
 # Graphics
 show_ui = True  # todo
-SHOW_TF = True  # set to TF or IR to spawn live filter plot
+SHOW_TF = 'TF'  # set to TF or IR to spawn live filter plot
 
 # Game settings
 settings = dict(

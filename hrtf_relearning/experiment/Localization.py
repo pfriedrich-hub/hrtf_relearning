@@ -41,8 +41,8 @@ class Localization:
 
         self.settings = {'kind': 'sectors',
                          'azimuth_range': (-35, 0), 'elevation_range': (-35, 35),
-                         'sector_size': (14, 14),
-                         'targets_per_sector': 3, 'replace': False, 'min_distance': 30,
+                         'sector_size': (14, 7),
+                         'targets_per_sector': 3, 'replace': False, 'min_distance': 20,
                          'gain': .2}
         # alternative setting: play 3 times from each source in the hrir (works well for dome recorded hrirs)
         # self.settings = {'kind': 'standard', 'azimuth_range': (-60, 60), 'elevation_range': (-40, 40),

@@ -265,8 +265,7 @@ def plot_localization(sequence, report_stats=['elevation', 'azimuth'], axis=None
     if filepath:
         if not filepath.exists():
             filepath.mkdir(parents=True, exist_ok=True)
-        plt.savefig(filepath / f'{sequence.name}.png')
-
+        plt.savefig(filepath / f'{sequence.name[:-3]}.png')
     plt.show()
 
 def plot_elevation_response(sequence, axis=None, show=True, add_fit=True, filepath=None):

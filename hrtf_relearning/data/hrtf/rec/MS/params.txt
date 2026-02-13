@@ -1,16 +1,14 @@
+id: MS
 fs: 48828
-n_rec: 20
-n_samp: 2
+n_recordings: 10
+n_directions: 2
 signal:
-  type: slab.Sound.chirp
+  kind: logarithmic
   duration: 0.2
-  level: 80
-  from_frequency: 20
-  to_frequency: 24414
+  level: 85
+  from_frequency: 120
+  to_frequency: 22000.0
   samplerate: 48828
-datetime: 2025-11-07T16:49:45.855676
-subject_id: MS
-Software versions:
-  slab:      1.8.2
-  pyfar:     0.7.3
-  freefield: 1.1.0
+highpass_frequency: 120
+equalize_dome: True
+datetime: 2026-02-13T13:28:38.305334

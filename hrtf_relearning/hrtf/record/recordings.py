@@ -117,7 +117,8 @@ class Recordings(SpeakerGridBase):
         if freefield.PROCESSORS.mode != "play_birec":
             freefield.initialize("dome", "play_birec")
         speakers = cls._select_speakers(freefield.read_speaker_table(), azimuth, elevation)
-        led_bits = ['16', '8', '4']
+        # led_bits = ['16', '8', '4']
+        led_bits = ['16', '4']
         res = abs(speakers[0].elevation - speakers[1].elevation) / n_directions
         min_el = min(spk.elevation for spk in speakers)
         data = {}

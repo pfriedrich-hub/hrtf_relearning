@@ -7,7 +7,7 @@ from pathlib import Path
 import slab
 import hrtf_relearning
 
-from hrtf_relearning.hrtf.processing.mirror_hrtf import mirror_hrtf
+from hrtf_relearning.hrtf.processing.mirror import mirror_hrtf
 from hrtf_relearning.hrtf.processing.tf2ir import hrtf2hrir
 from hrtf_relearning.hrtf.processing.flatten import flatten_dtf
 from hrtf_relearning.hrtf.binsim.hrir2mat import (
@@ -183,17 +183,17 @@ def hrtf2binsim(hrir_settings, overwrite: bool = True):
 
     block_size = int(hrir[0].n_taps * 2)  # *2 prevents glitches
 
-    if hrir.datatype != "FIR":
+    if hrir.datatype != "FIR":  # pyBinSim only supports FIR filters, so convert if necessary
         logger.info("Converting HRTF → HRIR (FIR)")
         hrir = hrtf2hrir(hrir)
 
-    if ear:
+    if ear:   # flatten one ear by zeroing out the DTF
         flattened = "right" if ear == "left" else "left"
         logger.info("Flattening DTF for %s ear", flattened)
         hrir = flatten_dtf(hrir, ear)
         hrir.name += f"_{ear}"
 
-    if mirror:
+    if mirror:  # mirror left and right by swapping channels and sources (swap spectral cues)
         logger.info("Mirroring HRIR left ↔ right")
         hrir = mirror_hrtf(hrir)
         hrir.name += "_mirrored"
@@ -202,7 +202,6 @@ def hrtf2binsim(hrir_settings, overwrite: bool = True):
     mat_path = base_dir / f"{hrir.name}_filters.mat"
 
     first_build = (not base_dir.exists()) or overwrite
-
     if first_build:
         logger.info("Resampling sound files (overwrite=%s)", overwrite)
 

@@ -3,13 +3,14 @@ from matplotlib import pyplot as plt
 from collections import OrderedDict
 import hrtf_relearning as hr
 
-subject_id = 'AvS'
+subject_id = 'RK'
 
-def learning_plot(subject_id, figsize=(17.5, 6.5)):
+def learning_plot(subject_id):
     """
     Plot single subject stimulus response pattern
     and draw SD RMS and EG indications
     """
+    figsize = (17.5, 6.5)
     fig_width = figsize[0] / 2.54  # convert to inches
     fig_height = figsize[1] / 2.54
     dpi = 264
@@ -36,7 +37,7 @@ def learning_plot(subject_id, figsize=(17.5, 6.5)):
     items = sorted(localization_dict.items(), key=lambda kv: parse_loc_key(kv[0]))
     by_day = OrderedDict()
     for k, seq in items:
-        day = k.split("_")[3]  # "12.01"
+        day = k.split("_")[0][-5:]  # "12.01"
         if seq.finished:
             by_day.setdefault(day, []).append((k, seq))
 

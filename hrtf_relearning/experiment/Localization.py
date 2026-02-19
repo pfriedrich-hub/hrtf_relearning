@@ -11,7 +11,7 @@ from hrtf_relearning.experiment.misc.training_helpers import meta_motion
 from hrtf_relearning.hrtf.binsim.hrtf2binsim import hrtf2binsim
 from pynput import keyboard
 date = datetime.datetime.now()
-date = f'{date.strftime("%d")}.{date.strftime("%m")}_{date.strftime("%H")}:{date.strftime("%M")}'
+date = f'{date.strftime("%d")}.{date.strftime("%m")}_{date.strftime("%H")}-{date.strftime("%M")}'
 logging.getLogger().setLevel('INFO')
 ROOT = hr.PATH
 
@@ -26,8 +26,8 @@ STIM = 'noise'  # 'noise' or 'uso'
 MIRROR = False # set TRUE to mirror HRIRs left-right
 
 # --- load HRIR and Subject
-hrir_settings = dict(name=HRIR_NAME, ear=EAR, mirror=MIRROR,
-                     reverb=True, drr=20, hp_filter=True, hp=HP, convolution="cuda",storage="cuda")
+hrir_settings = dict(name=HRIR_NAME, ear=EAR, mirror=MIRROR, reverb=True, drr=20,
+                     hp_filter=True, hp=HP, convolution="cuda",storage="cuda")
 hrir = hrtf2binsim(hrir_settings, overwrite=True)
 subject = hr.Subject(SUBJECT_ID)
 
@@ -38,7 +38,6 @@ class Localization:
     """
     def __init__(self, subject, hrir):
         # make trial sequence and write to subject-
-
         self.settings = {'kind': 'sectors',
                          'azimuth_range': (-35, 0), 'elevation_range': (-35, 35),
                          'sector_size': (14, 7),
@@ -58,8 +57,8 @@ class Localization:
         # make sequence
         self.sequence = make_sequence(self.settings, self.hrir_sources)
         self.sequence.name = self.filename
-        self.sequence.hrir = hrir.name
         self.sequence.ear = EAR
+        self.sequence.mirrored = MIRROR
         self.sequence.stim = STIM
 
     def write(self):

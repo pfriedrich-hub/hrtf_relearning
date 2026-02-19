@@ -10,10 +10,10 @@ import hrtf_relearning
 base_dir = hrtf_relearning.PATH / "data" / "hrtf"
 import logging
 
-subject_id = 'MS'
-reference_id = 'kemar_reference'
+subject_id = 'CZ'
+reference_id = 'ref_19.02.'
 overwrite = True
-n_directions = 2
+n_directions = 3
 n_recordings = 10
 n_samples_out = 256
 fs = 48828  # 97656
@@ -101,7 +101,8 @@ def record_hrir(
             n_recordings=n_recordings,
             hp_freq=hp_freq,
             fs=fs,
-            equalize=equalize_dome)
+            equalize=True,
+            button=False)
         reference_rec.to_wav(ref_dir, overwrite=overwrite)
     else:
         logging.info("Loading reference recordings from disk")

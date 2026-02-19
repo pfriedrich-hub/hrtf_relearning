@@ -439,7 +439,7 @@ class ImpulseResponses(SpeakerGridBase):
     # plotting
     # =====================================================================
 
-    def waterfall(self,azimuth=0,linesep=20,xscale="log",axis=None):
+    def waterfall(self, azimuth=0, linesep=20, xscale="log", axis=None):
         """
         Waterfall plot of left + right ear spectra from in-ear impulse responses.
         Elevations determine vertical offset (one curve per elevation).
@@ -549,7 +549,7 @@ class ImpulseResponses(SpeakerGridBase):
         # ------------------------------------------------------------
         # dB scale bar
         # ------------------------------------------------------------
-        scale_x = xlim[0] + 300
+        scale_x = xlim[0] + 1e3
         scale_y0 = vlines[-1] + 40
         scale_y1 = scale_y0 + linesep
 

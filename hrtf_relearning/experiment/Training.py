@@ -19,9 +19,9 @@ logging.getLogger().setLevel('INFO')
 
 
 # -------------------- Config --------------------
-SUBJECT_ID = "PFo"
-HRIR_NAME = "PFo"  # 'KU100', 'kemar', etc.
-EAR = 'left'              # or None for binaural
+SUBJECT_ID = "ES"
+HRIR_NAME = "universal"  # 'KU100', 'kemar', etc.
+EAR = 'left'           # or None for binaural
 HP = 'DT990'
 
 # Sound
@@ -32,12 +32,12 @@ SHOW_TF = 'TF'  # set to TF or IR to spawn live filter plot
 
 # Game settings
 settings = dict(
-    target_size=5,
+    target_size=4,
     target_time=0.5,
     min_dist=30,
     game_time=90,
-    trial_time=15,
-    score_time=6,
+    trial_time=10,
+    score_time=3,
     gain=.10,
     azimuth_range=(-35, 0), elevation_range=(-35, 35)
 )
@@ -60,7 +60,6 @@ hrir_settings = dict(
 hrir = hrtf2binsim(hrir_settings)
 slab.set_default_samplerate(hrir.samplerate)
 HRIR_DIR = ROOT / "data" / "hrtf" / "binsim" / hrir.name
-
 
 # -------------------- Helpers --------------------
 def make_osc_client(port, ip="127.0.0.1"):

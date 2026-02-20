@@ -18,16 +18,16 @@ ROOT = hr.PATH
 
 
 # --- settings ----
-SUBJECT_ID = "PFo"
-HRIR_NAME = "PFo"  # 'KU100', 'kemar', etc.
+SUBJECT_ID = "ES"
+HRIR_NAME = "universal"  # 'KU100', 'kemar', etc.
 EAR = 'left'
 HP = 'DT990'
 STIM = 'noise'  # 'noise' or 'uso'
 MIRROR = False # set TRUE to mirror HRIRs left-right
 
 # --- load HRIR and Subject
-hrir_settings = dict(name=HRIR_NAME, ear=EAR, mirror=MIRROR, reverb=True, drr=20,
-                     hp_filter=True, hp=HP, convolution="cuda",storage="cuda")
+hrir_settings = dict(name=HRIR_NAME, ear=EAR, mirror=MIRROR,
+                     reverb=True, drr=20, hp_filter=True, hp=HP, convolution="cuda",storage="cuda")
 hrir = hrtf2binsim(hrir_settings, overwrite=True)
 subject = hr.Subject(SUBJECT_ID)
 
@@ -38,6 +38,7 @@ class Localization:
     """
     def __init__(self, subject, hrir):
         # make trial sequence and write to subject-
+
         self.settings = {'kind': 'sectors',
                          'azimuth_range': (-35, 0), 'elevation_range': (-35, 35),
                          'sector_size': (14, 7),
@@ -57,6 +58,7 @@ class Localization:
         # make sequence
         self.sequence = make_sequence(self.settings, self.hrir_sources)
         self.sequence.name = self.filename
+        self.sequence.hrir = hrir.name
         self.sequence.ear = EAR
         self.sequence.mirrored = MIRROR
         self.sequence.stim = STIM

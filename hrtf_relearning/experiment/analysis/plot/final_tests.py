@@ -1,11 +1,10 @@
 import numpy
 from matplotlib import pyplot as plt
 import hrtf_relearning as hr
-
+import datetime
+import re
 
 subject_id = "RK"
-import numpy
-from matplotlib import pyplot as plt
 
 def normalize_az_range(az_range):
     """Return canonical (float, float) tuple or None."""
@@ -157,6 +156,130 @@ def plot_last_four_matching(
     plt.tight_layout()
     plt.show()
     return fig, ax, rows
+
+
+# --- helpers ---
+def parse_loc_key(key: str) -> datetime.datetime:
+    """
+    Parse localization dict keys and return a datetime that sorts correctly
+    by day AND time.
+
+    Supported anywhere in the key:
+      - dd.mm_HH:MM
+      - dd.mm_HH.MM
+      - ISO (yyyy-mm-ddTHH:MM:SS)
+
+    Unknown formats sort last.
+    """
+    # 1) ISO (future-proof)
+    try:
+        return datetime.datetime.fromisoformat(key)
+    except Exception:
+        pass
+
+    # 2) dd.mm_HH[:.]MM anywhere in the string
+    match = re.search(r"(\d{2})\.(\d{2})_(\d{2})[:.](\d{2})", key)
+    if match:
+        d, m, hh, mm = match.groups()
+        now = datetime.datetime.now()
+
+        year = now.year
+        month = int(m)
+
+        # Handle year rollover (Dec → Jan)
+        if month > now.month + 1:
+            year -= 1
+
+        return datetime.datetime(year=year, month=month, day=int(d), hour=int(hh), minute=int(mm))
+
+    # 3) Fallback → last
+    return datetime.datetime.max
+
+
+def key_time_str(k: str) -> str:
+    # expects "..._dd.mm_HH.MM" or "..._dd.mm_HH:MM"
+    # returns "HH:MM"
+    parts = k.split("_")
+    if len(parts) >= 2:
+        t = parts[-1]
+        t = t.replace(".", ":")
+        m = re.search(r"(\d{2}:\d{2})", t)
+        return m.group(1) if m else t
+    return ""
+
+
+# --- CHANGED: safely read Trialsequence attributes without loading anything extra
+def extract_seq_meta(seq, fallback_name: str = "") -> dict:
+    """
+    Extract the attributes you care about from a Trialsequence-like object.
+    Works even if some fields are missing.
+    """
+    meta = {}
+
+    # common direct attributes
+    meta["name"] = getattr(seq, "name", fallback_name)
+    meta["stim"] = getattr(seq, "stim", None)
+    meta["hrir"] = getattr(seq, "hrir", None)
+    meta["ear"] = getattr(seq, "ear", None)
+
+    # settings dict (where azimuth_range typically lives in your example)
+    settings = getattr(seq, "settings", None)
+    if isinstance(settings, dict):
+        meta["azimuth_range"] = settings.get("azimuth_range", None)
+        meta["elevation_range"] = settings.get("elevation_range", None)
+    else:
+        meta["azimuth_range"] = None
+        meta["elevation_range"] = None
+
+    return meta
+
+
+# --- CHANGED
+def marker_for_meta(meta: dict) -> str:
+    """
+    Encode 'uso' / mirrored / default in marker shape.
+    (All in grayscale to match your current style.)
+    """
+    stim = (meta.get("stim") or "").lower()
+    hrir = (meta.get("hrir") or "").lower()
+
+    if stim == "uso":
+        return "s"      # square for USO
+    if "mirrored" in hrir:
+        return "^"      # triangle for mirrored
+    return "o"          # circle default
+
+
+# --- CHANGED
+def flags_for_meta(meta: dict) -> str:
+    stim = (meta.get("stim") or "").lower()
+    hrir = (meta.get("hrir") or "").lower()
+
+    flags = []
+    if stim == "uso":
+        flags.append("USO")
+    if "mirrored" in hrir:
+        flags.append("mirr")
+    return " ".join(flags)
+
+
+# --- CHANGED
+def format_range(rng) -> str:
+    """
+    Format (min,max) nicely even if it's a list/tuple/numpy array.
+    """
+    try:
+        a = float(rng[0])
+        b = float(rng[1])
+        # drop trailing .0 when integer-ish
+        def fmt(x):
+            return str(int(x)) if abs(x - int(x)) < 1e-9 else f"{x:g}"
+        return f"[{fmt(a)},{fmt(b)}]"
+    except Exception:
+        return str(rng)
+
+
+
 
 localization_dict = hr.Subject(subject_id).localization
 

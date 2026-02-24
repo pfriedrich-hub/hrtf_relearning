@@ -59,20 +59,27 @@ def write_settings(
     # block_size = int(hrir[0].n_taps / 2)
 
     ds_filter_size = hrir[0].n_samples
-    late_filter_size = int(lr_ir.shape[0])
-    hp_filter_size = int(hp_ir.shape[0])
 
     # pybinsim requires these sizes to be multiples of blockSize
-    if late_filter_size % block_size != 0:
-        raise ValueError(
-            f"late_filterSize ({late_filter_size}) must be a multiple of blockSize ({block_size}). "
-            f"Got remainder {late_filter_size % block_size}."
-        )
-    if hp_filter_size % block_size != 0:
-        raise ValueError(
-            f"headphone_filterSize ({hp_filter_size}) must be a multiple of blockSize ({block_size}). "
-            f"Got remainder {hp_filter_size % block_size}."
-        )
+    if lr_ir is not None:
+        late_filter_size = int(lr_ir.shape[0])
+        if late_filter_size % block_size != 0:
+            raise ValueError(
+                f"late_filterSize ({late_filter_size}) must be a multiple of blockSize ({block_size}). "
+                f"Got remainder {late_filter_size % block_size}."
+            )
+    else:
+        late_filter_size = 0
+
+    if hp_ir is not None:
+        hp_filter_size = int(hp_ir.shape[0])
+        if hp_filter_size % block_size != 0:
+            raise ValueError(
+                f"headphone_filterSize ({hp_filter_size}) must be a multiple of blockSize ({block_size}). "
+                f"Got remainder {hp_filter_size % block_size}."
+            )
+    else:
+        hp_filter_size = 0
 
     logger.info(
         "Writing settings | HRTF=%s reverb=%s hp_filter=%s conv=%s storage=%s",
@@ -216,8 +223,14 @@ def hrtf2binsim(hrir_settings, overwrite: bool = True):
     # ALWAYS recompute LR + HP
     logger.info("Writing DS / LR / HP filters | DRR=%.1f HP=%s", drr, hp)
 
-    lr_ir = compute_lr_ir(hrir, drr=drr, block_size=block_size)
-    hp_ir = compute_hp_ir(hrir, hp=hp, block_size=block_size)
+    if reverb:
+        lr_ir = compute_lr_ir(hrir, drr=drr, block_size=block_size)
+    else:
+        lr_ir = None
+    if hp_filter:
+        hp_ir = compute_hp_ir(hrir, hp=hp, block_size=block_size)
+    else:
+        hp_ir = None
 
     write_filters(hrir, lr_ir, hp_ir, mat_path)
     write_filter_list(hrir)

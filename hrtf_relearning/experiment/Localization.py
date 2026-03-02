@@ -11,15 +11,15 @@ from hrtf_relearning.experiment.misc.training_helpers import meta_motion
 from hrtf_relearning.hrtf.binsim.hrtf2binsim import hrtf2binsim
 from pynput import keyboard
 date = datetime.datetime.now()
-date = f'{date.strftime("%d")}.{date.strftime("%m")}_{date.strftime("%H")}:{date.strftime("%M")}'
+date = f'{date.strftime("%d")}.{date.strftime("%m")}_{date.strftime("%H")}-{date.strftime("%M")}'
 logging.getLogger().setLevel('INFO')
 ROOT = hr.PATH
 
 
 
 # --- settings ----
-SUBJECT_ID = "PFo"
-HRIR_NAME = "PFo"  # 'KU100', 'kemar', etc.
+SUBJECT_ID = "ES"
+HRIR_NAME = "universal"  # 'KU100', 'kemar', etc.
 EAR = 'left'
 HP = 'DT990'
 STIM = 'noise'  # 'noise' or 'uso'
@@ -60,6 +60,7 @@ class Localization:
         self.sequence.name = self.filename
         self.sequence.hrir = hrir.name
         self.sequence.ear = EAR
+        self.sequence.mirrored = MIRROR
         self.sequence.stim = STIM
 
     def write(self):

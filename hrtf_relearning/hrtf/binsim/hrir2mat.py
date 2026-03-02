@@ -64,26 +64,28 @@ def write_filters(hrir, lr_ir, hp_ir, mat_path):
         ))
 
     # ---------- LR row ----------
-    rows.append((
-        "LR",
-        zeros3.copy(),
-        zeros3.copy(),
-        zeros3.copy(),
-        zeros3.copy(),
-        zeros3.copy(),
-        lr_ir.astype(numpy.float32),
-    ))
+    if lr_ir is not None:
+        rows.append((
+            "LR",
+            zeros3.copy(),
+            zeros3.copy(),
+            zeros3.copy(),
+            zeros3.copy(),
+            zeros3.copy(),
+            lr_ir.astype(numpy.float32),
+        ))
 
     # ---------- HP row ----------
-    rows.append((
-        "HP",
-        zeros3.copy(),
-        zeros3.copy(),
-        zeros3.copy(),
-        zeros3.copy(),
-        zeros3.copy(),
-        hp_ir.astype(numpy.float32),
-    ))
+    if hp_ir is not None:
+        rows.append((
+            "HP",
+            zeros3.copy(),
+            zeros3.copy(),
+            zeros3.copy(),
+            zeros3.copy(),
+            zeros3.copy(),
+            hp_ir.astype(numpy.float32),
+        ))
 
     filters = numpy.zeros((1, len(rows)), dtype=dtype)
     for i, r in enumerate(rows):

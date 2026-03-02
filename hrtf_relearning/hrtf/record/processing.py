@@ -30,6 +30,7 @@ def compute_ir(
     recordings: Recordings,
     onset_threshold_db: float = 15.0,
     inversion_range_hz: tuple[float, float] | None = None,
+    align_interaural: bool = False,
 ) -> "ImpulseResponses":
     """
     Deconvolve sweep recordings into impulse responses.
@@ -72,7 +73,8 @@ def compute_ir(
     irs = ImpulseResponses(data=ir_dict, params=params)
 
     # --- temporal alignment ---
-    irs = time_align_irs(irs, center_key='23_0.0_0.0', desired_onset_s=.001)
+    irs = time_align_irs(irs, center_key='23_0.0_0.0', desired_onset_s=.001,
+                         align_itd=align_interaural, align_ild=align_interaural)
     return irs
 
 def time_align_irs(
@@ -82,6 +84,11 @@ def time_align_irs(
     onset_threshold_db: float = 15.0,
     desired_onset_s: float = 0.001,
     onset_mode: str = "earliest",   # "earliest" or "sum"
+    # NEW: optional frontal-only modifications
+    align_itd: bool = False,   # NEW
+    align_ild: bool = False,   # NEW
+    frontal_az_deg: float = 0.0,          # NEW
+    frontal_tol_deg: float = 1e-6,        # NEW
 ):
     """
     Global time anchoring for a set of IRs:
@@ -89,8 +96,8 @@ def time_align_irs(
     - find onset on that reference
     - shift ALL IRs by the same amount so onset lands at desired_onset_s
 
-    ITD-safe: does not alter interaural timing because the same shift is
-    applied to both ears and all positions.
+    Optional:
+    - For frontal sources (az==0 across elevations): remove ITD and/or ILD.
     """
 
     fs = int(irs.params["fs"])
@@ -103,7 +110,7 @@ def time_align_irs(
         ref_key = center_key
     else:
         if center_key is not None:
-            logging.warning("Center key '%s' not found; using '%s' instead.", center_key, keys[4])
+            logging.warning("Center key '%s' not found; using '%s' instead.", center_key, keys[0])  # CHANGED (safer)
         ref_key = keys[0]
 
     ref_sig = irs.data[ref_key]
@@ -112,11 +119,9 @@ def time_align_irs(
 
     # --- compute onset for reference direction ---
     if onset_mode == "earliest":
-        # onset per ear; anchor to earliest ear to avoid ITD distortion
         on = pyfar.dsp.find_impulse_response_start(ref_sig, threshold=onset_threshold_db)
         onset_samples = int(numpy.min(on))
     elif onset_mode == "sum":
-        # onset on mono sum of both ears (often robust)
         mono = pyfar.Signal(ref_sig.time[0] + ref_sig.time[1], fs)
         on = pyfar.dsp.find_impulse_response_start(mono, threshold=onset_threshold_db)
         onset_samples = int(on)
@@ -131,6 +136,76 @@ def time_align_irs(
     for k in keys:
         out.data[k] = pyfar.dsp.time_shift(out.data[k], shift_s, unit="s")
 
+    # ------------------------------------------------------------------
+    # NEW: helper to detect frontal keys (az==0 across elevations)
+    # ------------------------------------------------------------------
+    def _is_frontal_key(k: str) -> bool:  # NEW
+        try:
+            _spk, az_s, _el_s = k.split("_")
+            az = float(az_s)
+        except Exception:
+            return False
+        # treat 0 and 360 as equivalent; you said frontal means az=0
+        az_wrapped = float(numpy.mod(az, 360.0))
+        return (abs(az_wrapped - frontal_az_deg) <= frontal_tol_deg) or (abs(az_wrapped - 360.0) <= frontal_tol_deg)
+
+    # ------------------------------------------------------------------
+    # NEW: frontal-only ITD removal (shift later ear to match earlier onset)
+    # ------------------------------------------------------------------
+    if align_itd:  # NEW
+        for k in keys:
+            if not _is_frontal_key(k):
+                continue
+            sig = out.data[k]
+            on_lr = pyfar.dsp.find_impulse_response_start(sig, threshold=onset_threshold_db)
+            onL, onR = int(on_lr[0]), int(on_lr[1])
+
+            delta = onR - onL  # + => R later
+            if delta == 0:
+                continue
+
+            time_data = sig.time.copy()  # (2, n_samples)
+            if delta > 0:
+                # R later -> shift R earlier
+                r = pyfar.Signal(time_data[1:2, :], fs)
+                r2 = pyfar.dsp.time_shift(r, -delta, unit="samples")
+                time_data[1, :] = r2.time[0]
+            else:
+                # L later -> shift L earlier
+                l = pyfar.Signal(time_data[0:1, :], fs)
+                l2 = pyfar.dsp.time_shift(l, delta, unit="samples")  # delta negative => earlier
+                time_data[0, :] = l2.time[0]
+
+            out.data[k] = pyfar.Signal(time_data, fs)
+
+    # ------------------------------------------------------------------
+    # NEW: frontal-only ILD removal (broadband gain to equalize levels)
+    #      Uses per-ear RMS over the full IR; preserves average power.
+    # ------------------------------------------------------------------
+    if align_ild:  # NEW
+        eps = 1e-12  # NEW
+        for k in keys:
+            if not _is_frontal_key(k):
+                continue
+            sig = out.data[k]
+            x = sig.time  # (2, n_samples)
+
+            # RMS per ear (broadband level)
+            rmsL = float(numpy.sqrt(numpy.mean(x[0] ** 2)))
+            rmsR = float(numpy.sqrt(numpy.mean(x[1] ** 2)))
+
+            # target preserves average power across ears
+            target = float(numpy.sqrt((rmsL**2 + rmsR**2) / 2.0))
+
+            gL = target / max(rmsL, eps)
+            gR = target / max(rmsR, eps)
+
+            x2 = x.copy()
+            x2[0] *= gL
+            x2[1] *= gR
+
+            out.data[k] = pyfar.Signal(x2, fs)
+
     out.params.setdefault("time_alignment", {})
     out.params["time_alignment"].update({
         "method": "global_reference_onset",
@@ -140,9 +215,15 @@ def time_align_irs(
         "desired_onset_s": float(desired_onset_s),
         "reference_onset_samples": int(onset_samples),
         "applied_shift_s": float(shift_s),
+        # NEW: provenance for optional steps
+        "zero_itd_for_frontal": bool(align_itd),   # NEW
+        "zero_ild_for_frontal": bool(align_ild),   # NEW
+        "frontal_az_deg": float(frontal_az_deg),              # NEW
+        "frontal_tol_deg": float(frontal_tol_deg),            # NEW
         "date": datetime.now().isoformat(),
     })
     return out
+
 
 def average_recordings(recordings: Recordings):
     """

@@ -43,7 +43,7 @@ ROOT = Path(hrtf_relearning.__file__).resolve().parent
 # -------------------------------------------------------------------------
 # CONFIG
 # -------------------------------------------------------------------------
-hp_id = 'MYSPHERE'  # MYSPHERE, DT990
+hp_id = 'DT990'  # MYSPHERE, DT990
 
 fs = 48828
 slab.set_default_samplerate(fs)
@@ -88,7 +88,7 @@ def main():
 
     # Generate chirp
     excitation = generate_chirp()
-    kemar = slab.HRTF(ROOT / 'data' / 'hrtf' / 'sofa' / 'kemar_test.sofa')
+    kemar = slab.HRTF(ROOT / 'data' / 'hrtf' / 'sofa' / 'kemar.sofa')
 
     elevations = [37.5, 25, 12.5, 0, -12.5, -25, -37.5]
     az = 0
@@ -103,7 +103,6 @@ def main():
         spatial_signal = kemar.apply(source_idx, excitation)
         spatialized.append(freefield.play_and_record_headphones(speaker='both',
                                                                 sound=spatial_signal, equalize=True))
-
 
     # Record Loudspeakers
     if not freefield.PROCESSORS.mode == 'play_birec':
@@ -128,8 +127,8 @@ def main():
 
     for i, el in enumerate(elevations):
         ax = axes[i]
-        pyfar.plot.freq(spatialized[i][0], ax=ax[0])
-        pyfar.plot.freq(speaker_rec[i][0], ax=ax[0])
+        pyfar.plot.freq(spatialized[i][0], ax=ax[0], label='hp')
+        pyfar.plot.freq(speaker_rec[i][0], ax=ax[0], label='spk')
         pyfar.plot.freq(spatialized[i][1], ax=ax[1])
         pyfar.plot.freq(speaker_rec[i][1], ax=ax[1])
         ax[0].set_xlabel('')
@@ -146,7 +145,7 @@ def main():
     ax[0].set_xlabel('Frequency (Hz)')
     ax[1].set_xlabel('Frequency (Hz)')
 
-    plt.savefig(ROOT/'data' / 'img' / 'processing' / 'kemar_hrir_test.svg')
+    plt.savefig(ROOT/'data' / 'img' / 'processing' / 'KEMAR_hrir_test.svg')
 
 # if __name__ == "__main__":
 #     main()

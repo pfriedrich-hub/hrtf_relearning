@@ -1,5 +1,5 @@
 import matplotlib
-matplotlib.use('qtagg')
+matplotlib.use('tkagg')
 from matplotlib import pyplot as plt
 import copy
 import numpy
@@ -8,7 +8,8 @@ from hrtf_relearning import PATH
 hrtf_dir = PATH / 'data' /'hrtf'/'sofa'
 import slab
 
-sub_id = 'SW'
+sub_id = 'JP'
+
 
 def add_spectral_notch(hrtf):
     out = copy.deepcopy(hrtf)
@@ -24,13 +25,13 @@ def add_spectral_notch(hrtf):
         spec = numpy.fft.rfft(ir, axis=0)          # (freq_bins, channels)
 
         mu = linear_notch_position(azimuth, elevation, X1=(0, 0), X2=(-60, 60), Y=(6e3, 12e3))
-        sigma = linear_notch_width(azimuth, elevation, X1=(0, 0), X2=(-60, 60), Y=(500, 500))
+        sigma = linear_notch_width(azimuth, elevation, X1=(0, 0), X2=(-60, 60), Y=(300, 300))
 
         # interpret "scaling factor" as depth in dB (positive)
         depth_db = abs(linear_scaling_factor(
             azimuth, elevation,
             X1=(0, 0), X2=(-60, 60),
-            Y=(12.0, 12.0)   # choose what you want
+            Y=(15.0, 15.0)   # choose what you want
         ))
 
         notch_db = -depth_db * numpy.exp(-0.5 * ((freqs - mu) / sigma) ** 2)
@@ -85,7 +86,7 @@ def plot(hrtf, hrtf_modified, kind='image'):
 if __name__ == '__main__':
     hrtf = slab.HRTF(hrtf_dir / str(sub_id + '.sofa'))
     hrtf_modified = add_spectral_notch(hrtf)
-    fig = plot(hrtf, hrtf_modified, 'waterfall')
+    # fig = plot(hrtf, hrtf_modified, 'image')
     if input('press enter to save'):
-        fig.savefig(PATH / 'data' / 'results' / 'plot' / sub_id / str(sub_id + '_modified.png'))
+        # fig.savefig(PATH / 'data' / 'results' / 'plot' / sub_id / str(sub_id + '_modified.png'))
         hrtf_modified.write_sofa(hrtf_dir / str(sub_id + '_notch.sofa'))

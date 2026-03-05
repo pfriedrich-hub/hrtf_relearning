@@ -15,14 +15,14 @@ date = f'{date.strftime("%d")}.{date.strftime("%m")}_{date.strftime("%H")}-{date
 logging.getLogger().setLevel('INFO')
 ROOT = hr.PATH
 
-
-
 # --- settings ----
-SUBJECT_ID = "ES"
-HRIR_NAME = "universal"  # 'KU100', 'kemar', etc.
+SUBJECT_ID = "JP"
+HRIR_NAME = "JP_notch"  # 'KU100', 'kemar', etc.
 EAR = 'left'
-HP = 'DT990'
+HP = 'MYSPHERE'
 STIM = 'noise'  # 'noise' or 'uso'
+AZ_RANGE = (-35, 0)
+SECTOR_SIZE = (14, 7)
 MIRROR = False # set TRUE to mirror HRIRs left-right
 
 # --- load HRIR and Subject
@@ -40,8 +40,8 @@ class Localization:
         # make trial sequence and write to subject-
 
         self.settings = {'kind': 'sectors',
-                         'azimuth_range': (-35, 0), 'elevation_range': (-35, 35),
-                         'sector_size': (14, 7),
+                         'azimuth_range': AZ_RANGE, 'elevation_range': (-35, 35),
+                         'sector_size': SECTOR_SIZE,
                          'targets_per_sector': 3, 'replace': False, 'min_distance': 20,
                          'gain': .2}
         # alternative setting: play 3 times from each source in the hrir (works well for dome recorded hrirs)

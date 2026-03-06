@@ -17,10 +17,11 @@ ROOT = hr.PATH
 
 # --- settings ----
 SUBJECT_ID = "JP"
+
 HRIR_NAME = "JP_notch"  # 'KU100', 'kemar', etc.
 EAR = 'left'
 HP = 'MYSPHERE'
-STIM = 'noise'  # 'noise' or 'uso'
+STIM = 'uso'  # 'noise' or 'uso'
 AZ_RANGE = (-35, 0)
 SECTOR_SIZE = (14, 7)
 MIRROR = False # set TRUE to mirror HRIRs left-right

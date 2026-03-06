@@ -19,10 +19,12 @@ logging.getLogger().setLevel('INFO')
 
 
 # -------------------- Config --------------------
-SUBJECT_ID = "ES"
-HRIR_NAME = "universal"  # 'KU100', 'kemar', etc.
-EAR = 'left'           # or None for binaural
-HP = 'DT990'
+SUBJECT_ID = "JP"
+HRIR_NAME = "JP_notch"  # 'KU100', 'kemar', etc.
+EAR = 'left'
+HP = 'MYSPHERE'
+STIM = 'noise'  # 'noise' or 'uso'
+AZ_RANGE = (-35, 0)
 
 # Sound
 SOUND_FILE = None         # None -> pink noise pulses; or 'uso_225ms_9_.wav', etc.
@@ -39,7 +41,7 @@ settings = dict(
     trial_time=10,
     score_time=3,
     gain=.10,
-    azimuth_range=(-35, 0), elevation_range=(-35, 35)
+    azimuth_range=AZ_RANGE, elevation_range=(-35, 35)
 )
 
 #HRIR settings for hrtf2binsim

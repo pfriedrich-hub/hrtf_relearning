@@ -362,16 +362,16 @@ def equalize(
         #          onset_min + .0058)  # end of_fade_out
         times = (onset_min - .00025,  # start of fade-in
                  onset_min,  # end if fade-in
-                 onset_min + .0048,  # start of fade_out
-                 onset_min + .0058)  # end of_fade_out
+                 onset_min + .0028,  # start of fade_out
+                 onset_min + .0038)  # end of_fade_out
         H_windowed, window = pyfar.dsp.time_window(
-            H_aligned, times, 'hann', unit='s', crop='end', return_window=True)
+            H_aligned, times, 'hann', unit='s', crop='none', return_window=True)
         # print('win')
 
         # crop
         times = [0, 10, 246, n_samples_out-1]
         H_final = pyfar.dsp.time_window(
-            H_windowed, times, 'hann', crop='end')
+            H_windowed, times, 'boxcar', crop='end')
 
         out[key] = H_final
 

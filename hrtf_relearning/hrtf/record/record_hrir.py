@@ -10,8 +10,8 @@ import hrtf_relearning
 base_dir = hrtf_relearning.PATH / "data" / "hrtf"
 import logging
 
-subject_id = 'CZ'
-reference_id = 'ref_19.02.'
+subject_id = 'VG'
+reference_id = 'ref_mar_02'
 overwrite = True
 n_directions = 3
 n_recordings = 10
@@ -24,6 +24,18 @@ equalize_dome = True
 
 slab.set_default_samplerate(fs)
 freefield.set_logger("info")
+
+# -----------------------------------------------------------------
+# Paths
+# -----------------------------------------------------------------
+if base_dir is None:
+    base_dir = Path.cwd() / "data" / "hrtf"
+else:
+    base_dir = Path(base_dir)
+
+subj_dir = base_dir / "rec" / subject_id
+ref_dir = base_dir / "rec" / "reference" / reference_id
+
 # ---------------------------------------------------------------------
 # Main wrapper
 # ---------------------------------------------------------------------
@@ -32,8 +44,8 @@ def record_hrir(
     subject_id: str,
     reference_id: str,
     *,
-    n_directions: int = 5,
-    n_recordings: int = 5,
+    n_directions: int = 3,
+    n_recordings: int = 10,
     fs: int = 48828,
     hp_freq: float = 120,
     n_samples_out: int = 256,
@@ -58,17 +70,6 @@ def record_hrir(
     """
 
     logging.info(f"Starting HRIR pipeline for subject '{subject_id}'")
-
-    # -----------------------------------------------------------------
-    # Paths
-    # -----------------------------------------------------------------
-    if base_dir is None:
-        base_dir = Path.cwd() / "data" / "hrtf"
-    else:
-        base_dir = Path(base_dir)
-
-    subj_dir = base_dir / "rec" / subject_id
-    ref_dir = base_dir / "rec" / "reference" / reference_id
 
     # -----------------------------------------------------------------
     # 1) Subject recordings

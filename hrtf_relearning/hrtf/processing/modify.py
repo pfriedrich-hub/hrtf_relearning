@@ -9,7 +9,7 @@ from hrtf_relearning import PATH
 hrtf_dir = PATH / 'data' /'hrtf'/'sofa'
 import slab
 
-sub_id = 'JP'
+sub_id = 'RK'
 
 def _smooth(mag, n_keep):
     """
@@ -274,11 +274,10 @@ def find_ir_onsets(ir, threshold_db=15.0):
 
     return onsets
 
-
 def restore_itd_from_onsets(ir_original, ir_processed, threshold_db=15.0):
     """
-    Restore the original onset-based ITD by shifting the right ear of the
-    processed HRIR.
+    Restore original per-ear onset positions by shifting each processed ear
+    independently so that its onset matches the corresponding original ear onset.
 
     Parameters
     ----------
@@ -292,21 +291,12 @@ def restore_itd_from_onsets(ir_original, ir_processed, threshold_db=15.0):
     Returns
     -------
     numpy.ndarray
-        Processed HRIR with restored onset-based ITD, shape (n_samples, 2).
+        Processed HRIR with restored per-ear onsets, shape (n_samples, 2).
 
     Notes
     -----
-    The paper states that after replacing detailed phase with a minimum-phase
-    response for each magnitude, a pure delay was added so that the overall ITD
-    matched that of the real stimulus.
-
-    Here that pure delay is approximated by an integer-sample shift of the
-    right-ear HRIR only:
-        delta = ITD_original - ITD_processed
-    where ITD is defined as right_onset - left_onset.
-
-    This keeps the left ear unchanged and enforces the desired binaural delay by
-    delaying or advancing the right ear with zero padding.
+    This restores both the common delay and the ITD, because both ears are
+    aligned to their original onset positions independently.
     """
     ir_original = numpy.asarray(ir_original, dtype=float)
     ir_processed = numpy.asarray(ir_processed, dtype=float)
@@ -316,37 +306,39 @@ def restore_itd_from_onsets(ir_original, ir_processed, threshold_db=15.0):
     if ir_original.ndim != 2 or ir_original.shape[1] != 2:
         raise ValueError("Both HRIRs must have shape (n_samples, 2)")
 
-    n_samples = ir_original.shape[0]
+    n_samples, n_channels = ir_original.shape
+    out = numpy.zeros_like(ir_processed)
+
     on_orig = find_ir_onsets(ir_original, threshold_db=threshold_db)
     on_proc = find_ir_onsets(ir_processed, threshold_db=threshold_db)
 
-    itd_orig = int(on_orig[1] - on_orig[0])
-    itd_proc = int(on_proc[1] - on_proc[0])
-    delta = itd_orig - itd_proc
+    for ch in range(n_channels):
+        delta = int(on_orig[ch] - on_proc[ch])
 
-    out = ir_processed.copy()
-
-    if delta > 0:
-        # Delay right ear
-        if delta >= n_samples:
-            out[:, 1] = 0.0
+        if delta > 0:
+            # delay channel
+            if delta >= n_samples:
+                out[:, ch] = 0.0
+            else:
+                out[:, ch] = numpy.concatenate(
+                    (numpy.zeros(delta, dtype=ir_processed.dtype), ir_processed[:-delta, ch]),
+                    axis=0,
+                )
+        elif delta < 0:
+            # advance channel
+            d = -delta
+            if d >= n_samples:
+                out[:, ch] = 0.0
+            else:
+                out[:, ch] = numpy.concatenate(
+                    (ir_processed[d:, ch], numpy.zeros(d, dtype=ir_processed.dtype)),
+                    axis=0,
+                )
         else:
-            out[:, 1] = numpy.concatenate(
-                (numpy.zeros(delta, dtype=out.dtype), out[:-delta, 1]),
-                axis=0,
-            )
-    elif delta < 0:
-        # Advance right ear
-        d = -delta
-        if d >= n_samples:
-            out[:, 1] = 0.0
-        else:
-            out[:, 1] = numpy.concatenate(
-                (out[d:, 1], numpy.zeros(d, dtype=out.dtype)),
-                axis=0,
-            )
+            out[:, ch] = ir_processed[:, ch]
 
     return out
+
 
 def linear_notch_position(azimuth, elevation, X1, X2, Y):
     X = numpy.column_stack((X1, X2))
@@ -371,7 +363,7 @@ def linear_scaling_factor(azimuth, elevation, X1, X2, Y):
 
 def smooth_and_notch_hrtf(
         hrtf,
-        n_keep,
+        n_keep=12,
         add_notch=True,
         onset_threshold_db=15.0,
 ):
@@ -477,10 +469,10 @@ def smooth_and_notch_hrtf(
 
     return out
 
-def plot(hrtf, hrtf_modified, kind='image'):
+def plot(hrtf, hrtf_modified, kind='image', ear='left'):
     fig, ax = plt.subplots(1, 2, figsize=(15, 5))
-    hrtf.plot_tf(hrtf.cone_sources(0), kind=kind, axis=ax[0])
-    hrtf_modified.plot_tf(hrtf.cone_sources(0), kind=kind, axis=ax[1])
+    hrtf.plot_tf(hrtf.cone_sources(0), kind=kind, axis=ax[0], ear=ear)
+    hrtf_modified.plot_tf(hrtf.cone_sources(0), kind=kind, axis=ax[1], ear=ear)
     ax[0].set_title('original')
     ax[1].set_title('modified')
     plt.show(block=False)
@@ -492,10 +484,13 @@ def plot(hrtf, hrtf_modified, kind='image'):
 if __name__ == '__main__':
     hrtf = slab.HRTF(hrtf_dir / str(sub_id + '.sofa'))
     hrtf_modified = smooth_and_notch_hrtf(hrtf,
-        n_keep=16,
+        n_keep=12,  # choose your smoothing level
         add_notch=True,
         onset_threshold_db=15.0)
-    fig = plot(hrtf, hrtf_modified, 'image')
+    fig = plot(hrtf, hrtf_modified, 'image', ear='right')
     if input('press enter to save'):
-        fig.savefig(PATH / 'data' / 'results' / 'plot' / sub_id / str(sub_id + '_modified.png'))
+        fig.close()
+        # fig.savefig(PATH / 'data' / 'results' / 'plot' / sub_id / str(sub_id + '_modified.png'))
         hrtf_modified.write_sofa(hrtf_dir / str(sub_id + '_notch.sofa'))
+        import logging
+        logging.info(f"Modified HRTF written to {hrtf_dir / str(sub_id + '_notch.sofa')}")

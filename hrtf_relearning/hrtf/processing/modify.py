@@ -488,9 +488,9 @@ if __name__ == '__main__':
         add_notch=True,
         onset_threshold_db=15.0)
     fig = plot(hrtf, hrtf_modified, 'image', ear='right')
-    if input('press enter to save'):
-        fig.close()
-        # fig.savefig(PATH / 'data' / 'results' / 'plot' / sub_id / str(sub_id + '_modified.png'))
-        hrtf_modified.write_sofa(hrtf_dir / str(sub_id + '_notch.sofa'))
-        import logging
-        logging.info(f"Modified HRTF written to {hrtf_dir / str(sub_id + '_notch.sofa')}")
+    input('press enter to save')
+    plt.close(fig)
+    fig.savefig(PATH / 'data' / 'results' / 'plot' / sub_id / str(sub_id + '_modified.png'))
+    hrtf_modified.write_sofa(hrtf_dir / str(sub_id + '_notch.sofa'))
+    import logging
+    logging.info(f"Modified HRTF written to {hrtf_dir / str(sub_id + '_notch.sofa')}")

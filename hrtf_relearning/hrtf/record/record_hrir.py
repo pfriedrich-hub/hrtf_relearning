@@ -10,7 +10,8 @@ import hrtf_relearning
 base_dir = hrtf_relearning.PATH / "data" / "hrtf"
 import logging
 
-subject_id = 'VG'
+subject_id = 'NK'
+head_radius = 0.0875
 reference_id = 'ref_mar_02'
 overwrite = True
 n_directions = 3
@@ -116,7 +117,6 @@ def record_hrir(
     subject_ir = compute_ir(subject_rec, inversion_range_hz=(hp_freq, 20e3))
     reference_ir = compute_ir(reference_rec, inversion_range_hz=(hp_freq, 20e3))
 
-
     # -----------------------------------------------------------------
     # 4) Equalization + windowing
     # -----------------------------------------------------------------
@@ -137,7 +137,7 @@ def record_hrir(
         hrir_equalized,
         f_extrap=400.0,
         f_target=150.0,
-        head_radius=0.0875,
+        head_radius=head_radius,
     )
 
     # -----------------------------------------------------------------
@@ -147,7 +147,7 @@ def record_hrir(
     hrir_az_exp = expand_azimuths_with_binaural_cues(
         hrir_extrapol,
         az_range=(-50, 50),
-        head_radius=0.0875,
+        head_radius=head_radius,
         show=False,
     )
 

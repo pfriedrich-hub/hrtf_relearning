@@ -19,10 +19,10 @@ logging.getLogger().setLevel('INFO')
 
 
 # -------------------- Config --------------------
-SUBJECT_ID = "JP"
-HRIR_NAME = "JP_notch"  # 'KU100', 'kemar', etc.
+SUBJECT_ID = "VG"
+HRIR_NAME = "VG_notch"  # 'KU100', 'kemar', etc.
 EAR = 'left'
-HP = 'MYSPHERE'
+HP = 'DT990'
 STIM = 'noise'  # 'noise' or 'uso'
 AZ_RANGE = (-35, 0)
 
@@ -43,6 +43,7 @@ settings = dict(
     gain=.10,
     azimuth_range=AZ_RANGE, elevation_range=(-35, 35)
 )
+
 
 #HRIR settings for hrtf2binsim
 hrir_settings = dict(

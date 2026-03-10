@@ -16,14 +16,13 @@ logging.getLogger().setLevel('INFO')
 ROOT = hr.PATH
 
 # --- settings ----
-SUBJECT_ID = "JP"
-
-HRIR_NAME = "JP_notch"  # 'KU100', 'kemar', etc.
+SUBJECT_ID = "VG"
+HRIR_NAME = "VG_notch"  # 'KU100', 'kemar', etc.
 EAR = 'left'
-HP = 'MYSPHERE'
-STIM = 'uso'  # 'noise' or 'uso'
+HP = 'DT990'
+STIM = 'noise'  # 'noise' or 'uso'
 AZ_RANGE = (-35, 0)
-SECTOR_SIZE = (14, 7)
+SECTOR_SIZE = (7, 14)
 MIRROR = False # set TRUE to mirror HRIRs left-right
 
 # --- load HRIR and Subject
@@ -194,5 +193,7 @@ if __name__ == "__main__":
     loc_test = Localization(subject, hrir)
     loc_test.run()
     sequence = subject.localization[loc_test.filename]
-    plot_localization(sequence, report_stats=['azimuth', 'elevation'], filepath=ROOT / 'data'  / 'results' / 'plot' / subject.id)
-    plot_elevation_response(sequence, filepath=ROOT / 'data'  / 'results' / 'plot' / subject.id)
+    plot_dir = ROOT / 'data'  / 'results' / 'plot' / subject.id
+    plot_localization(sequence, report_stats=['azimuth', 'elevation'], filepath=plot_dir)
+    plot_elevation_response(sequence, filepath=plot_dir)
+    plt.show()

@@ -121,7 +121,7 @@ def record_hrir(
     # 4) Equalization + windowing
     # -----------------------------------------------------------------
     logging.info("Applying equalization")
-    hrir = equalize(
+    hrir_equalized = equalize(
         measured=subject_ir,
         reference=reference_ir,
         n_samples_out=n_samples_out,
@@ -133,8 +133,8 @@ def record_hrir(
     # 5) Low-frequency extrapolation
     # -----------------------------------------------------------------
     logging.info("Low-frequency extrapolation")
-    hrir = lowfreq_extrapolate(
-        hrir,
+    hrir_extrapol = lowfreq_extrapolate(
+        hrir_equalized,
         f_extrap=400.0,
         f_target=150.0,
         head_radius=0.0875,
@@ -144,10 +144,10 @@ def record_hrir(
     # 6) Azimuth expansion + binaural cues
     # -----------------------------------------------------------------
     logging.info("Expanding azimuths and imposing binaural cues")
-    hrir = expand_azimuths_with_binaural_cues(
-        hrir,
+    hrir_az_exp = expand_azimuths_with_binaural_cues(
+        hrir_extrapol,
         az_range=(-50, 50),
-        head_radius=0.08,
+        head_radius=0.0875,
         show=False,
     )
 
@@ -155,7 +155,7 @@ def record_hrir(
     # 7) Export to slab.HRTF
     # -----------------------------------------------------------------
     logging.info("Converting to slab.HRTF")
-    hrtf = hrir.to_slab_hrtf(datatype="FIR")
+    hrtf = hrir_az_exp.to_slab_hrtf(datatype="FIR")
     hrtf.write_sofa(base_dir / 'sofa' / f'{subject_id}.sofa')
 
     if show:

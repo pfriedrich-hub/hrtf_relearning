@@ -10,7 +10,7 @@ hrtf_dir = PATH / 'data' /'hrtf'/'sofa'
 # hrir = slab.HRTF(sofa_path / 'single_notch.sofa')
 # hrir = slab.HRTF(sofa_path / 'pf.sofa')
 # hrir = slab.HRTF(sofa_path / 'pf_itd.sofa')
-hrir = slab.HRTF(hrtf_dir / 'VG_notch.sofa')
+hrir = slab.HRTF(hrtf_dir / 'NK.sofa')
 
 
 # compute itd / ild of all filters on the horizontal plane
@@ -29,17 +29,33 @@ for id in src_idx:
     # print(f'Source {hrir.sources.vertical_polar[id, 0]}')
     _s = hrir.apply(id, sound)
     itd = _s._get_itd(max_lag=0.001)
-    grid.append([source, itd])
-    _s.play()
-    print(f'ITD {-slab.Binaural.itd_to_azimuth(_s.itd() / _s.samplerate)}')
-    # print(f'ILD {-slab.Binaural.ild_to_azimuth(_s.ild(), frequency=4000, ils=None)}')
-    # print(f'ILD {_s.ild()}')
+    ild = _s.ild()
+    grid.append([source, itd, ild])
 
 grid = numpy.array(grid)
-plt.figure()
-plt.plot(grid[:, 0], grid[:, 1])
-plt.xlabel('Azimuth (°)')
-plt.ylabel('ITD (ms)')
+# plt.figure()
+# plt.plot(grid[:, 0], grid[:, 1], label='ITD')
+# plt.plot(grid[:, 0], grid[:, 2], label='ILD')
+# plt.legend()
+# plt.xlabel('Azimuth (°)')
+# plt.ylabel('ITD (ms)')
+
+fig, ax1 = plt.subplots()
+
+# ITD axis
+ax1.plot(grid[:, 0], grid[:, 1], label='ITD', color='tab:blue')
+ax1.set_xlabel('Azimuth (°)')
+ax1.set_ylabel('ITD (ms)', color='tab:blue')
+ax1.tick_params(axis='y', labelcolor='tab:blue')
+
+# second axis for ILD
+ax2 = ax1.twinx()
+ax2.plot(grid[:, 0], grid[:, 2], label='ILD', color='tab:red')
+ax2.set_ylabel('ILD (dB)', color='tab:red')
+ax2.tick_params(axis='y', labelcolor='tab:red')
+
+plt.title("ITD and ILD vs Azimuth")
+plt.show()
 
 # azimuths = numpy.arange(-90, 91)
 # if not ils:

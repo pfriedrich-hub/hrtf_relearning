@@ -11,6 +11,62 @@ import slab
 
 sub_id = 'RK'
 
+# notch parameters
+notch_freqs = (6000, 12000)   # notch center frequency for azimuth-driven (X1) and elevation-driven (X2) variation [Hz]
+notch_width = (300, 300)      # notch bandwidth (Gaussian σ) for X1 and X2 [Hz]
+notch_depth = (12.0, 12.0)    # notch attenuation for X1 and X2 [dB]
+
+# X1 and X2 define two spatial anchor directions,
+# and the notch parameters are linearly interpolated between them in azimuth–elevation space.
+notch_X1 = (0, 0)     # azimuth reference direction (azimuth-driven variation)
+notch_X2 = (-60, 60)  # elevation reference direction (elevation-driven variation)
+
+# notch_X1 = (0, -60)  # this is what chatgpt thinks is correct for elevation dependent notch
+# notch_X2 = (0, 60)  # doesn't work
+
+"""
+Artificial spectral notch parameters.
+
+A direction-dependent spectral notch is added to the HRTF magnitude response.
+The notch characteristics are defined at two spatial anchor points (X1 and X2)
+and are linearly interpolated for all other directions.
+
+Coordinates
+-----------
+X1, X2 : (azimuth, elevation) in degrees
+    Spatial anchor points that define where the notch parameters are specified.
+
+Parameter Mapping
+-----------------
+notch_freqs : (f1, f2) in Hz
+    Center frequency of the notch at X1 and X2. The notch frequency shifts
+    linearly between these two values as the source direction moves between
+    the anchor points.
+
+notch_width : (w1, w2) in Hz
+    Standard deviation / bandwidth of the Gaussian notch. Larger values
+    produce broader spectral attenuation. Width is interpolated between
+    X1 and X2 across the spatial field.
+
+notch_depth : (d1, d2) in dB
+    Depth of the attenuation at the notch center frequency. Higher values
+    correspond to stronger attenuation. Depth varies linearly between
+    the anchor points.
+
+Spatial Behaviour
+-----------------
+For a given source direction (azimuth, elevation), the notch parameters
+(center frequency, width, and depth) are obtained by linear interpolation
+between X1 and X2. This creates a smooth spatial gradient so that the notch
+changes gradually across azimuth and elevation rather than abruptly.
+
+Typical use
+-----------
+This mechanism can simulate direction-dependent spectral cues similar to
+pinna-induced spectral notches, where notch frequency and depth vary
+systematically with source direction.
+"""
+
 def _smooth(mag, n_keep):
     """
     Smooth a one-sided HRTF magnitude spectrum by truncating the cosine-series
@@ -82,57 +138,39 @@ def _smooth(mag, n_keep):
     return mag_smooth
 
 
-def _add_notch(azimuth, elevation):
+def _add_notch(
+        azimuth,
+        elevation,
+        notch_freqs=(6000.0, 12000.0),
+        notch_width=(300.0, 300.0),
+        notch_depth=(12.0, 12.0),
+        X1=(0, 0),
+        X2=(-60, 60),
+):
     """
     Return artificial spectral-notch parameters for a given source direction.
-
-    This helper keeps the function name you requested while separating the
-    *direction-dependent notch design* from the actual magnitude-domain
-    application, which happens later in `smooth_and_notch_hrtf(...)`.
-
-    Parameters
-    ----------
-    azimuth : float
-        Source azimuth in degrees.
-    elevation : float
-        Source elevation in degrees.
-
-    Returns
-    -------
-    dict
-        Dictionary with:
-            - "mu"       : notch center frequency in Hz
-            - "sigma"    : notch width (Gaussian sigma) in Hz
-            - "depth_db" : notch depth in dB (positive number)
-
-    Notes
-    -----
-    This reuses the linear mapping idea from your existing notch code. The paper
-    itself does not add artificial notches; the notch is an additional
-    manipulation on top of the paper-style smoothing. The paper manipulation is
-    the spectral smoothing + minimum-phase + ITD-preserving delay.
     """
     mu = linear_notch_position(
         azimuth,
         elevation,
-        X1=(0, 0),
-        X2=(-60, 60),
-        Y=(6e3, 12e3),
+        X1=X1,
+        X2=X2,
+        Y=notch_freqs,
     )
     sigma = linear_notch_width(
         azimuth,
         elevation,
-        X1=(0, 0),
-        X2=(-60, 60),
-        Y=(300, 300),
+        X1=X1,
+        X2=X2,
+        Y=notch_width,
     )
     depth_db = abs(
         linear_scaling_factor(
             azimuth,
             elevation,
-            X1=(0, 0),
-            X2=(-60, 60),
-            Y=(15.0, 15.0),
+            X1=X1,
+            X2=X2,
+            Y=notch_depth,
         )
     )
 
@@ -141,7 +179,6 @@ def _add_notch(azimuth, elevation):
         "sigma": float(max(sigma, numpy.finfo(float).eps)),
         "depth_db": float(depth_db),
     }
-
 
 def minimum_phase_from_magnitude(mag):
     """
@@ -366,6 +403,11 @@ def smooth_and_notch_hrtf(
         n_keep=12,
         add_notch=True,
         onset_threshold_db=15.0,
+        notch_freqs=(6000.0, 12000.0),
+        notch_width=(300.0, 300.0),
+        notch_depth=(12.0, 12.0),
+        notch_X1=(0, 0),
+        notch_X2=(-60, 60),
 ):
     """
     Apply paper-style HRTF spectral smoothing, optional artificial spectral
@@ -438,7 +480,15 @@ def smooth_and_notch_hrtf(
 
         # 2) Optional artificial spectral notch in the magnitude domain
         if add_notch:
-            notch = _add_notch(azimuth, elevation)
+            notch = _add_notch(
+                azimuth,
+                elevation,
+                notch_freqs=notch_freqs,
+                notch_width=notch_width,
+                notch_depth=notch_depth,
+                X1=notch_X1,
+                X2=notch_X2,
+            )
             notch_db = -notch["depth_db"] * numpy.exp(
                 -0.5 * ((freqs - notch["mu"]) / notch["sigma"]) ** 2
             )
@@ -479,14 +529,22 @@ def plot(hrtf, hrtf_modified, kind='image', ear='left'):
     plt.pause(0.1)  # give Qt time to draw
     return fig
 
-
-
 if __name__ == '__main__':
+    # modify
     hrtf = slab.HRTF(hrtf_dir / str(sub_id + '.sofa'))
-    hrtf_modified = smooth_and_notch_hrtf(hrtf,
-        n_keep=12,  # choose your smoothing level
+    hrtf_modified = smooth_and_notch_hrtf(
+        hrtf,
+        n_keep=12,
         add_notch=True,
-        onset_threshold_db=15.0)
+        onset_threshold_db=15.0,
+        notch_freqs=notch_freqs,
+        notch_width=notch_width,
+        notch_depth=notch_depth,
+        notch_X1=notch_X1,
+        notch_X2=notch_X2,
+    )
+
+    # plot
     fig = plot(hrtf, hrtf_modified, 'image', ear='right')
     input('press enter to save')
     plt.close(fig)

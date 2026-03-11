@@ -15,9 +15,11 @@ date = f'{date.strftime("%d")}.{date.strftime("%m")}_{date.strftime("%H")}-{date
 logging.getLogger().setLevel('INFO')
 ROOT = hr.PATH
 
+
+
 # --- settings ----
-SUBJECT_ID = "VG"
-HRIR_NAME = "VG_notch"  # 'KU100', 'kemar', etc.
+SUBJECT_ID = "NK"
+HRIR_NAME = "NK_notch"  # 'KU100', 'kemar', etc.
 EAR = 'left'
 HP = 'DT990'
 STIM = 'noise'  # 'noise' or 'uso'
@@ -48,7 +50,7 @@ class Localization:
         # self.settings = {'kind': 'standard', 'azimuth_range': (-60, 60), 'elevation_range': (-40, 40),
         #                  'targets_per_speaker': 3, 'min_distance': 10, 'gain': .2}
         self.subject = subject
-        self.filename = subject.id + date
+        self.filename = subject.id + '_' + date + '_' + hrir.name
         # metadata
         slab.set_default_samplerate(hrir.samplerate)
         self.hrir_sources = hrir.sources.vertical_polar

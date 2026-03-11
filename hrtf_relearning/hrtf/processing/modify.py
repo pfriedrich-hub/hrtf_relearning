@@ -3,7 +3,6 @@ import numpy
 import matplotlib
 matplotlib.use('tkagg')
 from matplotlib import pyplot as plt
-import slab
 from sklearn.linear_model import LinearRegression
 from hrtf_relearning import PATH
 hrtf_dir = PATH / 'data' /'hrtf'/'sofa'
@@ -489,7 +488,6 @@ if __name__ == '__main__':
         onset_threshold_db=15.0)
     fig = plot(hrtf, hrtf_modified, 'image', ear='right')
     input('press enter to save')
-    plt.close(fig)
     fig.savefig(PATH / 'data' / 'results' / 'plot' / sub_id / str(sub_id + '_modified.png'))
     hrtf_modified.write_sofa(hrtf_dir / str(sub_id + '_notch.sofa'))
     import logging

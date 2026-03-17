@@ -834,23 +834,21 @@ def expand_azimuths_with_binaural_cues(
     # wrap to [0, 360) for pyfar convention (0°=front, 90°=left)
     azimuths_wrapped = _wrap_az_deg_ccw(azimuths)
 
-    # --- find midline IRs at az = 0 (wrapped 0°) ---
-    def _key_az_wrapped(k: str) -> float:
-        # keys look like "spk_az_el"
-        return float(_wrap_az_deg_ccw(float(k.split("_")[1])))
-
     # --- duplicate midline IRs across azimuth grid, inserting wrapped az into keys ---
     out = copy.deepcopy(hrir)
     new_entries = {}
 
     for key in hrir.data.keys():
-        spk, _az_str, el_str = key.split("_")  # reuse elevation
+        spk, _az_str, el_str = key.split("_")
         for az_w in azimuths_wrapped:
-            az_s = f"{float(az_w):.1f}"
+            az_canonical = float(numpy.mod(az_w, 360.0))
+            # do not duplicate the frontal source: keep the original 0° IRs, skip grid values at 0/360
+            if numpy.isclose(az_canonical, 0.0, atol=1e-6) or numpy.isclose(az_canonical, 360.0, atol=1e-6):
+                continue
+            az_s = f"{az_canonical:.1f}"
             new_key = f"{spk}_{az_s}_{el_str}"
             if new_key not in out.data and new_key not in new_entries:
-                new_entries[new_key] = copy.deepcopy(out.data[key])  # independent copy
-
+                new_entries[new_key] = copy.deepcopy(out.data[key])
     # --- update and sort dictionary for stable downstream behavior ---
     out.data.update(new_entries)
 

@@ -8,8 +8,11 @@ from hrtf_relearning import PATH
 hrtf_dir = PATH / 'data' /'hrtf'/'sofa'
 import slab
 
-sub_id = 'RK'
+sub_id = 'MB'
 
+SMOOTH = True
+N_KEEP = 12
+NOTCH = True
 # notch parameters
 notch_freqs = (6000, 12000)   # notch center frequency for azimuth-driven (X1) and elevation-driven (X2) variation [Hz]
 notch_width = (300, 300)      # notch bandwidth (Gaussian σ) for X1 and X2 [Hz]
@@ -400,6 +403,7 @@ def linear_scaling_factor(azimuth, elevation, X1, X2, Y):
 def smooth_and_notch_hrtf(
         hrtf,
         n_keep=12,
+        smooth=True,
         add_notch=True,
         onset_threshold_db=15.0,
         notch_freqs=(6000.0, 12000.0),
@@ -474,8 +478,11 @@ def smooth_and_notch_hrtf(
         spec_original = numpy.fft.rfft(ir_original, axis=0)
         mag_original = numpy.abs(spec_original)
 
-        # 1) Paper-style smoothing in log-magnitude / cosine-series domain
-        mag_processed = _smooth(mag_original, n_keep=n_keep)
+        if smooth:
+            # 1) Paper-style smoothing in log-magnitude / cosine-series domain
+            mag_processed = _smooth(mag_original, n_keep=n_keep)
+        else:
+            mag_processed = mag_original
 
         # 2) Optional artificial spectral notch in the magnitude domain
         if add_notch:
@@ -500,6 +507,7 @@ def smooth_and_notch_hrtf(
             # guard against pathological attenuation
             notch_lin = numpy.clip(notch_lin, 10.0 ** (-80.0 / 20.0), 1.0)
             mag_processed = mag_processed * notch_lin[:, None]
+
 
         # 3) Enforce minimum phase once, after smoothing + notch
         spec_processed = minimum_phase_from_magnitude(mag_processed)
@@ -533,8 +541,9 @@ if __name__ == '__main__':
     hrtf = slab.HRTF(hrtf_dir / str(sub_id + '.sofa'))
     hrtf_modified = smooth_and_notch_hrtf(
         hrtf,
-        n_keep=12,
-        add_notch=True,
+        n_keep=N_KEEP,
+        smooth=SMOOTH,
+        add_notch=NOTCH,
         onset_threshold_db=15.0,
         notch_freqs=notch_freqs,
         notch_width=notch_width,

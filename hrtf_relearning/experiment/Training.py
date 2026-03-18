@@ -19,8 +19,8 @@ logging.getLogger().setLevel('INFO')
 
 
 # -------------------- Config --------------------
-SUBJECT_ID = "VG"
-HRIR_NAME = "VG_notch"  # 'KU100', 'kemar', etc.
+SUBJECT_ID = "MB"
+HRIR_NAME = "MB_notch"  # 'KU100', 'kemar', etc.
 EAR = 'left'
 HP = 'DT990'
 STIM = 'noise'  # 'noise' or 'uso'

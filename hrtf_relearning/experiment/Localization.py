@@ -15,11 +15,9 @@ date = f'{date.strftime("%d")}.{date.strftime("%m")}_{date.strftime("%H")}-{date
 logging.getLogger().setLevel('INFO')
 ROOT = hr.PATH
 
-
-
 # --- settings ----
-SUBJECT_ID = "NK"
-HRIR_NAME = "NK_notch"  # 'KU100', 'kemar', etc.
+SUBJECT_ID = "MB"
+HRIR_NAME = "MB_notch"  # 'KU100', 'kemar', etc.
 EAR = 'left'
 HP = 'DT990'
 STIM = 'noise'  # 'noise' or 'uso'

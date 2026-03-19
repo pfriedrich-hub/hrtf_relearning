@@ -16,8 +16,8 @@ logging.getLogger().setLevel('INFO')
 ROOT = hr.PATH
 
 # --- settings ----
-SUBJECT_ID = "MB"
-HRIR_NAME = "MB_notch"  # 'KU100', 'kemar', etc.
+SUBJECT_ID = "SK"
+HRIR_NAME = "SK_notch"  # 'KU100', 'kemar', etc.
 EAR = 'left'
 HP = 'DT990'
 STIM = 'noise'  # 'noise' or 'uso'

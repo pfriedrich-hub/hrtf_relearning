@@ -21,7 +21,7 @@ HRIR_NAME = "SK_notch"  # 'KU100', 'kemar', etc.
 EAR = 'left'
 HP = 'DT990'
 STIM = 'noise'  # 'noise' or 'uso'
-AZ_RANGE = (-35, 0)
+AZ_RANGE = (0, 35)
 SECTOR_SIZE = (7, 14)
 MIRROR = False # set TRUE to mirror HRIRs left-right
 

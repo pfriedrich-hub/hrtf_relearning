@@ -18,9 +18,6 @@ matplotlib.rcParams['figure.raise_window'] = False
 logging.getLogger().setLevel('INFO')
 
 
-
-
-
 # -------------------- Config --------------------
 SUBJECT_ID = "SK"
 HRIR_NAME = "SK_notch"  # 'KU100', 'kemar', etc.

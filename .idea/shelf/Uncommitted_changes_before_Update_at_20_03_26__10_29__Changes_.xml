@@ -1,0 +1,34 @@
+<changelist name="Uncommitted_changes_before_Update_at_20_03_26,_10_29_[Changes]" date="1773998988642" recycled="true" deleted="true">
+  <option name="PATH" value="$PROJECT_DIR$/.idea/shelf/Uncommitted_changes_before_Update_at_20_03_26,_10_29_[Changes]/shelved.patch" />
+  <option name="DESCRIPTION" value="Uncommitted changes before Update at 20.03.26, 10:29 [Changes]" />
+  <binary>
+    <option name="BEFORE_PATH" value="hrtf_relearning/data/hrtf/sofa/NK.sofa" />
+    <option name="AFTER_PATH" value="hrtf_relearning/data/hrtf/sofa/NK.sofa" />
+    <option name="SHELVED_PATH" value="$PROJECT_DIR$/.idea/shelf/Uncommitted_changes_before_Update_at_20_03_26,_10_29_[Changes]/NK.sofa" />
+  </binary>
+  <binary>
+    <option name="BEFORE_PATH" value="hrtf_relearning/data/hrtf/sofa/SW.sofa" />
+    <option name="AFTER_PATH" value="hrtf_relearning/data/hrtf/sofa/SW.sofa" />
+    <option name="SHELVED_PATH" value="$PROJECT_DIR$/.idea/shelf/Uncommitted_changes_before_Update_at_20_03_26,_10_29_[Changes]/SW.sofa" />
+  </binary>
+  <binary>
+    <option name="BEFORE_PATH" value="hrtf_relearning/data/results/plot/NK/NK_modified.png" />
+    <option name="AFTER_PATH" value="hrtf_relearning/data/results/plot/NK/NK_modified.png" />
+    <option name="SHELVED_PATH" value="$PROJECT_DIR$/.idea/shelf/Uncommitted_changes_before_Update_at_20_03_26,_10_29_[Changes]/NK_modified.png" />
+  </binary>
+  <binary>
+    <option name="BEFORE_PATH" value="hrtf_relearning/data/hrtf/sofa/RK.sofa" />
+    <option name="AFTER_PATH" value="hrtf_relearning/data/hrtf/sofa/RK.sofa" />
+    <option name="SHELVED_PATH" value="$PROJECT_DIR$/.idea/shelf/Uncommitted_changes_before_Update_at_20_03_26,_10_29_[Changes]/RK.sofa" />
+  </binary>
+  <binary>
+    <option name="BEFORE_PATH" value="hrtf_relearning/data/hrtf/sofa/SK.sofa" />
+    <option name="AFTER_PATH" value="hrtf_relearning/data/hrtf/sofa/SK.sofa" />
+    <option name="SHELVED_PATH" value="$PROJECT_DIR$/.idea/shelf/Uncommitted_changes_before_Update_at_20_03_26,_10_29_[Changes]/SK.sofa" />
+  </binary>
+  <binary>
+    <option name="BEFORE_PATH" value="hrtf_relearning/data/hrtf/sofa/NK_notch.sofa" />
+    <option name="AFTER_PATH" value="hrtf_relearning/data/hrtf/sofa/NK_notch.sofa" />
+    <option name="SHELVED_PATH" value="$PROJECT_DIR$/.idea/shelf/Uncommitted_changes_before_Update_at_20_03_26,_10_29_[Changes]/NK_notch.sofa" />
+  </binary>
+</changelist>

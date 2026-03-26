@@ -3,7 +3,7 @@ Record KEMAR HRIR, play back and record via Headphones, compare to initial recor
 to validate HRIR recording and processing.
 """
 
-#todo test this with kemar mics and pirates
+# test this with kemar mics on speakers vs pirates-recorded hrir presented via headphones, see if they match up.
 
 from hrtf_relearning.hrtf.record.deprecated.record_hrir_old import *
 import freefield

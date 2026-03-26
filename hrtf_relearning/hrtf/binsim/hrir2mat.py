@@ -110,7 +110,7 @@ def write_filter_list(hrir):
 
     return fname
 
-def compute_lr_ir(hrir,drr=20, block_size=256):
+def compute_lr_ir(hrir, drr=20, block_size=256):
     """
     Compute late reverb IR (binaural) without writing WAV
     Returns numpy array [nSamples, 2]

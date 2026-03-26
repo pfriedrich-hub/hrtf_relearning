@@ -24,7 +24,7 @@ logging.getLogger().setLevel('INFO')
 
 # -------------------- Config --------------------
 SUBJECT_ID = "test"
-HRIR_NAME = "PF"  # 'KU100', 'kemar', etc.
+HRIR_NAME = "NK_notch"  # 'KU100', 'kemar', etc.
 EAR = None           # or None for binaural
 HP = None
 HP_FILTER = False

@@ -10,10 +10,10 @@ import hrtf_relearning
 base_dir = hrtf_relearning.PATH / "data" / "hrtf"
 import logging
 
-subject_id = 'NK'
+subject_id = 'SW'
 head_radius = 0.0875
 reference_id = 'ref_mar_02'
-overwrite = True
+overwrite = False
 n_directions = 3
 n_recordings = 10
 n_samples_out = 256
@@ -21,6 +21,7 @@ fs = 48828  # 97656
 hp_freq = 120
 show = True
 equalize_dome = True
+align_interaural = True
 # save_wath = True
 
 slab.set_default_samplerate(fs)
@@ -50,6 +51,7 @@ def record_hrir(
     fs: int = 48828,
     hp_freq: float = 120,
     n_samples_out: int = 256,
+    align_interaural: bool = True,
     equalize_dome: bool = False,
     overwrite: bool = False,
     show: bool = False,
@@ -114,8 +116,10 @@ def record_hrir(
     # 3) Deconvolution: sweeps -> IRs
     # -----------------------------------------------------------------
     logging.info("Computing impulse responses")
-    subject_ir = compute_ir(subject_rec, inversion_range_hz=(hp_freq, 20e3))
-    reference_ir = compute_ir(reference_rec, inversion_range_hz=(hp_freq, 20e3))
+    subject_ir = compute_ir(subject_rec, inversion_range_hz=(hp_freq, 20e3),
+                            onset_threshold_db=10, align_interaural=align_interaural)
+    reference_ir = compute_ir(reference_rec, inversion_range_hz=(hp_freq, 20e3),
+                              onset_threshold_db=10, align_interaural=align_interaural)
 
     # -----------------------------------------------------------------
     # 4) Equalization + windowing
@@ -179,3 +183,20 @@ def wait_for_button(msg=None):
 
     with keyboard.Listener(on_press=on_press) as listener:
         listener.join()
+
+
+if __name__ == "__main__":
+    hrtf = record_hrir(
+        subject_id=subject_id,
+        reference_id=reference_id,
+        n_directions=n_directions,
+        n_recordings=n_recordings,
+        fs=fs,
+        hp_freq=hp_freq,
+        n_samples_out=n_samples_out,
+        equalize_dome=equalize_dome,
+        align_interaural=align_interaural,
+        overwrite=overwrite,
+        show=show,
+        base_dir=base_dir,
+    )

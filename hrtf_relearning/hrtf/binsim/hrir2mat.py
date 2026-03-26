@@ -1,4 +1,5 @@
 import numpy
+from matplotlib import pyplot as plt
 from scipy.io import savemat
 import slab
 import logging
@@ -110,46 +111,195 @@ def write_filter_list(hrir):
 
     return fname
 
-def compute_lr_ir(hrir, drr=20, block_size=256):
+def compute_lr_ir(
+    hrir,
+    drr: float = 20.0,
+    block_size: int = 256,
+    tail_duration: float = 0.1,
+    predelay_ms: float = 3.0,
+    onset_threshold_db: float = 10.0,
+    show: bool = False,
+) -> numpy.ndarray:
     """
-    Compute late reverb IR (binaural) without writing WAV
-    Returns numpy array [nSamples, 2]
+    Compute a binaural late-reverb impulse response without writing a WAV file.
+
+    The function:
+    1. loads a binaural reverb tail from ``reverb.wav``,
+    2. crops it to a fixed duration aligned to ``block_size``,
+    3. applies a short onset ramp to avoid clicks,
+    4. delays the tail so it starts shortly after the average direct HRIR onset,
+    5. sets its level relative to the mean direct HRIR level using ``drr``.
+
+    Parameters
+    ----------
+    hrir
+        HRTF/HRIR object with attributes such as ``samplerate``, ``n_sources``,
+        ``name``, and item access ``hrir[idx].data`` returning an array of shape
+        ``[n_samples, 2]``.
+    drr : float, default=20.0
+        Desired direct-to-reverberant ratio in dB. The reverb tail level is set
+        to ``mean_direct_level - drr``.
+    block_size : int, default=256
+        Output length is cropped to an integer multiple of this block size.
+    tail_duration : float, default=0.3
+        Duration of the reverb tail in seconds before block alignment.
+    predelay_ms : float, default=1.5
+        Extra delay added after the estimated average HRIR onset. Small values
+        are appropriate here to reduce masking of direct spectral cues without
+        creating a perceptually oversized room.
+    onset_threshold_db : float, default=20.0
+        Threshold below the peak binaural energy used for onset detection.
+
+    Returns
+    -------
+    numpy.ndarray
+        Binaural late-reverb IR of shape ``[n_samples, 2]`` and dtype
+        ``numpy.float32``.
+
+    Notes
+    -----
+    This function assumes that the HRIRs are already short/windowed and mostly
+    contain direct sound. Under that assumption, HRIR RMS is a reasonable proxy
+    for direct level.
     """
+    # Load the stored binaural reverb tail.
     reverb = slab.Sound(
-        wav_path / hrir.name / 'sounds' / 'reverb.wav'
+        wav_path / hrir.name / "sounds" / "reverb.wav"
     ).data
 
+    # Ensure the reverb has shape [n_samples, 2].
+    # If the file is mono, duplicate it to both ears.
+    if reverb.ndim == 1:
+        reverb = numpy.column_stack([reverb, reverb])
+
+    if reverb.ndim != 2 or reverb.shape[1] != 2:
+        raise ValueError(
+            f"Expected reverb.wav to have shape [n_samples, 2], got {reverb.shape}."
+        )
+
+    # Crop the reverb to the requested tail duration, rounded down to a whole block.
     cropped_len = int(
-        (int(hrir.samplerate * 0.3) // int(block_size))
-        * int(block_size)
+        (int(hrir.samplerate * tail_duration) // int(block_size)) * int(block_size)
     )
+    if cropped_len <= 0:
+        raise ValueError("cropped_len is zero. Check tail_duration and block_size.")
+
     reverb = reverb[:cropped_len]
 
-    reverb = slab.Sound(reverb).ramp(
-        duration=0.005, when='onset'
-    ).data
+    # If the file is shorter than the requested length, pad with zeros.
+    if reverb.shape[0] < cropped_len:
+        pad = numpy.zeros((cropped_len - reverb.shape[0], 2), dtype=reverb.dtype)
+        reverb = numpy.vstack([reverb, pad])
 
+    # Apply a short onset ramp to avoid clicks at the beginning of the tail.
+    reverb = slab.Sound(reverb).ramp(duration=0.005, when="onset").data
+
+    def estimate_onset(ir: numpy.ndarray, threshold_db: float = 20.0) -> int:
+        """
+        Estimate the binaural onset sample of one HRIR using an energy threshold.
+
+        Parameters
+        ----------
+        ir : numpy.ndarray
+            HRIR array of shape [n_samples, 2].
+        threshold_db : float, default=20.0
+            Onset threshold below the peak binaural energy.
+
+        Returns
+        -------
+        int
+            Estimated onset sample index.
+        """
+        # Sum squared energy across ears to get one temporal energy curve.
+        energy = numpy.sum(ir ** 2, axis=1)
+
+        peak = numpy.max(energy)
+        if peak <= 0:
+            return 0
+
+        threshold = peak * 10 ** (-threshold_db / 10.0)
+        above = numpy.where(energy >= threshold)[0]
+
+        return int(above[0]) if len(above) else 0
+
+    # Estimate one onset per source, then average across all HRIRs.
     mean_ir_onset = int(numpy.mean([
-        numpy.argmax(hrir[idx].data)
+        estimate_onset(hrir[idx].data, threshold_db=onset_threshold_db)
         for idx in range(hrir.n_sources)
     ]))
 
+    # Add a small extra delay so the late tail does not start directly on top of
+    # the direct HRIR region.
+    predelay_samples = int(round(predelay_ms * hrir.samplerate / 1000.0))
+    reverb_start = mean_ir_onset + predelay_samples
+
+    # Shift the reverb later in time while keeping its total length unchanged.
+    # Anything shifted beyond the end is discarded.
     reverb = numpy.concatenate(
-        (numpy.zeros((mean_ir_onset, 2)), reverb[:-mean_ir_onset]),
+        (numpy.zeros((reverb_start, 2), dtype=reverb.dtype), reverb[:-reverb_start]),
         axis=0
     )
 
+    # Estimate the mean direct HRIR level across sources.
+    # Since your HRIRs are short/windowed, this is effectively the direct level.
     mean_ir_level = numpy.mean([
-        20 * numpy.log10(
+        20.0 * numpy.log10(
             max(numpy.sqrt(numpy.mean(hrir[idx].data ** 2)), 1e-12)
         )
         for idx in range(hrir.n_sources)
     ])
 
-    reverb = slab.Sound(reverb)
-    reverb.level = mean_ir_level - drr
+    # Set the reverb level relative to the direct HRIR level.
+    reverb_level = 20.0 * numpy.log10(
+            max(numpy.sqrt(numpy.mean(reverb ** 2)), 1e-12))
+
+    # Target reverb level from desired DRR:
+    # DRR = direct_level - reverb_level
+    target_reverb_level = mean_ir_level - drr
+
+    # Convert level difference to linear gain.
+    gain_db = target_reverb_level - reverb_level
+    gain = 10.0 ** (gain_db / 20.0)
+
+    # Apply gain.
+    reverb = reverb * gain
+
+    if show:
+        # Pick a representative source (midline fallback if needed)
+        try:
+            src_idx = hrir.get_source_idx((0, 0))[0]
+        except Exception:
+            src_idx = 0
+
+        direct = hrir[src_idx].data  # [n_samples, 2]
+
+        # --- length alignment ---
+        n = max(direct.shape[0], reverb.shape[0])
+
+        direct_pad = numpy.zeros((n, 2))
+        reverb_pad = numpy.zeros((n, 2))
+
+        direct_pad[:direct.shape[0]] = direct
+        reverb_pad[:reverb.shape[0]] = reverb
+
+        ir_sum = direct_pad + reverb_pad
+
+        # --- convert to pyfar ---
+        sig = pyfar.Signal(
+            ir_sum.T,  # pyfar expects [n_channels, n_samples]
+            sampling_rate=hrir.samplerate
+        )
+
+        # --- plot ---
+        pyfar.plot.time_freq(
+            sig,
+            dB_time=True,
+            dB_freq=True,
+            freq_scale="log",
+        )
 
     return reverb.data.astype(numpy.float32)
+
 
 def compute_hp_ir(hrir, hp, block_size=256):
     """

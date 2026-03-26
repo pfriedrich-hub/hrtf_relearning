@@ -4,7 +4,7 @@ import hrtf_relearning as hr
 import datetime
 import re
 
-subject_id = "RK"
+subject_id = "VG"
 
 def normalize_az_range(az_range):
     """Return canonical (float, float) tuple or None."""

@@ -7,7 +7,7 @@ from pathlib import Path
 import matplotlib
 matplotlib.use('tkagg')
 from hrtf_relearning.experiment.Subject import Subject
-from hrtf_relearning.experiment.analysis.training.training import PoseAnalysis
+from hrtf_relearning.experiment.analysis.learning.learning import PoseAnalysis
 
 
 # ------------------------------------------------------

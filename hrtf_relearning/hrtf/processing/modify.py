@@ -8,7 +8,7 @@ from hrtf_relearning import PATH
 hrtf_dir = PATH / 'data' /'hrtf'/'sofa'
 import slab
 
-sub_id = 'MB'
+sub_id = 'SK'
 
 SMOOTH = True
 N_KEEP = 12
@@ -553,7 +553,7 @@ if __name__ == '__main__':
     )
 
     # plot
-    fig = plot(hrtf, hrtf_modified, 'image', ear='right')
+    fig = plot(hrtf, hrtf_modified, 'waterfall', ear='right')
     input('press enter to save')
     fig.savefig(PATH / 'data' / 'results' / 'plot' / sub_id / str(sub_id + '_modified.png'))
     hrtf_modified.write_sofa(hrtf_dir / str(sub_id + '_notch.sofa'))

@@ -6,7 +6,7 @@ from pathlib import Path
 from hrtf_relearning import PATH
 
 hrtf_dir = PATH / "data" / "hrtf" / "sofa"
-hrtf_id = "NK_notch"
+hrtf_id = "SW"
 
 
 def _sorted_unique(values):
@@ -42,6 +42,7 @@ def _prepare_frames(
     elevation_range=None,
     ear="left",
     bandwidth=(1000, 18000),
+    atol=1e-3
 ):
     """
     Build one frame per azimuth. Each frame contains a vertical DTF map
@@ -81,7 +82,7 @@ def _prepare_frames(
     frames = []
 
     for azimuth_raw, azimuth_wrapped in zip(azimuths_raw, azimuths):
-        keep_az = numpy.isclose(sources_vp[:, 0].astype(float), azimuth_raw, atol=1e-6)
+        keep_az = numpy.isclose(sources_vp[:, 0].astype(float), azimuth_raw, atol=atol)
         source_idx = source_idx_all[keep_az]
         src_vp = sources_vp[keep_az]
 
@@ -210,6 +211,7 @@ def hrtf_animation(
     elevation_range=None,
     ear="left",
     kind="image",
+    atol=1e-3,
     interval=100,
     bandwidth=(1000, 18000),
     filename=None,
@@ -250,6 +252,7 @@ def hrtf_animation(
         elevation_range=elevation_range,
         ear=ear,
         bandwidth=bandwidth,
+        atol=atol
     )
 
     if ear == "both":
@@ -427,6 +430,7 @@ def main(hrtf_id):
         elevation_range=(-40, 40),
         ear="both",
         kind="image",
+        atol=1,
         bandwidth=(1000, 18000),
         interval=120,
         filename=f"{hrtf_id}_animation",

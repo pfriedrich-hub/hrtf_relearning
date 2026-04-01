@@ -3,7 +3,7 @@ import numpy
 import matplotlib.pyplot as plt
 from scipy.signal import hilbert, find_peaks
 
-
+# todo plot across elevations
 def inspect_energy_time_curve_pyfar(
     ir,
     channel="both",

@@ -1,163 +1,134 @@
-import numpy
-from matplotlib import pyplot as plt
-from collections import OrderedDict
-import hrtf_relearning as hr
 import datetime
 import re
+from collections import OrderedDict
 
-subject_id = "RK"
+import numpy
+from matplotlib import pyplot as plt
+
+import hrtf_relearning as hr
+
+
+subject_id = "JP"
 
 
 def learning_plot(
     subject_id,
     *,
-    last_day_width=0.75,      # --- CHANGED: more horizontal room for last day
-    other_day_width=0.22,     # --- CHANGED: compact spacing for other days
-    annotate_times=True,      # --- CHANGED
-    annotate_az_range=True,   # --- CHANGED: mark with azimuth range
-    annotate_flags=True,      # --- CHANGED: mark mirrored / uso
+    last_day_width=0.75,
+    other_day_width=0.22,
+    annotate_times=True,
 ):
-    """
-    Plot single subject stimulus response pattern
-    and draw SD RMS and EG indications
-    """
-    figsize = (17.5, 6.5)
-    fig_width = figsize[0] / 2.54  # convert to inches
-    fig_height = figsize[1] / 2.54
+    """Plot learning metrics across days for one subject."""
+    figsize_cm = (17.5, 6.5)
+    fig_size = (figsize_cm[0] / 2.54, figsize_cm[1] / 2.54)
     dpi = 264
-    fs = 8  # label fontsize
-    markersize = 2
+    fs = 8
     lw = 0.7
-    params = {
-        "font.family": "Helvetica",
-        "xtick.labelsize": fs,
-        "ytick.labelsize": fs,
-        "axes.labelsize": fs,
-        "boxplot.capprops.linewidth": lw,
-        "lines.linewidth": lw,
-        "ytick.direction": "in",
-        "xtick.direction": "in",
-        "ytick.major.size": 2,
-        "xtick.major.size": 2,
-        "axes.linewidth": lw,
-        "axes.spines.right": False,
-        "axes.spines.top": False,
-    }
-    plt.rcParams.update(params)
+    markersize = 2.5
 
-    # get data
+    plt.rcParams.update(
+        {
+            "font.family": "Helvetica",
+            "xtick.labelsize": fs,
+            "ytick.labelsize": fs,
+            "axes.labelsize": fs,
+            "lines.linewidth": lw,
+            "ytick.direction": "in",
+            "xtick.direction": "in",
+            "ytick.major.size": 2,
+            "xtick.major.size": 2,
+            "axes.linewidth": lw,
+            "axes.spines.right": False,
+            "axes.spines.top": False,
+        }
+    )
+
     localization_dict = hr.Subject(subject_id).localization
 
-    # correct keys
     old_key = "AvS_1_KU100_loc_18.12_15.04"
     new_key = "AvS_KU100_loc_18.12_15.04"
     if old_key in localization_dict:
-        print(f"Renaming key {old_key} to {new_key}")
         localization_dict[new_key] = localization_dict.pop(old_key)
 
-    # sort by day
     items = sorted(localization_dict.items(), key=lambda kv: parse_loc_key(kv[0]))
+
     by_day = OrderedDict()
-    for k, seq in items:
-        day = k.split("_")[0][-5:]  # "12.01"
-        if getattr(seq, "finished", False):
-            by_day.setdefault(day, []).append((k, seq))
+    for key, seq in items:
+        if not getattr(seq, "finished", False):
+            continue
+        day = key.split("_")[1][-5:]
+        by_day.setdefault(day, []).append((key, seq))
 
-    # pick all sequences
-    data = []  # list over days, each element: (n_meas_that_day x n_metrics)
-    times_by_day = []  # list over days, each element: list[str] length n_meas_that_day
+    data_by_day = []
+    times_by_day = []
+    meta_by_day = []
 
-    # --- CHANGED: also collect per-test metadata (stim/hrir/az_range) for marking
-    meta_by_day = []  # list over days, each element: list[dict] length n_meas_that_day
+    for _, loc_tests in by_day.items():
+        loc_tests = sorted(loc_tests, key=lambda x: parse_loc_key(x[0]))
 
-    for day, loc_tests in by_day.items():
-        _data = []
-        _times = []
-        _meta = []
+        day_data = []
+        day_times = []
+        day_meta = []
 
-        # ensure within-day order by time
-        loc_tests_sorted = sorted(loc_tests, key=lambda x: parse_loc_key(x[0]))
+        for key, seq in loc_tests:
+            day_data.append(hr.localization_accuracy(seq))
+            day_times.append(key_time_str(key))
+            day_meta.append(extract_seq_meta(seq, fallback_name=key))
 
-        for k, seq in loc_tests_sorted:
-            _data.append(hr.localization_accuracy(seq))  # -> (n_metrics,)
-            _times.append(key_time_str(k))
-            _meta.append(extract_seq_meta(seq, fallback_name=k))  # --- CHANGED
+        data_by_day.append(numpy.vstack(day_data))
+        times_by_day.append(day_times)
+        meta_by_day.append(day_meta)
 
-        data.append(numpy.vstack(_data))        # (n_meas, n_metrics)
-        times_by_day.append(_times)             # list length n_meas
-        meta_by_day.append(_meta)               # list length n_meas  # --- CHANGED
-
-    # ----- plot ----- #
-    fig = plt.figure(figsize=(fig_width, fig_height), constrained_layout=True, dpi=dpi)
-    ax0 = plt.subplot2grid(shape=(2, 3), loc=(0, 0), colspan=2, rowspan=2)
-    ax1 = plt.subplot2grid(shape=(2, 3), loc=(0, 2), colspan=1)
-    ax2 = plt.subplot2grid(shape=(2, 3), loc=(1, 2), colspan=1)
-    axes = fig.get_axes()
+    fig = plt.figure(figsize=fig_size, constrained_layout=True, dpi=dpi)
+    ax0 = plt.subplot2grid((2, 3), (0, 0), colspan=2, rowspan=2)
+    ax1 = plt.subplot2grid((2, 3), (0, 2))
+    ax2 = plt.subplot2grid((2, 3), (1, 2))
+    axes = [ax0, ax1, ax2]
 
     labels = ["Elevation Gain", "RMSE (deg)", "SD (deg)"]
-    days = numpy.arange(1, len(data) + 1)
+    days = numpy.arange(1, len(data_by_day) + 1)
 
-    # --- CHANGED: helper to place points within each day
-    def x_positions_for_day(day_index_0based: int, n_points: int) -> numpy.ndarray:
-        """Return x positions centered on the day tick with controlled width."""
-        day_center = float(day_index_0based + 1)
+    def x_positions(day_idx, n_points):
+        center = float(day_idx + 1)
         if n_points <= 1:
-            return numpy.array([day_center], dtype=float)
+            return numpy.array([center], dtype=float)
+        width = last_day_width if day_idx == len(data_by_day) - 1 else other_day_width
+        return numpy.linspace(center - width, center + width, n_points)
 
-        width = other_day_width
-        if day_index_0based == (len(data) - 1):  # last day
-            width = last_day_width
+    for metric_idx, axis in enumerate(axes):
+        for day_idx, day_data in enumerate(data_by_day):
+            x = x_positions(day_idx, day_data.shape[0])
+            y = day_data[:, metric_idx]
 
-        return numpy.linspace(day_center - width, day_center + width, n_points, dtype=float)
+            axis.plot(x, y, c="0", zorder=1)
 
-    for i, axis in enumerate(axes):
-        label = labels[i]
-
-        for day_idx, _data in enumerate(data):
-            n = _data.shape[0]
-            _x = x_positions_for_day(day_idx, n)  # --- CHANGED
-            y = _data[:, i]
-
-            # line within day
-            axis.plot(_x, y, c="0", label=label, lw=lw, zorder=1)
-
-            # --- CHANGED: markers encode flags (uso / mirrored)
-            for j in range(n):
-                m = meta_by_day[day_idx][j]
-                marker = marker_for_meta(m)
+            for point_idx, meta in enumerate(meta_by_day[day_idx]):
                 axis.plot(
-                    [_x[j]],
-                    [y[j]],
-                    marker=marker,
-                    markersize=markersize + 0.5,
+                    [x[point_idx]],
+                    [y[point_idx]],
+                    marker=marker_for_meta(meta),
+                    markersize=markersize,
                     color="0",
                     linestyle="None",
                     zorder=2,
                 )
 
-            # --- CHANGED: annotate timestamps + azimuth range + flags (only once, on first panel)
-            if i == 0:
-                for j in range(n):
-                    t = times_by_day[day_idx][j] if annotate_times else ""
-                    m = meta_by_day[day_idx][j]
-                    az = m.get("azimuth_range", None)
-
+            if metric_idx == 0:
+                for point_idx, meta in enumerate(meta_by_day[day_idx]):
                     parts = []
-                    if t:
-                        parts.append(t)
-                    if annotate_az_range and az is not None:
-                        parts.append(f"az {format_range(az)}")
-                    if annotate_flags:
-                        flag = flags_for_meta(m)
-                        if flag:
-                            parts.append(flag)
-
+                    if annotate_times:
+                        time_str = times_by_day[day_idx][point_idx]
+                        if time_str:
+                            parts.append(time_str)
+                    flag = flags_for_meta(meta)
+                    if flag:
+                        parts.append(flag)
                     if not parts:
                         continue
 
                     axis.annotate(
                         "\n".join(parts),
-                        (_x[j], y[j]),
+                        (x[point_idx], y[point_idx]),
                         textcoords="offset points",
                         xytext=(3, 3),
                         ha="left",
@@ -166,12 +137,11 @@ def learning_plot(
                         color="0.3",
                     )
 
-        # dotted connections across day boundaries (last point of day -> first of next day)
-        for day_idx in range(len(data) - 1):
-            y0 = data[day_idx][-1, i]
-            x0 = x_positions_for_day(day_idx, data[day_idx].shape[0])[-1]   # --- CHANGED
-            y1 = data[day_idx + 1][0, i]
-            x1 = x_positions_for_day(day_idx + 1, data[day_idx + 1].shape[0])[0]  # --- CHANGED
+        for day_idx in range(len(data_by_day) - 1):
+            x0 = x_positions(day_idx, data_by_day[day_idx].shape[0])[-1]
+            y0 = data_by_day[day_idx][-1, metric_idx]
+            x1 = x_positions(day_idx + 1, data_by_day[day_idx + 1].shape[0])[0]
+            y1 = data_by_day[day_idx + 1][0, metric_idx]
 
             axis.plot(
                 [x0, x1],
@@ -184,163 +154,137 @@ def learning_plot(
 
         axis.set_xticks(days)
         axis.set_xticklabels(days)
-        axis.set_ylabel(label)
+        axis.set_ylabel(labels[metric_idx])
 
-    axes[1].set_xticklabels([])
-    axes[0].set_xlabel("Days")
-    axes[2].set_xlabel("Days")
+    ax1.set_xticklabels([])
+    ax0.set_xlabel("Days")
+    ax2.set_xlabel("Days")
 
-    axes[0].set_ylim(0, 1.02)
-    axes[0].set_yticks(numpy.arange(0, 1.2, 0.2))
+    ax0.set_ylim(0, 1.02)
+    ax0.set_yticks(numpy.arange(0, 1.2, 0.2))
+    ax1.set_yticks(numpy.arange(0, 26, 5))
+    ax2.set_yticks(numpy.arange(0, 10, 2))
 
-    ticklabels = [item.get_text() for item in axes[0].get_yticklabels()]
-    ticklabels[0] = "0"
-    ticklabels[-1] = "1"
-    axes[0].set_yticklabels(ticklabels)
-
-    axes[1].set_yticks(numpy.arange(0, 26, 5))
-    axes[2].set_yticks(numpy.arange(0, 10, 2))
-
-    # horizontal gridlines
     for y in numpy.linspace(0.1, 1, 9):
-        axes[0].axhline(y=y, xmin=0, xmax=20, color="0.9", linewidth=0.5, zorder=-1)
+        ax0.axhline(y=y, color="0.9", linewidth=0.5, zorder=-1)
     for y in numpy.arange(5, 22, 5):
-        axes[1].axhline(y=y, xmin=0, xmax=20, color="0.9", linewidth=0.5, zorder=-1)
+        ax1.axhline(y=y, color="0.9", linewidth=0.5, zorder=-1)
     for y in numpy.arange(2, 9, 2):
-        axes[2].axhline(y=y, xmin=0, xmax=20, color="0.9", linewidth=0.5, zorder=-1)
+        ax2.axhline(y=y, color="0.9", linewidth=0.5, zorder=-1)
 
-    plt.tight_layout(pad=1.08, h_pad=0.5, w_pad=None, rect=None)
+    ax0.annotate("A", xy=(-0.1, 1.005), xycoords="axes fraction", fontsize=fs, weight="bold")
+    ax1.annotate("B", xy=(-0.3, 1.005), xycoords="axes fraction", fontsize=fs, weight="bold")
+    ax2.annotate("C", xy=(-0.3, 1.005), xycoords="axes fraction", fontsize=fs, weight="bold")
 
-    # subplot labels
-    axes[0].annotate("A", c="k", weight="bold", xycoords="axes fraction", xy=(-0.1, 1.005), fontsize=fs)
-    axes[1].annotate("B", c="k", weight="bold", xycoords="axes fraction", xy=(-0.3, 1.005), fontsize=fs)
-    axes[2].annotate("C", c="k", weight="bold", xycoords="axes fraction", xy=(-0.3, 1.005), fontsize=fs)
+    hrir_names = []
+    for day_meta in meta_by_day:
+        for meta in day_meta:
+            hrir_name = meta.get("hrir")
+            if hrir_name and hrir_name not in hrir_names:
+                hrir_names.append(hrir_name)
 
-    fig.suptitle(f"Subject {subject_id}")
+    if hrir_names:
+        fig.suptitle(f"Subject {subject_id} | HRIR: {hrir_names[1]}")
+    else:
+        fig.suptitle(f"Subject {subject_id}")
+
+    plt.tight_layout(pad=1.08, h_pad=0.5)
     plt.show()
-    return fig, axes
+    return hrir_names[1], fig, axes
 
 
-# --- helpers ---
-def parse_loc_key(key: str) -> datetime.datetime:
-    """
-    Parse localization dict keys and return a datetime that sorts correctly
-    by day AND time.
-
-    Supported anywhere in the key:
-      - dd.mm_HH:MM
-      - dd.mm_HH.MM
-      - ISO (yyyy-mm-ddTHH:MM:SS)
-
-    Unknown formats sort last.
-    """
-    # 1) ISO (future-proof)
+def parse_loc_key(key):
+    """Parse keys like SK_13.02_14:08 or SK_13.02_14.08."""
     try:
         return datetime.datetime.fromisoformat(key)
     except Exception:
         pass
 
-    # 2) dd.mm_HH[:.]MM anywhere in the string
     match = re.search(r"(\d{2})\.(\d{2})_(\d{2})[:.](\d{2})", key)
     if match:
-        d, m, hh, mm = match.groups()
+        day, month, hour, minute = match.groups()
         now = datetime.datetime.now()
-
         year = now.year
-        month = int(m)
-
-        # Handle year rollover (Dec → Jan)
-        if month > now.month + 1:
+        if int(month) > now.month + 1:
             year -= 1
+        return datetime.datetime(year, int(month), int(day), int(hour), int(minute))
 
-        return datetime.datetime(year=year, month=month, day=int(d), hour=int(hh), minute=int(mm))
-
-    # 3) Fallback → last
     return datetime.datetime.max
 
 
-def key_time_str(k: str) -> str:
-    # expects "..._dd.mm_HH.MM" or "..._dd.mm_HH:MM"
-    # returns "HH:MM"
-    parts = k.split("_")
-    if len(parts) >= 2:
-        t = parts[-1]
-        t = t.replace(".", ":")
-        m = re.search(r"(\d{2}:\d{2})", t)
-        return m.group(1) if m else t
+def key_time_str(key):
+    """Return HH:MM from a localization key."""
+    match = re.search(r"(\d{2})[:.](\d{2})$", key)
+    if match:
+        return f"{match.group(1)}:{match.group(2)}"
     return ""
 
 
-# --- CHANGED: safely read Trialsequence attributes without loading anything extra
-def extract_seq_meta(seq, fallback_name: str = "") -> dict:
-    """
-    Extract the attributes you care about from a Trialsequence-like object.
-    Works even if some fields are missing.
-    """
-    meta = {}
+def extract_seq_meta(seq, fallback_name=""):
+    """Extract only the fields needed for plotting."""
+    settings = getattr(seq, "settings", {})
+    if not isinstance(settings, dict):
+        settings = {}
 
-    # common direct attributes
-    meta["name"] = getattr(seq, "name", fallback_name)
-    meta["stim"] = getattr(seq, "stim", None)
-    meta["hrir"] = getattr(seq, "hrir", None)
-    meta["ear"] = getattr(seq, "ear", None)
-
-    # settings dict (where azimuth_range typically lives in your example)
-    settings = getattr(seq, "settings", None)
-    if isinstance(settings, dict):
-        meta["azimuth_range"] = settings.get("azimuth_range", None)
-        meta["elevation_range"] = settings.get("elevation_range", None)
-    else:
-        meta["azimuth_range"] = None
-        meta["elevation_range"] = None
-
-    return meta
+    return {
+        "name": getattr(seq, "name", fallback_name),
+        "stim": getattr(seq, "stim", None),
+        "hrir": getattr(seq, "hrir", None),
+        "ear": getattr(seq, "ear", None),
+        "azimuth_range": settings.get("azimuth_range"),
+        "elevation_range": settings.get("elevation_range"),
+    }
 
 
-# --- CHANGED
-def marker_for_meta(meta: dict) -> str:
-    """
-    Encode 'uso' / mirrored / default in marker shape.
-    (All in grayscale to match your current style.)
-    """
+def marker_for_meta(meta):
+    """Marker by stimulus / mirrored state."""
     stim = (meta.get("stim") or "").lower()
     hrir = (meta.get("hrir") or "").lower()
 
     if stim == "uso":
-        return "s"      # square for USO
+        return "s"
     if "mirrored" in hrir:
-        return "^"      # triangle for mirrored
-    return "o"          # circle default
+        return "^"
+    return "o"
 
 
-# --- CHANGED
-def flags_for_meta(meta: dict) -> str:
+def flags_for_meta(meta):
+    """Annotation label: USO + ear + field."""
     stim = (meta.get("stim") or "").lower()
     hrir = (meta.get("hrir") or "").lower()
+    az = meta.get("azimuth_range")
 
     flags = []
+
     if stim == "uso":
         flags.append("USO")
-    if "mirrored" in hrir:
-        flags.append("mirr")
+
+    flags.append("RE" if "mirrored" in hrir else "LE")
+
+    if az is not None:
+        try:
+            a = float(az[0])
+            b = float(az[1])
+            if b <= 0 and a < 0:
+                flags.append("LF")
+            elif a >= 0 and b > 0:
+                flags.append("RF")
+            else:
+                mid = 0.5 * (a + b)
+                if mid < 0:
+                    flags.append("LF")
+                elif mid > 0:
+                    flags.append("RF")
+        except Exception:
+            pass
+
     return " ".join(flags)
 
 
-# --- CHANGED
-def format_range(rng) -> str:
-    """
-    Format (min,max) nicely even if it's a list/tuple/numpy array.
-    """
-    try:
-        a = float(rng[0])
-        b = float(rng[1])
-        # drop trailing .0 when integer-ish
-        def fmt(x):
-            return str(int(x)) if abs(x - int(x)) < 1e-9 else f"{x:g}"
-        return f"[{fmt(a)},{fmt(b)}]"
-    except Exception:
-        return str(rng)
-
-
 if __name__ == "__main__":
-    learning_plot(subject_id)
+    hrir_name, fig, axes = learning_plot(subject_id, annotate_times=True)
+
+    import slab
+    h = slab.HRTF(hr.PATH / 'data' / 'hrtf' / 'sofa' / str(subject_id+'_notch.sofa'))
+    h.plot_tf(h.cone_sources(0), ear='left')
+    plt.title(f"{hrir_name}")

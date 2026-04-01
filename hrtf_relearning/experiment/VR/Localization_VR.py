@@ -1,0 +1,272 @@
+import multiprocessing as mp
+import hrtf_relearning as hr
+import datetime
+import time
+from pathlib import Path
+from hrtf_relearning.experiment.analysis.localization.localization_analysis import *
+from hrtf_relearning.experiment.misc.localization_helpers.make_sequence import *
+from hrtf_relearning.experiment.misc.localization_helpers.uso_generation import generate_uso
+from pythonosc import udp_client
+from hrtf_relearning.experiment.misc.training_helpers import meta_motion
+from hrtf_relearning.hrtf.binsim.hrtf2binsim import hrtf2binsim
+from pynput import keyboard
+date = datetime.datetime.now()
+date = f'{date.strftime("%d")}.{date.strftime("%m")}_{date.strftime("%H")}-{date.strftime("%M")}'
+logging.getLogger().setLevel('INFO')
+ROOT = hr.PATH
+
+# --- settings ----
+SUBJECT_ID = "SK"
+HRIR_NAME = "SK"  # 'KU100', 'kemar', etc.
+EAR = None
+HP = 'DT990'
+STIM = 'noise'  # 'noise' or 'uso'
+AZ_RANGE = (0, 35)
+SECTOR_SIZE = (7, 14)
+MIRROR = False # set TRUE to mirror HRIRs left-right
+
+# --- load HRIR and Subject
+hrir_settings = dict(name=HRIR_NAME, ear=EAR, mirror=MIRROR,
+                     reverb=True, drr=20, hp_filter=True, hp=HP, convolution="cuda",storage="cuda")
+hrir = hrtf2binsim(hrir_settings, overwrite=True)
+subject = hr.Subject(SUBJECT_ID)
+
+class Localization:
+    """
+    Localization test:
+        Test localization at uniformly random positions within sectors
+    """
+    def __init__(self, subject, hrir):
+        # make trial sequence and write to subject-
+
+        self.settings = {'kind': 'sectors',
+                         'azimuth_range': AZ_RANGE, 'elevation_range': (-35, 35),
+                         'sector_size': SECTOR_SIZE,
+                         'targets_per_sector': 3, 'replace': False, 'min_distance': 20,
+                         'gain': .2}
+        # alternative setting: play 3 times from each source in the hrir (works well for dome recorded hrirs)
+        # self.settings = {'kind': 'standard', 'azimuth_range': (-60, 60), 'elevation_range': (-40, 40),
+        #                  'targets_per_speaker': 3, 'min_distance': 10, 'gain': .2}
+        self.subject = subject
+        self.filename = subject.id + '_' + date + '_' + hrir.name
+        # metadata
+        slab.set_default_samplerate(hrir.samplerate)
+        self.hrir_sources = hrir.sources.vertical_polar
+        self.sound_path = ROOT / 'data' / 'hrtf' / 'binsim' / hrir.name / 'sounds'
+        self.target = None
+
+        # make sequence
+        self.sequence = make_sequence(self.settings, self.hrir_sources)
+        self.sequence.name = self.filename
+        self.sequence.hrir = hrir.name
+        self.sequence.ear = EAR
+        self.sequence.mirrored = MIRROR
+        self.sequence.stim = STIM
+
+        self.ue_client = udp_client.SimpleUDPClient(UE_SEND_IP, UE_SEND_PORT)
+        self.vr_pose_bridge = None
+        self.pose_offset = numpy.array([0.0, 0.0, 0.0])
+
+    def write(self):
+        self.subject.localization[self.filename] = self.sequence
+        self.subject.write()
+
+    def send_ue_state(self, state, target=None):
+        self.ue_client.send_message("/loc/state", state)
+        if target is not None:
+            self.ue_client.send_message("/loc/target", [float(target[0]), float(target[1])])
+
+    def run(self):
+        # init pybinsim
+        self.osc_client_1 = self._make_osc_client(port=10000)
+        self.osc_client_2 = self._make_osc_client(port=10003)
+        self.binsim_worker = mp.Process(target=self._binsim_stream, args=(hrir.name,))
+        self.binsim_worker.start()
+
+        self.vr_pose_bridge = VRPoseBridge(recv_port=UE_RECV_PORT)
+        self.vr_pose_bridge.start()
+        time.sleep(0.2)
+
+        def calibrate_pose(self):
+            if USE_VR_POSE:
+                self.pose_offset = self.vr_pose_bridge.get_pose()
+                self.ue_client.send_message("/loc/calibrated", 1)
+            else:
+                self.motion_sensor.calibrate()
+
+        def get_head_pose(self):
+            if USE_VR_POSE:
+                pose = self.vr_pose_bridge.get_pose() - self.pose_offset
+                return pose[:2]  # yaw, pitch
+            return self.motion_sensor.get_pose()
+
+        # # init motion sensor
+        # self.motion_sensor = self.init_sensor()
+        # time.sleep(.2)
+
+        self.play_sound('beep')
+        for self.target in self.sequence:
+            self.wait_for_button('Look at the Center and press Enter')
+            # self.motion_sensor.calibrate()
+
+            self.send_ue_state("center")
+            self.wait_for_button('Look at the Center and press Enter')
+            self.calibrate_pose()
+
+            self.send_ue_state("stimulus", target=self.target)
+            self.play_trial()
+
+            self.send_ue_state("response")
+
+        self.subject.last_sequence = self.sequence
+        self.sequence.response_errors = target_p(self.sequence, show=False)
+        self.write()
+        logging.info('Finished.')
+        return
+
+    def play_trial(self):
+        # generate stimulus
+        self.stim = self.make_stim()  # generate a new stim each trial
+        self.stim.write(self.sound_path / 'localization.wav')
+        # play stim
+        self.play_stimulus()
+        time.sleep(self.stim.duration)
+        # get response
+        self.wait_for_button()
+        # response = self.motion_sensor.get_pose()
+        response = self.get_head_pose()
+        progress = self.sequence.this_n / len(self.sequence.conditions) * 100
+        logging.info(f'{progress:.1f}% | Target: {self.target} | Response: {response}')
+        time.sleep(.25)
+        self.sequence.add_response(numpy.array((response, self.target)))
+        self.write()  # write to file
+
+    def play_stimulus(self):
+        # pose = self.motion_sensor.get_pose()
+        pose = self.get_head_pose()
+        relative_coords = self.target - pose  # mimic freefield setup
+        # find the closest filter idx and send to pybinsim
+        relative_coords[0] = (-relative_coords[0] + 360) % 360  # mirror and convert to HRTF convention [0 < az < 360]
+        rel_target = numpy.array((relative_coords[0], relative_coords[1], self.hrir_sources[0, 2]))
+        filter_idx = numpy.argmin(numpy.linalg.norm(rel_target - self.hrir_sources, axis=1))
+        rel_hrtf_coords = self.hrir_sources[filter_idx]
+        self.osc_client_1.send_message('/pyBinSim_ds_Filter', [0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                                                        float(rel_hrtf_coords[0]), float(rel_hrtf_coords[1]), 0,
+                                                        0, 0, 0])
+        logging.debug(f'Set filter for {self.hrir_sources[filter_idx]}')
+        # play
+        self.osc_client_2.send_message('/pyBinSimLoudness', self.settings['gain'])
+        self.osc_client_2.send_message('/pyBinSimFile', str(self.sound_path / 'localization.wav'))
+        time.sleep(.5)
+        self.osc_client_2.send_message('/pyBinSimLoudness', 0)
+
+    def play_sound(self, kind):
+        logging.info(f'Playing {kind} sound')
+        name = f'{kind}.wav'
+        duration = slab.Sound(self.sound_path / name).duration
+        self.osc_client_2.send_message('/pyBinSimLoudness', self.settings['gain'])
+        self.osc_client_2.send_message('/pyBinSimFile', str(self.sound_path / name))
+        time.sleep(duration)
+        self.osc_client_2.send_message('/pyBinSimLoudness', 0)
+
+    @staticmethod
+    def _make_osc_client(port, ip='127.0.0.1'):
+        return udp_client.SimpleUDPClient(ip, port)
+
+    @staticmethod
+    def _binsim_stream(hrir_name):
+        import pybinsim
+        pybinsim.logger.setLevel(logging.ERROR)
+        binsim = pybinsim.BinSim(ROOT / 'data'  / 'hrtf' / 'binsim' / hrir_name / f'{hrir_name}_test_settings.txt')
+        binsim.stream_start()  # run binsim loop
+
+    @staticmethod
+    def init_sensor():
+        # init motion sensor
+        device = meta_motion.get_device()  # Ensure this function initializes the hardware correctly
+        state = meta_motion.State(device)
+        return meta_motion.Sensor(state)
+
+    @staticmethod
+    def make_stim():
+        if STIM == 'noise':
+            stim = slab.Sound.pinknoise(duration=0.225, level=80).ramp(when='both', duration=0.01)
+            n_silent = (numpy.arange(25,221,25).reshape(4,2) * stim.samplerate / 1000).astype(int)
+            ramp_len = int(.005 * stim.samplerate)
+            half_len = int(ramp_len / 2)
+            for start, end in n_silent:
+                ramp_up = 0.5 * (1 - numpy.cos(numpy.linspace(0, numpy.pi, ramp_len)))
+                ramp_down = 0.5 * (1 - numpy.cos(numpy.linspace(numpy.pi, 0, ramp_len)))
+                ramp_up = ramp_up[:, numpy.newaxis]
+                ramp_down = ramp_down[:, numpy.newaxis]
+                # Apply ramps at the edges of the silent region
+                stim.data[start - half_len: start + half_len] *= (1 - ramp_up)
+                stim.data[end - half_len: end + half_len] *= (1 - ramp_down)
+                # Silence the center
+                stim.data[start + half_len: end - half_len] = 0
+            # stim = slab.Sound.pinknoise(duration=0.5, level=90).ramp(when='both', duration=0.01)
+            # noise = slab.Sound.pinknoise(duration=0.025, level=90)
+            # noise = noise.ramp(when='both', duration=0.01)
+            # silence = slab.Sound.silence(duration=0.025)
+            # stim = slab.Sound.sequence(noise, silence, noise, silence, noise,
+            #                            silence, noise, silence, noise)
+            # stim.ramp('both', 0.01)
+        elif STIM == 'uso':
+            stim = generate_uso(samplerate=hrir.samplerate)
+        else: raise ValueError('STIM must be "noise" or "uso".')
+        stim.level = 80
+        return stim
+
+    @staticmethod
+    def wait_for_button(msg=None):
+        if msg: print(msg)
+        def on_press(key):
+            if key == keyboard.Key.enter:
+                listener.stop()  # stop listening once Enter is pressed
+        with keyboard.Listener(on_press=on_press) as listener:
+            listener.join()  # block until listener.stop() is called
+import threading
+from pythonosc import dispatcher, osc_server, udp_client
+
+USE_VR_POSE = True
+UE_SEND_IP = "127.0.0.1"
+UE_RECV_PORT = 7001   # Unreal -> Python
+UE_SEND_PORT = 7000   # Python -> Unreal
+
+
+class VRPoseBridge:
+    def __init__(self, recv_ip="127.0.0.1", recv_port=7001):
+        self.latest_pose = numpy.array([0.0, 0.0, 0.0])  # yaw, pitch, roll
+        self._lock = threading.Lock()
+
+        self.dispatcher = dispatcher.Dispatcher()
+        self.dispatcher.map("/vr/headpose", self._on_headpose)
+
+        self.server = osc_server.ThreadingOSCUDPServer(
+            (recv_ip, recv_port), self.dispatcher
+        )
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+
+    def start(self):
+        self.thread.start()
+
+    def stop(self):
+        self.server.shutdown()
+        self.server.server_close()
+
+    def _on_headpose(self, address, yaw, pitch, roll, *args):
+        with self._lock:
+            self.latest_pose = numpy.array([float(yaw), float(pitch), float(roll)])
+
+    def get_pose(self):
+        with self._lock:
+            return self.latest_pose.copy()
+
+if __name__ == "__main__":
+    loc_test = Localization(subject, hrir)
+    loc_test.run()
+    sequence = subject.localization[loc_test.filename]
+    plot_dir = ROOT / 'data'  / 'results' / 'plot' / subject.id
+    plot_localization(sequence, report_stats=['azimuth', 'elevation'], filepath=plot_dir)
+    plot_elevation_response(sequence, filepath=plot_dir)
+    plt.show()

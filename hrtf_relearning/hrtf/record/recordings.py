@@ -98,7 +98,7 @@ class Recordings(SpeakerGridBase):
     @classmethod
     def record_dome(cls, id=None, azimuth=(-1,1), elevation=(37.5, -37.5),
                     n_directions=3, n_recordings=10, hp_freq=120, fs=48828,
-                    equalize=True, button=True):
+                    equalize=True, key=True, button=False):
 
         # excitation signal
         sig_params = dict(
@@ -131,7 +131,8 @@ class Recordings(SpeakerGridBase):
             if button:
                 print(f"Press Button when head is at {0 + elevation_step}° elevation ...")
                 freefield.wait_for_button()
-
+            if key:
+                input(f'Press Enter when head is at {0 + elevation_step}° elevation ...')
             for base_spk in speakers:
                 [spk] = copy.deepcopy(freefield.pick_speakers(base_spk.index))
                 spk.elevation -= elevation_step

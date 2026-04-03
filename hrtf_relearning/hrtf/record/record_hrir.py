@@ -10,33 +10,22 @@ import hrtf_relearning
 base_dir = hrtf_relearning.PATH / "data" / "hrtf"
 import logging
 
-subject_id = 'SW'
+subject_id = 'kemar_pir'
 head_radius = 0.0875
-reference_id = 'ref_mar_02'
+reference_id = 'ref_03.04'
 overwrite = False
-n_directions = 3
+n_directions = 1
 n_recordings = 10
-n_samples_out = 256
+n_samples_out = 512
 fs = 48828  # 97656
 hp_freq = 120
 show = True
 equalize_dome = True
 align_interaural = True
-# save_wath = True
 
 slab.set_default_samplerate(fs)
 freefield.set_logger("info")
 
-# -----------------------------------------------------------------
-# Paths
-# -----------------------------------------------------------------
-if base_dir is None:
-    base_dir = Path.cwd() / "data" / "hrtf"
-else:
-    base_dir = Path(base_dir)
-
-subj_dir = base_dir / "rec" / subject_id
-ref_dir = base_dir / "rec" / "reference" / reference_id
 
 # ---------------------------------------------------------------------
 # Main wrapper
@@ -50,10 +39,11 @@ def record_hrir(
     n_recordings: int = 10,
     fs: int = 48828,
     hp_freq: float = 120,
-    n_samples_out: int = 256,
-    align_interaural: bool = True,
     equalize_dome: bool = False,
     overwrite: bool = False,
+    align_interaural: bool = True,
+    n_samples_out: int = 512,
+    expand_az: bool = True,
     show: bool = True,
     base_dir: Path | str | None = None,
 ) -> slab.HRTF:
@@ -75,6 +65,17 @@ def record_hrir(
     logging.info(f"Starting HRIR pipeline for subject '{subject_id}'")
 
     # -----------------------------------------------------------------
+    # Paths
+    # -----------------------------------------------------------------
+    if base_dir is None:
+        base_dir = hrtf_relearning.PATH / "data" / "hrtf"
+    else:
+        base_dir = Path(base_dir)
+
+    subj_dir = base_dir / "rec" / subject_id
+    ref_dir = base_dir / "rec" / "reference" / reference_id
+
+    # -----------------------------------------------------------------
     # 1) Subject recordings
     # -----------------------------------------------------------------
     if overwrite or not subj_dir.exists():
@@ -87,7 +88,8 @@ def record_hrir(
             n_recordings=n_recordings,
             hp_freq=hp_freq,
             fs=fs,
-            equalize=equalize_dome)
+            equalize=equalize_dome,
+            key=True)
         subject_rec.to_wav(subj_dir, overwrite=overwrite)
     else:
         logging.info("Loading subject recordings from disk")
@@ -96,6 +98,7 @@ def record_hrir(
     # -----------------------------------------------------------------
     # 2) Reference recordings
     # -----------------------------------------------------------------
+    """    
     if overwrite or not ref_dir.exists():
         logging.info("Recording reference")
         ref_dir.mkdir(parents=True, exist_ok=True)
@@ -105,12 +108,13 @@ def record_hrir(
             n_recordings=n_recordings,
             hp_freq=hp_freq,
             fs=fs,
-            equalize=True,
-            button=False)
+            equalize=equalize_dome,
+            key=False)
         reference_rec.to_wav(ref_dir, overwrite=overwrite)
     else:
-        logging.info("Loading reference recordings from disk")
-        reference_rec = Recordings.from_wav(ref_dir)
+    """
+    logging.info("Loading reference recordings from disk")
+    reference_rec = Recordings.from_wav(ref_dir)
 
     # -----------------------------------------------------------------
     # 3) Deconvolution: sweeps -> IRs
@@ -147,13 +151,16 @@ def record_hrir(
     # -----------------------------------------------------------------
     # 6) Azimuth expansion + binaural cues
     # -----------------------------------------------------------------
-    logging.info("Expanding azimuths and imposing binaural cues")
-    hrir_az_exp = expand_azimuths_with_binaural_cues(
-        hrir_extrapol,
-        az_range=(-50, 50),
-        head_radius=head_radius,
-        show=False,
-    )
+    if expand_az:
+        logging.info("Expanding azimuths and imposing binaural cues")
+        hrir_az_exp = expand_azimuths_with_binaural_cues(
+            hrir_extrapol,
+            az_range=(-50, 50),
+            head_radius=head_radius,
+            show=False,
+        )
+    else:
+        hrir_az_exp = hrir_extrapol
 
     # -----------------------------------------------------------------
     # 7) Export to slab.HRTF
@@ -184,7 +191,7 @@ def wait_for_button(msg=None):
     with keyboard.Listener(on_press=on_press) as listener:
         listener.join()
 
-#
+
 # if __name__ == "__main__":
 #     hrtf = record_hrir(
 #         subject_id=subject_id,

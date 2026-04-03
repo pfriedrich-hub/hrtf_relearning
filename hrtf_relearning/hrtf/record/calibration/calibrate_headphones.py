@@ -31,10 +31,9 @@ import pyfar
 import slab
 import freefield
 import warnings
+import soundfile as sf
 from pathlib import Path
 import pickle
-import hrtf_relearning
-ROOT = Path(hrtf_relearning.__file__).resolve().parent
 warnings.filterwarnings("ignore", category=pyfar._utils.PyfarDeprecationWarning)
 freefield.set_logger("info")
 import hrtf_relearning
@@ -51,7 +50,7 @@ fs = 48828
 slab.set_default_samplerate(fs)
 
 # sweep parameters
-LEVEL = 75
+LEVEL = 70
 N_REC = 3
 LOW_CUTOFF = 20
 HIGH_CUTOFF = fs/2
@@ -226,11 +225,11 @@ def pyfar2wav(eq_filter, path: Path):
     path : Path
         Output file path ending in .wav
     """
-    path = str(ROOT / 'data' / 'sounds' / f'{hp_id}_equalization.wav')
-    pyfar.io.write_audio(eq_filter, path, overwrite=True)  #todo test this
+    sf.write(path, eq_filter.time.T.astype("float32"), eq_filter.sampling_rate, subtype="FLOAT")
+    # pyfar.io.write_audio(eq_filter, path, overwrite=True)  # - clips audio!
     print(f"Saved WAV filter to: {path}")
 
-def save_equalization(eq_filter):
+def ff_equalization(eq_filter, save_freefield=True):
     """
     Save equalization filter to a pickle file.
 
@@ -252,20 +251,18 @@ def save_equalization(eq_filter):
     equalization.update({f"{speakers[0].index}": {"level": 0, "filter": filter.channel(0)}})
     equalization.update({f"{speakers[1].index}": {"level": 0, "filter": filter.channel(1)}})
 
-    with open(freefield.DIR / 'data' / f'calibration_{hp_id}.pkl', 'wb') as f:  # save the newly recorded calibration
-        pickle.dump(equalization, f, pickle.HIGHEST_PROTOCOL)
-
-    # ff_calibration_path = ROOT / 'hrtf' / 'record' / 'calibration' / f'{hp_id}_equalization.wav'
-    # with open(ff_calibration_path, 'wb') as f:  # save the newly recorded calibration
-    #     pickle.dump(equalization, f, pickle.HIGHEST_PROTOCOL)
-    print(f"Writing calibration to {freefield.DIR / 'data' / f'calibration_{hp_id}.pkl'}")
+    if save_freefield:
+        with open(freefield.DIR / 'data' / f'calibration_{hp_id}.pkl', 'wb') as f:  # save the newly recorded calibration
+            pickle.dump(equalization, f, pickle.HIGHEST_PROTOCOL)
+        print(f"Writing calibration to {freefield.DIR / 'data' / f'calibration_{hp_id}.pkl'}")
+    return filter
 
 # -------------------------------------------------------------------------
 # MAIN PIPELINE
 # -------------------------------------------------------------------------
 
-def calibrate_headphones(sub_id=SUB_ID, hp_id=HP_ID, n_rec=N_REC, show=True, save_freefield=True):
-    save_path = ROOT / "data" / 'sounds' / f'{HP_ID}_equalization.wav'
+def calibrate_headphones(subject_id=SUB_ID, hp_id=HP_ID, n_rec=N_REC, show=True, save_freefield=True):
+    save_path = ROOT / "data" / 'hrtf' / 'rec' / f'{subject_id}' / f'{hp_id}_equalization.wav'
 
     # Initialize freefield for headphone playback
     if not freefield.PROCESSORS.mode == 'bi_play_rec':
@@ -275,36 +272,33 @@ def calibrate_headphones(sub_id=SUB_ID, hp_id=HP_ID, n_rec=N_REC, show=True, sav
     excitation = generate_chirp()
 
     # Load or measure HpIR
-    recording = measure_hp_raw(excitation, repeats=n_rec)
-    # recording = slab.Binaural.read(Path.cwd() / 'hrtf/record/calibration/hp_raw.wav')
+    recordings = []
+    for i in range(n_rec):
+        input('Press Enter to record...')
+        recordings.append(measure_hp_raw(excitation, repeats=1))
+    recording = slab.Sound(data=numpy.mean(recordings, axis=0))
 
     # Compute equalization
-    eq_filter = compute_headphone_equalization(recording, excitation, beta=0.01, show=show)
+    eq_filter = compute_headphone_equalization(recording, excitation, beta=0.01, show=False)
     # adjust beta parameter if necessary
 
-    # test
-    if save_freefield:
-        save_equalization(eq_filter)
+    # Save to wav
+    pyfar2wav(eq_filter, save_path)
+
+    # test and alternatively save to freefield
+    hp_filter = ff_equalization(eq_filter, save_freefield)
     if show:
-        if save_freefield:
-            freefield.load_equalization(freefield.DIR / 'data' / f'calibration_{hp_id}.pkl')
-        else: # todo use eq filter
-            hp_filter = slab.Filter(data=eq_filter.time.T, samplerate=fs, fir="IR")
-            filtered = hp_filter.apply(excitation)
-        fig ,axes = plt.subplots(2,1)
         raw = freefield.play_and_record_headphones(speaker='both', sound=excitation, equalize=False)
+        filtered = hp_filter.apply(excitation)
+        equalized = freefield.play_and_record_headphones(speaker='both', sound=filtered, equalize=False)
+        fig ,axes = plt.subplots(2,1)
         raw.spectrum(axis=axes[0])
         axes[0].set_title('Raw HpTF')
-        equalized = freefield.play_and_record_headphones(speaker='both', sound=excitation, equalize=True)
         equalized.spectrum(axis=axes[1])
         axes[1].set_title('Equalized HpTF')
         fig.suptitle(f'{hp_id} equalization')
 
-    # Save
-    plt.savefig(ROOT/'data' / 'img' / 'processing' / 'calibration' / f'calibration_{hp_id}.png')
-    pyfar2wav(eq_filter, save_path)
-
-    return slab.Filter(eq_filter.time.T, samplerate=fs, fir="IR")
+    return hp_filter
 
 # if __name__ == "__main__":
 #     main()

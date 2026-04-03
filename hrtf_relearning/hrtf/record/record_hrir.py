@@ -54,7 +54,7 @@ def record_hrir(
     align_interaural: bool = True,
     equalize_dome: bool = False,
     overwrite: bool = False,
-    show: bool = False,
+    show: bool = True,
     base_dir: Path | str | None = None,
 ) -> slab.HRTF:
     """
@@ -184,19 +184,19 @@ def wait_for_button(msg=None):
     with keyboard.Listener(on_press=on_press) as listener:
         listener.join()
 
-
-if __name__ == "__main__":
-    hrtf = record_hrir(
-        subject_id=subject_id,
-        reference_id=reference_id,
-        n_directions=n_directions,
-        n_recordings=n_recordings,
-        fs=fs,
-        hp_freq=hp_freq,
-        n_samples_out=n_samples_out,
-        equalize_dome=equalize_dome,
-        align_interaural=align_interaural,
-        overwrite=overwrite,
-        show=show,
-        base_dir=base_dir,
-    )
+#
+# if __name__ == "__main__":
+#     hrtf = record_hrir(
+#         subject_id=subject_id,
+#         reference_id=reference_id,
+#         n_directions=n_directions,
+#         n_recordings=n_recordings,
+#         fs=fs,
+#         hp_freq=hp_freq,
+#         n_samples_out=n_samples_out,
+#         equalize_dome=equalize_dome,
+#         align_interaural=align_interaural,
+#         overwrite=overwrite,
+#         show=show,
+#         base_dir=base_dir,
+#     )

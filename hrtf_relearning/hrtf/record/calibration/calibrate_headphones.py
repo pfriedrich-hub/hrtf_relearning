@@ -43,15 +43,16 @@ ROOT = hrtf_relearning.PATH
 # -------------------------------------------------------------------------
 # CONFIG
 # -------------------------------------------------------------------------
-hp_id = 'MYSPHERE'  # MYSPHERE, DT990
-save_path = ROOT / "data" / 'sounds' / f'{hp_id}_equalization.wav'
+SUB_ID = 'KEMAR'
+HP_ID = 'MYSPHERE'  # MYSPHERE, DT990
+
 
 fs = 48828
 slab.set_default_samplerate(fs)
 
 # sweep parameters
-LEVEL = 85
-N_REC = 5
+LEVEL = 75
+N_REC = 3
 LOW_CUTOFF = 20
 HIGH_CUTOFF = fs/2
 CHIRP_DURATION = 1.0
@@ -82,14 +83,13 @@ def generate_chirp():
         kind="logarithmic"
     )
     signal = signal.ramp('both', RAMP_DURATION)
-    signal.level = 75
     return signal
 
 # -------------------------------------------------------------------------
 # MEASUREMENT OR LOADING
 # -------------------------------------------------------------------------
 
-def measure_hp_raw(signal, repeats=5):
+def measure_hp_raw(signal, repeats=1):
     """
     Measure raw headphone impulse response using freefield.
 
@@ -264,7 +264,8 @@ def save_equalization(eq_filter):
 # MAIN PIPELINE
 # -------------------------------------------------------------------------
 
-def main():
+def calibrate_headphones(sub_id=SUB_ID, hp_id=HP_ID, n_rec=N_REC, show=True, save_freefield=True):
+    save_path = ROOT / "data" / 'sounds' / f'{HP_ID}_equalization.wav'
 
     # Initialize freefield for headphone playback
     if not freefield.PROCESSORS.mode == 'bi_play_rec':
@@ -274,29 +275,36 @@ def main():
     excitation = generate_chirp()
 
     # Load or measure HpIR
-    recording = measure_hp_raw(excitation, repeats=N_REC)
+    recording = measure_hp_raw(excitation, repeats=n_rec)
     # recording = slab.Binaural.read(Path.cwd() / 'hrtf/record/calibration/hp_raw.wav')
 
     # Compute equalization
-    eq_filter = compute_headphone_equalization(recording, excitation, beta=0.01, show=True)
+    eq_filter = compute_headphone_equalization(recording, excitation, beta=0.01, show=show)
     # adjust beta parameter if necessary
 
     # test
-    save_equalization(eq_filter)
-    freefield.load_equalization(freefield.DIR / 'data' / f'calibration_{hp_id}.pkl')
-    fig ,axes = plt.subplots(2,1)
-    raw = freefield.play_and_record_headphones(speaker='both', sound=excitation, equalize=False)
-    raw.spectrum(axis=axes[0])
-    axes[0].set_title('Raw HpTF')
-    equalized = freefield.play_and_record_headphones(speaker='both', sound=excitation, equalize=True)
-    equalized.spectrum(axis=axes[1])
-    axes[1].set_title('Equalized HpTF')
-    fig.suptitle(f'{hp_id} equalization')
+    if save_freefield:
+        save_equalization(eq_filter)
+    if show:
+        if save_freefield:
+            freefield.load_equalization(freefield.DIR / 'data' / f'calibration_{hp_id}.pkl')
+        else: # todo use eq filter
+            hp_filter = slab.Filter(data=eq_filter.time.T, samplerate=fs, fir="IR")
+            filtered = hp_filter.apply(excitation)
+        fig ,axes = plt.subplots(2,1)
+        raw = freefield.play_and_record_headphones(speaker='both', sound=excitation, equalize=False)
+        raw.spectrum(axis=axes[0])
+        axes[0].set_title('Raw HpTF')
+        equalized = freefield.play_and_record_headphones(speaker='both', sound=excitation, equalize=True)
+        equalized.spectrum(axis=axes[1])
+        axes[1].set_title('Equalized HpTF')
+        fig.suptitle(f'{hp_id} equalization')
 
     # Save
     plt.savefig(ROOT/'data' / 'img' / 'processing' / 'calibration' / f'calibration_{hp_id}.png')
     pyfar2wav(eq_filter, save_path)
 
+    return slab.Filter(eq_filter.time.T, samplerate=fs, fir="IR")
 
 # if __name__ == "__main__":
 #     main()

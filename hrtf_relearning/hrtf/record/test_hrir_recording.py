@@ -12,7 +12,7 @@ slab.set_default_samplerate(fs)
 from pathlib import Path
 import copy
 
-subject_id='kemar_pir'
+subject_id='AS_test'
 reference_id = 'ref_02.04'
 hp_id = 'MYSPHERE'  # headphone model
 n_rec=3  # how often to re-place the headphones for hp calibration
@@ -24,6 +24,15 @@ def main():
 
     # --- put on headphones and calibrate
     hp_filter = calibrate_headphones(subject_id=subject_id, hp_id=hp_id, n_rec=n_rec, show=True, save_freefield=False)
+
+    # load hp filter from disk
+    hp_filter_data = slab.Sound(
+        "C:/projects/hrtf_relearning/hrtf_relearning/data/hrtf/rec/AS_test/MYSPHERE_equalization.wav").data
+    hp_filter = slab.Filter(
+        data=hp_filter_data,
+        samplerate=fs,
+        fir="IR",
+    )
 
     # --- generate test signal
     signal = slab.Sound.chirp(duration=1.0, level=70, samplerate=fs, kind='logarithmic',
@@ -44,7 +53,6 @@ def acoustic_test(hrir, hp_filter, signal):
     # --- adjust loudness and apply hp filter
     spk_signal, hp_signal = copy.deepcopy(signal), copy.deepcopy(signal)
     hp_signal = hp_filter.apply(signal)  # order should not matter for IR filters are linear
-    hp_signal.level = 50  # account for hp preamp and hrir filter gain
     spk_signal.level = 85
 
     # --- play and record from headphones
@@ -55,6 +63,7 @@ def acoustic_test(hrir, hp_filter, signal):
     for src in hrir.sources.vertical_polar[src_idx]:
         idx = hrir.get_source_idx(src[0], src[1])[0]
         filtered_signal = hrir.apply(idx, hp_signal)
+        filtered_signal.level = 70
         hp_recordings[str(src)] = freefield.play_and_record_headphones(speaker='both', sound=filtered_signal, compensate_delay=True, distance=0,
                                                   compensate_attenuation=False, equalize=False, recording_samplerate=48828) # equalize=True
 
@@ -85,12 +94,16 @@ def acoustic_test(hrir, hp_filter, signal):
                     return f"{int(x / 1000)}k"
                 return str(int(x))
             axes[idx, col].set_xticklabels([format_khz(t) for t in ticks])
+        #todo save
 
 def behavioral_test(hrir, hp_filter, signal):
     """
     # ----- PARTICIPANT TESTING ----- #
     Use open HP to test if participants can tell the difference between loudspeakers and headphones
     """
+
+    #todo use noise not sweep
+
     # generate random sequence
     sequence = numpy.random.randint(0,2, 50)
     elevations = hrir.sources.vertical_polar[hrir.cone_sources(0)][:, 1]
@@ -103,7 +116,7 @@ def behavioral_test(hrir, hp_filter, signal):
     # adjust loudness and apply hp filter
     spk_signal, hp_signal = copy.deepcopy(signal), copy.deepcopy(signal)
     hp_signal = hp_filter.apply(hp_signal)
-    hp_signal.level = 50
+    # hp_signal.level = 50
     spk_signal.level = 85
 
     input('Put on headphones and press Enter to continue...')
@@ -119,6 +132,7 @@ def behavioral_test(hrir, hp_filter, signal):
         elif i == 1: # play hp
             src_idx = hrir.get_source_idx(0, elevation)[0]
             filtered = hrir.apply(src_idx, hp_signal)  # hrir filter
+            filtered.level = 70  # todo adjust level
             filtered.play()
 
         print(f'playing from {elevation} at {i}')

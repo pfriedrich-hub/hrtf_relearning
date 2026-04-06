@@ -9,7 +9,7 @@ freefield.set_logger('info')
 import slab
 fs=48828
 slab.set_default_samplerate(fs)
-from pathlib import Path
+from hrtf_relearning import PATH as root
 import copy
 
 subject_id='AS_test'
@@ -94,15 +94,16 @@ def acoustic_test(hrir, hp_filter, signal):
                     return f"{int(x / 1000)}k"
                 return str(int(x))
             axes[idx, col].set_xticklabels([format_khz(t) for t in ticks])
-        #todo save
+    plt.savefig(root / 'data' / 'results' / 'plot' / subject_id / 'hrir_test.svg')
 
-def behavioral_test(hrir, hp_filter, signal):
+def behavioral_test(hrir, hp_filter):
     """
     # ----- PARTICIPANT TESTING ----- #
     Use open HP to test if participants can tell the difference between loudspeakers and headphones
     """
 
-    #todo use noise not sweep
+    # todo test signal
+    signal = slab.Sound.pinknoise(duration=0.5, samplerate=hrir.samplerate)
 
     # generate random sequence
     sequence = numpy.random.randint(0,2, 50)
@@ -116,8 +117,7 @@ def behavioral_test(hrir, hp_filter, signal):
     # adjust loudness and apply hp filter
     spk_signal, hp_signal = copy.deepcopy(signal), copy.deepcopy(signal)
     hp_signal = hp_filter.apply(hp_signal)
-    # hp_signal.level = 50
-    spk_signal.level = 85
+    spk_signal.level = 80
 
     input('Put on headphones and press Enter to continue...')
     responses = []

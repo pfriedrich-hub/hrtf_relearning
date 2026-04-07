@@ -12,59 +12,60 @@ slab.set_default_samplerate(fs)
 from hrtf_relearning import PATH as root
 import copy
 
-subject_id='AS_test'
-reference_id = 'ref_02.04'  # todo check gain
+subject_id='kemar_pir'
+reference_id = 'ref_03.04'
 hp_id = 'MYSPHERE'  # headphone model
 n_rec=3  # how often to re-place the headphones for hp calibration
 
 def main():
     # --- record or load HRIR
     hrir = record_hrir(subject_id=subject_id, reference_id=reference_id, n_directions=1, overwrite=False,
-                       align_interaural=False, expand_az=False, show=True)
+                       align_interaural=False, expand_az=False, show=True)  # todo check low freq extrapol (increase target range)
 
     # --- put on headphones and calibrate
     hp_filter = calibrate_headphones(subject_id=subject_id, hp_id=hp_id, n_rec=n_rec, show=True, save_freefield=False)
 
     # or load hp filter from disk
-    # hp_filter_data = slab.Sound(
-    #     root / "data" / "hrtf" / "rec" / subject_id / f"{hp_id}_equalization.wav").data
-    # hp_filter = slab.Filter(data=hp_filter_data, samplerate=fs, fir="IR")
-
-    # --- generate test signal
-    signal = slab.Sound.chirp(duration=1.0, level=70, samplerate=fs, kind='logarithmic',
-                              from_frequency=200, to_frequency=18000)
-    signal = signal.ramp(when="both", duration=0.01)
+    # hp_filter = slab.Filter(data=slab.Sound(
+    # root / "data" / "hrtf" / "rec" / subject_id / f"{hp_id}_equalization.wav").data,
+    # samplerate=fs, fir="IR")
 
     # --- run behavioral test or localization test without removing headphones
     behavioral_test(hrir, hp_filter)
 
     # ---- run acoustic test
-    acoustic_test(hrir, hp_filter, signal)
+    acoustic_test(hrir, hp_filter)
 
 
-def acoustic_test(hrir, hp_filter, signal):
+def acoustic_test(hrir, hp_filter):
+    signal = slab.Sound.chirp(duration=1.0, level=70, samplerate=fs, kind='logarithmic',
+                              from_frequency=200, to_frequency=18000)
+    signal = signal.ramp(when="both", duration=0.01)
+
     src_idx = hrir.cone_sources(0)
     src_idx.sort()
-
-    # --- adjust loudness and apply hp filter
-    spk_signal, hp_signal = copy.deepcopy(signal), copy.deepcopy(signal)
-    hp_signal = hp_filter.apply(signal)  # order should not matter for IR filters are linear
-    spk_signal.level = 85
 
     # --- play and record from headphones
     if not freefield.PROCESSORS.mode == 'bi_play_rec':
         freefield.initialize('headphones', default='bi_play_rec')
+
+    hp_signal = hp_filter.apply(signal)  # order should not matter for IR filters are linear
+
     input('Put on headphones and press Enter to continue...')
     hp_recordings = dict()
     for src in hrir.sources.vertical_polar[src_idx]:
         idx = hrir.get_source_idx(src[0], src[1])[0]
         filtered_signal = hrir.apply(idx, hp_signal)
-        filtered_signal.level = 70
+        filtered_signal.level = 65  # todo these levels work (65 hp & 85 spk), use them for behavioral testing
         hp_recordings[str(src)] = freefield.play_and_record_headphones(speaker='both', sound=filtered_signal, compensate_delay=True, distance=0,
                                                   compensate_attenuation=False, equalize=False, recording_samplerate=48828) # equalize=True
 
     # --- play and record from speakers
     freefield.initialize('dome', default='play_birec')
+
+    spk_signal, hp_signal = copy.deepcopy(signal), copy.deepcopy(signal)
+    spk_signal.level = 85
+
     input('Remove headphones and press Enter to continue..')
     dome_recordings = dict()
     for src in hrir.sources.vertical_polar[src_idx]:
@@ -80,7 +81,7 @@ def acoustic_test(hrir, hp_filter, signal):
             dome_rec[1].channel(col).spectrum(axis=axes[idx, col])
             hp_rec[1].channel(col).spectrum(axis=axes[idx, col])
             axes[idx, col].set_title(f'{dome_rec[0]}°')
-            fmin, fmax = 2e3, 18.2e3
+            fmin, fmax = 2e3, 18.2e3  # ---- frequency range
             axes[idx, col].set_xlim(fmin, fmax)
             # 1/3 octave spacing
             ticks = 2 ** numpy.arange(numpy.log2(fmin),numpy.log2(fmax), 1)
@@ -90,7 +91,9 @@ def acoustic_test(hrir, hp_filter, signal):
                     return f"{int(x / 1000)}k"
                 return str(int(x))
             axes[idx, col].set_xticklabels([format_khz(t) for t in ticks])
-    plt.savefig(root / 'data' / 'results' / 'plot' / subject_id / 'hrir_test.svg')
+    save_dir = root / 'data' / 'results' / 'plot' / subject_id
+    save_dir.mkdir(parents=True, exist_ok=True)
+    plt.savefig(save_dir / f'hrir_test_{hp_id}.svg')
 
 def behavioral_test(hrir, hp_filter):
     """
@@ -132,7 +135,7 @@ def behavioral_test(hrir, hp_filter):
             filtered.play()
 
         print(f'playing from {elevation} at {i}')
-        response = input("Enter response (0 for speaker, 1 for headphones): ")
+        response = input("Enter response (0 for speaker, 1 for headphones): ") # todo
         print(response)
         responses.append(response)
 

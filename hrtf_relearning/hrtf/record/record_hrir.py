@@ -143,7 +143,7 @@ def record_hrir(
     logging.info("Low-frequency extrapolation")
     hrir_extrapol = lowfreq_extrapolate(
         hrir_equalized,
-        f_extrap=400.0,
+        f_extrap=800.0,
         f_target=150.0,
         head_radius=head_radius,
     )

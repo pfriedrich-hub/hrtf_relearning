@@ -13,7 +13,7 @@ from hrtf_relearning import PATH as root
 import copy
 
 subject_id='AS_test'
-reference_id = 'ref_02.04'
+reference_id = 'ref_02.04'  # todo check gain
 hp_id = 'MYSPHERE'  # headphone model
 n_rec=3  # how often to re-place the headphones for hp calibration
 
@@ -26,24 +26,20 @@ def main():
     hp_filter = calibrate_headphones(subject_id=subject_id, hp_id=hp_id, n_rec=n_rec, show=True, save_freefield=False)
 
     # load hp filter from disk
-    hp_filter_data = slab.Sound(
-        "C:/projects/hrtf_relearning/hrtf_relearning/data/hrtf/rec/AS_test/MYSPHERE_equalization.wav").data
-    hp_filter = slab.Filter(
-        data=hp_filter_data,
-        samplerate=fs,
-        fir="IR",
-    )
+    # hp_filter_data = slab.Sound(
+    #     root / "data" / "hrtf" / "rec" / subject_id / f"{hp_id}_equalization.wav").data
+    # hp_filter = slab.Filter(data=hp_filter_data, samplerate=fs, fir="IR")
 
     # --- generate test signal
     signal = slab.Sound.chirp(duration=1.0, level=70, samplerate=fs, kind='logarithmic',
                               from_frequency=200, to_frequency=18000)
     signal = signal.ramp(when="both", duration=0.01)
 
+    # --- run behavioral test or localization test without removing headphones
+    behavioral_test(hrir, hp_filter)
+
     # ---- run acoustic test
     acoustic_test(hrir, hp_filter, signal)
-
-    # --- run behavioral test
-    behavioral_test(hrir, hp_filter, signal)
 
 
 def acoustic_test(hrir, hp_filter, signal):

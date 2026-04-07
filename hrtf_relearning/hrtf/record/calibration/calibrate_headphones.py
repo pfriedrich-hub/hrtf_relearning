@@ -235,7 +235,7 @@ def pyfar2wav(eq_filter, path: Path):
     """
     sf.write(path, eq_filter.time.T.astype("float32"), eq_filter.sampling_rate, subtype="FLOAT")
     # pyfar.io.write_audio(eq_filter, path, overwrite=True)  # - clips audio!
-    print(f"Saved WAV filter to: {path}")
+    print(f"Saved HP equalization to: {path}")
 
 def ff_equalization(eq_filter, save_freefield=True):
     """

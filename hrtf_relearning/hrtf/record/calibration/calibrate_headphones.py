@@ -124,7 +124,7 @@ def measure_hp_raw(signal, repeats=1):
 # EQUALIZATION FILTER
 # -------------------------------------------------------------------------
 
-def compute_headphone_equalization(recording, excitation, beta, show=False):
+def compute_headphone_equalization(recording, excitation, beta, n_samp_out=1024, show=False):
     """
     Compute a regularized, minimum-phase inverse filter for headphone equalization.
 
@@ -192,6 +192,14 @@ def compute_headphone_equalization(recording, excitation, beta, show=False):
     # ------------------------------------------------------------------
     hp_inv_reg = pyfar.dsp.minimum_phase(hp_inv_reg, truncate=False)
 
+    # window
+    hp_windowed = pyfar.dsp.time_window(
+        hp_inv_reg,
+        [0, n_samp_out - 1],
+        shape="right",
+        window='boxcar',
+        crop='window'
+    )
     # ------------------------------------------------------------------
     # Final diagnostic plot
     # ------------------------------------------------------------------
@@ -202,13 +210,13 @@ def compute_headphone_equalization(recording, excitation, beta, show=False):
             ax.set_title(f'{ear} ear')
             pyfar.plot.freq(reg, linestyle="--", label="Regularization", ax=ax)
             pyfar.plot.freq(hp_ir[i], label="HpTF", ax=ax)
-            pyfar.plot.freq(hp_inv_reg[i], label="Inverse (regularized)", ax=ax)
-            pyfar.plot.freq(pyfar.dsp.convolve(hp_ir[i], hp_inv_reg[i]), label="Equalized HpTF", ax=ax)
+            pyfar.plot.freq(hp_windowed[i], label="Inverse (regularized)", ax=ax)
+            pyfar.plot.freq(pyfar.dsp.convolve(hp_ir[i], hp_windowed[i]), label="Equalized HpTF", ax=ax)
             ax.set_ylim(-25, 20)
         plt.legend()
         plt.show()
 
-    return hp_inv_reg
+    return hp_windowed
 
 
 # -------------------------------------------------------------------------

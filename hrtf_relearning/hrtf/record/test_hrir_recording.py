@@ -25,7 +25,7 @@ def main():
     # --- put on headphones and calibrate
     hp_filter = calibrate_headphones(subject_id=subject_id, hp_id=hp_id, n_rec=n_rec, show=True, save_freefield=False)
 
-    # load hp filter from disk
+    # or load hp filter from disk
     # hp_filter_data = slab.Sound(
     #     root / "data" / "hrtf" / "rec" / subject_id / f"{hp_id}_equalization.wav").data
     # hp_filter = slab.Filter(data=hp_filter_data, samplerate=fs, fir="IR")

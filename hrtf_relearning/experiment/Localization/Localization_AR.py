@@ -17,12 +17,12 @@ ROOT = hr.PATH
 
 # --- settings ----
 SUBJECT_ID = "PC"
-HRIR_NAME = "PC"  # 'KU100', 'kemar', etc.
-EAR = None
+HRIR_NAME = "PC_notch"  # 'KU100', 'kemar', etc.
+EAR = 'left'
 HP = 'DT990'
 STIM = 'noise'  # 'noise' or 'uso'
-AZ_RANGE = (-35, 35)
-SECTOR_SIZE = (14, 14)
+AZ_RANGE = (-35, 0)
+SECTOR_SIZE = (7, 14)
 MIRROR = False # set TRUE to mirror HRIRs left-right
 
 # --- load HRIR and Subject

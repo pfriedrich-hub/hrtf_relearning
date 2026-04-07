@@ -12,28 +12,29 @@ slab.set_default_samplerate(fs)
 from hrtf_relearning import PATH as root
 import copy
 
-subject_id='kemar_pir'
+subject_id='PC'
 reference_id = 'ref_03.04'
 hp_id = 'MYSPHERE'  # headphone model
 n_rec=3  # how often to re-place the headphones for hp calibration
 
 def main():
     # --- record or load HRIR
-    hrir = record_hrir(subject_id=subject_id, reference_id=reference_id, n_directions=1, overwrite=False,
+    hrir = record_hrir(subject_id=subject_id, reference_id=reference_id, n_directions=3, overwrite=False,
                        align_interaural=False, expand_az=False, show=True)  # todo check low freq extrapol (increase target range)
 
     # --- put on headphones and calibrate
-    hp_filter = calibrate_headphones(subject_id=subject_id, hp_id=hp_id, n_rec=n_rec, show=True, save_freefield=False)
+    hp_filter = calibrate_headphones(subject_id=subject_id, hp_id='MYSPHERE', n_rec=n_rec, show=True, save_freefield=False)
+    hp_filter = calibrate_headphones(subject_id=subject_id, hp_id='DT990', n_rec=n_rec, show=True, save_freefield=False)
 
     # or load hp filter from disk
     # hp_filter = slab.Filter(data=slab.Sound(
     # root / "data" / "hrtf" / "rec" / subject_id / f"{hp_id}_equalization.wav").data,
     # samplerate=fs, fir="IR")
 
-    # --- run behavioral test or localization test without removing headphones
+    # --- run behavioral test or localization test without removing headphones, but removing mics
     behavioral_test(hrir, hp_filter)
 
-    # ---- run acoustic test
+    # ---- run acoustic test, keeping mics in place but removing headphones
     acoustic_test(hrir, hp_filter)
 
 
@@ -42,7 +43,7 @@ def acoustic_test(hrir, hp_filter):
                               from_frequency=200, to_frequency=18000)
     signal = signal.ramp(when="both", duration=0.01)
 
-    src_idx = hrir.cone_sources(0)
+    src_idx = hrir.cone_sources(0)[::3]
     src_idx.sort()
 
     # --- play and record from headphones
@@ -96,6 +97,7 @@ def acoustic_test(hrir, hp_filter):
     plt.savefig(save_dir / f'hrir_test_{hp_id}.svg')
 
 def behavioral_test(hrir, hp_filter):
+    # todo run localization with loudspeakers and virtual sources along the vertical midline
     """
     # ----- PARTICIPANT TESTING ----- #
     Use open HP to test if participants can tell the difference between loudspeakers and headphones

@@ -10,6 +10,7 @@ ROOT = Path(hrtf_relearning.__file__).resolve().parent
 wav_path = ROOT / 'data' / 'hrtf' / 'binsim'
 sofa_path = ROOT / 'data' / 'hrtf' / 'sofa'
 sound_path = ROOT / 'data' / 'sounds'
+rec_path = ROOT / 'data' / 'hrtf' / 'rec'
 
 def resample_sounds(target_samplerate, target_directory):
     logging.info('Resampling sound files.')
@@ -298,7 +299,7 @@ def compute_lr_ir(
             freq_scale="log",
         )
 
-    return reverb.data.astype(numpy.float32)
+    return reverb.astype(numpy.float32)
 
 
 def compute_hp_ir(hrir, hp, block_size=256):
@@ -307,13 +308,15 @@ def compute_hp_ir(hrir, hp, block_size=256):
     """
     fname = f"{hp}_equalization.wav"
     hp = pyfar.io.read_audio(
-        wav_path / hrir.name / 'sounds' / fname
+        rec_path / hrir.name / fname
     )
 
     n_samp_out = int(
         (int(hrir.samplerate * 0.02) // int(block_size))
         * int(block_size)
     )
+    if n_samp_out == 0:
+        n_samp_out = block_size  # todo
 
     hp = pyfar.dsp.time_window(
         hp,

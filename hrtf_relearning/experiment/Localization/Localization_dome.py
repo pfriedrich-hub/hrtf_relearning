@@ -6,13 +6,12 @@ import numpy
 import datetime
 from matplotlib import pyplot as plt
 from pathlib import Path
-from analysis.plotting.localization_plot import localization_accuracy
 
 # --- Config ---
 fs = 48828
 slab.set_default_samplerate(fs)
 
-subject_id = 'PC'
+subject_id = 'test' #todo load subject
 condition = 'Free Ears'
 data_dir = Path.cwd() / 'data' / 'control' / subject_id / condition
 repetitions = 3
@@ -128,6 +127,7 @@ def localization_test(subject_id, data_dir, condition, repetitions):
 
 
 if __name__ == '__main__':
+    # todo plot and save
     sequence, file_name = localization_test(subject_id, data_dir, condition, repetitions)
 
     fig, axis = plt.subplots()

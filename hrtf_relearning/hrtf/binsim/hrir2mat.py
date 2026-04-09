@@ -308,7 +308,7 @@ def compute_hp_ir(hrir, hp, block_size=256):
     """
     fname = f"{hp}_equalization.wav"
     hp = pyfar.io.read_audio(
-        rec_path / hrir.name / fname
+        rec_path / hrir.name[:2] / fname  # todo
     )
 
     n_samp_out = int(

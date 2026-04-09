@@ -17,10 +17,9 @@ from hrtf_relearning.hrtf.binsim.hrtf2binsim import *
 matplotlib.rcParams['figure.raise_window'] = False
 logging.getLogger().setLevel('INFO')
 
-
 # -------------------- Config --------------------
-SUBJECT_ID = "SK"
-HRIR_NAME = "SK_notch"  # 'KU100', 'kemar', etc.
+SUBJECT_ID = "PC"
+HRIR_NAME = "PC_notch"  # 'KU100', 'kemar', etc.
 EAR = 'left'
 HP = 'DT990'
 STIM = 'noise'  # 'noise' or 'uso'

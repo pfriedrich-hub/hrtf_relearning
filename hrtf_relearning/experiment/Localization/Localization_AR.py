@@ -16,13 +16,13 @@ logging.getLogger().setLevel('INFO')
 ROOT = hr.PATH
 
 # --- settings ----
-SUBJECT_ID = "PC"
-HRIR_NAME = "PC_notch"  # 'KU100', 'kemar', etc.
-EAR = 'left'
-HP = 'DT990'
+SUBJECT_ID = "AS"
+HRIR_NAME = "AS"  # 'KU100', 'kemar', etc.
+EAR = None
+HP = 'MYSPHERE'
 STIM = 'noise'  # 'noise' or 'uso'
-AZ_RANGE = (-35, 0)
-SECTOR_SIZE = (7, 14)
+AZ_RANGE = (37.5, 37.5)
+SECTOR_SIZE = (14, 14)
 MIRROR = False # set TRUE to mirror HRIRs left-right
 
 # --- load HRIR and Subject
@@ -39,14 +39,14 @@ class Localization:
     def __init__(self, subject, hrir):
         # make trial sequence and write to subject-
 
-        self.settings = {'kind': 'sectors',
-                         'azimuth_range': AZ_RANGE, 'elevation_range': (-35, 35),
-                         'sector_size': SECTOR_SIZE,
-                         'targets_per_sector': 3, 'replace': False, 'min_distance': 30,
-                         'gain': .2}
+        # self.settings = {'kind': 'sectors',
+        #                  'azimuth_range': AZ_RANGE, 'elevation_range': (-35, 35),
+        #                  'sector_size': SECTOR_SIZE,
+        #                  'targets_per_sector': 3, 'replace': False, 'min_distance': 30,
+        #                  'gain': .2}
         # alternative setting: play 3 times from each source in the hrir (works well for dome recorded hrirs)
-        # self.settings = {'kind': 'standard', 'azimuth_range': (-60, 60), 'elevation_range': (-40, 40),
-        #                  'targets_per_speaker': 3, 'min_distance': 10, 'gain': .2}
+        self.settings = {'kind': 'standard', 'azimuth_range': (-1, 1), 'elevation_range': (-30, 30),
+                         'targets_per_speaker': 3, 'min_distance': 10, 'gain': .2}
         self.subject = subject
         self.filename = subject.id + '_' + date + '_' + hrir.name
         # metadata

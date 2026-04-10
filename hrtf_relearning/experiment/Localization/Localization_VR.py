@@ -16,8 +16,8 @@ logging.getLogger().setLevel('INFO')
 ROOT = hr.PATH
 
 # --- settings ----
-SUBJECT_ID = "SK"
-HRIR_NAME = "SK"  # 'KU100', 'kemar', etc.
+SUBJECT_ID = "AS"
+HRIR_NAME = "AS"  # 'KU100', 'kemar', etc.
 EAR = None
 HP = 'DT990'
 STIM = 'noise'  # 'noise' or 'uso'

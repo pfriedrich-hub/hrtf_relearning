@@ -35,15 +35,18 @@ from hrtf_relearning.experiment.analysis.localization.localization_analysis impo
 )
 
 # --- session defaults (override via main() arguments) ---
-SUBJECT_ID   = 'PC'
-HP_ID        = 'MYSPHERE'
-REFERENCE_ID = 'ref_03.04'
-N_DIRECTIONS = 3
-N_RECORDINGS = 10
-FS           = 48828
-HP_FREQ      = 120
+subject_id   = 'AS_test'
+hp_id        = 'MYSPHERE'
+reference_id = 'ref_03.04'
+n_directions = 1
+n_recordings = 10
+fs           = 48828
+hp_freq      = 120
+n_rec_hp     = 3
+hrir_settings= None
+show = True
 
-slab.set_default_samplerate(FS)
+slab.set_default_samplerate(fs)
 freefield.set_logger('info')
 
 
@@ -51,16 +54,8 @@ freefield.set_logger('info')
 # Main pipeline
 # ---------------------------------------------------------------------
 
-def main(
-    subject_id   = SUBJECT_ID,
-    reference_id = REFERENCE_ID,
-    hp_id        = HP_ID,
-    hrir_settings = None,
-    n_directions  = N_DIRECTIONS,
-    n_recordings  = N_RECORDINGS,
-    n_rec_hp      = 3,
-    show          = True,
-):
+def main(subject_id, reference_id, hp_id, hrir_settings,
+         n_directions, n_recordings, n_rec_hp=3, show=True):
     """
     Full first-session pipeline.
 
@@ -106,9 +101,10 @@ def main(
         reference_id = reference_id,
         n_directions = n_directions,
         n_recordings = n_recordings,
-        fs           = FS,
-        hp_freq      = HP_FREQ,
+        fs           = fs,
+        hp_freq      = hp_freq,
         show         = show,
+        overwrite = False ,
     )
 
     # ------------------------------------------------------------------
@@ -285,5 +281,5 @@ def compare_localization(dome_seq, vr_seq, subject_id, filepath=None):
     plt.show()
 
 
-if __name__ == '__main__':
-    main()
+# if __name__ == '__main__':
+#     main()

@@ -78,7 +78,8 @@ def record_hrir(
     # -----------------------------------------------------------------
     # 1) Subject recordings
     # -----------------------------------------------------------------
-    if overwrite or not subj_dir.exists():
+    npz_file = subj_dir / "recordings.npz"
+    if overwrite or not npz_file.exists():
         logging.info("Recording subject ear pressure")
         subj_dir.mkdir(parents=True, exist_ok=True)
 
@@ -90,10 +91,10 @@ def record_hrir(
             fs=fs,
             equalize=equalize_dome,
             key=True)
-        subject_rec.to_wav(subj_dir, overwrite=overwrite)
+        subject_rec.to_npz(subj_dir, overwrite=overwrite)
     else:
         logging.info("Loading subject recordings from disk")
-        subject_rec = Recordings.from_wav(subj_dir)
+        subject_rec = Recordings.load(subj_dir)
 
     # -----------------------------------------------------------------
     # 2) Reference recordings
@@ -110,11 +111,11 @@ def record_hrir(
             fs=fs,
             equalize=equalize_dome,
             key=False)
-        reference_rec.to_wav(ref_dir, overwrite=overwrite)
+        reference_rec.to_npz(ref_dir, overwrite=overwrite)
     else:
     """
     logging.info("Loading reference recordings from disk")
-    reference_rec = Recordings.from_wav(ref_dir)
+    reference_rec = Recordings.load(ref_dir)
 
     # -----------------------------------------------------------------
     # 3) Deconvolution: sweeps -> IRs

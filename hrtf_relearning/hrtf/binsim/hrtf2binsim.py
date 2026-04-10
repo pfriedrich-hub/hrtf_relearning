@@ -170,6 +170,9 @@ def hrtf2binsim(hrir_settings, overwrite: bool = True):
     LR / HP filters and settings are updated on every call.
     """
     sofa_name = hrir_settings.get("name", None)
+    # subject_id is the base name before any modifier suffix (e.g. 'JP' from 'JP_notch_left')
+    # so that JP, JP_left, JP_notch, JP_notch_left all share the same hp filter
+    subject_id = hrir_settings.get("subject_id", sofa_name.split("_")[0])
     ear = hrir_settings.get("ear", None)
     mirror = hrir_settings.get("mirror", False)
     reverb = hrir_settings.get("reverb", True)
@@ -228,7 +231,7 @@ def hrtf2binsim(hrir_settings, overwrite: bool = True):
     else:
         lr_ir = None
     if hp_filter:
-        hp_ir = compute_hp_ir(hrir, hp=hp, block_size=block_size)
+        hp_ir = compute_hp_ir(hrir, hp=hp, subject_id=subject_id, block_size=block_size)
     else:
         hp_ir = None
 

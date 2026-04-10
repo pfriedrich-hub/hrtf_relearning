@@ -6,6 +6,7 @@ import logging
 import pyfar
 from pathlib import Path
 import hrtf_relearning
+from hrtf_relearning.hrtf.record.calibration.calibrate_headphones import load_hp_filter
 ROOT = Path(hrtf_relearning.__file__).resolve().parent
 wav_path = ROOT / 'data' / 'hrtf' / 'binsim'
 sofa_path = ROOT / 'data' / 'hrtf' / 'sofa'
@@ -302,31 +303,40 @@ def compute_lr_ir(
     return reverb.astype(numpy.float32)
 
 
-def compute_hp_ir(hrir, hp, block_size=256):
+def compute_hp_ir(hrir, hp, subject_id, block_size=256):
     """
-    Load and crop headphone filter, return IR array [nSamples, 2]
+    Load and crop headphone filter, return IR array [nSamples, 2].
+
+    Parameters
+    ----------
+    hrir : slab.HRTF
+        HRIR object (used for samplerate and block_size).
+    hp : str
+        Headphone model ID (e.g. 'MYSPHERE', 'DT990').
+    subject_id : str
+        Subject identifier.  The filter is loaded from
+        ``rec/{subject_id}/{hp}_equalization.npz`` (wav fallback supported).
+    block_size : int
+        Output length is rounded down to a multiple of this.
     """
-    fname = f"{hp}_equalization.wav"
-    hp = pyfar.io.read_audio(
-        rec_path / hrir.name[:2] / fname  # todo
-    )
+    hp_sig = load_hp_filter(rec_path / subject_id / f"{hp}_equalization.npz")
 
     n_samp_out = int(
         (int(hrir.samplerate * 0.02) // int(block_size))
         * int(block_size)
     )
     if n_samp_out == 0:
-        n_samp_out = block_size  # todo
+        n_samp_out = block_size
 
-    hp = pyfar.dsp.time_window(
-        hp,
+    hp_sig = pyfar.dsp.time_window(
+        hp_sig,
         [0, n_samp_out - 1],
         shape="right",
         window='boxcar',
         crop='window'
     )
 
-    return hp.time.astype(numpy.float32).T
+    return hp_sig.time.astype(numpy.float32).T
 
 # ---- wav writers ------ #
 

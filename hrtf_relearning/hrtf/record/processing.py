@@ -28,8 +28,9 @@ import slab
 # =====================================================================
 def compute_ir(
     recordings: Recordings,
-    onset_threshold_db: float = 15.0,
+    onset_threshold_db: float = 10.0,
     inversion_range_hz: tuple[float, float] | None = None,
+    align_interaural: bool = False,
 ) -> "ImpulseResponses":
     """
     Deconvolve sweep recordings into impulse responses.
@@ -72,7 +73,8 @@ def compute_ir(
     irs = ImpulseResponses(data=ir_dict, params=params)
 
     # --- temporal alignment ---
-    irs = time_align_irs(irs, center_key='23_0.0_0.0', desired_onset_s=.001)
+    irs = time_align_irs(irs, center_key='23_0.0_0.0', desired_onset_s=.001, onset_threshold_db=onset_threshold_db,
+                         align_itd=align_interaural, align_ild=align_interaural)
     return irs
 
 def time_align_irs(
@@ -82,6 +84,11 @@ def time_align_irs(
     onset_threshold_db: float = 15.0,
     desired_onset_s: float = 0.001,
     onset_mode: str = "earliest",   # "earliest" or "sum"
+    # NEW: optional frontal-only modifications
+    align_itd: bool = False,   # NEW
+    align_ild: bool = False,   # NEW
+    frontal_az_deg: float = 0.0,          # NEW
+    frontal_tol_deg: float = 1e-6,        # NEW
 ):
     """
     Global time anchoring for a set of IRs:
@@ -89,8 +96,8 @@ def time_align_irs(
     - find onset on that reference
     - shift ALL IRs by the same amount so onset lands at desired_onset_s
 
-    ITD-safe: does not alter interaural timing because the same shift is
-    applied to both ears and all positions.
+    Optional:
+    - For frontal sources (az==0 across elevations): remove ITD and/or ILD.
     """
 
     fs = int(irs.params["fs"])
@@ -103,7 +110,7 @@ def time_align_irs(
         ref_key = center_key
     else:
         if center_key is not None:
-            logging.warning("Center key '%s' not found; using '%s' instead.", center_key, keys[4])
+            logging.warning("Center key '%s' not found; using '%s' instead.", center_key, keys[0])  # CHANGED (safer)
         ref_key = keys[0]
 
     ref_sig = irs.data[ref_key]
@@ -112,11 +119,9 @@ def time_align_irs(
 
     # --- compute onset for reference direction ---
     if onset_mode == "earliest":
-        # onset per ear; anchor to earliest ear to avoid ITD distortion
         on = pyfar.dsp.find_impulse_response_start(ref_sig, threshold=onset_threshold_db)
         onset_samples = int(numpy.min(on))
     elif onset_mode == "sum":
-        # onset on mono sum of both ears (often robust)
         mono = pyfar.Signal(ref_sig.time[0] + ref_sig.time[1], fs)
         on = pyfar.dsp.find_impulse_response_start(mono, threshold=onset_threshold_db)
         onset_samples = int(on)
@@ -131,6 +136,76 @@ def time_align_irs(
     for k in keys:
         out.data[k] = pyfar.dsp.time_shift(out.data[k], shift_s, unit="s")
 
+    # ------------------------------------------------------------------
+    # NEW: helper to detect frontal keys (az==0 across elevations)
+    # ------------------------------------------------------------------
+    def _is_frontal_key(k: str) -> bool:  # NEW
+        try:
+            _spk, az_s, _el_s = k.split("_")
+            az = float(az_s)
+        except Exception:
+            return False
+        # treat 0 and 360 as equivalent; you said frontal means az=0
+        az_wrapped = float(numpy.mod(az, 360.0))
+        return (abs(az_wrapped - frontal_az_deg) <= frontal_tol_deg) or (abs(az_wrapped - 360.0) <= frontal_tol_deg)
+
+    # ------------------------------------------------------------------
+    # NEW: frontal-only ITD removal (shift later ear to match earlier onset)
+    # ------------------------------------------------------------------
+    if align_itd:  # NEW
+        for k in keys:
+            if not _is_frontal_key(k):
+                continue
+            sig = out.data[k]
+            on_lr = pyfar.dsp.find_impulse_response_start(sig, threshold=onset_threshold_db)
+            onL, onR = int(on_lr[0]), int(on_lr[1])
+
+            delta = onR - onL  # + => R later
+            if delta == 0:
+                continue
+
+            time_data = sig.time.copy()  # (2, n_samples)
+            if delta > 0:
+                # R later -> shift R earlier
+                r = pyfar.Signal(time_data[1:2, :], fs)
+                r2 = pyfar.dsp.time_shift(r, -delta, unit="samples")
+                time_data[1, :] = r2.time[0]
+            else:
+                # L later -> shift L earlier
+                l = pyfar.Signal(time_data[0:1, :], fs)
+                l2 = pyfar.dsp.time_shift(l, delta, unit="samples")  # delta negative => earlier
+                time_data[0, :] = l2.time[0]
+
+            out.data[k] = pyfar.Signal(time_data, fs)
+
+    # ------------------------------------------------------------------
+    # NEW: frontal-only ILD removal (broadband gain to equalize levels)
+    #      Uses per-ear RMS over the full IR; preserves average power.
+    # ------------------------------------------------------------------
+    if align_ild:  # NEW
+        eps = 1e-12  # NEW
+        for k in keys:
+            if not _is_frontal_key(k):
+                continue
+            sig = out.data[k]
+            x = sig.time  # (2, n_samples)
+
+            # RMS per ear (broadband level)
+            rmsL = float(numpy.sqrt(numpy.mean(x[0] ** 2)))
+            rmsR = float(numpy.sqrt(numpy.mean(x[1] ** 2)))
+
+            # target preserves average power across ears
+            target = float(numpy.sqrt((rmsL**2 + rmsR**2) / 2.0))
+
+            gL = target / max(rmsL, eps)
+            gR = target / max(rmsR, eps)
+
+            x2 = x.copy()
+            x2[0] *= gL
+            x2[1] *= gR
+
+            out.data[k] = pyfar.Signal(x2, fs)
+
     out.params.setdefault("time_alignment", {})
     out.params["time_alignment"].update({
         "method": "global_reference_onset",
@@ -140,9 +215,15 @@ def time_align_irs(
         "desired_onset_s": float(desired_onset_s),
         "reference_onset_samples": int(onset_samples),
         "applied_shift_s": float(shift_s),
+        # NEW: provenance for optional steps
+        "zero_itd_for_frontal": bool(align_itd),   # NEW
+        "zero_ild_for_frontal": bool(align_ild),   # NEW
+        "frontal_az_deg": float(frontal_az_deg),              # NEW
+        "frontal_tol_deg": float(frontal_tol_deg),            # NEW
         "date": datetime.now().isoformat(),
     })
     return out
+
 
 def average_recordings(recordings: Recordings):
     """
@@ -238,7 +319,7 @@ def equalize(
     reference: "ImpulseResponses",
     n_samples_out: int,
     inversion_range_hz,
-    onset_threshold_db: float = 15.0,
+    onset_threshold_db: float = 20.0,
 ) -> "ImpulseResponses":
     """
     Loudspeaker-wise equalization using reference IRs.
@@ -272,24 +353,25 @@ def equalize(
         H_aligned = pyfar.dsp.time_shift(
             H_eq, -numpy.min(onsets) / H_eq.sampling_rate + .001,
             unit='s')
-
         # window
         onset = pyfar.dsp.find_impulse_response_start(H_aligned, threshold=onset_threshold_db)
         onset_min = numpy.min(onset) / H_aligned.sampling_rate  # onset in seconds
+        # times = (onset_min - .00025 if (onset_min - .00025) > 0 else 0,  # start of fade-in
+        #          onset_min,  # end if fade-in
+        #          onset_min + .0048,  # start of fade_out
+        #          onset_min + .0058)  # end of_fade_out
         times = (onset_min - .00025,  # start of fade-in
                  onset_min,  # end if fade-in
-                 onset_min + .0048,  # start of fade_out
-                 onset_min + .0058)  # end of_fade_out
+                 onset_min + .0015,  # start of fade_out
+                 onset_min + .0025)  # end of_fade_out
         H_windowed, window = pyfar.dsp.time_window(
-            H_aligned, times, 'hann', unit='s', crop='end', return_window=True)
-
-        # low freq extrapolation
-        # H_extrapol =
+            H_aligned, times, 'hann', unit='s', crop='none', return_window=True)
+        # print('win')
 
         # crop
-        times = [0, 10, 246, n_samples_out-1]
+        times = [0, 10, n_samples_out-10, n_samples_out-1]
         H_final = pyfar.dsp.time_window(
-            H_windowed, times, 'hann', crop='end')
+            H_windowed, times, 'boxcar', crop='end')
 
         out[key] = H_final
 
@@ -438,7 +520,7 @@ class ImpulseResponses(SpeakerGridBase):
     # plotting
     # =====================================================================
 
-    def waterfall(self,azimuth=0,linesep=20,xscale="log",axis=None):
+    def waterfall(self, azimuth=0, linesep=20, xscale="log", axis=None):
         """
         Waterfall plot of left + right ear spectra from in-ear impulse responses.
         Elevations determine vertical offset (one curve per elevation).
@@ -548,7 +630,7 @@ class ImpulseResponses(SpeakerGridBase):
         # ------------------------------------------------------------
         # dB scale bar
         # ------------------------------------------------------------
-        scale_x = xlim[0] + 300
+        scale_x = xlim[0] + 1e3
         scale_y0 = vlines[-1] + 40
         scale_y1 = scale_y0 + linesep
 
@@ -681,18 +763,6 @@ def _pyfar_to_irs(template: ImpulseResponses, keys, time_data, fs):
         out.data[key] = pyfar.Signal(td, fs)
     return out
 
-
-# def _spherical_head_for(coords, n_samples, fs, head_radius=None):
-#     from hrtf_relearning.hrtf.processing.spherical_head import spherical_head
-#     return spherical_head(
-#         coords,
-#         n_samples=n_samples,
-#         sampling_rate=fs,
-#         head=None if head_radius is None else head_radius,
-#     )
-
-
-
 def expand_azimuths_with_binaural_cues(
     hrir,
     az_range: tuple[float, float] = (-50, 50),
@@ -702,114 +772,113 @@ def expand_azimuths_with_binaural_cues(
     probe_az: float = 45.0,
 ):
     """
-     Extend vertical-arc HRIRs across azimuths and impose binaural cues.
+    Extend frontal vertical-arc HRIRs across azimuth and impose binaural cues.
 
-     This combines three processing steps:
-       1) **Azimuth expansion** – Duplicates all IRs near `center_az` across
-          a grid within `az_range`, spaced by the mean elevation step.
-       2) **Full-band ILD shaping** – Applies spherical-head ILDs to all
-          off-midline sources while preserving per-frequency power and phase.
-       3) **ITD alignment** – Shifts the right-ear IR so measured ITDs match
-          those predicted by the spherical-head model.
+    Processing steps
+    ----------------
+    1) Duplicate the measured frontal vertical arc across an azimuth grid.
+    2) Apply spherical-head spectral head shadow as a *relative* magnitude
+       correction with respect to the frontal direction at the same elevation.
+       This preserves the recorded left/right spectral detail while avoiding
+       a level discontinuity between frontal and off-frontal directions.
+    3) Match spherical-head ITDs by time-shifting the right ear.
 
-     If `show=True`, plots one example (closest to `probe_az`) using
-     `pyfar.plot.time_freq` to visualize ITD and ILD.
+    Parameters
+    ----------
+    hrir : ImpulseResponses
+        Binaural input HRIRs on a frontal vertical arc.
+    az_range : (float, float)
+        Azimuth range in degrees for expansion, e.g. (-50, 50).
+    head_radius : float or None
+        Sphere radius in meters. If None, the spherical-head default is used.
+    onset_threshold_db : float
+        Threshold for pyfar onset detection.
+    show : bool
+        If True, show a diagnostic time/frequency plot at the azimuth nearest
+        to `probe_az`.
+    probe_az : float
+        Azimuth used for the optional diagnostic plot.
 
-     Parameters
-     ----------
-     irs : ImpulseResponses
-         Binaural input (2 ch) in pyfar spherical coordinates
-         (`domain="sph"`, `convention="top_elev"`).
-     az_range : (float, float)
-         Azimuth range (deg) for duplication, e.g. (-35, 35).
-     head_radius : float or None
-         Sphere radius in meters; default uses model internal value.
-     center_az : float
-         Midline azimuth (deg), typically 0.
-     show : bool
-         Plot diagnostic time/freq view at `probe_az`.
+    Returns
+    -------
+    ImpulseResponses
+        Expanded HRIR set with relative spherical-head magnitude shaping and
+        model-based ITD alignment.
+    """
 
-     Returns
-     -------
-     ImpulseResponses
-         New object with expanded azimuths, spherical-head ILDs,
-         and ITD-aligned IRs.
-
-     Notes
-     -----
-     ILDs are applied per frequency bin via R/L magnitude ratios from the
-     spherical-head model; ITDs are adjusted by time-shifting the right ear.
-     """
-
-    # ---------------------------------------------------------------------
-    # STEP 2: AZIMUTH EXPANSION
-    # ---------------------------------------------------------------------
-    # We start from a vertical arc at center_az (e.g., 0°). We’ll duplicate
-    # those IRs across an azimuth grid covering az_range. The azimuth grid
-    # step equals the mean *elevation* step in your existing arc, so the
-    # az grid density matches your vertical sampling density.
-    # New entries are deep-copied so later edits won’t affect originals.
-    # ---------------------------------------------------------------------
-    sources0 = hrir.get_sources()  # shape (n_pos, 3): [az, el, r]
+    # ------------------------------------------------------------------
+    # STEP 1: AZIMUTH EXPANSION
+    # ------------------------------------------------------------------
+    sources0 = hrir.get_sources()  # [az, el, r]
     elevations = numpy.unique(sources0[:, 1])
+
     if len(elevations) > 1:
         vertical_res = float(numpy.mean(numpy.diff(numpy.sort(elevations))))
     else:
-        # Fallback (single elevation present): create a single az step
         vertical_res = az_range[1] - az_range[0]
 
-    # --- build azimuth grid based on vertical spacing ---
     azimuths = numpy.arange(az_range[0], az_range[1] + vertical_res / 2, vertical_res)
-    # wrap to [0, 360) for pyfar convention (0°=front, 90°=left)
     azimuths_wrapped = _wrap_az_deg_ccw(azimuths)
 
-    # --- find midline IRs at az = 0 (wrapped 0°) ---
-    def _key_az_wrapped(k: str) -> float:
-        # keys look like "spk_az_el"
-        return float(_wrap_az_deg_ccw(float(k.split("_")[1])))
-
-    # --- duplicate midline IRs across azimuth grid, inserting wrapped az into keys ---
     out = copy.deepcopy(hrir)
     new_entries = {}
 
     for key in hrir.data.keys():
-        spk, _az_str, el_str = key.split("_")  # reuse elevation
+        spk, _az_str, el_str = key.split("_")
         for az_w in azimuths_wrapped:
-            az_s = f"{float(az_w):.1f}"
-            new_key = f"{spk}_{az_s}_{el_str}"
-            if new_key not in out.data and new_key not in new_entries:
-                new_entries[new_key] = copy.deepcopy(out.data[key])  # independent copy
+            az_canonical = float(numpy.mod(az_w, 360.0))
 
-    # --- update and sort dictionary for stable downstream behavior ---
+            # keep the original frontal responses; do not duplicate 0/360
+            if (
+                numpy.isclose(az_canonical, 0.0, atol=1e-6)
+                or numpy.isclose(az_canonical, 360.0, atol=1e-6)
+            ):
+                continue
+
+            az_s = f"{az_canonical:.1f}"
+            new_key = f"{spk}_{az_s}_{el_str}"
+
+            if new_key not in out.data and new_key not in new_entries:
+                new_entries[new_key] = copy.deepcopy(out.data[key])
+
     out.data.update(new_entries)
 
     try:
         from collections import OrderedDict
+
         def _parse_key_triple(k):
             spk, az_s, el_s = k.split("_")
             return (float(az_s), float(el_s), spk)
 
         out.data = OrderedDict(sorted(out.data.items(), key=lambda kv: _parse_key_triple(kv[0])))
     except Exception:
-        pass  # sorting is optional
+        pass
 
-    # --- convert to pyfar + compute spherical-head reference ---
-    hrir, coords, keys, fs = _irs_to_pyfar(out)
-    shtf = _spherical_head_for(coords, hrir.n_samples, fs, head_radius)
+    # ------------------------------------------------------------------
+    # STEP 2: SPHERICAL-HEAD MAGNITUDE SHAPING RELATIVE TO FRONTAL
+    # ------------------------------------------------------------------
+    # Key idea:
+    # The measured HRIRs are frontal recordings across elevation.
+    # Therefore, for a synthesized off-frontal direction, we do not want to
+    # impose the *absolute* spherical-head magnitude, because that would create
+    # an overall gain discontinuity between frontal and lateral directions.
+    #
+    # Instead, for each ear separately, we apply only the spherical-head
+    # directional change relative to the frontal direction at the same elevation:
+    #
+    #   cL(az, el, f) = |H_head_L(az, el, f)| / |H_head_L(0, el, f)|
+    #   cR(az, el, f) = |H_head_R(az, el, f)| / |H_head_R(0, el, f)|
+    #
+    #   |H_new_L| = |H_meas_L| * cL
+    #   |H_new_R| = |H_meas_R| * cR
+    #
+    # This preserves the recorded left/right spectral detail and keeps the
+    # frontal response as the baseline.
+    # ------------------------------------------------------------------
+    hrir_pf, coords, keys, fs = _irs_to_pyfar(out)
+    shtf = _spherical_head_for(coords, hrir_pf.n_samples, fs, head_radius)
 
-    # ---------------------------------------------------------------------
-    # STEP 3: FULL-BAND ILD SHAPING (OFF-MIDLINE ONLY)
-    # ---------------------------------------------------------------------
-    # For each synthesized direction, we impose the spherical-head ILD per
-    # frequency bin. We preserve the measured *power average* per bin:
-    #   r(f)  = H_R_head / H_L_head    (magnitude ratio)
-    #   A(f)  = sqrt((|H_L|^2 + |H_R|^2) / 2)
-    #   mL'   = A * sqrt(2/(1+r^2))
-    #   mR'   = r * mL'
-    # Phases are preserved (ILD affects magnitudes only).
-    # Midline (≈ center_az) directions are left untouched.
-    # ---------------------------------------------------------------------
-    H_meas = hrir.freq  # complex spectrum, shape (n_pos, 2, n_bins)
+    H_meas = hrir_pf.freq
     mag_meas = numpy.abs(H_meas)
     phase_meas = numpy.angle(H_meas)
     mag_head = numpy.abs(shtf.freq)
@@ -820,98 +889,317 @@ def expand_azimuths_with_binaural_cues(
 
     sources = out.get_sources()
     az_all = sources[:, 0]
-    is_midline = sources[:, 0] == 0
+    el_all = sources[:, 1]
 
-    # Copy magnitudes; we will overwrite off-midline entries
     mag_new = mag_meas.copy()
+    eps = 1e-12
 
     for i in range(n_pos):
-        if is_midline[i]:
-            # Keep measured magnitudes on the midline as-is
+        az = float(az_all[i])
+        el = float(el_all[i])
+
+        # Keep frontal directions unchanged
+        if numpy.isclose(numpy.mod(az, 360.0), 0.0, atol=1e-6):
             continue
 
-        # Head-model ILD ratio r(f) = R/L
-        mL_h = mag_head[i, 0, :]
-        mR_h = mag_head[i, 1, :]
-        r = mR_h / numpy.maximum(mL_h, 1e-12)  # protect division
+        # Find frontal reference at same elevation
+        frontal_candidates = numpy.where(
+            numpy.isclose(numpy.mod(az_all, 360.0), 0.0, atol=1e-6)
+            & numpy.isclose(el_all, el, atol=1e-6)
+        )[0]
 
-        # Measured magnitudes and power average
-        mL = mag_meas[i, 0, :]
-        mR = mag_meas[i, 1, :]
-        A = numpy.sqrt((mL**2 + mR**2) / 2.0)
+        if len(frontal_candidates) == 0:
+            raise ValueError(
+                f"No frontal reference found for elevation {el:.6f} deg."
+            )
 
-        # Apply ILD while preserving A and phases
-        mL_new = A * numpy.sqrt(2.0 / (1.0 + r**2))
-        mR_new = r * mL_new
+        i0 = int(frontal_candidates[0])
 
-        mag_new[i, 0, :] = mL_new
-        mag_new[i, 1, :] = mR_new
+        # Relative spherical-head correction w.r.t. frontal at same elevation
+        cL = mag_head[i, 0, :] / numpy.maximum(mag_head[i0, 0, :], eps)
+        cR = mag_head[i, 1, :] / numpy.maximum(mag_head[i0, 1, :], eps)
 
-    # Recombine with original phases
+        # Apply ear-by-ear, preserving recorded monaural spectral detail
+        mag_new[i, 0, :] = mag_meas[i, 0, :] * cL
+        mag_new[i, 1, :] = mag_meas[i, 1, :] * cR
+
     H_new = mag_new * numpy.exp(1j * phase_meas)
-    hrir.freq = H_new  # pyfar will update time on demand
+    hrir_pf.freq = H_new
 
-    # ---------------------------------------------------------------------
-    # STEP 4: ITD ALIGNMENT (GLOBAL TIME SHIFT OF RIGHT EAR)
-    # ---------------------------------------------------------------------
-    # We want the *onset difference* (right minus left) to match the model
-    # in the *time domain*. Compute onsets for both (model & processed),
-    # then time-shift the *entire* right ear by ΔITD per direction.
-    # ---------------------------------------------------------------------
-    _ = hrir.time  # ensure time cache
+    # ------------------------------------------------------------------
+    # STEP 3: ITD ALIGNMENT
+    # ------------------------------------------------------------------
+    _ = hrir_pf.time
     _ = shtf.time
 
     on_mod = pyfar.dsp.find_impulse_response_start(shtf, threshold=onset_threshold_db)
-    on_mea = pyfar.dsp.find_impulse_response_start(hrir, threshold=onset_threshold_db)
+    on_mea = pyfar.dsp.find_impulse_response_start(hrir_pf, threshold=onset_threshold_db)
 
-    time_data = hrir.time  # shape (n_pos, 2, n_samples)
+    time_data = hrir_pf.time
     out_time = numpy.empty_like(time_data)
 
     for i in range(time_data.shape[0]):
-        # Convert sample offsets to seconds
         itd_model = (on_mod[i, 1] - on_mod[i, 0]) / fs
-        itd_meas  = (on_mea[i, 1] - on_mea[i, 0]) / fs
-        delta_itd = itd_model - itd_meas  # desired additional shift for right ear
+        itd_meas = (on_mea[i, 1] - on_mea[i, 0]) / fs
+        delta_itd = itd_model - itd_meas
 
-        # Left ear unchanged
         out_time[i, 0, :] = time_data[i, 0, :]
 
-        # Shift right ear in time using pyfar; preserves spectrum consistency
         sig_r = pyfar.Signal(time_data[i, 1:2, :], fs)
         sig_rs = pyfar.dsp.time_shift(sig_r, delta_itd, unit="s")
         out_time[i, 1, :] = sig_rs.time[0]
 
-    # ---------------------------------------------------------------------
-    # OPTIONAL: Quick diagnostic plot at ~probe_az
-    # ---------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # OPTIONAL DIAGNOSTIC PLOT
+    # ------------------------------------------------------------------
     if show:
         idx = int(numpy.argmin(numpy.abs(az_all - float(probe_az))))
         import matplotlib.pyplot as plt
-        plt.figure(figsize=(7,10))
+
+        plt.figure(figsize=(7, 10))
         ax_t, ax_f = pyfar.plot.time_freq(pyfar.Signal(out_time[idx], fs))
-        ax_t.get_lines()[0].set_label('left')
-        ax_t.get_lines()[1].set_label('right')
+        ax_t.get_lines()[0].set_label("left")
+        ax_t.get_lines()[1].set_label("right")
         ax_t.legend()
-        ax_f.get_lines()[0].set_label('left')
-        ax_f.get_lines()[1].set_label('right')
+        ax_f.get_lines()[0].set_label("left")
+        ax_f.get_lines()[1].set_label("right")
         ax_f.legend()
-        ax_t.set_title('time')
+        ax_t.set_title("time")
         ax_f.set_title("magnitude")
         plt.suptitle(f"Result @ az≈{az_all[idx]:.1f}°")
         plt.show()
 
-    # ---------------------------------------------------------------------
-    # Return as a fresh ImpulseResponses object with provenance
-    # ---------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # RETURN
+    # ------------------------------------------------------------------
     out_final = _pyfar_to_irs(out, keys, out_time, fs)
     out_final.params.setdefault("processing", {})
     out_final.params["processing"]["expand_azimuths_with_binaural_cues"] = {
         "az_range": [float(az_range[0]), float(az_range[1])],
         "head_radius": float(head_radius) if head_radius is not None else None,
         "onset_threshold_db": float(onset_threshold_db),
+        "magnitude_shaping": "relative_to_frontal_same_elevation",
         "date": datetime.now().isoformat(),
     }
     return out_final
+
+# def expand_azimuths_with_binaural_cues(
+#     hrir,
+#     az_range: tuple[float, float] = (-50, 50),
+#     head_radius: float | None = None,
+#     onset_threshold_db: float = 15.0,
+#     show: bool = False,
+#     probe_az: float = 45.0,
+# ):
+#     """
+#      Extend vertical-arc HRIRs across azimuths and impose binaural cues.
+#
+#      This combines three processing steps:
+#        1) **Azimuth expansion** – Duplicates all IRs near `center_az` across
+#           a grid within `az_range`, spaced by the mean elevation step.
+#        2) **Full-band ILD shaping** – Applies spherical-head ILDs to all
+#           off-midline sources while preserving per-frequency power and phase.
+#        3) **ITD alignment** – Shifts the right-ear IR so measured ITDs match
+#           those predicted by the spherical-head model.
+#
+#      If `show=True`, plots one example (closest to `probe_az`) using
+#      `pyfar.plot.time_freq` to visualize ITD and ILD.
+#
+#      Parameters
+#      ----------
+#      irs : ImpulseResponses
+#          Binaural input (2 ch) in pyfar spherical coordinates
+#          (`domain="sph"`, `convention="top_elev"`).
+#      az_range : (float, float)
+#          Azimuth range (deg) for duplication, e.g. (-35, 35).
+#      head_radius : float or None
+#          Sphere radius in meters; default uses model internal value.
+#      center_az : float
+#          Midline azimuth (deg), typically 0.
+#      show : bool
+#          Plot diagnostic time/freq view at `probe_az`.
+#
+#      Returns
+#      -------
+#      ImpulseResponses
+#          New object with expanded azimuths, spherical-head ILDs,
+#          and ITD-aligned IRs.
+#
+#      Notes
+#      -----
+#      ILDs are applied per frequency bin via R/L magnitude ratios from the
+#      spherical-head model; ITDs are adjusted by time-shifting the right ear.
+#      """
+#
+#     # ---------------------------------------------------------------------
+#     # STEP 2: AZIMUTH EXPANSION
+#     # ---------------------------------------------------------------------
+#     # We start from a vertical arc at center_az (e.g., 0°). We’ll duplicate
+#     # those IRs across an azimuth grid covering az_range. The azimuth grid
+#     # step equals the mean *elevation* step in your existing arc, so the
+#     # az grid density matches your vertical sampling density.
+#     # New entries are deep-copied so later edits won’t affect originals.
+#     # ---------------------------------------------------------------------
+#     sources0 = hrir.get_sources()  # shape (n_pos, 3): [az, el, r]
+#     elevations = numpy.unique(sources0[:, 1])
+#     if len(elevations) > 1:
+#         vertical_res = float(numpy.mean(numpy.diff(numpy.sort(elevations))))
+#     else:
+#         # Fallback (single elevation present): create a single az step
+#         vertical_res = az_range[1] - az_range[0]
+#
+#     # --- build azimuth grid based on vertical spacing ---
+#     azimuths = numpy.arange(az_range[0], az_range[1] + vertical_res / 2, vertical_res)
+#     # wrap to [0, 360) for pyfar convention (0°=front, 90°=left)
+#     azimuths_wrapped = _wrap_az_deg_ccw(azimuths)
+#
+#     # --- duplicate midline IRs across azimuth grid, inserting wrapped az into keys ---
+#     out = copy.deepcopy(hrir)
+#     new_entries = {}
+#
+#     for key in hrir.data.keys():
+#         spk, _az_str, el_str = key.split("_")
+#         for az_w in azimuths_wrapped:
+#             az_canonical = float(numpy.mod(az_w, 360.0))
+#             # do not duplicate the frontal source: keep the original 0° IRs, skip grid values at 0/360
+#             if numpy.isclose(az_canonical, 0.0, atol=1e-6) or numpy.isclose(az_canonical, 360.0, atol=1e-6):
+#                 continue
+#             az_s = f"{az_canonical:.1f}"
+#             new_key = f"{spk}_{az_s}_{el_str}"
+#             if new_key not in out.data and new_key not in new_entries:
+#                 new_entries[new_key] = copy.deepcopy(out.data[key])
+#     # --- update and sort dictionary for stable downstream behavior ---
+#     out.data.update(new_entries)
+#
+#     try:
+#         from collections import OrderedDict
+#         def _parse_key_triple(k):
+#             spk, az_s, el_s = k.split("_")
+#             return (float(az_s), float(el_s), spk)
+#
+#         out.data = OrderedDict(sorted(out.data.items(), key=lambda kv: _parse_key_triple(kv[0])))
+#     except Exception:
+#         pass  # sorting is optional
+#
+#     # --- convert to pyfar + compute spherical-head reference ---
+#     hrir, coords, keys, fs = _irs_to_pyfar(out)
+#     shtf = _spherical_head_for(coords, hrir.n_samples, fs, head_radius)
+#
+#     # ---------------------------------------------------------------------
+#     # STEP 3: FULL-BAND ILD SHAPING (OFF-MIDLINE ONLY)
+#     # ---------------------------------------------------------------------
+#     # For each synthesized direction, we impose the spherical-head ILD per
+#     # frequency bin. We preserve the measured *power average* per bin:
+#     #   r(f)  = H_R_head / H_L_head    (magnitude ratio)
+#     #   A(f)  = sqrt((|H_L|^2 + |H_R|^2) / 2)
+#     #   mL'   = A * sqrt(2/(1+r^2))
+#     #   mR'   = r * mL'
+#     # Phases are preserved (ILD affects magnitudes only).
+#     # Midline (≈ center_az) directions are left untouched.
+#     # ---------------------------------------------------------------------
+#     H_meas = hrir.freq  # complex spectrum, shape (n_pos, 2, n_bins)
+#     mag_meas = numpy.abs(H_meas)
+#     phase_meas = numpy.angle(H_meas)
+#     mag_head = numpy.abs(shtf.freq)
+#
+#     n_pos, n_ears, _ = mag_meas.shape
+#     if n_ears != 2:
+#         raise ValueError("Binaural data expected (2 ears).")
+#
+#     sources = out.get_sources()
+#     az_all = sources[:, 0]
+#     is_midline = sources[:, 0] == 0
+#
+#     # Copy magnitudes; we will overwrite off-midline entries
+#     mag_new = mag_meas.copy()
+#
+#     for i in range(n_pos):
+#         if is_midline[i]:
+#             # Keep measured magnitudes on the midline as-is
+#             continue
+#
+#         # Head-model ILD ratio r(f) = R/L
+#         mL_h = mag_head[i, 0, :]
+#         mR_h = mag_head[i, 1, :]
+#         r = mR_h / numpy.maximum(mL_h, 1e-12)  # protect division
+#
+#         # Measured magnitudes and power average
+#         mL = mag_meas[i, 0, :]
+#         mR = mag_meas[i, 1, :]
+#         A = numpy.sqrt((mL**2 + mR**2) / 2.0)
+#
+#         # Apply ILD while preserving A and phases
+#         mL_new = A * numpy.sqrt(2.0 / (1.0 + r**2))
+#         mR_new = r * mL_new
+#
+#         mag_new[i, 0, :] = mL_new
+#         mag_new[i, 1, :] = mR_new
+#
+#     # Recombine with original phases
+#     H_new = mag_new * numpy.exp(1j * phase_meas)
+#     hrir.freq = H_new  # pyfar will update time on demand
+#
+#     # ---------------------------------------------------------------------
+#     # STEP 4: ITD ALIGNMENT (GLOBAL TIME SHIFT OF RIGHT EAR)
+#     # ---------------------------------------------------------------------
+#     # We want the *onset difference* (right minus left) to match the model
+#     # in the *time domain*. Compute onsets for both (model & processed),
+#     # then time-shift the *entire* right ear by ΔITD per direction.
+#     # ---------------------------------------------------------------------
+#     _ = hrir.time  # ensure time cache
+#     _ = shtf.time
+#
+#     on_mod = pyfar.dsp.find_impulse_response_start(shtf, threshold=onset_threshold_db)
+#     on_mea = pyfar.dsp.find_impulse_response_start(hrir, threshold=onset_threshold_db)
+#
+#     time_data = hrir.time  # shape (n_pos, 2, n_samples)
+#     out_time = numpy.empty_like(time_data)
+#
+#     for i in range(time_data.shape[0]):
+#         # Convert sample offsets to seconds
+#         itd_model = (on_mod[i, 1] - on_mod[i, 0]) / fs
+#         itd_meas  = (on_mea[i, 1] - on_mea[i, 0]) / fs
+#         delta_itd = itd_model - itd_meas  # desired additional shift for right ear
+#
+#         # Left ear unchanged
+#         out_time[i, 0, :] = time_data[i, 0, :]
+#
+#         # Shift right ear in time using pyfar; preserves spectrum consistency
+#         sig_r = pyfar.Signal(time_data[i, 1:2, :], fs)
+#         sig_rs = pyfar.dsp.time_shift(sig_r, delta_itd, unit="s")
+#         out_time[i, 1, :] = sig_rs.time[0]
+#
+#     # ---------------------------------------------------------------------
+#     # OPTIONAL: Quick diagnostic plot at ~probe_az
+#     # ---------------------------------------------------------------------
+#     if show:
+#         idx = int(numpy.argmin(numpy.abs(az_all - float(probe_az))))
+#         import matplotlib.pyplot as plt
+#         plt.figure(figsize=(7,10))
+#         ax_t, ax_f = pyfar.plot.time_freq(pyfar.Signal(out_time[idx], fs))
+#         ax_t.get_lines()[0].set_label('left')
+#         ax_t.get_lines()[1].set_label('right')
+#         ax_t.legend()
+#         ax_f.get_lines()[0].set_label('left')
+#         ax_f.get_lines()[1].set_label('right')
+#         ax_f.legend()
+#         ax_t.set_title('time')
+#         ax_f.set_title("magnitude")
+#         plt.suptitle(f"Result @ az≈{az_all[idx]:.1f}°")
+#         plt.show()
+#
+#     # ---------------------------------------------------------------------
+#     # Return as a fresh ImpulseResponses object with provenance
+#     # ---------------------------------------------------------------------
+#     out_final = _pyfar_to_irs(out, keys, out_time, fs)
+#     out_final.params.setdefault("processing", {})
+#     out_final.params["processing"]["expand_azimuths_with_binaural_cues"] = {
+#         "az_range": [float(az_range[0]), float(az_range[1])],
+#         "head_radius": float(head_radius) if head_radius is not None else None,
+#         "onset_threshold_db": float(onset_threshold_db),
+#         "date": datetime.now().isoformat(),
+#     }
+#     return out_final
 
 def _wrap_az_deg_ccw(az):
     """Wrap azimuth(s) to [0, 360) with CCW-positive (pyfar 'sph/top_elev')."""

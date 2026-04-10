@@ -96,7 +96,9 @@ class Recordings(SpeakerGridBase):
     # -------------------- Recording ----------------------------------
 
     @classmethod
-    def record_dome(cls, id=None, n_directions=5, n_recordings=5, hp_freq=120, fs=48828, equalize=False):
+    def record_dome(cls, id=None, azimuth=(-1,1), elevation=(37.5, -37.5),
+                    n_directions=3, n_recordings=10, hp_freq=120, fs=48828,
+                    equalize=True, key=True, button=False):
 
         # excitation signal
         sig_params = dict(
@@ -115,34 +117,35 @@ class Recordings(SpeakerGridBase):
         # dome setup
         if freefield.PROCESSORS.mode != "play_birec":
             freefield.initialize("dome", "play_birec")
-        speakers = cls._select_speakers(freefield.read_speaker_table(), azimuth=0, elevation=(50, -37.5))
-        [led_speaker] = freefield.pick_speakers(23)  # get object for center speaker LED
+        speakers = cls._select_speakers(freefield.read_speaker_table(), azimuth, elevation)
+        led_bits = ['16', '8', '4']
+        # led_bits = ['16', '4']
         res = abs(speakers[0].elevation - speakers[1].elevation) / n_directions
         min_el = min(spk.elevation for spk in speakers)
         data = {}
+
         for n in range(n_directions):
-            
-            freefield.play_start_sound()
-            print('Press Button to start')
-            freefield.wait_for_button()
 
             elevation_step = n * res
-            if n_directions > 1:  # skip for reference recordings
-                freefield.write(tag='bitmask', value=led_speaker.digital_channel,
-                                processors=led_speaker.digital_proc)  # illuminate LED
-                input(f"Press Enter when head is at {0 + elevation_step}° elevation ...")
+            freefield.write(tag='bitmask', value=led_bits[n], processors='RX81')
+            if button:
+                print(f"Press Button when head is at {0 + elevation_step}° elevation ...")
+                freefield.wait_for_button()
+            if key:
+                input(f'Press Enter when head is at {0 + elevation_step}° elevation ...')
             for base_spk in speakers:
                 [spk] = copy.deepcopy(freefield.pick_speakers(base_spk.index))
                 spk.elevation -= elevation_step
                 if spk.elevation >= min_el:
-                    logging.info(f"Recording from Speaker {spk.index} at {spk.elevation:.1f}° elevation")
+                    logging.info(f"Recording from Speaker {spk.index} at {spk.azimuth:.1f}° azimuth"
+                                 f" and {spk.elevation:.1f}° elevation")
                     key = f"{spk.index}_{spk.azimuth}_{spk.elevation}"
                     recs = cls.record_speaker(spk, signal, n_recordings, fs, equalize)
                     processed = []
                     for r in recs:
                         processed.append(filt.apply(r))
                     data[key] = processed
-            freefield.write(tag='bitmask', value=0, processors=led_speaker.digital_proc)  # turn off LED
+            freefield.write(tag='bitmask', value=0, processors='RX81')  # turn off LED
 
         # store parameters
         params = dict(
@@ -176,8 +179,10 @@ class Recordings(SpeakerGridBase):
     def _select_speakers(speakers, azimuth=None, elevation=None):
         out = []
         for s in speakers:
-            if azimuth is not None and s.azimuth != azimuth:
-                continue
+            if azimuth is not None:
+                lo, hi = min(azimuth), max(azimuth)
+                if not (lo <= s.azimuth <= hi):
+                    continue
             if elevation is not None:
                 lo, hi = min(elevation), max(elevation)
                 if not (lo <= s.elevation <= hi):

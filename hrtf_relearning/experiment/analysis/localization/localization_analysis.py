@@ -267,9 +267,7 @@ def plot_localization(sequence, report_stats=['elevation', 'azimuth'], axis=None
             filepath.mkdir(parents=True, exist_ok=True)
         plt.savefig(filepath / f'{sequence.name}.png')
 
-    plt.show()
-
-def plot_elevation_response(sequence, axis=None, show=True, add_fit=True, filepath=None):
+def plot_elevation_response(sequence, axis=None, add_fit=True, filepath=None):
     """
     Plot elevation responses (y-axis) against elevation targets (x-axis),
     with grayscale indicating target azimuth (black = center, light = sides).
@@ -381,9 +379,7 @@ def plot_elevation_response(sequence, axis=None, show=True, add_fit=True, filepa
                 labels=[*axis.get_legend_handles_labels()[1], 'Az ≈ 0°', '|Az| large'],
                 loc='best')
 
-    if created_fig and show:
-        plt.tight_layout()
-        plt.show()
+    plt.tight_layout()
 
     if filepath:
         if not filepath.exists():

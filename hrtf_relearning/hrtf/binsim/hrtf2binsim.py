@@ -3,14 +3,14 @@ matplotlib.use("tkagg")
 
 import logging
 from pathlib import Path
-from typing import Optional
 
 import slab
 import hrtf_relearning
 
-from hrtf_relearning.hrtf.binsim.tf2ir import hrtf2hrir
-from hrtf_relearning.hrtf.binsim.flatten import flatten_dtf
-from hrtf_relearning.hrtf.binsim.hrir2wav import (
+from hrtf_relearning.hrtf.processing.mirror import mirror_hrtf
+from hrtf_relearning.hrtf.processing.tf2ir import hrtf2hrir
+from hrtf_relearning.hrtf.processing.flatten import flatten_dtf
+from hrtf_relearning.hrtf.binsim.hrir2mat import (
     resample_sounds,
     compute_lr_ir,
     compute_hp_ir,
@@ -59,20 +59,27 @@ def write_settings(
     # block_size = int(hrir[0].n_taps / 2)
 
     ds_filter_size = hrir[0].n_samples
-    late_filter_size = int(lr_ir.shape[0])
-    hp_filter_size = int(hp_ir.shape[0])
 
     # pybinsim requires these sizes to be multiples of blockSize
-    if late_filter_size % block_size != 0:
-        raise ValueError(
-            f"late_filterSize ({late_filter_size}) must be a multiple of blockSize ({block_size}). "
-            f"Got remainder {late_filter_size % block_size}."
-        )
-    if hp_filter_size % block_size != 0:
-        raise ValueError(
-            f"headphone_filterSize ({hp_filter_size}) must be a multiple of blockSize ({block_size}). "
-            f"Got remainder {hp_filter_size % block_size}."
-        )
+    if lr_ir is not None:
+        late_filter_size = int(lr_ir.shape[0])
+        if late_filter_size % block_size != 0:
+            raise ValueError(
+                f"late_filterSize ({late_filter_size}) must be a multiple of blockSize ({block_size}). "
+                f"Got remainder {late_filter_size % block_size}."
+            )
+    else:
+        late_filter_size = 0
+
+    if hp_ir is not None:
+        hp_filter_size = int(hp_ir.shape[0])
+        if hp_filter_size % block_size != 0:
+            raise ValueError(
+                f"headphone_filterSize ({hp_filter_size}) must be a multiple of blockSize ({block_size}). "
+                f"Got remainder {hp_filter_size % block_size}."
+            )
+    else:
+        hp_filter_size = 0
 
     logger.info(
         "Writing settings | HRTF=%s reverb=%s hp_filter=%s conv=%s storage=%s",
@@ -155,24 +162,22 @@ def write_settings(
 # Main entry point
 # ---------------------------------------------------------------------
 
-def hrtf2binsim(
-    sofa_name: str,
-    ear: Optional[str] = None,
-    *,
-    drr: float = 5.0,
-    hp: str = "MYSPHERE",
-    reverb: bool = True,
-    hp_filter: bool = True,
-    convolution: str = "cpu",
-    storage: str = "cpu",
-    overwrite: bool = True,
-):
+def hrtf2binsim(hrir_settings, overwrite: bool = True):
     """
     Convert a SOFA HRTF to a pyBinSim-compatible MAT database and write settings.
 
     DS filters are written only if the database does not exist or overwrite=True.
     LR / HP filters and settings are updated on every call.
     """
+    sofa_name = hrir_settings.get("name", None)
+    ear = hrir_settings.get("ear", None)
+    mirror = hrir_settings.get("mirror", False)
+    reverb = hrir_settings.get("reverb", True)
+    drr = hrir_settings.get("drr", 20)
+    hp_filter = hrir_settings.get("hp_filter", True)
+    hp = hrir_settings.get("hp", 'DT990')
+    convolution = hrir_settings.get("convolution", 'cuda')
+    storage = hrir_settings.get("storage", "cuda")
 
     logger.info(
         "hrtf2binsim | HRTF=%s ear=%s drr=%.1f hp_file=%s",
@@ -185,20 +190,25 @@ def hrtf2binsim(
 
     block_size = int(hrir[0].n_taps * 2)  # *2 prevents glitches
 
-    if hrir.datatype != "FIR":
+    if hrir.datatype != "FIR":  # pyBinSim only supports FIR filters, so convert if necessary
         logger.info("Converting HRTF → HRIR (FIR)")
         hrir = hrtf2hrir(hrir)
 
-    if ear:
-        logger.info("Flattening DTF at ear: %s", ear)
+    if ear:   # flatten one ear by zeroing out the DTF
+        flattened = "right" if ear == "left" else "left"
+        logger.info("Flattening DTF for %s ear", flattened)
         hrir = flatten_dtf(hrir, ear)
         hrir.name += f"_{ear}"
+
+    if mirror:  # mirror left and right by swapping channels and sources (swap spectral cues)
+        logger.info("Mirroring HRIR left ↔ right")
+        hrir = mirror_hrtf(hrir)
+        hrir.name += "_mirrored"
 
     base_dir = data_dir / "binsim" / hrir.name
     mat_path = base_dir / f"{hrir.name}_filters.mat"
 
     first_build = (not base_dir.exists()) or overwrite
-
     if first_build:
         logger.info("Resampling sound files (overwrite=%s)", overwrite)
 
@@ -213,8 +223,14 @@ def hrtf2binsim(
     # ALWAYS recompute LR + HP
     logger.info("Writing DS / LR / HP filters | DRR=%.1f HP=%s", drr, hp)
 
-    lr_ir = compute_lr_ir(hrir, drr=drr, block_size=block_size)
-    hp_ir = compute_hp_ir(hrir, hp=hp, block_size=block_size)
+    if reverb:
+        lr_ir = compute_lr_ir(hrir, drr=drr, block_size=block_size)
+    else:
+        lr_ir = None
+    if hp_filter:
+        hp_ir = compute_hp_ir(hrir, hp=hp, block_size=block_size)
+    else:
+        hp_ir = None
 
     write_filters(hrir, lr_ir, hp_ir, mat_path)
     write_filter_list(hrir)

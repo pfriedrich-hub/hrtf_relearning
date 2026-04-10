@@ -22,7 +22,7 @@ N_REPEATS = 5
 BETA = 0.1
 SHOW = False
 
-OUTPUT_FILE = ROOT / 'hrtf' / 'record' / 'calibration' / 'calibration_dome.pkl'
+OUTPUT_FILE = ROOT / 'hrtf' / 'record' / 'calibration' / 'calibration_dome_19.02.pkl'
 
 # ------------------------ SETUP ------------------------
 
@@ -36,7 +36,7 @@ def select_speakers():
     if SPEAKERS == 'full':
         speaker_idx = numpy.arange(0, 46).tolist()
     elif SPEAKERS == 'center':
-        speaker_idx = [19, 20, 21, 22, 23, 24, 25, 26, 27]
+        speaker_idx = [20, 21, 22, 23, 24, 25, 26]
     else:
         raise ValueError
 
@@ -298,6 +298,10 @@ def main():
         equalize=False,
     )
 
+    fig, axes = plt.subplots(7, 1, figsize=(16, 6))
+    for idx, (speaker, recording) in enumerate(raw_recordings.items()):
+        recording.spectrum(axis=axes[idx])
+
     # --------------------------------------------------
     # OFFLINE DESIGN
     # --------------------------------------------------
@@ -322,6 +326,10 @@ def main():
         calibration=calibration,
     )
 
+    fig, axes = plt.subplots(7, 1, figsize=(16, 6))
+    for idx, (speaker, recording) in enumerate(verified_recordings.items()):
+        recording.spectrum(axis=axes[idx])
+
     # --------------------------------------------------
     # UPDATE LEVELS (NEW, INTEGRATED)
     # --------------------------------------------------
@@ -340,6 +348,10 @@ def main():
         equalize=True,
         calibration=calibration,
     )
+
+    fig, axes = plt.subplots(7, 1, figsize=(16, 6))
+    for idx, (speaker, recording) in enumerate(verified_recordings_2.items()):
+        recording.spectrum(axis=axes[idx])
 
     if SHOW:  # inspect
         fig, axis = plt.subplots(1, 1)

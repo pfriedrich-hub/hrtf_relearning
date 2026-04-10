@@ -1,32 +1,61 @@
+from matplotlib import pyplot as plt
 import slab
+import numpy
 from pathlib import Path
-sofa_path = Path.cwd() / 'data' / 'hrtf' / 'sofa'
+from hrtf_relearning import PATH
+hrtf_dir = PATH / 'data' /'hrtf'/'sofa'
 
-hrir = slab.HRTF(sofa_path / 'KU100.sofa')
-hrir = slab.HRTF(sofa_path / 'kemar.sofa')
-hrir = slab.HRTF(sofa_path / 'single_notch.sofa')
-hrir = slab.HRTF(sofa_path / 'pf.sofa')
-hrir = slab.HRTF(sofa_path / 'pf_itd.sofa')
-
+# hrir = slab.HRTF(sofa_path / 'KU100.sofa')
+# hrir = slab.HRTF(sofa_path / 'kemar.sofa')
+# hrir = slab.HRTF(sofa_path / 'single_notch.sofa')
+# hrir = slab.HRTF(sofa_path / 'pf.sofa')
+# hrir = slab.HRTF(sofa_path / 'pf_itd.sofa')
+hrir = slab.HRTF(hrtf_dir / 'NK.sofa')
 
 
 # compute itd / ild of all filters on the horizontal plane
 src_idx = hrir.cone_sources(0, True, 'elevation', .01)
 # sound = slab.Binaural.pinknoise(samplerate=hrir.samplerate)
-sound = slab.Binaural.tone(samplerate=hrir.samplerate, frequency=500, duration=60.0)
-_s = sound.itd(30)
-sound = slab.Binaural.pinknoise(samplerate=hrir.samplerate)
-sound = slab.Binaural.tone(samplerate=hrir.samplerate, frequency=1500, level=65)
+sound = slab.Binaural.tone(samplerate=hrir.samplerate, frequency=500, duration=0.01)
+# _s = sound.itd(30)
+# sound = slab.Binaural.pinknoise(samplerate=hrir.samplerate)
+# sound = slab.Binaural.tone(samplerate=hrir.samplerate, frequency=1500, level=65)
 
 
 # ils = slab.Binaural.make_interaural_level_spectrum(hrir)
+grid = []
 for id in src_idx:
-    print(f'Source {hrir.sources.vertical_polar[id, 0]}')
+    source = hrir.sources.vertical_polar[id, 0]
+    # print(f'Source {hrir.sources.vertical_polar[id, 0]}')
     _s = hrir.apply(id, sound)
-    _s.play()
-    print(f'ITD {-slab.Binaural.itd_to_azimuth(_s.itd() / _s.samplerate)}')
-    # print(f'ILD {-slab.Binaural.ild_to_azimuth(_s.ild(), frequency=4000, ils=None)}')
-    # print(f'ILD {_s.ild()}')
+    itd = _s._get_itd(max_lag=0.001)
+    ild = _s.ild()
+    grid.append([source, itd, ild])
+
+grid = numpy.array(grid)
+# plt.figure()
+# plt.plot(grid[:, 0], grid[:, 1], label='ITD')
+# plt.plot(grid[:, 0], grid[:, 2], label='ILD')
+# plt.legend()
+# plt.xlabel('Azimuth (°)')
+# plt.ylabel('ITD (ms)')
+
+fig, ax1 = plt.subplots()
+
+# ITD axis
+ax1.plot(grid[:, 0], grid[:, 1], label='ITD', color='tab:blue')
+ax1.set_xlabel('Azimuth (°)')
+ax1.set_ylabel('ITD (ms)', color='tab:blue')
+ax1.tick_params(axis='y', labelcolor='tab:blue')
+
+# second axis for ILD
+ax2 = ax1.twinx()
+ax2.plot(grid[:, 0], grid[:, 2], label='ILD', color='tab:red')
+ax2.set_ylabel('ILD (dB)', color='tab:red')
+ax2.tick_params(axis='y', labelcolor='tab:red')
+
+plt.title("ITD and ILD vs Azimuth")
+plt.show()
 
 # azimuths = numpy.arange(-90, 91)
 # if not ils:

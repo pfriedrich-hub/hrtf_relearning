@@ -1,141 +1,121 @@
+"""
+Dome loudspeaker localization test.
+
+Mirrors Localization_AR.Localization in API and conventions:
+  - Subject for data persistence
+  - make_sequence (std_targets) for trial sequences
+  - meta-motion sensor for head-pose response
+  - Enter key to advance trials
+"""
 import matplotlib
 matplotlib.use('TkAgg')
-import freefield
-import slab
 import numpy
+import slab
+import freefield
 import datetime
-from matplotlib import pyplot as plt
-from pathlib import Path
+import logging
+from pynput import keyboard
 
-# --- Config ---
-fs = 48828
-slab.set_default_samplerate(fs)
+import hrtf_relearning
+from hrtf_relearning.experiment.misc.localization_helpers.make_sequence import make_sequence
+from hrtf_relearning.experiment.misc.training_helpers import meta_motion
 
-subject_id = 'test' #todo load subject
-condition = 'Free Ears'
-data_dir = Path.cwd() / 'data' / 'control' / subject_id / condition
-repetitions = 3
+ROOT = hrtf_relearning.PATH
 
 
-def get_central_speakers():
-    """Load speaker table and return only central column speakers (az=0, -37.5<=el<=37.5)."""
-    table_file = freefield.DIR / 'data' / 'tables' / 'speakertable_dome.txt'
-    speakers = numpy.loadtxt(table_file, skiprows=1, usecols=(0, 3, 4), delimiter=",", dtype=float)
-    mask = (speakers[:, 1] == 0) & (speakers[:, 2] >= -37.5) & (speakers[:, 2] <= 37.5)
-    return speakers, speakers[mask]
+class LocalizationDome:
+    """
+    Localization test using real dome loudspeakers.
 
+    Plays pink noise bursts from the vertical midline speakers (az ≈ 0)
+    that match the HRIR recording locations. Head orientation at response
+    time is captured via the meta-motion sensor, consistent with
+    Localization_AR.Localization.
 
-def build_sequence(speakers, c_speakers, repetitions, min_dist=35):
-    """Build a trial sequence ensuring >min_dist° between successive targets."""
-    n = len(c_speakers)
-    sequence = numpy.zeros(repetitions * n, dtype=int)
+    Parameters
+    ----------
+    subject : Subject
+    hrir : slab.HRTF
+    repetitions : int
+        How many times each speaker location is presented.
+    min_distance : float
+        Minimum angular distance (°) between successive targets.
+    """
 
-    print('Setting target sequence...')
-    for s in range(repetitions):
-        while True:
-            seq = numpy.random.choice(c_speakers[:, 0], replace=False, size=n).astype(int)
-            diffs = numpy.diff(speakers[seq, 1:], axis=0)
-            if numpy.all(numpy.sqrt(diffs[:, 0]**2 + diffs[:, 1]**2) >= min_dist):
-                break
-        sequence[s*n:(s+1)*n] = seq
+    def __init__(self, subject, hrir, repetitions=3, min_distance=15):
+        self.subject = subject
+        date = datetime.datetime.now().strftime('%d.%m_%H-%M')
+        self.filename = f"{subject.id}_{date}_{hrir.name}_dome"
 
-    # Validate across repetition boundaries
-    while True:
-        diffs = numpy.diff([speakers[int(s), 1:] for s in sequence], axis=0)
-        if numpy.all(numpy.sqrt(diffs[:, 0]**2 + diffs[:, 1]**2) >= min_dist):
-            break
-        # Re-shuffle only the boundary-violating repetition joins
-        for s in range(repetitions):
-            seq = sequence[s*n:(s+1)*n]
-            diffs = numpy.diff(speakers[seq, 1:], axis=0)
-            if numpy.any(numpy.sqrt(diffs[:, 0]**2 + diffs[:, 1]**2) < min_dist):
-                numpy.random.shuffle(seq)
-                sequence[s*n:(s+1)*n] = seq
+        slab.set_default_samplerate(hrir.samplerate)
+        self.hrir_sources = hrir.sources.vertical_polar  # (az, el, r)
 
-    return slab.Trialsequence(sequence)
+        # Pre-filter to vertical midline (az ≈ 0) — same locations as HRIR recording
+        sources = hrir.sources.vertical_polar
+        midline = sources[numpy.isclose(sources[:, 0], 0, atol=1.0), :2]  # (az, el)
 
+        settings = {
+            'kind': 'standard',
+            'targets_per_speaker': repetitions,
+            'min_distance': min_distance,
+            'gain': 0.2,
+        }
+        self.sequence = make_sequence(settings, midline)
+        self.sequence.name = self.filename
+        self.sequence.hrir = hrir.name
+        self.target = None
 
-def play_trial(speaker_id, speakers, tone, progress):
-    freefield.calibrate_sensor()
-    target = speakers[speaker_id, 1:]
-    print('%i%%: TARGET| azimuth: %.1f, elevation %.1f' % (progress, target[0], target[1]))
+    def write(self):
+        self.subject.localization[self.filename] = self.sequence
+        self.subject.write()
 
-    noise = slab.Sound.pinknoise(duration=0.025, level=90).ramp(when='both', duration=0.01)
-    silence = slab.Sound.silence(duration=0.025)
-    stim = slab.Sound.sequence(noise, silence, noise, silence, noise, silence, noise, silence, noise)
-    stim = stim.ramp(when='both', duration=0.01)
+    def run(self):
+        if freefield.PROCESSORS.mode != 'play_rec':
+            freefield.initialize('dome', default='play_rec', sensor_tracking=False)
+        self.motion_sensor = self._init_sensor()
 
-    freefield.set_signal_and_speaker(signal=stim, speaker=speaker_id, equalize=False)
-    freefield.play()
-    freefield.wait_to_finish_playing()
+        for self.target in self.sequence:
+            self.wait_for_enter('Look at the center and press Enter...')
+            self.motion_sensor.calibrate()
+            self.play_trial()
 
-    pose = numpy.array([0.0, 0.0])
-    response = 0
-    while not response:
-        pose = freefield.get_head_pose(method='sensor')
-        if all(pose):
-            print('head pose: azimuth: %.1f, elevation: %.1f' % (pose[0], pose[1]), end='\r', flush=True)
-        else:
-            print('no head pose detected', end='\r', flush=True)
-        response = freefield.read('response', processor='RP2')
+        self.subject.last_sequence = self.sequence
+        self.write()
+        logging.info('Dome localization complete.')
 
-    if all(pose):
-        print('Response| azimuth: %.1f, elevation: %.1f' % (pose[0], pose[1]))
+    def play_trial(self):
+        stim = self.make_stim()
+        speaker = freefield.pick_speakers((float(self.target[0]), float(self.target[1])))[0]
+        freefield.set_signal_and_speaker(signal=stim, speaker=speaker.index, equalize=True)
+        freefield.play()
+        freefield.wait_to_finish_playing()
+        self.wait_for_enter()
+        response = self.motion_sensor.get_pose()
+        progress = self.sequence.this_n / len(self.sequence.conditions) * 100
+        logging.info(f'{progress:.1f}% | Target: {self.target} | Response: {response}')
+        self.sequence.add_response(numpy.array((response, self.target)))
+        self.write()
 
-    freefield.set_signal_and_speaker(signal=tone, speaker=23, equalize=False)
-    freefield.play()
-    freefield.wait_to_finish_playing()
+    @staticmethod
+    def make_stim(level=75):
+        noise = slab.Sound.pinknoise(duration=0.025, level=level).ramp(when='both', duration=0.01)
+        silence = slab.Sound.silence(duration=0.025)
+        stim = slab.Sound.sequence(noise, silence, noise, silence, noise,
+                                   silence, noise, silence, noise)
+        return stim.ramp(when='both', duration=0.01)
 
-    return numpy.array((pose, target))
+    @staticmethod
+    def _init_sensor():
+        device = meta_motion.get_device()
+        state = meta_motion.State(device)
+        return meta_motion.Sensor(state)
 
-
-def localization_test(subject_id, data_dir, condition, repetitions):
-    if not freefield.PROCESSORS.mode:
-        freefield.initialize('dome', default='play_rec', sensor_tracking=True)
-    freefield.set_logger('warning')
-
-    bell = slab.Sound.read(Path.cwd() / 'data' / 'sounds' / 'bell.wav')
-    bell.level = 75
-    tone = slab.Sound.tone(frequency=1000, duration=0.25, level=70)
-
-    speakers, c_speakers = get_central_speakers()
-    trial_sequence = build_sequence(speakers, c_speakers, repetitions)
-
-    data_dir.mkdir(parents=True, exist_ok=True)
-    date_str = datetime.datetime.now().strftime('_%d.%m')
-    file_name = f'localization_{subject_id}_{condition}{date_str}'
-    counter = 1
-    while (data_dir / file_name).exists():
-        file_name = f'localization_{subject_id}_{condition}{date_str}_{counter}'
-        counter += 1
-
-    played_bell = False
-    print('Starting...')
-    for speaker_id in trial_sequence:
-        progress = int(trial_sequence.this_n / trial_sequence.n_trials * 100)
-        if progress >= 50 and not played_bell:
-            freefield.set_signal_and_speaker(signal=bell, speaker=23, equalize=False)
-            freefield.play()
-            freefield.wait_to_finish_playing()
-            played_bell = True
-        trial_sequence.add_response(play_trial(speaker_id, speakers, tone, progress))
-        trial_sequence.save_pickle(data_dir / file_name, clobber=True)
-
-    freefield.halt()
-    print('Localization test completed!')
-    return trial_sequence, file_name
-
-
-if __name__ == '__main__':
-    # todo plot and save
-    sequence, file_name = localization_test(subject_id, data_dir, condition, repetitions)
-
-    fig, axis = plt.subplots()
-    elevation_gain, ele_rmse, ele_var, az_rmse, az_var = localization_accuracy(
-        sequence, axis=axis, show=True, plot_dim=2, binned=True
-    )
-    axis.set_title(f'{file_name} EG: {elevation_gain}')
-
-    (data_dir / 'images').mkdir(parents=True, exist_ok=True)
-    fig.savefig(data_dir / 'images' / f'{file_name}.png', format='png')
-    print('gain: %.2f\nrmse: %.2f\nsd: %.2f' % (elevation_gain, ele_rmse, ele_var))
+    @staticmethod
+    def wait_for_enter(msg=None):
+        if msg:
+            print(msg)
+        def on_press(key):
+            if key == keyboard.Key.enter:
+                listener.stop()
+        with keyboard.Listener(on_press=on_press) as listener:
+            listener.join()

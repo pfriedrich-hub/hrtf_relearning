@@ -34,6 +34,7 @@ import warnings
 import soundfile as sf
 from pathlib import Path
 import pickle
+import logging
 warnings.filterwarnings("ignore", category=pyfar._utils.PyfarDeprecationWarning)
 freefield.set_logger("info")
 import hrtf_relearning
@@ -220,24 +221,66 @@ def compute_headphone_equalization(recording, excitation, beta, n_samp_out=1024,
 
 
 # -------------------------------------------------------------------------
-# SAVE CALIBRATION
+# SAVE / LOAD CALIBRATION
 # -------------------------------------------------------------------------
-def pyfar2wav(eq_filter, path: Path):
-    """
-    Save a pyfar filter as WAV (for pyBinSim).
+
+def save_hp_filter(eq_filter: pyfar.Signal, path: Path):
+    """Save a pyfar headphone equalization filter as .npz.
+
+    Stores ``filter`` with shape (n_channels, n_samples) and ``samplerate``.
 
     Parameters
     ----------
     eq_filter : pyfar.Signal
-        Filter to save.
+        Two-channel equalization filter.
     path : Path
-        Output file path ending in .wav
+        Output file path (should end in .npz).
     """
-    sf.write(path, eq_filter.time.T.astype("float32"), eq_filter.sampling_rate, subtype="FLOAT")
-    # pyfar.io.write_audio(eq_filter, path, overwrite=True)  # - clips audio!
-    print(f"Saved HP equalization to: {path}")
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    numpy.savez(
+        path,
+        filter=eq_filter.time.astype("float32"),   # (n_channels, n_samples)
+        samplerate=numpy.array(eq_filter.sampling_rate),
+    )
+    logging.info(f"Saved HP equalization filter to: {path}")
 
-def ff_equalization(eq_filter, save_freefield=True):
+
+def load_hp_filter(path: Path) -> pyfar.Signal:
+    """Load a headphone equalization filter from .npz (or .wav as fallback).
+
+    Parameters
+    ----------
+    path : Path
+        Path to a ``.npz`` file written by :func:`save_hp_filter`.
+        If the file does not exist but a ``.wav`` with the same stem does,
+        that is loaded instead for backward compatibility.
+
+    Returns
+    -------
+    pyfar.Signal
+        Two-channel equalization filter.
+    """
+    path = Path(path)
+    if path.exists():
+        npz = numpy.load(path, allow_pickle=False)
+        return pyfar.Signal(npz["filter"], int(npz["samplerate"]))
+    # backward-compat: try .wav with the same stem
+    wav_path = path.with_suffix(".wav")
+    if wav_path.exists():
+        logging.warning(f"No .npz found at {path} – loading legacy .wav: {wav_path}")
+        return pyfar.io.read_audio(wav_path)
+    raise FileNotFoundError(f"HP filter not found: tried {path} and {wav_path}")
+
+
+def pyfar2wav(eq_filter: pyfar.Signal, path: Path):
+    """Save a pyfar filter as WAV (legacy, kept for backward compatibility)."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    sf.write(path, eq_filter.time.T.astype("float32"), eq_filter.sampling_rate, subtype="FLOAT")
+    logging.info(f"Saved HP equalization to: {path}")
+
+def ff_equalization(eq_filter, hp_id, save_freefield=True):
     """
     Save equalization filter to a pickle file.
 
@@ -270,7 +313,7 @@ def ff_equalization(eq_filter, save_freefield=True):
 # -------------------------------------------------------------------------
 
 def calibrate_headphones(subject_id=SUB_ID, hp_id=HP_ID, n_rec=N_REC, show=True, save_freefield=True):
-    save_path = ROOT / "data" / 'hrtf' / 'rec' / f'{subject_id}' / f'{hp_id}_equalization.wav'
+    save_path = ROOT / "data" / "hrtf" / "rec" / subject_id / f"{hp_id}_equalization.npz"
 
     # Initialize freefield for headphone playback
     if not freefield.PROCESSORS.mode == 'bi_play_rec':
@@ -290,11 +333,11 @@ def calibrate_headphones(subject_id=SUB_ID, hp_id=HP_ID, n_rec=N_REC, show=True,
     eq_filter = compute_headphone_equalization(recording, excitation, beta=0.01, show=False)
     # adjust beta parameter if necessary
 
-    # Save to wav
-    pyfar2wav(eq_filter, save_path)
+    # Save to npz
+    save_hp_filter(eq_filter, save_path)
 
     # test and alternatively save to freefield
-    hp_filter = ff_equalization(eq_filter, save_freefield)
+    hp_filter = ff_equalization(eq_filter, hp_id, save_freefield)
     if show:
         raw = freefield.play_and_record_headphones(speaker='both', sound=excitation, equalize=False)
         filtered = hp_filter.apply(excitation)

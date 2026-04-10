@@ -27,7 +27,7 @@ import hrtf_relearning
 from hrtf_relearning import PATH as ROOT
 from hrtf_relearning.experiment.Subject import Subject
 from hrtf_relearning.hrtf.record.record_hrir import record_hrir
-from hrtf_relearning.hrtf.record.calibration.calibrate_headphones import calibrate_headphones
+from hrtf_relearning.hrtf.record.calibration.calibrate_headphones import calibrate_headphones, load_hp_filter
 from hrtf_relearning.hrtf.binsim.hrtf2binsim import hrtf2binsim
 from hrtf_relearning.experiment.Localization.Localization_dome import LocalizationDome
 from hrtf_relearning.experiment.analysis.localization.localization_analysis import (
@@ -35,7 +35,7 @@ from hrtf_relearning.experiment.analysis.localization.localization_analysis impo
 )
 
 # --- session defaults (override via main() arguments) ---
-subject_id   = 'AS_test'
+subject_id   = 'AS'
 hp_id        = 'MYSPHERE'
 reference_id = 'ref_03.04'
 n_directions = 1
@@ -111,13 +111,18 @@ def main(subject_id, reference_id, hp_id, hrir_settings,
     # 2. HP calibration  (in-ear mics still in place)
     # ------------------------------------------------------------------
     logging.info('--- Step 2: HP calibration ---')
-    hp_filter = calibrate_headphones(
-        subject_id    = subject_id,
-        hp_id         = hp_id,
-        n_rec         = n_rec_hp,
-        show          = show,
-        save_freefield = False,
-    )
+    try:
+        # alternatively load from disk  - todo convert to slab for acoustic test
+        hp_filter = load_hp_filter(ROOT / 'data' / 'hrtf' / 'rec' / subject_id / f'{hp_id}_equalization.npz')
+    except FileNotFoundError:
+        hp_filter = calibrate_headphones(
+            subject_id    = subject_id,
+            hp_id         = hp_id,
+            n_rec         = n_rec_hp,
+            show          = show,
+            save_freefield = False,
+        )
+
 
     # ------------------------------------------------------------------
     # 3. Acoustic sanity check
@@ -144,7 +149,7 @@ def main(subject_id, reference_id, hp_id, hrir_settings,
     # ------------------------------------------------------------------
     logging.info('--- Step 6: Virtual localization ---')
     from hrtf_relearning.experiment.Localization.Localization_AR import Localization
-    vr_loc = Localization(subject, hrir_binsim)
+    vr_loc = Localization(subject, hrir_binsim)  # todo pass parameters
     vr_loc.run()
 
     # ------------------------------------------------------------------

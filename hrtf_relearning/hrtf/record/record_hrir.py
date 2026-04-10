@@ -10,20 +10,23 @@ import hrtf_relearning
 base_dir = hrtf_relearning.PATH / "data" / "hrtf"
 import logging
 
-subject_id = 'PF'
-reference_id = 'kemar_reference'
-overwrite = True
-n_directions = 2
+subject_id = 'kemar_pir'
+head_radius = 0.0875
+reference_id = 'ref_03.04'
+overwrite = False
+n_directions = 1
 n_recordings = 10
-n_samples_out = 256
+n_samples_out = 512
 fs = 48828  # 97656
 hp_freq = 120
 show = True
 equalize_dome = True
-# save_wath = True
+align_interaural = True
 
 slab.set_default_samplerate(fs)
 freefield.set_logger("info")
+
+
 # ---------------------------------------------------------------------
 # Main wrapper
 # ---------------------------------------------------------------------
@@ -32,14 +35,16 @@ def record_hrir(
     subject_id: str,
     reference_id: str,
     *,
-    n_directions: int = 5,
-    n_recordings: int = 5,
+    n_directions: int = 3,
+    n_recordings: int = 10,
     fs: int = 48828,
     hp_freq: float = 120,
-    n_samples_out: int = 256,
     equalize_dome: bool = False,
     overwrite: bool = False,
-    show: bool = False,
+    align_interaural: bool = True,
+    n_samples_out: int = 512,
+    expand_az: bool = True,
+    show: bool = True,
     base_dir: Path | str | None = None,
 ) -> slab.HRTF:
     """
@@ -63,7 +68,7 @@ def record_hrir(
     # Paths
     # -----------------------------------------------------------------
     if base_dir is None:
-        base_dir = Path.cwd() / "data" / "hrtf"
+        base_dir = hrtf_relearning.PATH / "data" / "hrtf"
     else:
         base_dir = Path(base_dir)
 
@@ -83,7 +88,8 @@ def record_hrir(
             n_recordings=n_recordings,
             hp_freq=hp_freq,
             fs=fs,
-            equalize=equalize_dome)
+            equalize=equalize_dome,
+            key=True)
         subject_rec.to_wav(subj_dir, overwrite=overwrite)
     else:
         logging.info("Loading subject recordings from disk")
@@ -92,6 +98,7 @@ def record_hrir(
     # -----------------------------------------------------------------
     # 2) Reference recordings
     # -----------------------------------------------------------------
+    """    
     if overwrite or not ref_dir.exists():
         logging.info("Recording reference")
         ref_dir.mkdir(parents=True, exist_ok=True)
@@ -101,64 +108,71 @@ def record_hrir(
             n_recordings=n_recordings,
             hp_freq=hp_freq,
             fs=fs,
-            equalize=equalize_dome)
+            equalize=equalize_dome,
+            key=False)
         reference_rec.to_wav(ref_dir, overwrite=overwrite)
     else:
-        logging.info("Loading reference recordings from disk")
-        reference_rec = Recordings.from_wav(ref_dir)
+    """
+    logging.info("Loading reference recordings from disk")
+    reference_rec = Recordings.from_wav(ref_dir)
 
     # -----------------------------------------------------------------
     # 3) Deconvolution: sweeps -> IRs
     # -----------------------------------------------------------------
     logging.info("Computing impulse responses")
-    subject_ir = compute_ir(subject_rec, inversion_range_hz=(hp_freq, 20e3))
-    reference_ir = compute_ir(reference_rec, inversion_range_hz=(hp_freq, 20e3))
-
+    subject_ir = compute_ir(subject_rec, inversion_range_hz=(hp_freq, 20e3),
+                            onset_threshold_db=10, align_interaural=align_interaural)
+    reference_ir = compute_ir(reference_rec, inversion_range_hz=(hp_freq, 20e3),
+                              onset_threshold_db=10, align_interaural=align_interaural)
 
     # -----------------------------------------------------------------
     # 4) Equalization + windowing
     # -----------------------------------------------------------------
     logging.info("Applying equalization")
-    hrir = equalize(
+    hrir_equalized = equalize(
         measured=subject_ir,
         reference=reference_ir,
         n_samples_out=n_samples_out,
-        inversion_range_hz=(hp_freq, 18e3)
+        inversion_range_hz=(hp_freq, 18e3),
+        onset_threshold_db=10,
     )
 
     # -----------------------------------------------------------------
     # 5) Low-frequency extrapolation
     # -----------------------------------------------------------------
     logging.info("Low-frequency extrapolation")
-    hrir = lowfreq_extrapolate(
-        hrir,
-        f_extrap=400.0,
+    hrir_extrapol = lowfreq_extrapolate(
+        hrir_equalized,
+        f_extrap=800.0,
         f_target=150.0,
-        head_radius=0.0875,
+        head_radius=head_radius,
     )
 
     # -----------------------------------------------------------------
     # 6) Azimuth expansion + binaural cues
     # -----------------------------------------------------------------
-    logging.info("Expanding azimuths and imposing binaural cues")
-    hrir = expand_azimuths_with_binaural_cues(
-        hrir,
-        az_range=(-50, 50),
-        head_radius=0.08,
-        show=False,
-    )
+    if expand_az:
+        logging.info("Expanding azimuths and imposing binaural cues")
+        hrir_az_exp = expand_azimuths_with_binaural_cues(
+            hrir_extrapol,
+            az_range=(-50, 50),
+            head_radius=head_radius,
+            show=False,
+        )
+    else:
+        hrir_az_exp = hrir_extrapol
 
     # -----------------------------------------------------------------
     # 7) Export to slab.HRTF
     # -----------------------------------------------------------------
     logging.info("Converting to slab.HRTF")
-    hrtf = hrir.to_slab_hrtf(datatype="FIR")
+    hrtf = hrir_az_exp.to_slab_hrtf(datatype="FIR")
     hrtf.write_sofa(base_dir / 'sofa' / f'{subject_id}.sofa')
 
     if show:
         import matplotlib.pyplot as plt
-        fig, ax = plt.subplots()
-        hrtf.plot_tf(hrtf.cone_sources(0), axis=ax)
+        fig, axes = plt.subplots(1,2)
+        hrtf.plot_tf(hrtf.cone_sources(0), axis=axes, ear='both')
         plt.show()
 
     logging.info("HRIR pipeline finished successfully")
@@ -176,3 +190,20 @@ def wait_for_button(msg=None):
 
     with keyboard.Listener(on_press=on_press) as listener:
         listener.join()
+
+
+# if __name__ == "__main__":
+#     hrtf = record_hrir(
+#         subject_id=subject_id,
+#         reference_id=reference_id,
+#         n_directions=n_directions,
+#         n_recordings=n_recordings,
+#         fs=fs,
+#         hp_freq=hp_freq,
+#         n_samples_out=n_samples_out,
+#         equalize_dome=equalize_dome,
+#         align_interaural=align_interaural,
+#         overwrite=overwrite,
+#         show=show,
+#         base_dir=base_dir,
+#     )

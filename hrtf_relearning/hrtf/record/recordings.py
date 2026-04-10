@@ -139,7 +139,7 @@ class Recordings(SpeakerGridBase):
                 if spk.elevation >= min_el:
                     logging.info(f"Recording from Speaker {spk.index} at {spk.azimuth:.1f}° azimuth"
                                  f" and {spk.elevation:.1f}° elevation")
-                    key = f"{spk.index}_{spk.azimuth}_{spk.elevation}"
+                    key = f"{spk.index}_{spk.azimuth:.2f}_{spk.elevation:.2f}"
                     recs = cls.record_speaker(spk, signal, n_recordings, fs, equalize)
                     processed = []
                     for r in recs:
@@ -190,7 +190,83 @@ class Recordings(SpeakerGridBase):
             out.append(s)
         return out
 
-    # -------------------- WAV I/O -------------------------------------
+    # -------------------- NPZ I/O -------------------------------------
+
+    def to_npz(self, path, overwrite=False):
+        """Save recordings to a single .npz file.
+
+        Array shape: (n_locations, n_recordings, n_channels, n_datapoints).
+        Speaker-location keys are stored alongside so the dict can be reconstructed.
+        """
+        logging.info(f'Writing recordings to .npz: {path}.')
+        path = Path(path)
+        path.mkdir(exist_ok=True, parents=True)
+        self.write_params_file(path)
+
+        fname = path / "recordings.npz"
+        if fname.exists() and not overwrite:
+            logging.info(f"{fname} already exists – skipping (use overwrite=True to replace).")
+            return
+
+        keys = list(self.data.keys())
+        if not keys:
+            raise ValueError(
+                "Recordings.data is empty – nothing to save. "
+                "Check that from_wav() found files in the expected layout."
+            )
+        sample_rec = self.data[keys[0]][0]
+        n_channels  = sample_rec.n_channels
+        n_datapoints = sample_rec.n_samples
+        samplerate  = sample_rec.samplerate
+        n_locations = len(keys)
+        n_recordings = max(len(recs) for recs in self.data.values())
+
+        arr = numpy.zeros(
+            (n_locations, n_recordings, n_channels, n_datapoints), dtype=numpy.float32
+        )
+        for i, key in enumerate(keys):
+            for j, rec in enumerate(self.data[key]):
+                arr[i, j] = rec.data.T  # (n_samples, n_ch) → (n_ch, n_samples)
+
+        numpy.savez(
+            fname,
+            recordings=arr,
+            keys=numpy.array(keys),
+            samplerate=numpy.array(samplerate),
+        )
+
+    @classmethod
+    def from_npz(cls, path):
+        """Load recordings from a .npz file saved by to_npz()."""
+        path = Path(path)
+        params = parse_params_file(path)
+
+        npz = numpy.load(path / "recordings.npz", allow_pickle=False)
+        arr        = npz["recordings"]          # (n_locs, n_recs, n_ch, n_samples)
+        keys       = npz["keys"].tolist()
+        samplerate = int(npz["samplerate"])
+
+        data = {}
+        for i, key in enumerate(keys):
+            recs = []
+            for j in range(arr.shape[1]):
+                rec_data = arr[i, j].T          # back to (n_samples, n_ch)
+                recs.append(slab.Binaural(rec_data, samplerate))
+            data[key] = recs
+
+        return cls(data=data, params=params, signal=_signal_from_params(params))
+
+    @classmethod
+    def load(cls, path):
+        """Load recordings from *path*, preferring .npz and falling back to .wav."""
+        path = Path(path)
+        if (path / "recordings.npz").exists():
+            logging.info(f"Loading recordings from .npz: {path}")
+            return cls.from_npz(path)
+        logging.info(f"No .npz found – loading recordings from .wav: {path}")
+        return cls.from_wav(path)
+
+    # -------------------- WAV I/O (kept for backward compatibility) ----
 
     def to_wav(self, path, overwrite=False):
         logging.info(f'Writing recordings to .wav: {path}.')
@@ -213,22 +289,36 @@ class Recordings(SpeakerGridBase):
         params = parse_params_file(path)
         data = {}
 
-        for kdir in path.iterdir():
+        for kdir in sorted(path.iterdir()):
             if not kdir.is_dir():
                 continue
+            wav_files = sorted(kdir.glob("*.wav"))
+            rec_files = sorted(kdir.glob("rec_*.wav"))
+            logging.debug(
+                f"  {kdir.name}: {len(wav_files)} .wav files total, "
+                f"{len(rec_files)} matching rec_*.wav"
+            )
             recs = []
-            for f in sorted(kdir.glob("rec_*.wav")):
+            for f in rec_files:
                 x, fs = sf.read(f, dtype="float32", always_2d=True)
                 recs.append(slab.Binaural(x, fs))
             if recs:
                 data[kdir.name] = recs
 
-        signal = None
-        if "signal" in params:
-            sp = params["signal"]
-            signal = slab.Sound.chirp(**sp).ramp(when="both", duration=0.001)
+        if not data:
+            # Log what was actually found to help diagnose naming mismatches
+            subdirs = [d.name for d in path.iterdir() if d.is_dir()]
+            sample_wavs = []
+            for d in path.iterdir():
+                if d.is_dir():
+                    sample_wavs += [f.name for f in sorted(d.glob("*.wav"))[:3]]
+            logging.warning(
+                f"from_wav: no data loaded from '{path}'. "
+                f"Subdirectories found: {subdirs}. "
+                f"Example wav filenames: {sample_wavs}"
+            )
 
-        return cls(data=data, params=params, signal=signal)
+        return cls(data=data, params=params, signal=_signal_from_params(params))
 
     def plot(self, speaker_idx=4):
         plt.figure(figsize=(12, 8))
@@ -246,6 +336,34 @@ class Recordings(SpeakerGridBase):
 # ---------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------
+
+_VALID_CHIRP_KINDS = {"linear", "quadratic", "logarithmic", "hyperbolic"}
+
+def _signal_from_params(params):
+    """Reconstruct the excitation chirp from a params dict.
+
+    Handles old param files that stored the chirp type as ``type``
+    instead of the current ``kind`` key, and silently returns None
+    when the stored value is not a valid chirp method (e.g. old files
+    that wrote the class name 'slab.Sound.chirp' as the type).
+    """
+    if "signal" not in params:
+        return None
+    sp = dict(params["signal"])  # copy – don't mutate the original
+    if "type" in sp and "kind" not in sp:
+        sp["kind"] = sp.pop("type")
+    if sp.get("kind") not in _VALID_CHIRP_KINDS:
+        logging.warning(
+            f"Unrecognised chirp kind '{sp.get('kind')}' in params.txt – "
+            "skipping signal reconstruction."
+        )
+        return None
+    try:
+        return slab.Sound.chirp(**sp).ramp(when="both", duration=0.001)
+    except Exception as e:
+        logging.warning(f"Could not reconstruct signal from params: {e}")
+        return None
+
 
 def parse_params_file(path, filename="params.txt"):
     path = Path(path)
@@ -279,3 +397,33 @@ def _parse_value(v):
     if v.lower() in ("true", "false"):
         return v.lower() == "true"
     return v
+
+
+# ---------------------------------------------------------------------
+# Conversion utility
+# ---------------------------------------------------------------------
+
+def wav_to_npz(wav_path, npz_path=None, overwrite=False):
+    """Convert an existing per-speaker wav folder to a single recordings.npz.
+
+    Parameters
+    ----------
+    wav_path : path-like
+        Folder that was previously written by ``Recordings.to_wav()``.
+    npz_path : path-like, optional
+        Destination folder for the .npz file.  Defaults to *wav_path*
+        (i.e. the .npz lands next to the existing wav sub-folders).
+    overwrite : bool
+        Passed through to ``Recordings.to_npz()``.
+
+    Returns
+    -------
+    Recordings
+        The loaded object (also saved to disk as a side-effect).
+    """
+    wav_path = Path(wav_path)
+    npz_path = Path(npz_path) if npz_path is not None else wav_path
+    logging.info(f"Converting wav folder '{wav_path}' → npz at '{npz_path}'")
+    rec = Recordings.from_wav(wav_path)
+    rec.to_npz(npz_path, overwrite=overwrite)
+    return rec

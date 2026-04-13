@@ -6,7 +6,22 @@ from pathlib import Path
 from hrtf_relearning import PATH
 
 hrtf_dir = PATH / "data" / "hrtf" / "sofa"
-hrtf_id = "SW"
+
+# ---------------------------------------------------------------------------
+# Parameters – edit here
+# ---------------------------------------------------------------------------
+hrtf_id         = "SW"          # HRTF file stem (loads <hrtf_id>.sofa)
+
+azimuth_range   = (-50, 50)     # (min, max) in degrees; None = all
+elevation_range = (-40, 40)     # (min, max) in degrees; None = all
+ear             = "both"        # "left", "right", or "both"
+kind            = "image"       # "image" (contourf) or "waterfall"
+bandwidth       = (1000, 18000) # frequency range in Hz
+interval        = 120           # frame interval in ms
+atol            = 1             # source-matching tolerance (degrees)
+write           = True          # False | True/'ffmpeg' (mp4) | 'pillow' (gif)
+show            = True          # display the animation window
+# ---------------------------------------------------------------------------
 
 
 def _sorted_unique(values):
@@ -426,16 +441,16 @@ def main(hrtf_id):
     hrtf = slab.HRTF(hrtf_dir / f"{hrtf_id}.sofa")
     ani, frames = hrtf_animation(
         hrtf,
-        azimuth_range=(-50, 50),
-        elevation_range=(-40, 40),
-        ear="both",
-        kind="image",
-        atol=1,
-        bandwidth=(1000, 18000),
-        interval=120,
+        azimuth_range=azimuth_range,
+        elevation_range=elevation_range,
+        ear=ear,
+        kind=kind,
+        atol=atol,
+        bandwidth=bandwidth,
+        interval=interval,
         filename=f"{hrtf_id}_animation",
-        write=True,
-        show=True,
+        write=write,
+        show=show,
     )
     return ani, frames
 

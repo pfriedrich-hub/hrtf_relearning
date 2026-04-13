@@ -34,7 +34,7 @@ from hrtf_relearning.experiment.analysis.localization.localization_analysis impo
 )
 
 # --- session defaults (override via main() arguments) ---
-subject_id   = 'VD'
+subject_id   = 'MSc'
 hp_id        = 'MYSPHERE'
 reference_id = 'ref_03.04'
 n_directions = 3  # directions for the hrir recording
@@ -140,7 +140,7 @@ def main(subject_id, reference_id, hp_id, hrir_settings,
     # 5. Dome localization (real speakers, vertical midline)
     # ------------------------------------------------------------------
     logging.info('--- Step 5: Dome localization ---')
-    dome_loc = LocalizationDome(subject, hrir_binsim)
+    dome_loc = LocalizationDome(subject, hrir_binsim)  # todo add option to run twice - tracker disconnect
     dome_loc.run()
 
     # ------------------------------------------------------------------
@@ -148,11 +148,19 @@ def main(subject_id, reference_id, hp_id, hrir_settings,
     # Lazy import avoids module-level hrtf2binsim call in Localization_AR
     # ------------------------------------------------------------------
     logging.info('--- Step 6: Virtual localization ---')
-    midline_settings = {
+    # midline_settings = {
+    #     'kind': 'standard',
+    #     'targets_per_speaker': 3,
+    #     'min_distance': 15,
+    #     'gain': 0.2,
+    #     'azimuth_range': (-1, 1)
+    # }
+    midline_settings = {  # todo doesnt play each location multiple times, doesnt release sensor
         'kind': 'standard',
-        'targets_per_speaker': 3,
-        'min_distance': 15,
-        'gain': 0.2,
+        'azimuth_range': (-1, 1), 'elevation_range': (-35, 35),
+        'sector_size': (2, 14),
+        'targets_per_sector': 3, 'replace': False, 'min_distance': 20,
+        'gain': .2,
     }
     ar_loc = Localization(subject, hrir_binsim, settings=midline_settings, ear=None, mirror=False)
     ar_loc.run()

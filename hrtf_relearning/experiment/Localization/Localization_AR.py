@@ -15,12 +15,12 @@ logging.getLogger().setLevel('INFO')
 ROOT = hr.PATH
 
 # --- settings ----
-SUBJECT_ID = "VD"
-HRIR_NAME = "VD_notch"  # 'KU100', 'kemar', etc.
+SUBJECT_ID = "MSc"
+HRIR_NAME = "MSc"  # 'KU100', 'kemar', etc.
 EAR = None
-HP = 'DT990'
+HP = 'MYSPHERE'
 STIM = 'noise'  # 'noise' or 'uso'
-AZ_RANGE = (-37.5, 37.5)
+AZ_RANGE = (-1, 1)
 SECTOR_SIZE = (14, 14)
 MIRROR = False # set TRUE to mirror HRIRs left-right
 

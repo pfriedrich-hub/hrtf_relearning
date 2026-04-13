@@ -1,17 +1,14 @@
+id: AS_test
 fs: 48828
-n_recordings: 20
+n_recordings: 10
 n_directions: 1
 signal:
-  type: slab.Sound.chirp
+  kind: logarithmic
   duration: 0.2
   level: 85
   from_frequency: 120
-  to_frequency: 24414.0
+  to_frequency: 22000.0
   samplerate: 48828
-highpass frequency: 120
-datetime: 2025-12-10T12:50:28.148180
-subject_id: AS
-Software versions:
-  slab: 1.8.2
-  pyfar: 0.7.3
-  freefield: 1.1.0
+highpass_frequency: 120
+equalize_dome: False
+datetime: 2026-04-06T15:55:37.029383

@@ -8,13 +8,13 @@ from hrtf_relearning import PATH
 hrtf_dir = PATH / 'data' /'hrtf'/'sofa'
 import slab
 
-sub_id = 'PC'
+sub_id = 'VD'
 
-SMOOTH = True
+SMOOTH = False
 N_KEEP = 12
 NOTCH = True
 # notch parameters
-notch_freqs = (6000, 12000)   # notch center frequency for azimuth-driven (X1) and elevation-driven (X2) variation [Hz]
+notch_freqs = (5000, 13000)   # notch center frequency for azimuth-driven (X1) and elevation-driven (X2) variation [Hz]
 notch_width = (300, 300)      # notch bandwidth (Gaussian σ) for X1 and X2 [Hz]
 notch_depth = (12.0, 12.0)    # notch attenuation for X1 and X2 [dB]
 

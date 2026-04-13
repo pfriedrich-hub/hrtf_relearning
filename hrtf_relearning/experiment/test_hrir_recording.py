@@ -22,7 +22,7 @@ import copy
 import logging
 import freefield
 import slab
-
+from hrtf_relearning.experiment.Localization.Localization_AR import Localization
 import hrtf_relearning
 from hrtf_relearning import PATH as ROOT
 from hrtf_relearning.experiment.Subject import Subject
@@ -35,11 +35,11 @@ from hrtf_relearning.experiment.analysis.localization.localization_analysis impo
 )
 
 # --- session defaults (override via main() arguments) ---
-subject_id   = 'AS'
+subject_id   = 'VD'
 hp_id        = 'MYSPHERE'
 reference_id = 'ref_03.04'
-n_directions = 1
-n_recordings = 10
+n_directions = 3  # directions for the hrir recording
+n_recordings = 10  #
 fs           = 48828
 hp_freq      = 120
 n_rec_hp     = 3
@@ -114,6 +114,7 @@ def main(subject_id, reference_id, hp_id, hrir_settings,
     try:
         # alternatively load from disk  - todo convert to slab for acoustic test
         hp_filter = load_hp_filter(ROOT / 'data' / 'hrtf' / 'rec' / subject_id / f'{hp_id}_equalization.npz')
+        print(f'Loading hp filter from disk: {hp_id}_equalization.npz')
     except FileNotFoundError:
         hp_filter = calibrate_headphones(
             subject_id    = subject_id,
@@ -122,7 +123,6 @@ def main(subject_id, reference_id, hp_id, hrir_settings,
             show          = show,
             save_freefield = False,
         )
-
 
     # ------------------------------------------------------------------
     # 3. Acoustic sanity check
@@ -148,7 +148,7 @@ def main(subject_id, reference_id, hp_id, hrir_settings,
     # Lazy import avoids module-level hrtf2binsim call in Localization_AR
     # ------------------------------------------------------------------
     logging.info('--- Step 6: Virtual localization ---')
-    from hrtf_relearning.experiment.Localization.Localization_AR import Localization
+    # todo reminder to change to audio jack
     vr_loc = Localization(subject, hrir_binsim)  # todo pass parameters
     vr_loc.run()
 

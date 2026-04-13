@@ -42,6 +42,7 @@ class LocalizationDome:
         Minimum angular distance (°) between successive targets.
     """
 
+    # todo init class with all settings, so we can call it from test_hrir_recording.py
     def __init__(self, subject, hrir, repetitions=3, min_distance=15):
         self.subject = subject
         date = datetime.datetime.now().strftime('%d.%m_%H-%M')
@@ -52,13 +53,20 @@ class LocalizationDome:
 
         # Pre-filter to vertical midline (az ≈ 0) — same locations as HRIR recording
         sources = hrir.sources.vertical_polar
-        midline = sources[numpy.isclose(sources[:, 0], 0, atol=1.0), :2]  # (az, el)
-
+        midline = sources[numpy.isclose(sources[:, 0], 0, atol=1.0), :2]  # (az, el) # hardcode instead
+        # hardcode instead
+        midline = numpy.array([[  0. , -37.5],
+       [  0. , -25. ],
+       [  0. , -12.5],
+       [  0. ,   0. ],
+       [  0. ,  12.5],
+       [  0. ,  25. ],
+       [  0. ,  37.5]])
         settings = {
             'kind': 'standard',
             'targets_per_speaker': repetitions,
             'min_distance': min_distance,
-            'gain': 0.2,
+            'gain': 1,
         }
         self.sequence = make_sequence(settings, midline)
         self.sequence.name = self.filename
@@ -97,7 +105,7 @@ class LocalizationDome:
         self.write()
 
     @staticmethod
-    def make_stim(level=75):
+    def make_stim(level=85):
         noise = slab.Sound.pinknoise(duration=0.025, level=level).ramp(when='both', duration=0.01)
         silence = slab.Sound.silence(duration=0.025)
         stim = slab.Sound.sequence(noise, silence, noise, silence, noise,

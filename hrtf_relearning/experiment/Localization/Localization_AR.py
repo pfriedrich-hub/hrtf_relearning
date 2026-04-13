@@ -16,12 +16,12 @@ logging.getLogger().setLevel('INFO')
 ROOT = hr.PATH
 
 # --- settings ----
-SUBJECT_ID = "AS"
-HRIR_NAME = "AS"  # 'KU100', 'kemar', etc.
+SUBJECT_ID = "VD"
+HRIR_NAME = "VD_notch"  # 'KU100', 'kemar', etc.
 EAR = None
-HP = 'MYSPHERE'
+HP = 'DT990'
 STIM = 'noise'  # 'noise' or 'uso'
-AZ_RANGE = (37.5, 37.5)
+AZ_RANGE = (-37.5, 37.5)
 SECTOR_SIZE = (14, 14)
 MIRROR = False # set TRUE to mirror HRIRs left-right
 
@@ -29,7 +29,7 @@ MIRROR = False # set TRUE to mirror HRIRs left-right
 hrir_settings = dict(name=HRIR_NAME, ear=EAR, mirror=MIRROR,
                      reverb=True, drr=20, hp_filter=True, hp=HP, convolution="cpu",storage="cpu")
 hrir = hrtf2binsim(hrir_settings, overwrite=True)
-subject = hr.Subject(SUBJECT_ID)
+subject = hr.Subject(SUBJECT_ID)  # todo init class with settings, so we can call it from test_hrir_recording.py
 
 class Localization:
     """
@@ -39,14 +39,14 @@ class Localization:
     def __init__(self, subject, hrir):
         # make trial sequence and write to subject-
 
-        # self.settings = {'kind': 'sectors',
-        #                  'azimuth_range': AZ_RANGE, 'elevation_range': (-35, 35),
-        #                  'sector_size': SECTOR_SIZE,
-        #                  'targets_per_sector': 3, 'replace': False, 'min_distance': 30,
-        #                  'gain': .2}
+        self.settings = {'kind': 'sectors',
+                         'azimuth_range': AZ_RANGE, 'elevation_range': (-35, 35),
+                         'sector_size': SECTOR_SIZE,
+                         'targets_per_sector': 3, 'replace': False, 'min_distance': 20,
+                         'gain': .2}
         # alternative setting: play 3 times from each source in the hrir (works well for dome recorded hrirs)
-        self.settings = {'kind': 'standard', 'azimuth_range': (-1, 1), 'elevation_range': (-30, 30),
-                         'targets_per_speaker': 3, 'min_distance': 10, 'gain': .2}
+        # self.settings = {'kind': 'standard', 'azimuth_range': (-1, 1), 'elevation_range': (-37.5, 37.5),
+        #                  'targets_per_speaker': 3, 'min_distance': 10, 'gain': .2}
         self.subject = subject
         self.filename = subject.id + '_' + date + '_' + hrir.name
         # metadata

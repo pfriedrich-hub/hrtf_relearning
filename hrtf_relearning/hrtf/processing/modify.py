@@ -10,64 +10,42 @@ import slab
 
 sub_id = 'VD'
 
-SMOOTH = False
-N_KEEP = 12
-NOTCH = True
-# notch parameters
-notch_freqs = (5000, 13000)   # notch center frequency for azimuth-driven (X1) and elevation-driven (X2) variation [Hz]
-notch_width = (300, 300)      # notch bandwidth (Gaussian σ) for X1 and X2 [Hz]
-notch_depth = (12.0, 12.0)    # notch attenuation for X1 and X2 [dB]
+SMOOTH = True
+N_KEEP = 8 # all subjects reported complete externalization of the virtual sound image
 
-# X1 and X2 define two spatial anchor directions,
-# and the notch parameters are linearly interpolated between them in azimuth–elevation space.
-notch_X1 = (0, 0)     # azimuth reference direction (azimuth-driven variation)
-notch_X2 = (-60, 60)  # elevation reference direction (elevation-driven variation)
-
-# notch_X1 = (0, -60)  # this is what chatgpt thinks is correct for elevation dependent notch
-# notch_X2 = (0, 60)  # doesn't work
-
-"""
-Artificial spectral notch parameters.
-
-A direction-dependent spectral notch is added to the HRTF magnitude response.
-The notch characteristics are defined at two spatial anchor points (X1 and X2)
-and are linearly interpolated for all other directions.
-
-Coordinates
------------
-X1, X2 : (azimuth, elevation) in degrees
-    Spatial anchor points that define where the notch parameters are specified.
-
-Parameter Mapping
------------------
-notch_freqs : (f1, f2) in Hz
-    Center frequency of the notch at X1 and X2. The notch frequency shifts
-    linearly between these two values as the source direction moves between
-    the anchor points.
-
-notch_width : (w1, w2) in Hz
-    Standard deviation / bandwidth of the Gaussian notch. Larger values
-    produce broader spectral attenuation. Width is interpolated between
-    X1 and X2 across the spatial field.
-
-notch_depth : (d1, d2) in dB
-    Depth of the attenuation at the notch center frequency. Higher values
-    correspond to stronger attenuation. Depth varies linearly between
-    the anchor points.
-
-Spatial Behaviour
------------------
-For a given source direction (azimuth, elevation), the notch parameters
-(center frequency, width, and depth) are obtained by linear interpolation
-between X1 and X2. This creates a smooth spatial gradient so that the notch
-changes gradually across azimuth and elevation rather than abruptly.
-
-Typical use
------------
-This mechanism can simulate direction-dependent spectral cues similar to
-pinna-induced spectral notches, where notch frequency and depth vary
-systematically with source direction.
-"""
+# ---------------------------------------------------------------------------
+# Spectral feature list
+# ---------------------------------------------------------------------------
+# Each entry is one spectral feature (notch or peak) added to the HRTF.
+# Parameters are linearly interpolated between two spatial anchor points
+# X1 and X2 (azimuth, elevation) in degrees.
+#
+# Keys per feature
+# ----------------
+# freqs : (f_at_X1, f_at_X2)   centre frequency [Hz]
+# width : (w_at_X1, w_at_X2)   Gaussian σ / bandwidth [Hz]
+# depth : (d_at_X1, d_at_X2)   magnitude in dB
+#     > 0  →  notch  (spectral attenuation)
+#     < 0  →  peak   (spectral boost)
+# X1, X2 : (azimuth, elevation) spatial anchor directions
+# ---------------------------------------------------------------------------
+FEATURES = [
+    {
+        'freqs': (6000, 8500),  # centre freq at X1 and X2 [Hz]
+        'width': (400,   400),   # Gaussian σ at X1 and X2 [Hz]
+        'depth': (12.0,  12.0), # >0 = notch, <0 = peak [dB]
+        'X1':    (0, 0),         # anchor 1 (az, az)
+        'X2':    (-40, 40),      # anchor 2 (el, el)
+    },
+    # Add further features here, e.g.:
+    {
+        'freqs': (9500, 11000),
+        'width': (300, 300),
+        'depth': (12, 12),   # negative → peak
+        'X1': (0, 0),
+        'X2': (40, -40),
+    },
+]
 
 def _smooth(mag, n_keep):
     """
@@ -140,45 +118,38 @@ def _smooth(mag, n_keep):
     return mag_smooth
 
 
-def _add_notch(
-        azimuth,
-        elevation,
-        notch_freqs=(6000.0, 12000.0),
-        notch_width=(300.0, 300.0),
-        notch_depth=(12.0, 12.0),
-        X1=(0, 0),
-        X2=(-60, 60),
-):
+def _compute_feature_params(azimuth, elevation, feature):
     """
-    Return artificial spectral-notch parameters for a given source direction.
+    Return interpolated spectral-feature parameters for a given source direction.
+
+    Parameters
+    ----------
+    azimuth, elevation : float
+        Source direction in degrees.
+    feature : dict
+        Feature specification with keys:
+            freqs : (f_at_X1, f_at_X2)  centre frequency [Hz]
+            width : (w_at_X1, w_at_X2)  Gaussian σ [Hz]
+            depth : (d_at_X1, d_at_X2)  signed depth [dB]
+                positive → notch (attenuation)
+                negative → peak  (boost)
+            X1, X2 : (azimuth, elevation)  spatial anchor directions
+
+    Returns
+    -------
+    dict with keys ``mu``, ``sigma``, ``depth_db`` (signed).
     """
-    mu = linear_notch_position(
-        azimuth,
-        elevation,
-        X1=X1,
-        X2=X2,
-        Y=notch_freqs,
-    )
-    sigma = linear_notch_width(
-        azimuth,
-        elevation,
-        X1=X1,
-        X2=X2,
-        Y=notch_width,
-    )
-    depth_db = abs(
-        linear_scaling_factor(
-            azimuth,
-            elevation,
-            X1=X1,
-            X2=X2,
-            Y=notch_depth,
-        )
-    )
+    X1 = feature['X1']
+    X2 = feature['X2']
+
+    mu = linear_notch_position(azimuth, elevation, X1=X1, X2=X2, Y=feature['freqs'])
+    sigma = linear_notch_width(azimuth, elevation, X1=X1, X2=X2, Y=feature['width'])
+    # preserve sign: positive = notch, negative = peak
+    depth_db = linear_scaling_factor(azimuth, elevation, X1=X1, X2=X2, Y=feature['depth'])
 
     return {
-        "mu": float(mu),
-        "sigma": float(max(sigma, numpy.finfo(float).eps)),
+        "mu":       float(mu),
+        "sigma":    float(max(sigma, numpy.finfo(float).eps)),
         "depth_db": float(depth_db),
     }
 
@@ -404,18 +375,13 @@ def smooth_and_notch_hrtf(
         hrtf,
         n_keep=12,
         smooth=True,
-        add_notch=True,
+        features=None,
         onset_threshold_db=15.0,
-        notch_freqs=(6000.0, 12000.0),
-        notch_width=(300.0, 300.0),
-        notch_depth=(12.0, 12.0),
-        notch_X1=(0, 0),
-        notch_X2=(-60, 60),
 ):
     """
     Apply paper-style HRTF spectral smoothing, optional artificial spectral
-    notch insertion, minimum-phase reconstruction, and onset-based ITD
-    restoration to a slab.HRTF object.
+    features (notches and/or peaks), minimum-phase reconstruction, and
+    onset-based ITD restoration to a slab.HRTF object.
 
     Parameters
     ----------
@@ -426,10 +392,20 @@ def smooth_and_notch_hrtf(
         Number of cosine coefficients retained in the log-magnitude smoothing
         step. This is the smoothing parameter analogous to the paper's M,
         interpreted here as the number of retained coefficients including C(0).
-
-    add_notch : bool, default=True
-        If True, apply the artificial direction-dependent notch after smoothing
-        and before minimum-phase reconstruction.
+    smooth : bool, default=True
+        If True, apply Kulkarni & Colburn (1998) log-magnitude smoothing.
+    features : list of dict, optional
+        Spectral features to add. Each dict must contain:
+            freqs : (f_at_X1, f_at_X2)  Gaussian centre frequency [Hz]
+            width : (w_at_X1, w_at_X2)  Gaussian σ [Hz]
+            depth : (d_at_X1, d_at_X2)  signed depth [dB]
+                positive → notch (attenuation)
+                negative → peak  (boost)
+            X1, X2 : (azimuth, elevation)  spatial anchor directions
+        Parameters are linearly interpolated between X1 and X2 for every
+        source direction. Multiple features are accumulated in the dB domain
+        before converting to a linear gain, so they interact additively in dB.
+        Pass an empty list (or None) to skip this step.
     onset_threshold_db : float, default=15.0
         Threshold for onset detection when restoring ITD.
 
@@ -444,22 +420,22 @@ def smooth_and_notch_hrtf(
       1. Transform to one-sided frequency domain via rFFT
       2. Smooth the one-sided magnitude spectrum using truncated cosine-series
          reconstruction of log-magnitude, following Kulkarni & Colburn (1998)
-      3. Optionally apply an artificial Gaussian notch in magnitude
+      3. Accumulate all spectral features in the dB domain and apply as a
+         single linear gain vector
       4. Reconstruct a minimum-phase spectrum from the final magnitude
       5. Transform back to the time domain via irFFT
       6. Restore the original onset-based ITD by a pure right-ear shift
 
     Notes
     -----
-    This is "strict paper-style" for the smoothing stage:
-      - smoothing is performed on log-magnitude using a truncated Fourier /
-        cosine series, not directly in the time domain
-      - the resulting magnitude is implemented as a minimum-phase filter
-      - overall ITD is restored as a frequency-independent delay.
-
-    The artificial notch is your additional manipulation and is not part of the
-    original paper.
+    Smoothing follows the paper-style approach: log-magnitude is expressed as
+    a truncated cosine/Fourier series and the result is implemented as a
+    minimum-phase filter with the original ITD restored as a frequency-
+    independent delay.
     """
+    if features is None:
+        features = []
+
     out = copy.deepcopy(hrtf)
 
     for filt, source in zip(out, out.sources.vertical_polar):
@@ -478,38 +454,37 @@ def smooth_and_notch_hrtf(
         spec_original = numpy.fft.rfft(ir_original, axis=0)
         mag_original = numpy.abs(spec_original)
 
+        # 1) Paper-style smoothing in log-magnitude / cosine-series domain
         if smooth:
-            # 1) Paper-style smoothing in log-magnitude / cosine-series domain
             mag_processed = _smooth(mag_original, n_keep=n_keep)
         else:
             mag_processed = mag_original
 
-        # 2) Optional artificial spectral notch in the magnitude domain
-        if add_notch:
-            notch = _add_notch(
-                azimuth,
-                elevation,
-                notch_freqs=notch_freqs,
-                notch_width=notch_width,
-                notch_depth=notch_depth,
-                X1=notch_X1,
-                X2=notch_X2,
-            )
-            notch_db = -notch["depth_db"] * numpy.exp(
-                -0.5 * ((freqs - notch["mu"]) / notch["sigma"]) ** 2
-            )
-            notch_lin = 10.0 ** (notch_db / 20.0)
+        # 2) Accumulate spectral features in the dB domain, then apply once
+        if features:
+            combined_db = numpy.zeros(len(freqs))
+            for feat in features:
+                params = _compute_feature_params(azimuth, elevation, feat)
+                # positive depth_db → attenuation (notch); negative → boost (peak)
+                gaussian = numpy.exp(
+                    -0.5 * ((freqs - params["mu"]) / params["sigma"]) ** 2
+                )
+                combined_db += -params["depth_db"] * gaussian
 
             # leave DC and Nyquist untouched
-            notch_lin[0] = 1.0
-            notch_lin[-1] = 1.0
+            combined_db[0]  = 0.0
+            combined_db[-1] = 0.0
 
-            # guard against pathological attenuation
-            notch_lin = numpy.clip(notch_lin, 10.0 ** (-80.0 / 20.0), 1.0)
-            mag_processed = mag_processed * notch_lin[:, None]
+            combined_lin = 10.0 ** (combined_db / 20.0)
+            # guard against extreme attenuation / boost
+            combined_lin = numpy.clip(
+                combined_lin,
+                10.0 ** (-80.0 / 20.0),
+                10.0 ** ( 80.0 / 20.0),
+            )
+            mag_processed = mag_processed * combined_lin[:, None]
 
-
-        # 3) Enforce minimum phase once, after smoothing + notch
+        # 3) Enforce minimum phase once, after smoothing + features
         spec_processed = minimum_phase_from_magnitude(mag_processed)
 
         # 4) Back to time domain
@@ -526,14 +501,58 @@ def smooth_and_notch_hrtf(
 
     return out
 
-def plot(hrtf, hrtf_modified, kind='image', ear='left'):
+def plot(hrtf, hrtf_modified, kind='image', ear='left', xlim=(1000, 18000), clip_db=-25, n_levels=20):
+    """
+    Plot original and modified HRTF transfer functions side by side with a shared colorbar.
+
+    Uses tfs_from_sources to extract raw dB data from both HRTFs, computes the joint
+    min/max across both panels (after clipping at clip_db), and passes shared contour
+    levels to both contourf calls so the color scale is identical.
+
+    Parameters
+    ----------
+    hrtf, hrtf_modified : slab.HRTF
+    kind : str  (currently only 'image' is implemented here)
+    ear : 'left' | 'right'
+    xlim : (f_low, f_high) in Hz  frequency display range
+    clip_db : float  lower dB clip (matches slab's internal -25 dB clip)
+    n_levels : int  number of contour levels
+    """
+    sources = hrtf.cone_sources(0)
+    elevations = hrtf.sources.vertical_polar[sources, 1]
+
+    # Frequency axis from the first filter's tf method
+    freqs = hrtf[0].tf(show=False)[0]
+    freq_mask = (freqs >= xlim[0]) & (freqs <= xlim[1])
+    freqs_plot = freqs[freq_mask]
+
+    # Raw TF data: (n_sources, n_bins, 1) → (n_sources, n_bins)
+    tf_orig = hrtf.tfs_from_sources(sources, n_bins=None, ear=ear)[:, :, 0]
+    tf_mod  = hrtf_modified.tfs_from_sources(sources, n_bins=None, ear=ear)[:, :, 0]
+
+    # Frequency-band selection and dB clip (matching slab's own clipping in plot_tf)
+    tf_orig = numpy.clip(tf_orig[:, freq_mask], clip_db, None)
+    tf_mod  = numpy.clip(tf_mod[:, freq_mask],  clip_db, None)
+
+    # Joint colour range
+    vmin = min(tf_orig.min(), tf_mod.min())
+    vmax = max(tf_orig.max(), tf_mod.max())
+    levels = numpy.linspace(vmin, vmax, n_levels)
+
     fig, ax = plt.subplots(1, 2, figsize=(15, 5))
-    hrtf.plot_tf(hrtf.cone_sources(0), kind=kind, axis=ax[0], ear=ear)
-    hrtf_modified.plot_tf(hrtf.cone_sources(0), kind=kind, axis=ax[1], ear=ear)
+    c0 = ax[0].contourf(freqs_plot, elevations, tf_orig, cmap='hot', levels=levels)
+    c1 = ax[1].contourf(freqs_plot, elevations, tf_mod,  cmap='hot', levels=levels)
     ax[0].set_title('original')
     ax[1].set_title('modified')
+    for a in ax:
+        a.set_xlabel('Frequency (Hz)')
+        a.set_ylabel('Elevation (°)')
+
+    # Single shared colorbar
+    fig.colorbar(c0, ax=ax.tolist(), orientation='vertical', label='dB')
+
     plt.show(block=False)
-    plt.pause(0.1)  # give Qt time to draw
+    plt.pause(0.1)
     return fig
 
 if __name__ == '__main__':
@@ -543,13 +562,8 @@ if __name__ == '__main__':
         hrtf,
         n_keep=N_KEEP,
         smooth=SMOOTH,
-        add_notch=NOTCH,
+        features=FEATURES,
         onset_threshold_db=15.0,
-        notch_freqs=notch_freqs,
-        notch_width=notch_width,
-        notch_depth=notch_depth,
-        notch_X1=notch_X1,
-        notch_X2=notch_X2,
     )
 
     # plot

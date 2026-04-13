@@ -1,0 +1,14 @@
+id: PF
+fs: 48828
+n_recordings: 10
+n_directions: 2
+signal:
+  kind: logarithmic
+  duration: 0.2
+  level: 85
+  from_frequency: 120
+  to_frequency: 22000.0
+  samplerate: 48828
+highpass_frequency: 120
+equalize_dome: True
+datetime: 2026-01-16T12:44:15.866291

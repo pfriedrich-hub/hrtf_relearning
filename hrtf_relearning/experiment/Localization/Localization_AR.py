@@ -2,7 +2,6 @@ import multiprocessing as mp
 import hrtf_relearning as hr
 import datetime
 import time
-from pathlib import Path
 from hrtf_relearning.experiment.analysis.localization.localization_analysis import *
 from hrtf_relearning.experiment.misc.localization_helpers.make_sequence import *
 from hrtf_relearning.experiment.misc.localization_helpers.uso_generation import generate_uso
@@ -36,32 +35,31 @@ class Localization:
     Localization test:
         Test localization at uniformly random positions within sectors0
     """
-    def __init__(self, subject, hrir):
-        # make trial sequence and write to subject-
-
-        self.settings = {'kind': 'sectors',
-                         'azimuth_range': AZ_RANGE, 'elevation_range': (-35, 35),
-                         'sector_size': SECTOR_SIZE,
-                         'targets_per_sector': 3, 'replace': False, 'min_distance': 20,
-                         'gain': .2}
-        # alternative setting: play 3 times from each source in the hrir (works well for dome recorded hrirs)
-        # self.settings = {'kind': 'standard', 'azimuth_range': (-1, 1), 'elevation_range': (-37.5, 37.5),
-        #                  'targets_per_speaker': 3, 'min_distance': 10, 'gain': .2}
+    def __init__(self, subject, hrir, settings=None, ear=EAR, mirror=MIRROR, stim=STIM):
         self.subject = subject
         self.filename = subject.id + '_' + date + '_' + hrir.name
-        # metadata
+
         slab.set_default_samplerate(hrir.samplerate)
         self.hrir_sources = hrir.sources.vertical_polar
         self.sound_path = ROOT / 'data' / 'hrtf' / 'binsim' / hrir.name / 'sounds'
         self.target = None
 
-        # make sequence
+        if settings is None:
+            settings = {
+                'kind': 'sectors',
+                'azimuth_range': AZ_RANGE, 'elevation_range': (-35, 35),
+                'sector_size': SECTOR_SIZE,
+                'targets_per_sector': 3, 'replace': False, 'min_distance': 20,
+                'gain': .2,
+            }
+        self.settings = settings
+
         self.sequence = make_sequence(self.settings, self.hrir_sources)
         self.sequence.name = self.filename
         self.sequence.hrir = hrir.name
-        self.sequence.ear = EAR
-        self.sequence.mirrored = MIRROR
-        self.sequence.stim = STIM
+        self.sequence.ear = ear
+        self.sequence.mirrored = mirror
+        self.sequence.stim = stim
 
     def write(self):
         self.subject.localization[self.filename] = self.sequence

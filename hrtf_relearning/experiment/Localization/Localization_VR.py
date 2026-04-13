@@ -2,11 +2,9 @@ import multiprocessing as mp
 import hrtf_relearning as hr
 import datetime
 import time
-from pathlib import Path
 from hrtf_relearning.experiment.analysis.localization.localization_analysis import *
 from hrtf_relearning.experiment.misc.localization_helpers.make_sequence import *
 from hrtf_relearning.experiment.misc.localization_helpers.uso_generation import generate_uso
-from pythonosc import udp_client
 from hrtf_relearning.experiment.misc.training_helpers import meta_motion
 from hrtf_relearning.hrtf.binsim.hrtf2binsim import hrtf2binsim
 from pynput import keyboard

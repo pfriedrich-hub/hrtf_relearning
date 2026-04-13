@@ -45,9 +45,9 @@ import slab
 
 sub_id = 'VD'
 
-SMOOTH = False
+SMOOTH = True
 N_KEEP = 8
-KIND = 'waterfall'
+KIND = 'image'
 # ---------------------------------------------------------------------------
 # Spectral feature list
 # ---------------------------------------------------------------------------

@@ -22,12 +22,12 @@ import copy
 import logging
 import freefield
 import slab
-
+from hrtf_relearning.experiment.Localization.Localization_AR import Localization
 import hrtf_relearning
 from hrtf_relearning import PATH as ROOT
 from hrtf_relearning.experiment.Subject import Subject
 from hrtf_relearning.hrtf.record.record_hrir import record_hrir
-from hrtf_relearning.hrtf.record.calibration.calibrate_headphones import calibrate_headphones
+from hrtf_relearning.hrtf.record.calibration.calibrate_headphones import calibrate_headphones, load_hp_filter
 from hrtf_relearning.hrtf.binsim.hrtf2binsim import hrtf2binsim
 from hrtf_relearning.experiment.Localization.Localization_dome import LocalizationDome
 from hrtf_relearning.experiment.analysis.localization.localization_analysis import (
@@ -35,15 +35,18 @@ from hrtf_relearning.experiment.analysis.localization.localization_analysis impo
 )
 
 # --- session defaults (override via main() arguments) ---
-SUBJECT_ID   = 'PC'
-HP_ID        = 'MYSPHERE'
-REFERENCE_ID = 'ref_03.04'
-N_DIRECTIONS = 3
-N_RECORDINGS = 10
-FS           = 48828
-HP_FREQ      = 120
+subject_id   = 'VD'
+hp_id        = 'MYSPHERE'
+reference_id = 'ref_03.04'
+n_directions = 3  # directions for the hrir recording
+n_recordings = 10  #
+fs           = 48828
+hp_freq      = 120
+n_rec_hp     = 3
+hrir_settings= None
+show = True
 
-slab.set_default_samplerate(FS)
+slab.set_default_samplerate(fs)
 freefield.set_logger('info')
 
 
@@ -51,16 +54,8 @@ freefield.set_logger('info')
 # Main pipeline
 # ---------------------------------------------------------------------
 
-def main(
-    subject_id   = SUBJECT_ID,
-    reference_id = REFERENCE_ID,
-    hp_id        = HP_ID,
-    hrir_settings = None,
-    n_directions  = N_DIRECTIONS,
-    n_recordings  = N_RECORDINGS,
-    n_rec_hp      = 3,
-    show          = True,
-):
+def main(subject_id, reference_id, hp_id, hrir_settings,
+         n_directions, n_recordings, n_rec_hp=3, show=True):
     """
     Full first-session pipeline.
 
@@ -106,22 +101,28 @@ def main(
         reference_id = reference_id,
         n_directions = n_directions,
         n_recordings = n_recordings,
-        fs           = FS,
-        hp_freq      = HP_FREQ,
+        fs           = fs,
+        hp_freq      = hp_freq,
         show         = show,
+        overwrite = False ,
     )
 
     # ------------------------------------------------------------------
     # 2. HP calibration  (in-ear mics still in place)
     # ------------------------------------------------------------------
     logging.info('--- Step 2: HP calibration ---')
-    hp_filter = calibrate_headphones(
-        subject_id    = subject_id,
-        hp_id         = hp_id,
-        n_rec         = n_rec_hp,
-        show          = show,
-        save_freefield = False,
-    )
+    try:
+        # alternatively load from disk  - todo convert to slab for acoustic test
+        hp_filter = load_hp_filter(ROOT / 'data' / 'hrtf' / 'rec' / subject_id / f'{hp_id}_equalization.npz')
+        print(f'Loading hp filter from disk: {hp_id}_equalization.npz')
+    except FileNotFoundError:
+        hp_filter = calibrate_headphones(
+            subject_id    = subject_id,
+            hp_id         = hp_id,
+            n_rec         = n_rec_hp,
+            show          = show,
+            save_freefield = False,
+        )
 
     # ------------------------------------------------------------------
     # 3. Acoustic sanity check
@@ -147,8 +148,8 @@ def main(
     # Lazy import avoids module-level hrtf2binsim call in Localization_AR
     # ------------------------------------------------------------------
     logging.info('--- Step 6: Virtual localization ---')
-    from hrtf_relearning.experiment.Localization.Localization_AR import Localization
-    vr_loc = Localization(subject, hrir_binsim)
+    # todo reminder to change to audio jack
+    vr_loc = Localization(subject, hrir_binsim)  # todo pass parameters
     vr_loc.run()
 
     # ------------------------------------------------------------------
@@ -285,5 +286,5 @@ def compare_localization(dome_seq, vr_seq, subject_id, filepath=None):
     plt.show()
 
 
-if __name__ == '__main__':
-    main()
+# if __name__ == '__main__':
+#     main()

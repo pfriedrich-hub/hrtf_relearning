@@ -1,0 +1,1837 @@
+Index: hrtf_relearning/hrtf/processing/modify.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>import copy\nimport numpy\nimport matplotlib\nmatplotlib.use('tkagg')\nfrom matplotlib import pyplot as plt\nfrom sklearn.linear_model import LinearRegression\nfrom hrtf_relearning import PATH\nhrtf_dir = PATH / 'data' /'hrtf'/'sofa'\nimport slab\n\nsub_id = 'VD'\n\nSMOOTH = True\nN_KEEP = 8 # all subjects reported complete externalization of the virtual sound image\n\n# ---------------------------------------------------------------------------\n# Spectral feature list\n# ---------------------------------------------------------------------------\n# Each entry is one spectral feature (notch or peak) added to the HRTF.\n# Parameters are linearly interpolated between two spatial anchor points\n# X1 and X2 (azimuth, elevation) in degrees.\n#\n# Keys per feature\n# ----------------\n# freqs : (f_at_X1, f_at_X2)   centre frequency [Hz]\n# width : (w_at_X1, w_at_X2)   Gaussian σ / bandwidth [Hz]\n# depth : (d_at_X1, d_at_X2)   magnitude in dB\n#     > 0  →  notch  (spectral attenuation)\n#     < 0  →  peak   (spectral boost)\n# X1, X2 : (azimuth, elevation) spatial anchor directions\n# ---------------------------------------------------------------------------\nFEATURES = [\n    {\n        'freqs': (6000, 8500),  # centre freq at X1 and X2 [Hz]\n        'width': (400,   400),   # Gaussian σ at X1 and X2 [Hz]\n        'depth': (12.0,  12.0), # >0 = notch, <0 = peak [dB]\n        'X1':    (0, 0),         # anchor 1 (az, az)\n        'X2':    (-40, 40),      # anchor 2 (el, el)\n    },\n    # Add further features here, e.g.:\n    {\n        'freqs': (9500, 11000),\n        'width': (300, 300),\n        'depth': (12, 12),   # negative → peak\n        'X1': (0, 0),\n        'X2': (40, -40),\n    },\n]\n\ndef _smooth(mag, n_keep):\n    \"\"\"\n    Smooth a one-sided HRTF magnitude spectrum by truncating the cosine-series\n    representation of its log-magnitude spectrum.\n\n    This implements the smoothing idea described in Kulkarni & Colburn (1998):\n    the log-magnitude spectrum is expressed as a cosine / Fourier series and\n    reconstructed using only the first M coefficients. Exact reconstruction\n    corresponds to the full set of coefficients; stronger smoothing uses fewer\n    coefficients.\n\n    Parameters\n    ----------\n    mag : numpy.ndarray\n        One-sided magnitude spectrum with shape (n_bins, n_channels), typically\n        from numpy.fft.rfft(...). Must be strictly non-negative.\n    n_keep : int\n        Number of cosine coefficients to retain, counting from the DC term C(0).\n        Thus:\n            - n_keep = full number of coefficients -> exact reconstruction\n            - n_keep = 1 -> flat log-magnitude at its average value\n        This interpretation matches the paper's description that the most extreme\n        smoothing retains only the average spectral shape. :contentReference[oaicite:3]{index=3}\n\n    Returns\n    -------\n    numpy.ndarray\n        Smoothed one-sided magnitude spectrum with the same shape as `mag`.\n\n    Notes\n    -----\n    The paper expresses the smoothing in terms of\n        log|H[k]| = sum_n C(n) cos(2*pi*n*k/N)\n    and reconstructs using a truncated series. Here this is implemented directly\n    by solving for cosine-series coefficients on the one-sided frequency grid\n    k = 0 ... N/2, where N is the original HRIR length. :contentReference[oaicite:4]{index=4}\n    \"\"\"\n    mag = numpy.asarray(mag, dtype=float)\n    if mag.ndim != 2:\n        raise ValueError(\"mag must have shape (n_bins, n_channels)\")\n\n    n_bins, n_channels = mag.shape\n    if n_bins < 2:\n        raise ValueError(\"mag must contain at least DC and one more frequency bin\")\n\n    n_samples = 2 * (n_bins - 1)  # because n_bins = N/2 + 1 for rfft of length N\n    max_coeffs = n_bins\n    n_keep = int(n_keep)\n\n    if n_keep < 1 or n_keep > max_coeffs:\n        raise ValueError(f\"n_keep must be between 1 and {max_coeffs}, got {n_keep}\")\n\n    log_mag = numpy.log(numpy.maximum(mag, numpy.finfo(float).tiny))\n\n    # Cosine basis matching the paper's formula:\n    # log|H[k]| = sum_n C(n) cos(2*pi*n*k/N), k=0..N/2\n    k = numpy.arange(n_bins, dtype=float)[:, None]  # (n_bins, 1)\n    n = numpy.arange(n_bins, dtype=float)[None, :]  # (1, n_bins)\n    basis = numpy.cos(2.0 * numpy.pi * k * n / float(n_samples))  # (n_bins, n_bins)\n\n    log_mag_smooth = numpy.empty_like(log_mag)\n\n    for ch in range(n_channels):\n        coeffs, _, _, _ = numpy.linalg.lstsq(basis, log_mag[:, ch], rcond=None)\n        coeffs[n_keep:] = 0.0\n        log_mag_smooth[:, ch] = basis @ coeffs\n\n    mag_smooth = numpy.exp(log_mag_smooth)\n    return mag_smooth\n\n\ndef _compute_feature_params(azimuth, elevation, feature):\n    \"\"\"\n    Return interpolated spectral-feature parameters for a given source direction.\n\n    Parameters\n    ----------\n    azimuth, elevation : float\n        Source direction in degrees.\n    feature : dict\n        Feature specification with keys:\n            freqs : (f_at_X1, f_at_X2)  centre frequency [Hz]\n            width : (w_at_X1, w_at_X2)  Gaussian σ [Hz]\n            depth : (d_at_X1, d_at_X2)  signed depth [dB]\n                positive → notch (attenuation)\n                negative → peak  (boost)\n            X1, X2 : (azimuth, elevation)  spatial anchor directions\n\n    Returns\n    -------\n    dict with keys ``mu``, ``sigma``, ``depth_db`` (signed).\n    \"\"\"\n    X1 = feature['X1']\n    X2 = feature['X2']\n\n    mu = linear_notch_position(azimuth, elevation, X1=X1, X2=X2, Y=feature['freqs'])\n    sigma = linear_notch_width(azimuth, elevation, X1=X1, X2=X2, Y=feature['width'])\n    # preserve sign: positive = notch, negative = peak\n    depth_db = linear_scaling_factor(azimuth, elevation, X1=X1, X2=X2, Y=feature['depth'])\n\n    return {\n        \"mu\":       float(mu),\n        \"sigma\":    float(max(sigma, numpy.finfo(float).eps)),\n        \"depth_db\": float(depth_db),\n    }\n\ndef minimum_phase_from_magnitude(mag):\n    \"\"\"\n    Reconstruct a one-sided minimum-phase HRTF spectrum from a one-sided\n    magnitude spectrum.\n\n    Parameters\n    ----------\n    mag : numpy.ndarray\n        One-sided magnitude spectrum with shape (n_bins, n_channels),\n        corresponding to an rFFT of an even-length HRIR.\n\n    Returns\n    -------\n    numpy.ndarray\n        One-sided complex minimum-phase spectrum with shape\n        (n_bins, n_channels).\n\n    Notes\n    -----\n    The paper states that modified HRTFs were implemented as\n    \"minimum-phase filters, augmented with a frequency-independent time delay\"\n    consistent with the original overall ITD.\n\n    This function performs the minimum-phase part only. ITD restoration is done\n    later in `restore_itd_from_onsets(...)`.\n\n    Method\n    ------\n    A standard real-cepstrum minimum-phase reconstruction is used:\n      1. build a full even-symmetric log-magnitude spectrum\n      2. take the IFFT to obtain the real cepstrum\n      3. zero the anti-causal cepstral part and double the causal part\n      4. exponentiate the resulting complex log spectrum\n    \"\"\"\n    mag = numpy.asarray(mag, dtype=float)\n    if mag.ndim != 2:\n        raise ValueError(\"mag must have shape (n_bins, n_channels)\")\n\n    n_bins, n_channels = mag.shape\n    if n_bins < 2:\n        raise ValueError(\"mag must contain at least DC and one more frequency bin\")\n\n    n_samples = 2 * (n_bins - 1)\n    tiny = numpy.finfo(float).tiny\n    spec_min = numpy.empty((n_bins, n_channels), dtype=complex)\n\n    for ch in range(n_channels):\n        mag_ch = numpy.maximum(mag[:, ch], tiny)\n        log_mag_half = numpy.log(mag_ch)\n\n        # Build full, even-symmetric log-magnitude spectrum of length N.\n        # For even N:\n        # [0 ... N/2, N/2-1 ... 1]\n        log_mag_full = numpy.concatenate(\n            (log_mag_half, log_mag_half[-2:0:-1]),\n            axis=0,\n        )\n\n        cep = numpy.fft.ifft(log_mag_full).real\n\n        cep_min = numpy.zeros_like(cep)\n        cep_min[0] = cep[0]\n\n        # Keep causal cepstrum and double positive quefrencies\n        cep_min[1:n_samples // 2] = 2.0 * cep[1:n_samples // 2]\n\n        # Nyquist term stays unchanged for even-length transforms\n        cep_min[n_samples // 2] = cep[n_samples // 2]\n\n        log_spec_min = numpy.fft.fft(cep_min)\n        spec_full_min = numpy.exp(log_spec_min)\n\n        spec_min[:, ch] = spec_full_min[:n_bins]\n\n    return spec_min\n\n\ndef find_ir_onsets(ir, threshold_db=15.0):\n    \"\"\"\n    Estimate per-channel HRIR onset samples from a time-domain impulse response.\n\n    Parameters\n    ----------\n    ir : numpy.ndarray\n        Time-domain HRIR with shape (n_samples, n_channels).\n    threshold_db : float, default=15.0\n        Threshold below the channel peak, in dB. The onset is defined as the\n        first sample up to the peak whose absolute amplitude exceeds\n        peak / 10^(threshold_db / 20).\n\n    Returns\n    -------\n    numpy.ndarray\n        Integer onset sample for each channel, shape (n_channels,).\n\n    Notes\n    -----\n    This is a lightweight NumPy replacement for pyfar onset detection because\n    the slab Filter objects stored in the HRTF are not directly compatible with\n    pyfar's find_impulse_response_start function.\n\n    The paper preserves overall ITD by supplementing the modified minimum-phase\n    HRTFs with a frequency-independent delay. Here that delay is estimated from\n    binaural onset differences in the original and processed HRIRs.\n    \"\"\"\n    ir = numpy.asarray(ir, dtype=float)\n    if ir.ndim != 2:\n        raise ValueError(\"ir must have shape (n_samples, n_channels)\")\n\n    n_samples, n_channels = ir.shape\n    onsets = numpy.zeros(n_channels, dtype=int)\n\n    for ch in range(n_channels):\n        x = numpy.abs(ir[:, ch])\n        peak_idx = int(numpy.argmax(x))\n        peak_val = float(x[peak_idx])\n\n        if peak_val <= 0:\n            onsets[ch] = 0\n            continue\n\n        threshold = peak_val / (10.0 ** (float(threshold_db) / 20.0))\n        above = numpy.where(x[:peak_idx + 1] >= threshold)[0]\n\n        if len(above) == 0:\n            onsets[ch] = 0\n        else:\n            onsets[ch] = int(above[0])\n\n    return onsets\n\ndef restore_itd_from_onsets(ir_original, ir_processed, threshold_db=15.0):\n    \"\"\"\n    Restore original per-ear onset positions by shifting each processed ear\n    independently so that its onset matches the corresponding original ear onset.\n\n    Parameters\n    ----------\n    ir_original : numpy.ndarray\n        Original HRIR, shape (n_samples, 2).\n    ir_processed : numpy.ndarray\n        Processed HRIR, shape (n_samples, 2).\n    threshold_db : float, default=15.0\n        Threshold used in `find_ir_onsets(...)`.\n\n    Returns\n    -------\n    numpy.ndarray\n        Processed HRIR with restored per-ear onsets, shape (n_samples, 2).\n\n    Notes\n    -----\n    This restores both the common delay and the ITD, because both ears are\n    aligned to their original onset positions independently.\n    \"\"\"\n    ir_original = numpy.asarray(ir_original, dtype=float)\n    ir_processed = numpy.asarray(ir_processed, dtype=float)\n\n    if ir_original.shape != ir_processed.shape:\n        raise ValueError(\"ir_original and ir_processed must have the same shape\")\n    if ir_original.ndim != 2 or ir_original.shape[1] != 2:\n        raise ValueError(\"Both HRIRs must have shape (n_samples, 2)\")\n\n    n_samples, n_channels = ir_original.shape\n    out = numpy.zeros_like(ir_processed)\n\n    on_orig = find_ir_onsets(ir_original, threshold_db=threshold_db)\n    on_proc = find_ir_onsets(ir_processed, threshold_db=threshold_db)\n\n    for ch in range(n_channels):\n        delta = int(on_orig[ch] - on_proc[ch])\n\n        if delta > 0:\n            # delay channel\n            if delta >= n_samples:\n                out[:, ch] = 0.0\n            else:\n                out[:, ch] = numpy.concatenate(\n                    (numpy.zeros(delta, dtype=ir_processed.dtype), ir_processed[:-delta, ch]),\n                    axis=0,\n                )\n        elif delta < 0:\n            # advance channel\n            d = -delta\n            if d >= n_samples:\n                out[:, ch] = 0.0\n            else:\n                out[:, ch] = numpy.concatenate(\n                    (ir_processed[d:, ch], numpy.zeros(d, dtype=ir_processed.dtype)),\n                    axis=0,\n                )\n        else:\n            out[:, ch] = ir_processed[:, ch]\n\n    return out\n\n\ndef linear_notch_position(azimuth, elevation, X1, X2, Y):\n    X = numpy.column_stack((X1, X2))\n    model = LinearRegression()\n    model.fit(X, numpy.array(Y))\n    mu = model.predict(numpy.array((azimuth, elevation)).reshape(1, -1))[0]\n    return float(mu)\n\ndef linear_notch_width(azimuth, elevation, X1, X2, Y):\n    X = numpy.column_stack((X1, X2))\n    model = LinearRegression()\n    model.fit(X, numpy.array(Y))\n    sigma = model.predict(numpy.array((azimuth, elevation)).reshape(1, -1))[0]\n    return float(max(sigma, numpy.finfo(float).eps))\n\ndef linear_scaling_factor(azimuth, elevation, X1, X2, Y):\n    X = numpy.column_stack((X1, X2))\n    model = LinearRegression()\n    model.fit(X, numpy.array(Y))\n    scaling = model.predict(numpy.array((azimuth, elevation)).reshape(1, -1))[0]\n    return float(scaling)\n\ndef smooth_and_notch_hrtf(\n        hrtf,\n        n_keep=12,\n        smooth=True,\n        features=None,\n        onset_threshold_db=15.0,\n):\n    \"\"\"\n    Apply paper-style HRTF spectral smoothing, optional artificial spectral\n    features (notches and/or peaks), minimum-phase reconstruction, and\n    onset-based ITD restoration to a slab.HRTF object.\n\n    Parameters\n    ----------\n    hrtf : slab.HRTF\n        Input HRTF object. Each element is assumed to contain a binaural HRIR\n        in `filt.data` with shape (n_samples, 2).\n    n_keep : int\n        Number of cosine coefficients retained in the log-magnitude smoothing\n        step. This is the smoothing parameter analogous to the paper's M,\n        interpreted here as the number of retained coefficients including C(0).\n    smooth : bool, default=True\n        If True, apply Kulkarni & Colburn (1998) log-magnitude smoothing.\n    features : list of dict, optional\n        Spectral features to add. Each dict must contain:\n            freqs : (f_at_X1, f_at_X2)  Gaussian centre frequency [Hz]\n            width : (w_at_X1, w_at_X2)  Gaussian σ [Hz]\n            depth : (d_at_X1, d_at_X2)  signed depth [dB]\n                positive → notch (attenuation)\n                negative → peak  (boost)\n            X1, X2 : (azimuth, elevation)  spatial anchor directions\n        Parameters are linearly interpolated between X1 and X2 for every\n        source direction. Multiple features are accumulated in the dB domain\n        before converting to a linear gain, so they interact additively in dB.\n        Pass an empty list (or None) to skip this step.\n    onset_threshold_db : float, default=15.0\n        Threshold for onset detection when restoring ITD.\n\n    Returns\n    -------\n    slab.HRTF\n        Deep-copied and processed HRTF object.\n\n    Processing steps\n    ----------------\n    For each HRIR:\n      1. Transform to one-sided frequency domain via rFFT\n      2. Smooth the one-sided magnitude spectrum using truncated cosine-series\n         reconstruction of log-magnitude, following Kulkarni & Colburn (1998)\n      3. Accumulate all spectral features in the dB domain and apply as a\n         single linear gain vector\n      4. Reconstruct a minimum-phase spectrum from the final magnitude\n      5. Transform back to the time domain via irFFT\n      6. Restore the original onset-based ITD by a pure right-ear shift\n\n    Notes\n    -----\n    Smoothing follows the paper-style approach: log-magnitude is expressed as\n    a truncated cosine/Fourier series and the result is implemented as a\n    minimum-phase filter with the original ITD restored as a frequency-\n    independent delay.\n    \"\"\"\n    if features is None:\n        features = []\n\n    out = copy.deepcopy(hrtf)\n\n    for filt, source in zip(out, out.sources.vertical_polar):\n        azimuth, elevation = float(source[0]), float(source[1])\n\n        ir_original = numpy.asarray(filt.data, dtype=float)\n        if ir_original.ndim != 2 or ir_original.shape[1] != 2:\n            raise ValueError(\n                \"Each HRIR must have shape (n_samples, 2) for binaural processing\"\n            )\n\n        n_samples, n_channels = ir_original.shape\n        fs = filt.samplerate\n\n        freqs = numpy.fft.rfftfreq(n_samples, d=1.0 / fs)\n        spec_original = numpy.fft.rfft(ir_original, axis=0)\n        mag_original = numpy.abs(spec_original)\n\n        # 1) Paper-style smoothing in log-magnitude / cosine-series domain\n        if smooth:\n            mag_processed = _smooth(mag_original, n_keep=n_keep)\n        else:\n            mag_processed = mag_original\n\n        # 2) Accumulate spectral features in the dB domain, then apply once\n        if features:\n            combined_db = numpy.zeros(len(freqs))\n            for feat in features:\n                params = _compute_feature_params(azimuth, elevation, feat)\n                # positive depth_db → attenuation (notch); negative → boost (peak)\n                gaussian = numpy.exp(\n                    -0.5 * ((freqs - params[\"mu\"]) / params[\"sigma\"]) ** 2\n                )\n                combined_db += -params[\"depth_db\"] * gaussian\n\n            # leave DC and Nyquist untouched\n            combined_db[0]  = 0.0\n            combined_db[-1] = 0.0\n\n            combined_lin = 10.0 ** (combined_db / 20.0)\n            # guard against extreme attenuation / boost\n            combined_lin = numpy.clip(\n                combined_lin,\n                10.0 ** (-80.0 / 20.0),\n                10.0 ** ( 80.0 / 20.0),\n            )\n            mag_processed = mag_processed * combined_lin[:, None]\n\n        # 3) Enforce minimum phase once, after smoothing + features\n        spec_processed = minimum_phase_from_magnitude(mag_processed)\n\n        # 4) Back to time domain\n        ir_processed = numpy.fft.irfft(spec_processed, n=n_samples, axis=0)\n\n        # 5) Restore original ITD from HRIR onsets\n        ir_processed = restore_itd_from_onsets(\n            ir_original,\n            ir_processed,\n            threshold_db=onset_threshold_db,\n        )\n\n        filt.data = ir_processed\n\n    return out\n\ndef plot(hrtf, hrtf_modified, kind='image', ear='left', xlim=(1000, 18000), clip_db=-25, n_levels=20):\n    \"\"\"\n    Plot original and modified HRTF transfer functions side by side with a shared colorbar.\n\n    Uses tfs_from_sources to extract raw dB data from both HRTFs, computes the joint\n    min/max across both panels (after clipping at clip_db), and passes shared contour\n    levels to both contourf calls so the color scale is identical.\n\n    Parameters\n    ----------\n    hrtf, hrtf_modified : slab.HRTF\n    kind : str  (currently only 'image' is implemented here)\n    ear : 'left' | 'right'\n    xlim : (f_low, f_high) in Hz  frequency display range\n    clip_db : float  lower dB clip (matches slab's internal -25 dB clip)\n    n_levels : int  number of contour levels\n    \"\"\"\n    sources = hrtf.cone_sources(0)\n    elevations = hrtf.sources.vertical_polar[sources, 1]\n\n    # Frequency axis from the first filter's tf method\n    freqs = hrtf[0].tf(show=False)[0]\n    freq_mask = (freqs >= xlim[0]) & (freqs <= xlim[1])\n    freqs_plot = freqs[freq_mask]\n\n    # Raw TF data: (n_sources, n_bins, 1) → (n_sources, n_bins)\n    tf_orig = hrtf.tfs_from_sources(sources, n_bins=None, ear=ear)[:, :, 0]\n    tf_mod  = hrtf_modified.tfs_from_sources(sources, n_bins=None, ear=ear)[:, :, 0]\n\n    # Frequency-band selection and dB clip (matching slab's own clipping in plot_tf)\n    tf_orig = numpy.clip(tf_orig[:, freq_mask], clip_db, None)\n    tf_mod  = numpy.clip(tf_mod[:, freq_mask],  clip_db, None)\n\n    # Joint colour range\n    vmin = min(tf_orig.min(), tf_mod.min())\n    vmax = max(tf_orig.max(), tf_mod.max())\n    levels = numpy.linspace(vmin, vmax, n_levels)\n\n    fig, ax = plt.subplots(1, 2, figsize=(15, 5))\n    c0 = ax[0].contourf(freqs_plot, elevations, tf_orig, cmap='hot', levels=levels)\n    c1 = ax[1].contourf(freqs_plot, elevations, tf_mod,  cmap='hot', levels=levels)\n    ax[0].set_title('original')\n    ax[1].set_title('modified')\n    for a in ax:\n        a.set_xlabel('Frequency (Hz)')\n        a.set_ylabel('Elevation (°)')\n\n    # Single shared colorbar\n    fig.colorbar(c0, ax=ax.tolist(), orientation='vertical', label='dB')\n\n    plt.show(block=False)\n    plt.pause(0.1)\n    return fig\n\nif __name__ == '__main__':\n    # modify\n    hrtf = slab.HRTF(hrtf_dir / str(sub_id + '.sofa'))\n    hrtf_modified = smooth_and_notch_hrtf(\n        hrtf,\n        n_keep=N_KEEP,\n        smooth=SMOOTH,\n        features=FEATURES,\n        onset_threshold_db=15.0,\n    )\n\n    # plot\n    fig = plot(hrtf, hrtf_modified, 'image', ear='right')\n    input('press enter to save')\n    fig.savefig(PATH / 'data' / 'results' / 'plot' / sub_id / str(sub_id + '_modified.png'))\n    hrtf_modified.write_sofa(hrtf_dir / str(sub_id + '_notch.sofa'))\n    import logging\n    logging.info(f\"Modified HRTF written to {hrtf_dir / str(sub_id + '_notch.sofa')}\")
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/hrtf_relearning/hrtf/processing/modify.py b/hrtf_relearning/hrtf/processing/modify.py
+--- a/hrtf_relearning/hrtf/processing/modify.py	(revision d4ec8f1a4bdbd0df96d48f4c806e4be5f9b8c244)
++++ b/hrtf_relearning/hrtf/processing/modify.py	(date 1776103490643)
+@@ -1,3 +1,38 @@
++"""
++modify_replace.py — HRTF modification with spectral *replacement* rather than multiplicative gain.
++
++Difference from modify.py
++-------------------------
++modify.py treats the Gaussian as a **dB gain** applied on top of the existing spectrum:
++
++    gain_db(f) = -depth_db * exp(-0.5 * ((f-mu)/sigma)^2)
++    mag_out(f) = mag_in(f) * 10^(gain_db(f)/20)
++
++This compounds multiplicatively with whatever spectral shape is already present at
++those frequencies.
++
++This script treats the Gaussian as a **blending weight** that crossfades the original
++magnitude toward a target level:
++
++    w(f)       = exp(-0.5 * ((f-mu)/sigma)^2)          # 0 at edges, 1 at centre
++    target(f)  = mag_ref(f) * 10^(-depth_db/20)         # >0 depth -> notch, <0 -> peak
++    mag_out(f) = (1 - w(f)) * mag_in(f) + w(f) * target(f)
++
++where mag_ref is the smoothed (trend) version of the spectrum, used so that the target
++represents a clean level independent of fine spectral structure at those bins.
++
++At the Gaussian centre (w = 1):   mag_out = target   (original is fully replaced)
++At the Gaussian tails (w → 0):    mag_out = mag_in   (original is fully preserved)
++In between:                        linear crossfade between the two
++
++The two approaches agree at both extremes (w = 0 and w = 1) but differ in between:
++the replacement/blend is linear in the magnitude domain, whereas the gain approach is
++linear in dB (i.e. exponential in magnitude).  The blend approach results in a
++"softer" notch shape in the transition zone and replaces the actual spectral power in
++those bins with the feature's target power rather than attenuating whatever happens
++to be there.
++"""
++
+ import copy
+ import numpy
+ import matplotlib
+@@ -5,14 +40,14 @@
+ from matplotlib import pyplot as plt
+ from sklearn.linear_model import LinearRegression
+ from hrtf_relearning import PATH
+-hrtf_dir = PATH / 'data' /'hrtf'/'sofa'
++hrtf_dir = PATH / 'data' / 'hrtf' / 'sofa'
+ import slab
+ 
+ sub_id = 'VD'
+ 
+ SMOOTH = True
+-N_KEEP = 8 # all subjects reported complete externalization of the virtual sound image
+-
++N_KEEP = 8
++PLOT = 'image'
+ # ---------------------------------------------------------------------------
+ # Spectral feature list
+ # ---------------------------------------------------------------------------
+@@ -25,8 +60,8 @@
+ # freqs : (f_at_X1, f_at_X2)   centre frequency [Hz]
+ # width : (w_at_X1, w_at_X2)   Gaussian σ / bandwidth [Hz]
+ # depth : (d_at_X1, d_at_X2)   magnitude in dB
+-#     > 0  →  notch  (spectral attenuation)
+-#     < 0  →  peak   (spectral boost)
++#     > 0  →  notch  (spectral attenuation below reference level)
++#     < 0  →  peak   (spectral boost above reference level)
+ # X1, X2 : (azimuth, elevation) spatial anchor directions
+ # ---------------------------------------------------------------------------
+ FEATURES = [
+@@ -39,162 +74,52 @@
+     },
+     # Add further features here, e.g.:
+     {
+-        'freqs': (9500, 11000),
+-        'width': (300, 300),
++        'freqs': (9000, 11000),
++        'width': (400, 400),
+         'depth': (12, 12),   # negative → peak
+         'X1': (0, 0),
+         'X2': (40, -40),
+     },
+ ]
+ 
++
++
++# ---------------------------------------------------------------------------
++# Shared helpers (same as modify.py)
++# ---------------------------------------------------------------------------
++
+ def _smooth(mag, n_keep):
+     """
+-    Smooth a one-sided HRTF magnitude spectrum by truncating the cosine-series
+-    representation of its log-magnitude spectrum.
+-
+-    This implements the smoothing idea described in Kulkarni & Colburn (1998):
+-    the log-magnitude spectrum is expressed as a cosine / Fourier series and
+-    reconstructed using only the first M coefficients. Exact reconstruction
+-    corresponds to the full set of coefficients; stronger smoothing uses fewer
+-    coefficients.
+-
+-    Parameters
+-    ----------
+-    mag : numpy.ndarray
+-        One-sided magnitude spectrum with shape (n_bins, n_channels), typically
+-        from numpy.fft.rfft(...). Must be strictly non-negative.
+-    n_keep : int
+-        Number of cosine coefficients to retain, counting from the DC term C(0).
+-        Thus:
+-            - n_keep = full number of coefficients -> exact reconstruction
+-            - n_keep = 1 -> flat log-magnitude at its average value
+-        This interpretation matches the paper's description that the most extreme
+-        smoothing retains only the average spectral shape. :contentReference[oaicite:3]{index=3}
+-
+-    Returns
+-    -------
+-    numpy.ndarray
+-        Smoothed one-sided magnitude spectrum with the same shape as `mag`.
+-
+-    Notes
+-    -----
+-    The paper expresses the smoothing in terms of
+-        log|H[k]| = sum_n C(n) cos(2*pi*n*k/N)
+-    and reconstructs using a truncated series. Here this is implemented directly
+-    by solving for cosine-series coefficients on the one-sided frequency grid
+-    k = 0 ... N/2, where N is the original HRIR length. :contentReference[oaicite:4]{index=4}
++    Smooth a one-sided magnitude spectrum via truncated cosine-series
++    reconstruction of log-magnitude (Kulkarni & Colburn 1998).
+     """
+     mag = numpy.asarray(mag, dtype=float)
+     if mag.ndim != 2:
+         raise ValueError("mag must have shape (n_bins, n_channels)")
+-
+     n_bins, n_channels = mag.shape
+-    if n_bins < 2:
+-        raise ValueError("mag must contain at least DC and one more frequency bin")
+-
+-    n_samples = 2 * (n_bins - 1)  # because n_bins = N/2 + 1 for rfft of length N
+-    max_coeffs = n_bins
++    n_samples = 2 * (n_bins - 1)
+     n_keep = int(n_keep)
+-
+-    if n_keep < 1 or n_keep > max_coeffs:
+-        raise ValueError(f"n_keep must be between 1 and {max_coeffs}, got {n_keep}")
++    if n_keep < 1 or n_keep > n_bins:
++        raise ValueError(f"n_keep must be between 1 and {n_bins}, got {n_keep}")
+ 
+     log_mag = numpy.log(numpy.maximum(mag, numpy.finfo(float).tiny))
+-
+-    # Cosine basis matching the paper's formula:
+-    # log|H[k]| = sum_n C(n) cos(2*pi*n*k/N), k=0..N/2
+-    k = numpy.arange(n_bins, dtype=float)[:, None]  # (n_bins, 1)
+-    n = numpy.arange(n_bins, dtype=float)[None, :]  # (1, n_bins)
+-    basis = numpy.cos(2.0 * numpy.pi * k * n / float(n_samples))  # (n_bins, n_bins)
++    k = numpy.arange(n_bins, dtype=float)[:, None]
++    n = numpy.arange(n_bins, dtype=float)[None, :]
++    basis = numpy.cos(2.0 * numpy.pi * k * n / float(n_samples))
+ 
+     log_mag_smooth = numpy.empty_like(log_mag)
+-
+     for ch in range(n_channels):
+         coeffs, _, _, _ = numpy.linalg.lstsq(basis, log_mag[:, ch], rcond=None)
+         coeffs[n_keep:] = 0.0
+         log_mag_smooth[:, ch] = basis @ coeffs
+ 
+-    mag_smooth = numpy.exp(log_mag_smooth)
+-    return mag_smooth
+-
++    return numpy.exp(log_mag_smooth)
+ 
+-def _compute_feature_params(azimuth, elevation, feature):
+-    """
+-    Return interpolated spectral-feature parameters for a given source direction.
+-
+-    Parameters
+-    ----------
+-    azimuth, elevation : float
+-        Source direction in degrees.
+-    feature : dict
+-        Feature specification with keys:
+-            freqs : (f_at_X1, f_at_X2)  centre frequency [Hz]
+-            width : (w_at_X1, w_at_X2)  Gaussian σ [Hz]
+-            depth : (d_at_X1, d_at_X2)  signed depth [dB]
+-                positive → notch (attenuation)
+-                negative → peak  (boost)
+-            X1, X2 : (azimuth, elevation)  spatial anchor directions
+-
+-    Returns
+-    -------
+-    dict with keys ``mu``, ``sigma``, ``depth_db`` (signed).
+-    """
+-    X1 = feature['X1']
+-    X2 = feature['X2']
+-
+-    mu = linear_notch_position(azimuth, elevation, X1=X1, X2=X2, Y=feature['freqs'])
+-    sigma = linear_notch_width(azimuth, elevation, X1=X1, X2=X2, Y=feature['width'])
+-    # preserve sign: positive = notch, negative = peak
+-    depth_db = linear_scaling_factor(azimuth, elevation, X1=X1, X2=X2, Y=feature['depth'])
+-
+-    return {
+-        "mu":       float(mu),
+-        "sigma":    float(max(sigma, numpy.finfo(float).eps)),
+-        "depth_db": float(depth_db),
+-    }
+ 
+ def minimum_phase_from_magnitude(mag):
+-    """
+-    Reconstruct a one-sided minimum-phase HRTF spectrum from a one-sided
+-    magnitude spectrum.
+-
+-    Parameters
+-    ----------
+-    mag : numpy.ndarray
+-        One-sided magnitude spectrum with shape (n_bins, n_channels),
+-        corresponding to an rFFT of an even-length HRIR.
+-
+-    Returns
+-    -------
+-    numpy.ndarray
+-        One-sided complex minimum-phase spectrum with shape
+-        (n_bins, n_channels).
+-
+-    Notes
+-    -----
+-    The paper states that modified HRTFs were implemented as
+-    "minimum-phase filters, augmented with a frequency-independent time delay"
+-    consistent with the original overall ITD.
+-
+-    This function performs the minimum-phase part only. ITD restoration is done
+-    later in `restore_itd_from_onsets(...)`.
+-
+-    Method
+-    ------
+-    A standard real-cepstrum minimum-phase reconstruction is used:
+-      1. build a full even-symmetric log-magnitude spectrum
+-      2. take the IFFT to obtain the real cepstrum
+-      3. zero the anti-causal cepstral part and double the causal part
+-      4. exponentiate the resulting complex log spectrum
+-    """
++    """Real-cepstrum minimum-phase reconstruction from a one-sided magnitude spectrum."""
+     mag = numpy.asarray(mag, dtype=float)
+-    if mag.ndim != 2:
+-        raise ValueError("mag must have shape (n_bins, n_channels)")
+-
+     n_bins, n_channels = mag.shape
+-    if n_bins < 2:
+-        raise ValueError("mag must contain at least DC and one more frequency bin")
+-
+     n_samples = 2 * (n_bins - 1)
+     tiny = numpy.finfo(float).tiny
+     spec_min = numpy.empty((n_bins, n_channels), dtype=complex)
+@@ -202,151 +127,51 @@
+     for ch in range(n_channels):
+         mag_ch = numpy.maximum(mag[:, ch], tiny)
+         log_mag_half = numpy.log(mag_ch)
+-
+-        # Build full, even-symmetric log-magnitude spectrum of length N.
+-        # For even N:
+-        # [0 ... N/2, N/2-1 ... 1]
+-        log_mag_full = numpy.concatenate(
+-            (log_mag_half, log_mag_half[-2:0:-1]),
+-            axis=0,
+-        )
+-
++        log_mag_full = numpy.concatenate((log_mag_half, log_mag_half[-2:0:-1]))
+         cep = numpy.fft.ifft(log_mag_full).real
+-
+         cep_min = numpy.zeros_like(cep)
+         cep_min[0] = cep[0]
+-
+-        # Keep causal cepstrum and double positive quefrencies
+         cep_min[1:n_samples // 2] = 2.0 * cep[1:n_samples // 2]
+-
+-        # Nyquist term stays unchanged for even-length transforms
+         cep_min[n_samples // 2] = cep[n_samples // 2]
+-
+-        log_spec_min = numpy.fft.fft(cep_min)
+-        spec_full_min = numpy.exp(log_spec_min)
+-
+-        spec_min[:, ch] = spec_full_min[:n_bins]
++        spec_min[:, ch] = numpy.exp(numpy.fft.fft(cep_min))[:n_bins]
+ 
+     return spec_min
+ 
+ 
+ def find_ir_onsets(ir, threshold_db=15.0):
+-    """
+-    Estimate per-channel HRIR onset samples from a time-domain impulse response.
+-
+-    Parameters
+-    ----------
+-    ir : numpy.ndarray
+-        Time-domain HRIR with shape (n_samples, n_channels).
+-    threshold_db : float, default=15.0
+-        Threshold below the channel peak, in dB. The onset is defined as the
+-        first sample up to the peak whose absolute amplitude exceeds
+-        peak / 10^(threshold_db / 20).
+-
+-    Returns
+-    -------
+-    numpy.ndarray
+-        Integer onset sample for each channel, shape (n_channels,).
+-
+-    Notes
+-    -----
+-    This is a lightweight NumPy replacement for pyfar onset detection because
+-    the slab Filter objects stored in the HRTF are not directly compatible with
+-    pyfar's find_impulse_response_start function.
+-
+-    The paper preserves overall ITD by supplementing the modified minimum-phase
+-    HRTFs with a frequency-independent delay. Here that delay is estimated from
+-    binaural onset differences in the original and processed HRIRs.
+-    """
+     ir = numpy.asarray(ir, dtype=float)
+-    if ir.ndim != 2:
+-        raise ValueError("ir must have shape (n_samples, n_channels)")
+-
+     n_samples, n_channels = ir.shape
+     onsets = numpy.zeros(n_channels, dtype=int)
+-
+     for ch in range(n_channels):
+         x = numpy.abs(ir[:, ch])
+         peak_idx = int(numpy.argmax(x))
+         peak_val = float(x[peak_idx])
+-
+         if peak_val <= 0:
+-            onsets[ch] = 0
+             continue
+-
+         threshold = peak_val / (10.0 ** (float(threshold_db) / 20.0))
+         above = numpy.where(x[:peak_idx + 1] >= threshold)[0]
+-
+-        if len(above) == 0:
+-            onsets[ch] = 0
+-        else:
+-            onsets[ch] = int(above[0])
+-
++        onsets[ch] = int(above[0]) if len(above) else 0
+     return onsets
+ 
++
+ def restore_itd_from_onsets(ir_original, ir_processed, threshold_db=15.0):
+-    """
+-    Restore original per-ear onset positions by shifting each processed ear
+-    independently so that its onset matches the corresponding original ear onset.
+-
+-    Parameters
+-    ----------
+-    ir_original : numpy.ndarray
+-        Original HRIR, shape (n_samples, 2).
+-    ir_processed : numpy.ndarray
+-        Processed HRIR, shape (n_samples, 2).
+-    threshold_db : float, default=15.0
+-        Threshold used in `find_ir_onsets(...)`.
+-
+-    Returns
+-    -------
+-    numpy.ndarray
+-        Processed HRIR with restored per-ear onsets, shape (n_samples, 2).
+-
+-    Notes
+-    -----
+-    This restores both the common delay and the ITD, because both ears are
+-    aligned to their original onset positions independently.
+-    """
+-    ir_original = numpy.asarray(ir_original, dtype=float)
++    ir_original  = numpy.asarray(ir_original,  dtype=float)
+     ir_processed = numpy.asarray(ir_processed, dtype=float)
+-
+-    if ir_original.shape != ir_processed.shape:
+-        raise ValueError("ir_original and ir_processed must have the same shape")
+-    if ir_original.ndim != 2 or ir_original.shape[1] != 2:
+-        raise ValueError("Both HRIRs must have shape (n_samples, 2)")
+-
+     n_samples, n_channels = ir_original.shape
+     out = numpy.zeros_like(ir_processed)
+-
+-    on_orig = find_ir_onsets(ir_original, threshold_db=threshold_db)
++    on_orig = find_ir_onsets(ir_original,  threshold_db=threshold_db)
+     on_proc = find_ir_onsets(ir_processed, threshold_db=threshold_db)
+-
+     for ch in range(n_channels):
+         delta = int(on_orig[ch] - on_proc[ch])
+-
+         if delta > 0:
+-            # delay channel
+-            if delta >= n_samples:
+-                out[:, ch] = 0.0
+-            else:
+-                out[:, ch] = numpy.concatenate(
+-                    (numpy.zeros(delta, dtype=ir_processed.dtype), ir_processed[:-delta, ch]),
+-                    axis=0,
+-                )
++            out[:, ch] = numpy.concatenate(
++                (numpy.zeros(delta), ir_processed[:-delta, ch]))
+         elif delta < 0:
+-            # advance channel
+             d = -delta
+-            if d >= n_samples:
+-                out[:, ch] = 0.0
+-            else:
+-                out[:, ch] = numpy.concatenate(
+-                    (ir_processed[d:, ch], numpy.zeros(d, dtype=ir_processed.dtype)),
+-                    axis=0,
+-                )
++            out[:, ch] = numpy.concatenate(
++                (ir_processed[d:, ch], numpy.zeros(d)))
+         else:
+             out[:, ch] = ir_processed[:, ch]
+-
+     return out
+ 
+ 
+@@ -354,84 +179,96 @@
+     X = numpy.column_stack((X1, X2))
+     model = LinearRegression()
+     model.fit(X, numpy.array(Y))
+-    mu = model.predict(numpy.array((azimuth, elevation)).reshape(1, -1))[0]
+-    return float(mu)
++    return float(model.predict(numpy.array((azimuth, elevation)).reshape(1, -1))[0])
++
+ 
+ def linear_notch_width(azimuth, elevation, X1, X2, Y):
+     X = numpy.column_stack((X1, X2))
+     model = LinearRegression()
+     model.fit(X, numpy.array(Y))
+-    sigma = model.predict(numpy.array((azimuth, elevation)).reshape(1, -1))[0]
++    sigma = float(model.predict(numpy.array((azimuth, elevation)).reshape(1, -1))[0])
+     return float(max(sigma, numpy.finfo(float).eps))
+ 
++
+ def linear_scaling_factor(azimuth, elevation, X1, X2, Y):
+     X = numpy.column_stack((X1, X2))
+     model = LinearRegression()
+     model.fit(X, numpy.array(Y))
+-    scaling = model.predict(numpy.array((azimuth, elevation)).reshape(1, -1))[0]
+-    return float(scaling)
++    return float(model.predict(numpy.array((azimuth, elevation)).reshape(1, -1))[0])
++
++
++def _compute_feature_params(azimuth, elevation, feature):
++    """
++    Return interpolated spectral-feature parameters for a given source direction.
++
++    Parameters
++    ----------
++    azimuth, elevation : float
++    feature : dict with keys freqs, width, depth, X1, X2
++
++    Returns
++    -------
++    dict with keys mu, sigma, depth_db (signed: >0 notch, <0 peak).
++    """
++    X1, X2 = feature['X1'], feature['X2']
++    return {
++        "mu":       linear_notch_position(azimuth, elevation, X1=X1, X2=X2, Y=feature['freqs']),
++        "sigma":    linear_notch_width(   azimuth, elevation, X1=X1, X2=X2, Y=feature['width']),
++        "depth_db": linear_scaling_factor(azimuth, elevation, X1=X1, X2=X2, Y=feature['depth']),
++    }
+ 
+-def smooth_and_notch_hrtf(
++
++# ---------------------------------------------------------------------------
++# Core processing — replacement / blending approach
++# ---------------------------------------------------------------------------
++
++def smooth_and_replace_hrtf(
+         hrtf,
+         n_keep=12,
+         smooth=True,
+         features=None,
++        ref_n_keep=4,
+         onset_threshold_db=15.0,
+ ):
+     """
+-    Apply paper-style HRTF spectral smoothing, optional artificial spectral
+-    features (notches and/or peaks), minimum-phase reconstruction, and
+-    onset-based ITD restoration to a slab.HRTF object.
++    Apply spectral smoothing and direction-dependent spectral features to a
++    slab.HRTF object, using a **linear magnitude blend** rather than a
++    multiplicative dB gain.
++
++    For each feature the Gaussian serves as a crossfade weight between the
++    original (smoothed) magnitude and a *target* magnitude:
++
++        w(f)       = exp(-0.5 * ((f - mu) / sigma)^2)
++        target(f)  = mag_ref(f) * 10^(-depth_db / 20)
++        mag_out(f) = (1 - w(f)) * mag_in(f)  +  w(f) * target(f)
++
++    where mag_ref is a heavily smoothed version of the spectrum (controlled by
++    ref_n_keep).  Using the smooth reference as the target anchor means the
++    replacement defines what the spectral *trend* should be at those bins,
++    rather than compounding with any existing fine structure.
+ 
+     Parameters
+     ----------
+     hrtf : slab.HRTF
+-        Input HRTF object. Each element is assumed to contain a binaural HRIR
+-        in `filt.data` with shape (n_samples, 2).
+     n_keep : int
+-        Number of cosine coefficients retained in the log-magnitude smoothing
+-        step. This is the smoothing parameter analogous to the paper's M,
+-        interpreted here as the number of retained coefficients including C(0).
+-    smooth : bool, default=True
+-        If True, apply Kulkarni & Colburn (1998) log-magnitude smoothing.
+-    features : list of dict, optional
+-        Spectral features to add. Each dict must contain:
+-            freqs : (f_at_X1, f_at_X2)  Gaussian centre frequency [Hz]
+-            width : (w_at_X1, w_at_X2)  Gaussian σ [Hz]
+-            depth : (d_at_X1, d_at_X2)  signed depth [dB]
+-                positive → notch (attenuation)
+-                negative → peak  (boost)
+-            X1, X2 : (azimuth, elevation)  spatial anchor directions
+-        Parameters are linearly interpolated between X1 and X2 for every
+-        source direction. Multiple features are accumulated in the dB domain
+-        before converting to a linear gain, so they interact additively in dB.
+-        Pass an empty list (or None) to skip this step.
+-    onset_threshold_db : float, default=15.0
+-        Threshold for onset detection when restoring ITD.
++        Cosine coefficients for the main smoothing step.
++    smooth : bool
++        Apply main smoothing before feature insertion.
++    features : list of dict
++        Same format as in modify.py (freqs, width, depth, X1, X2).
++        depth > 0 → notch, depth < 0 → peak.
++        Pass [] or None to skip.
++    ref_n_keep : int, default 4
++        Cosine coefficients for the heavily-smoothed reference spectrum used
++        as the blend target anchor.  Fewer coefficients → smoother reference,
++        so the target level reflects the broad spectral trend rather than any
++        fine peaks or dips already present.
++    onset_threshold_db : float, default 15.0
++        Threshold for onset-based ITD restoration.
+ 
+     Returns
+     -------
+-    slab.HRTF
+-        Deep-copied and processed HRTF object.
+-
+-    Processing steps
+-    ----------------
+-    For each HRIR:
+-      1. Transform to one-sided frequency domain via rFFT
+-      2. Smooth the one-sided magnitude spectrum using truncated cosine-series
+-         reconstruction of log-magnitude, following Kulkarni & Colburn (1998)
+-      3. Accumulate all spectral features in the dB domain and apply as a
+-         single linear gain vector
+-      4. Reconstruct a minimum-phase spectrum from the final magnitude
+-      5. Transform back to the time domain via irFFT
+-      6. Restore the original onset-based ITD by a pure right-ear shift
+-
+-    Notes
+-    -----
+-    Smoothing follows the paper-style approach: log-magnitude is expressed as
+-    a truncated cosine/Fourier series and the result is implemented as a
+-    minimum-phase filter with the original ITD restored as a frequency-
+-    independent delay.
++    slab.HRTF  (deep copy, processed)
+     """
+     if features is None:
+         features = []
+@@ -443,133 +280,94 @@
+ 
+         ir_original = numpy.asarray(filt.data, dtype=float)
+         if ir_original.ndim != 2 or ir_original.shape[1] != 2:
+-            raise ValueError(
+-                "Each HRIR must have shape (n_samples, 2) for binaural processing"
+-            )
++            raise ValueError("Each HRIR must have shape (n_samples, 2)")
+ 
+-        n_samples, n_channels = ir_original.shape
++        n_samples, _ = ir_original.shape
+         fs = filt.samplerate
+-
+         freqs = numpy.fft.rfftfreq(n_samples, d=1.0 / fs)
++
+         spec_original = numpy.fft.rfft(ir_original, axis=0)
+-        mag_original = numpy.abs(spec_original)
++        mag_original  = numpy.abs(spec_original)
+ 
+-        # 1) Paper-style smoothing in log-magnitude / cosine-series domain
+-        if smooth:
+-            mag_processed = _smooth(mag_original, n_keep=n_keep)
+-        else:
+-            mag_processed = mag_original
++        # 1) Optional main smoothing
++        mag_processed = _smooth(mag_original, n_keep=n_keep) if smooth else mag_original.copy()
+ 
+-        # 2) Accumulate spectral features in the dB domain, then apply once
++        # 2) Spectral replacement — blend mag_processed toward a clean target
+         if features:
+-            combined_db = numpy.zeros(len(freqs))
++            # Compute a heavily-smoothed reference that captures only the
++            # broad spectral trend (used as target anchor for replacements)
++            mag_ref = _smooth(mag_processed, n_keep=ref_n_keep)
++
+             for feat in features:
+                 params = _compute_feature_params(azimuth, elevation, feat)
+-                # positive depth_db → attenuation (notch); negative → boost (peak)
+-                gaussian = numpy.exp(
+-                    -0.5 * ((freqs - params["mu"]) / params["sigma"]) ** 2
+-                )
+-                combined_db += -params["depth_db"] * gaussian
++                mu, sigma, depth_db = params["mu"], params["sigma"], params["depth_db"]
++
++                # Gaussian blending weight: 1 at centre, 0 in the tails
++                w = numpy.exp(-0.5 * ((freqs - mu) / sigma) ** 2)
++
++                # Target magnitude: reference level shifted by depth_db
++                # depth_db > 0 → pull below reference (notch)
++                # depth_db < 0 → push above reference (peak)
++                target = mag_ref * (10.0 ** (-depth_db / 20.0))
++
++                # Leave DC and Nyquist untouched
++                w[0]  = 0.0
++                w[-1] = 0.0
+ 
+-            # leave DC and Nyquist untouched
+-            combined_db[0]  = 0.0
+-            combined_db[-1] = 0.0
++                # Linear blend in the magnitude domain
++                mag_processed = (
++                    (1.0 - w[:, None]) * mag_processed
++                    + w[:, None] * target
++                )
+ 
+-            combined_lin = 10.0 ** (combined_db / 20.0)
+-            # guard against extreme attenuation / boost
+-            combined_lin = numpy.clip(
+-                combined_lin,
++            # Clip against extreme values after all features applied
++            mag_processed = numpy.clip(
++                mag_processed,
+                 10.0 ** (-80.0 / 20.0),
+                 10.0 ** ( 80.0 / 20.0),
+             )
+-            mag_processed = mag_processed * combined_lin[:, None]
+ 
+-        # 3) Enforce minimum phase once, after smoothing + features
++        # 3) Minimum-phase reconstruction
+         spec_processed = minimum_phase_from_magnitude(mag_processed)
+ 
+         # 4) Back to time domain
+         ir_processed = numpy.fft.irfft(spec_processed, n=n_samples, axis=0)
+ 
+-        # 5) Restore original ITD from HRIR onsets
++        # 5) Restore original ITD
+         ir_processed = restore_itd_from_onsets(
+-            ir_original,
+-            ir_processed,
+-            threshold_db=onset_threshold_db,
++            ir_original, ir_processed, threshold_db=onset_threshold_db,
+         )
+ 
+         filt.data = ir_processed
+ 
+     return out
+ 
+-def plot(hrtf, hrtf_modified, kind='image', ear='left', xlim=(1000, 18000), clip_db=-25, n_levels=20):
+-    """
+-    Plot original and modified HRTF transfer functions side by side with a shared colorbar.
+-
+-    Uses tfs_from_sources to extract raw dB data from both HRTFs, computes the joint
+-    min/max across both panels (after clipping at clip_db), and passes shared contour
+-    levels to both contourf calls so the color scale is identical.
+-
+-    Parameters
+-    ----------
+-    hrtf, hrtf_modified : slab.HRTF
+-    kind : str  (currently only 'image' is implemented here)
+-    ear : 'left' | 'right'
+-    xlim : (f_low, f_high) in Hz  frequency display range
+-    clip_db : float  lower dB clip (matches slab's internal -25 dB clip)
+-    n_levels : int  number of contour levels
+-    """
+-    sources = hrtf.cone_sources(0)
+-    elevations = hrtf.sources.vertical_polar[sources, 1]
+-
+-    # Frequency axis from the first filter's tf method
+-    freqs = hrtf[0].tf(show=False)[0]
+-    freq_mask = (freqs >= xlim[0]) & (freqs <= xlim[1])
+-    freqs_plot = freqs[freq_mask]
+-
+-    # Raw TF data: (n_sources, n_bins, 1) → (n_sources, n_bins)
+-    tf_orig = hrtf.tfs_from_sources(sources, n_bins=None, ear=ear)[:, :, 0]
+-    tf_mod  = hrtf_modified.tfs_from_sources(sources, n_bins=None, ear=ear)[:, :, 0]
+ 
+-    # Frequency-band selection and dB clip (matching slab's own clipping in plot_tf)
+-    tf_orig = numpy.clip(tf_orig[:, freq_mask], clip_db, None)
+-    tf_mod  = numpy.clip(tf_mod[:, freq_mask],  clip_db, None)
+-
+-    # Joint colour range
+-    vmin = min(tf_orig.min(), tf_mod.min())
+-    vmax = max(tf_orig.max(), tf_mod.max())
+-    levels = numpy.linspace(vmin, vmax, n_levels)
+-
++def plot(hrtf, hrtf_modified, kind='image', ear='left'):
+     fig, ax = plt.subplots(1, 2, figsize=(15, 5))
+-    c0 = ax[0].contourf(freqs_plot, elevations, tf_orig, cmap='hot', levels=levels)
+-    c1 = ax[1].contourf(freqs_plot, elevations, tf_mod,  cmap='hot', levels=levels)
++    hrtf.plot_tf(hrtf.cone_sources(0), kind=kind, axis=ax[0], ear=ear)
++    hrtf_modified.plot_tf(hrtf.cone_sources(0), kind=kind, axis=ax[1], ear=ear)
+     ax[0].set_title('original')
+-    ax[1].set_title('modified')
+-    for a in ax:
+-        a.set_xlabel('Frequency (Hz)')
+-        a.set_ylabel('Elevation (°)')
+-
+-    # Single shared colorbar
+-    fig.colorbar(c0, ax=ax.tolist(), orientation='vertical', label='dB')
+-
++    ax[1].set_title('modified (replacement)')
++    ax[0].set_xscale('log')
++    ax[1].set_xscale('log')
+     plt.show(block=False)
+     plt.pause(0.1)
+     return fig
+ 
++
+ if __name__ == '__main__':
+-    # modify
+     hrtf = slab.HRTF(hrtf_dir / str(sub_id + '.sofa'))
+-    hrtf_modified = smooth_and_notch_hrtf(
++    hrtf_modified = smooth_and_replace_hrtf(
+         hrtf,
+         n_keep=N_KEEP,
+         smooth=SMOOTH,
+         features=FEATURES,
++        ref_n_keep=4,
+         onset_threshold_db=15.0,
+     )
+ 
+-    # plot
+-    fig = plot(hrtf, hrtf_modified, 'image', ear='right')
++    fig = plot(hrtf, hrtf_modified, PLOT, ear='right')
+     input('press enter to save')
+     fig.savefig(PATH / 'data' / 'results' / 'plot' / sub_id / str(sub_id + '_modified.png'))
+     hrtf_modified.write_sofa(hrtf_dir / str(sub_id + '_notch.sofa'))
+-    import logging
+-    logging.info(f"Modified HRTF written to {hrtf_dir / str(sub_id + '_notch.sofa')}")
+\ No newline at end of file
+Index: hrtf_relearning/hrtf/record/record_hrir.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>\"\"\"\n- directory handling\n- recording + processing\n\"\"\"\nimport matplotlib\nmatplotlib.use('TkAgg')\nfrom hrtf_relearning.hrtf.record.recordings import *\nfrom hrtf_relearning.hrtf.record.processing import *\nimport hrtf_relearning\nbase_dir = hrtf_relearning.PATH / \"data\" / \"hrtf\"\nimport logging\n\nsubject_id = 'kemar_pir'\nhead_radius = 0.0875\nreference_id = 'ref_03.04'\noverwrite = False\nn_directions = 1\nn_recordings = 10\nn_samples_out = 512\nfs = 48828  # 97656\nhp_freq = 120\nshow = True\nequalize_dome = True\nalign_interaural = True\n\nslab.set_default_samplerate(fs)\nfreefield.set_logger(\"info\")\n\n\n# ---------------------------------------------------------------------\n# Main wrapper\n# ---------------------------------------------------------------------\n\ndef record_hrir(\n    subject_id: str,\n    reference_id: str,\n    *,\n    n_directions: int = 3,\n    n_recordings: int = 10,\n    fs: int = 48828,\n    hp_freq: float = 120,\n    equalize_dome: bool = False,\n    overwrite: bool = False,\n    align_interaural: bool = True,\n    n_samples_out: int = 512,\n    expand_az: bool = True,\n    show: bool = True,\n    base_dir: Path | str | None = None,\n) -> slab.HRTF:\n    \"\"\"\n    Full HRIR acquisition + processing pipeline for one subject.\n\n    Steps:\n    1) Record (or load) subject ear-pressure sweeps\n    2) Record (or load) reference sweeps\n    3) Deconvolve sweeps -> IRs\n    4) Equalize subject IRs using reference IRs\n    5) Low-frequency extrapolation (spherical head)\n    6) Azimuth expansion + binaural cue imposition\n    7) Export to slab.HRTF\n\n    No DSP logic is implemented here – only orchestration.\n    \"\"\"\n\n    logging.info(f\"Starting HRIR pipeline for subject '{subject_id}'\")\n\n    # -----------------------------------------------------------------\n    # Paths\n    # -----------------------------------------------------------------\n    if base_dir is None:\n        base_dir = hrtf_relearning.PATH / \"data\" / \"hrtf\"\n    else:\n        base_dir = Path(base_dir)\n\n    subj_dir = base_dir / \"rec\" / subject_id\n    ref_dir = base_dir / \"rec\" / \"reference\" / reference_id\n\n    # -----------------------------------------------------------------\n    # 1) Subject recordings\n    # -----------------------------------------------------------------\n    npz_file = subj_dir / \"recordings.npz\"\n    if overwrite or not npz_file.exists():\n        logging.info(\"Recording subject ear pressure\")\n        subj_dir.mkdir(parents=True, exist_ok=True)\n\n        subject_rec = Recordings.record_dome(\n            id=subject_id,\n            n_directions=n_directions,\n            n_recordings=n_recordings,\n            hp_freq=hp_freq,\n            fs=fs,\n            equalize=equalize_dome,\n            key=True)\n        subject_rec.to_npz(subj_dir, overwrite=overwrite)\n    else:\n        logging.info(\"Loading subject recordings from disk\")\n        subject_rec = Recordings.load(subj_dir)\n\n    # -----------------------------------------------------------------\n    # 2) Reference recordings\n    # -----------------------------------------------------------------\n    \"\"\"    \n    if overwrite or not ref_dir.exists():\n        logging.info(\"Recording reference\")\n        ref_dir.mkdir(parents=True, exist_ok=True)\n        reference_rec = Recordings.record_dome(\n            id=reference_id,\n            n_directions=1,\n            n_recordings=n_recordings,\n            hp_freq=hp_freq,\n            fs=fs,\n            equalize=equalize_dome,\n            key=False)\n        reference_rec.to_npz(ref_dir, overwrite=overwrite)\n    else:\n    \"\"\"\n    logging.info(\"Loading reference recordings from disk\")\n    reference_rec = Recordings.load(ref_dir)\n\n    # -----------------------------------------------------------------\n    # 3) Deconvolution: sweeps -> IRs\n    # -----------------------------------------------------------------\n    logging.info(\"Computing impulse responses\")\n    subject_ir = compute_ir(subject_rec, inversion_range_hz=(hp_freq, 20e3),\n                            onset_threshold_db=10, align_interaural=align_interaural)\n    reference_ir = compute_ir(reference_rec, inversion_range_hz=(hp_freq, 20e3),\n                              onset_threshold_db=10, align_interaural=align_interaural)\n\n    # -----------------------------------------------------------------\n    # 4) Equalization + windowing\n    # -----------------------------------------------------------------\n    logging.info(\"Applying equalization\")\n    hrir_equalized = equalize(\n        measured=subject_ir,\n        reference=reference_ir,\n        n_samples_out=n_samples_out,\n        inversion_range_hz=(hp_freq, 18e3),\n        onset_threshold_db=10,\n    )\n\n    # -----------------------------------------------------------------\n    # 5) Low-frequency extrapolation\n    # -----------------------------------------------------------------\n    logging.info(\"Low-frequency extrapolation\")\n    hrir_extrapol = lowfreq_extrapolate(\n        hrir_equalized,\n        f_extrap=800.0,\n        f_target=150.0,\n        head_radius=head_radius,\n    )\n\n    # -----------------------------------------------------------------\n    # 6) Azimuth expansion + binaural cues\n    # -----------------------------------------------------------------\n    if expand_az:\n        logging.info(\"Expanding azimuths and imposing binaural cues\")\n        hrir_az_exp = expand_azimuths_with_binaural_cues(\n            hrir_extrapol,\n            az_range=(-50, 50),\n            head_radius=head_radius,\n            show=False,\n        )\n    else:\n        hrir_az_exp = hrir_extrapol\n\n    # -----------------------------------------------------------------\n    # 7) Export to slab.HRTF\n    # -----------------------------------------------------------------\n    logging.info(\"Converting to slab.HRTF\")\n    hrtf = hrir_az_exp.to_slab_hrtf(datatype=\"FIR\")\n    hrtf.write_sofa(base_dir / 'sofa' / f'{subject_id}.sofa')\n\n    if show:\n        import matplotlib.pyplot as plt\n        fig, axes = plt.subplots(1,2)\n        hrtf.plot_tf(hrtf.cone_sources(0), axis=axes, ear='both')\n        plt.show()\n\n    logging.info(\"HRIR pipeline finished successfully\")\n    return hrtf\n\n\nfrom pynput import keyboard\ndef wait_for_button(msg=None):\n    if msg:\n        logging.info(msg)\n\n    def on_press(key):\n        if key == keyboard.Key.enter:\n            listener.stop()\n\n    with keyboard.Listener(on_press=on_press) as listener:\n        listener.join()\n\n\n# if __name__ == \"__main__\":\n#     hrtf = record_hrir(\n#         subject_id=subject_id,\n#         reference_id=reference_id,\n#         n_directions=n_directions,\n#         n_recordings=n_recordings,\n#         fs=fs,\n#         hp_freq=hp_freq,\n#         n_samples_out=n_samples_out,\n#         equalize_dome=equalize_dome,\n#         align_interaural=align_interaural,\n#         overwrite=overwrite,\n#         show=show,\n#         base_dir=base_dir,\n#     )
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/hrtf_relearning/hrtf/record/record_hrir.py b/hrtf_relearning/hrtf/record/record_hrir.py
+--- a/hrtf_relearning/hrtf/record/record_hrir.py	(revision d4ec8f1a4bdbd0df96d48f4c806e4be5f9b8c244)
++++ b/hrtf_relearning/hrtf/record/record_hrir.py	(date 1776103144665)
+@@ -166,9 +166,11 @@
+     # -----------------------------------------------------------------
+     # 7) Export to slab.HRTF
+     # -----------------------------------------------------------------
+-    logging.info("Converting to slab.HRTF")
+     hrtf = hrir_az_exp.to_slab_hrtf(datatype="FIR")
+-    hrtf.write_sofa(base_dir / 'sofa' / f'{subject_id}.sofa')
++    if overwrite:
++        out_file = base_dir / 'sofa' / f'{subject_id}.sofa'
++        logging.info("writing HRTF to {}".format(out_file))
++        hrtf.write_sofa(out_file)
+ 
+     if show:
+         import matplotlib.pyplot as plt
+Index: hrtf_relearning/experiment/HRIR_Recording_Test.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/hrtf_relearning/experiment/HRIR_Recording_Test.py b/hrtf_relearning/experiment/HRIR_Recording.py
+rename from hrtf_relearning/experiment/HRIR_Recording_Test.py
+rename to hrtf_relearning/experiment/HRIR_Recording.py
+--- a/hrtf_relearning/experiment/HRIR_Recording_Test.py	(revision d4ec8f1a4bdbd0df96d48f4c806e4be5f9b8c244)
++++ b/hrtf_relearning/experiment/HRIR_Recording.py	(date 1776102837092)
+@@ -111,8 +111,8 @@
+     # ------------------------------------------------------------------
+     logging.info('--- Step 2: HP calibration ---')
+     try:
+-        # alternatively load from disk  - todo convert to slab for acoustic test
+-        hp_filter = load_hp_filter(ROOT / 'data' / 'hrtf' / 'rec' / subject_id / f'{hp_id}_equalization.npz')
++        # alternatively load from disk
++        hp_filter = load_hp_filter(ROOT / 'data' / 'hrtf' / 'rec' / subject_id / f'{hp_id}_equalization.npz','slab')
+         print(f'Loading hp filter from disk: {hp_id}_equalization.npz')
+     except FileNotFoundError:
+         hp_filter = calibrate_headphones(
+Index: hrtf_relearning/hrtf/processing/modify_replace.py
+===================================================================
+diff --git a/hrtf_relearning/hrtf/processing/modify_replace.py b/hrtf_relearning/hrtf/processing/modify_replace.py
+deleted file mode 100644
+--- a/hrtf_relearning/hrtf/processing/modify_replace.py	(revision d4ec8f1a4bdbd0df96d48f4c806e4be5f9b8c244)
++++ /dev/null	(revision d4ec8f1a4bdbd0df96d48f4c806e4be5f9b8c244)
+@@ -1,373 +0,0 @@
+-"""
+-modify_replace.py — HRTF modification with spectral *replacement* rather than multiplicative gain.
+-
+-Difference from modify.py
+--------------------------
+-modify.py treats the Gaussian as a **dB gain** applied on top of the existing spectrum:
+-
+-    gain_db(f) = -depth_db * exp(-0.5 * ((f-mu)/sigma)^2)
+-    mag_out(f) = mag_in(f) * 10^(gain_db(f)/20)
+-
+-This compounds multiplicatively with whatever spectral shape is already present at
+-those frequencies.
+-
+-This script treats the Gaussian as a **blending weight** that crossfades the original
+-magnitude toward a target level:
+-
+-    w(f)       = exp(-0.5 * ((f-mu)/sigma)^2)          # 0 at edges, 1 at centre
+-    target(f)  = mag_ref(f) * 10^(-depth_db/20)         # >0 depth -> notch, <0 -> peak
+-    mag_out(f) = (1 - w(f)) * mag_in(f) + w(f) * target(f)
+-
+-where mag_ref is the smoothed (trend) version of the spectrum, used so that the target
+-represents a clean level independent of fine spectral structure at those bins.
+-
+-At the Gaussian centre (w = 1):   mag_out = target   (original is fully replaced)
+-At the Gaussian tails (w → 0):    mag_out = mag_in   (original is fully preserved)
+-In between:                        linear crossfade between the two
+-
+-The two approaches agree at both extremes (w = 0 and w = 1) but differ in between:
+-the replacement/blend is linear in the magnitude domain, whereas the gain approach is
+-linear in dB (i.e. exponential in magnitude).  The blend approach results in a
+-"softer" notch shape in the transition zone and replaces the actual spectral power in
+-those bins with the feature's target power rather than attenuating whatever happens
+-to be there.
+-"""
+-
+-import copy
+-import numpy
+-import matplotlib
+-matplotlib.use('tkagg')
+-from matplotlib import pyplot as plt
+-from sklearn.linear_model import LinearRegression
+-from hrtf_relearning import PATH
+-hrtf_dir = PATH / 'data' / 'hrtf' / 'sofa'
+-import slab
+-
+-sub_id = 'VD'
+-
+-SMOOTH = True
+-N_KEEP = 8
+-KIND = 'image'
+-# ---------------------------------------------------------------------------
+-# Spectral feature list
+-# ---------------------------------------------------------------------------
+-# Each entry is one spectral feature (notch or peak) added to the HRTF.
+-# Parameters are linearly interpolated between two spatial anchor points
+-# X1 and X2 (azimuth, elevation) in degrees.
+-#
+-# Keys per feature
+-# ----------------
+-# freqs : (f_at_X1, f_at_X2)   centre frequency [Hz]
+-# width : (w_at_X1, w_at_X2)   Gaussian σ / bandwidth [Hz]
+-# depth : (d_at_X1, d_at_X2)   magnitude in dB
+-#     > 0  →  notch  (spectral attenuation below reference level)
+-#     < 0  →  peak   (spectral boost above reference level)
+-# X1, X2 : (azimuth, elevation) spatial anchor directions
+-# ---------------------------------------------------------------------------
+-FEATURES = [
+-    {
+-        'freqs': (6000, 8500),  # centre freq at X1 and X2 [Hz]
+-        'width': (400,   400),   # Gaussian σ at X1 and X2 [Hz]
+-        'depth': (12.0,  12.0), # >0 = notch, <0 = peak [dB]
+-        'X1':    (0, 0),         # anchor 1 (az, az)
+-        'X2':    (-40, 40),      # anchor 2 (el, el)
+-    },
+-    # Add further features here, e.g.:
+-    {
+-        'freqs': (9000, 11000),
+-        'width': (400, 400),
+-        'depth': (12, 12),   # negative → peak
+-        'X1': (0, 0),
+-        'X2': (40, -40),
+-    },
+-]
+-
+-
+-
+-# ---------------------------------------------------------------------------
+-# Shared helpers (same as modify.py)
+-# ---------------------------------------------------------------------------
+-
+-def _smooth(mag, n_keep):
+-    """
+-    Smooth a one-sided magnitude spectrum via truncated cosine-series
+-    reconstruction of log-magnitude (Kulkarni & Colburn 1998).
+-    """
+-    mag = numpy.asarray(mag, dtype=float)
+-    if mag.ndim != 2:
+-        raise ValueError("mag must have shape (n_bins, n_channels)")
+-    n_bins, n_channels = mag.shape
+-    n_samples = 2 * (n_bins - 1)
+-    n_keep = int(n_keep)
+-    if n_keep < 1 or n_keep > n_bins:
+-        raise ValueError(f"n_keep must be between 1 and {n_bins}, got {n_keep}")
+-
+-    log_mag = numpy.log(numpy.maximum(mag, numpy.finfo(float).tiny))
+-    k = numpy.arange(n_bins, dtype=float)[:, None]
+-    n = numpy.arange(n_bins, dtype=float)[None, :]
+-    basis = numpy.cos(2.0 * numpy.pi * k * n / float(n_samples))
+-
+-    log_mag_smooth = numpy.empty_like(log_mag)
+-    for ch in range(n_channels):
+-        coeffs, _, _, _ = numpy.linalg.lstsq(basis, log_mag[:, ch], rcond=None)
+-        coeffs[n_keep:] = 0.0
+-        log_mag_smooth[:, ch] = basis @ coeffs
+-
+-    return numpy.exp(log_mag_smooth)
+-
+-
+-def minimum_phase_from_magnitude(mag):
+-    """Real-cepstrum minimum-phase reconstruction from a one-sided magnitude spectrum."""
+-    mag = numpy.asarray(mag, dtype=float)
+-    n_bins, n_channels = mag.shape
+-    n_samples = 2 * (n_bins - 1)
+-    tiny = numpy.finfo(float).tiny
+-    spec_min = numpy.empty((n_bins, n_channels), dtype=complex)
+-
+-    for ch in range(n_channels):
+-        mag_ch = numpy.maximum(mag[:, ch], tiny)
+-        log_mag_half = numpy.log(mag_ch)
+-        log_mag_full = numpy.concatenate((log_mag_half, log_mag_half[-2:0:-1]))
+-        cep = numpy.fft.ifft(log_mag_full).real
+-        cep_min = numpy.zeros_like(cep)
+-        cep_min[0] = cep[0]
+-        cep_min[1:n_samples // 2] = 2.0 * cep[1:n_samples // 2]
+-        cep_min[n_samples // 2] = cep[n_samples // 2]
+-        spec_min[:, ch] = numpy.exp(numpy.fft.fft(cep_min))[:n_bins]
+-
+-    return spec_min
+-
+-
+-def find_ir_onsets(ir, threshold_db=15.0):
+-    ir = numpy.asarray(ir, dtype=float)
+-    n_samples, n_channels = ir.shape
+-    onsets = numpy.zeros(n_channels, dtype=int)
+-    for ch in range(n_channels):
+-        x = numpy.abs(ir[:, ch])
+-        peak_idx = int(numpy.argmax(x))
+-        peak_val = float(x[peak_idx])
+-        if peak_val <= 0:
+-            continue
+-        threshold = peak_val / (10.0 ** (float(threshold_db) / 20.0))
+-        above = numpy.where(x[:peak_idx + 1] >= threshold)[0]
+-        onsets[ch] = int(above[0]) if len(above) else 0
+-    return onsets
+-
+-
+-def restore_itd_from_onsets(ir_original, ir_processed, threshold_db=15.0):
+-    ir_original  = numpy.asarray(ir_original,  dtype=float)
+-    ir_processed = numpy.asarray(ir_processed, dtype=float)
+-    n_samples, n_channels = ir_original.shape
+-    out = numpy.zeros_like(ir_processed)
+-    on_orig = find_ir_onsets(ir_original,  threshold_db=threshold_db)
+-    on_proc = find_ir_onsets(ir_processed, threshold_db=threshold_db)
+-    for ch in range(n_channels):
+-        delta = int(on_orig[ch] - on_proc[ch])
+-        if delta > 0:
+-            out[:, ch] = numpy.concatenate(
+-                (numpy.zeros(delta), ir_processed[:-delta, ch]))
+-        elif delta < 0:
+-            d = -delta
+-            out[:, ch] = numpy.concatenate(
+-                (ir_processed[d:, ch], numpy.zeros(d)))
+-        else:
+-            out[:, ch] = ir_processed[:, ch]
+-    return out
+-
+-
+-def linear_notch_position(azimuth, elevation, X1, X2, Y):
+-    X = numpy.column_stack((X1, X2))
+-    model = LinearRegression()
+-    model.fit(X, numpy.array(Y))
+-    return float(model.predict(numpy.array((azimuth, elevation)).reshape(1, -1))[0])
+-
+-
+-def linear_notch_width(azimuth, elevation, X1, X2, Y):
+-    X = numpy.column_stack((X1, X2))
+-    model = LinearRegression()
+-    model.fit(X, numpy.array(Y))
+-    sigma = float(model.predict(numpy.array((azimuth, elevation)).reshape(1, -1))[0])
+-    return float(max(sigma, numpy.finfo(float).eps))
+-
+-
+-def linear_scaling_factor(azimuth, elevation, X1, X2, Y):
+-    X = numpy.column_stack((X1, X2))
+-    model = LinearRegression()
+-    model.fit(X, numpy.array(Y))
+-    return float(model.predict(numpy.array((azimuth, elevation)).reshape(1, -1))[0])
+-
+-
+-def _compute_feature_params(azimuth, elevation, feature):
+-    """
+-    Return interpolated spectral-feature parameters for a given source direction.
+-
+-    Parameters
+-    ----------
+-    azimuth, elevation : float
+-    feature : dict with keys freqs, width, depth, X1, X2
+-
+-    Returns
+-    -------
+-    dict with keys mu, sigma, depth_db (signed: >0 notch, <0 peak).
+-    """
+-    X1, X2 = feature['X1'], feature['X2']
+-    return {
+-        "mu":       linear_notch_position(azimuth, elevation, X1=X1, X2=X2, Y=feature['freqs']),
+-        "sigma":    linear_notch_width(   azimuth, elevation, X1=X1, X2=X2, Y=feature['width']),
+-        "depth_db": linear_scaling_factor(azimuth, elevation, X1=X1, X2=X2, Y=feature['depth']),
+-    }
+-
+-
+-# ---------------------------------------------------------------------------
+-# Core processing — replacement / blending approach
+-# ---------------------------------------------------------------------------
+-
+-def smooth_and_replace_hrtf(
+-        hrtf,
+-        n_keep=12,
+-        smooth=True,
+-        features=None,
+-        ref_n_keep=4,
+-        onset_threshold_db=15.0,
+-):
+-    """
+-    Apply spectral smoothing and direction-dependent spectral features to a
+-    slab.HRTF object, using a **linear magnitude blend** rather than a
+-    multiplicative dB gain.
+-
+-    For each feature the Gaussian serves as a crossfade weight between the
+-    original (smoothed) magnitude and a *target* magnitude:
+-
+-        w(f)       = exp(-0.5 * ((f - mu) / sigma)^2)
+-        target(f)  = mag_ref(f) * 10^(-depth_db / 20)
+-        mag_out(f) = (1 - w(f)) * mag_in(f)  +  w(f) * target(f)
+-
+-    where mag_ref is a heavily smoothed version of the spectrum (controlled by
+-    ref_n_keep).  Using the smooth reference as the target anchor means the
+-    replacement defines what the spectral *trend* should be at those bins,
+-    rather than compounding with any existing fine structure.
+-
+-    Parameters
+-    ----------
+-    hrtf : slab.HRTF
+-    n_keep : int
+-        Cosine coefficients for the main smoothing step.
+-    smooth : bool
+-        Apply main smoothing before feature insertion.
+-    features : list of dict
+-        Same format as in modify.py (freqs, width, depth, X1, X2).
+-        depth > 0 → notch, depth < 0 → peak.
+-        Pass [] or None to skip.
+-    ref_n_keep : int, default 4
+-        Cosine coefficients for the heavily-smoothed reference spectrum used
+-        as the blend target anchor.  Fewer coefficients → smoother reference,
+-        so the target level reflects the broad spectral trend rather than any
+-        fine peaks or dips already present.
+-    onset_threshold_db : float, default 15.0
+-        Threshold for onset-based ITD restoration.
+-
+-    Returns
+-    -------
+-    slab.HRTF  (deep copy, processed)
+-    """
+-    if features is None:
+-        features = []
+-
+-    out = copy.deepcopy(hrtf)
+-
+-    for filt, source in zip(out, out.sources.vertical_polar):
+-        azimuth, elevation = float(source[0]), float(source[1])
+-
+-        ir_original = numpy.asarray(filt.data, dtype=float)
+-        if ir_original.ndim != 2 or ir_original.shape[1] != 2:
+-            raise ValueError("Each HRIR must have shape (n_samples, 2)")
+-
+-        n_samples, _ = ir_original.shape
+-        fs = filt.samplerate
+-        freqs = numpy.fft.rfftfreq(n_samples, d=1.0 / fs)
+-
+-        spec_original = numpy.fft.rfft(ir_original, axis=0)
+-        mag_original  = numpy.abs(spec_original)
+-
+-        # 1) Optional main smoothing
+-        mag_processed = _smooth(mag_original, n_keep=n_keep) if smooth else mag_original.copy()
+-
+-        # 2) Spectral replacement — blend mag_processed toward a clean target
+-        if features:
+-            # Compute a heavily-smoothed reference that captures only the
+-            # broad spectral trend (used as target anchor for replacements)
+-            mag_ref = _smooth(mag_processed, n_keep=ref_n_keep)
+-
+-            for feat in features:
+-                params = _compute_feature_params(azimuth, elevation, feat)
+-                mu, sigma, depth_db = params["mu"], params["sigma"], params["depth_db"]
+-
+-                # Gaussian blending weight: 1 at centre, 0 in the tails
+-                w = numpy.exp(-0.5 * ((freqs - mu) / sigma) ** 2)
+-
+-                # Target magnitude: reference level shifted by depth_db
+-                # depth_db > 0 → pull below reference (notch)
+-                # depth_db < 0 → push above reference (peak)
+-                target = mag_ref * (10.0 ** (-depth_db / 20.0))
+-
+-                # Leave DC and Nyquist untouched
+-                w[0]  = 0.0
+-                w[-1] = 0.0
+-
+-                # Linear blend in the magnitude domain
+-                mag_processed = (
+-                    (1.0 - w[:, None]) * mag_processed
+-                    + w[:, None] * target
+-                )
+-
+-            # Clip against extreme values after all features applied
+-            mag_processed = numpy.clip(
+-                mag_processed,
+-                10.0 ** (-80.0 / 20.0),
+-                10.0 ** ( 80.0 / 20.0),
+-            )
+-
+-        # 3) Minimum-phase reconstruction
+-        spec_processed = minimum_phase_from_magnitude(mag_processed)
+-
+-        # 4) Back to time domain
+-        ir_processed = numpy.fft.irfft(spec_processed, n=n_samples, axis=0)
+-
+-        # 5) Restore original ITD
+-        ir_processed = restore_itd_from_onsets(
+-            ir_original, ir_processed, threshold_db=onset_threshold_db,
+-        )
+-
+-        filt.data = ir_processed
+-
+-    return out
+-
+-
+-def plot(hrtf, hrtf_modified, kind='image', ear='left'):
+-    fig, ax = plt.subplots(1, 2, figsize=(15, 5))
+-    hrtf.plot_tf(hrtf.cone_sources(0), kind=kind, axis=ax[0], ear=ear)
+-    hrtf_modified.plot_tf(hrtf.cone_sources(0), kind=kind, axis=ax[1], ear=ear)
+-    ax[0].set_title('original')
+-    ax[1].set_title('modified (replacement)')
+-    ax[0].set_xscale('log')
+-    ax[1].set_xscale('log')
+-    plt.show(block=False)
+-    plt.pause(0.1)
+-    return fig
+-
+-
+-if __name__ == '__main__':
+-    hrtf = slab.HRTF(hrtf_dir / str(sub_id + '.sofa'))
+-    hrtf_modified = smooth_and_replace_hrtf(
+-        hrtf,
+-        n_keep=N_KEEP,
+-        smooth=SMOOTH,
+-        features=FEATURES,
+-        ref_n_keep=4,
+-        onset_threshold_db=15.0,
+-    )
+-
+-    fig = plot(hrtf, hrtf_modified, KIND, ear='right')
+-    input('press enter to save')
+-    fig.savefig(PATH / 'data' / 'results' / 'plot' / sub_id / str(sub_id + '_modified.png'))
+-    hrtf_modified.write_sofa(hrtf_dir / str(sub_id + '_notch.sofa'))
+Index: hrtf_relearning/hrtf/record/calibration/calibrate_headphones.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>\"\"\"\nHeadphone Equalization Script\n-----------------------------\n\nThis script measures or loads a raw headphone impulse response (HpIR), and\ncomputes an equalization filter that compensates the headphone transfer\nfunction. The resulting inverse filter can be used for HRTF recordings or\npsychophysical experiments requiring flat headphone playback.\n\nSteps:\n1. Initialize hardware and generate the test signal (logarithmic chirp).\n2. Record or load the raw headphone response.\n3. Convert to pyfar.Signal.\n4. Compute the headphone transfer function.\n5. Build a regularized minimum-phase inverse filter.\n6. Optionally plot TF/IR and intermediate steps.\n7. Return or save the equalization filter in a dictionary.\n\nDependencies:\n- freefield\n- slab\n- pyfar\n- matplotlib\n\"\"\"\n\nimport matplotlib\nmatplotlib.use(\"tkagg\")\nfrom matplotlib import pyplot as plt\nimport numpy\nimport pyfar\nimport slab\nimport freefield\nimport warnings\nimport soundfile as sf\nfrom pathlib import Path\nimport pickle\nimport logging\nwarnings.filterwarnings(\"ignore\", category=pyfar._utils.PyfarDeprecationWarning)\nfreefield.set_logger(\"info\")\nimport hrtf_relearning\nROOT = hrtf_relearning.PATH\n\n# -------------------------------------------------------------------------\n# CONFIG\n# -------------------------------------------------------------------------\nSUB_ID = 'KEMAR'\nHP_ID = 'MYSPHERE'  # MYSPHERE, DT990\n\n\nfs = 48828\nslab.set_default_samplerate(fs)\n\n# sweep parameters\nLEVEL = 70\nN_REC = 3\nLOW_CUTOFF = 20\nHIGH_CUTOFF = fs/2\nCHIRP_DURATION = 1.0\nRAMP_DURATION = .001  # 1ms ramp\n\n# regularization parameters\nBETA = 0.1\n\nN_OUT = 256\n# -------------------------------------------------------------------------\n# SIGNAL GENERATION\n# -------------------------------------------------------------------------\n\ndef generate_chirp():\n    \"\"\"\n    Generate a logarithmic binaural test chirp for measuring headphone TF.\n\n    Returns\n    -------\n    signal : slab.Binaural\n        Two-channel chirp from LOW_CUTOFF to HIGH_CUTOFF Hz.\n    \"\"\"\n    signal =  slab.Binaural.chirp(\n        duration=CHIRP_DURATION,\n        level=LEVEL,\n        from_frequency=LOW_CUTOFF,\n        to_frequency=HIGH_CUTOFF,\n        kind=\"logarithmic\"\n    )\n    signal = signal.ramp('both', RAMP_DURATION)\n    return signal\n\n# -------------------------------------------------------------------------\n# MEASUREMENT OR LOADING\n# -------------------------------------------------------------------------\n\ndef measure_hp_raw(signal, repeats=1):\n    \"\"\"\n    Measure raw headphone impulse response using freefield.\n\n    Parameters\n    ----------\n    signal : slab.Sound\n        Test signal to be played.\n    repeats : int\n        Number of repeated measurements to average.\n\n    Returns\n    -------\n    slab.Binaural\n        Averaged binaural recording.\n    \"\"\"\n\n    recs = []\n    for _ in range(repeats):\n        rec = freefield.play_and_record_headphones(\n            speaker=\"both\",\n            sound=signal,\n            compensate_delay=True,\n            distance=0,\n            equalize=False,\n            recording_samplerate=fs, #* 2,\n        )\n        freefield.wait_to_finish_playing()\n        recs.append(rec)\n    return slab.Sound(data=numpy.mean(recs, axis=0))\n\n\n# -------------------------------------------------------------------------\n# EQUALIZATION FILTER\n# -------------------------------------------------------------------------\n\ndef compute_headphone_equalization(recording, excitation, beta, n_samp_out=1024, show=False):\n    \"\"\"\n    Compute a regularized, minimum-phase inverse filter for headphone equalization.\n\n    Parameters\n    ----------\n    recording : slab.Sound\n        Binaural recording of the played chirp.\n    excitation : slab.Sound\n        The original test chirp.\n    show : bool\n        Plot intermediate results (TF, inverse, equalized response).\n\n    Returns\n    -------\n    eq_filter : pyfar.Signal\n        Two-channel equalization filter.\n    \"\"\"\n\n    # ------------------------------------------------------------------\n    # Convert to pyfar.Signal\n    # ------------------------------------------------------------------\n    hp_raw = pyfar.Signal(recording.data.T, recording.samplerate)\n    sig = pyfar.Signal(excitation.data.T, excitation.samplerate)\n\n    # ------------------------------------------------------------------\n    # Compute headphone transfer function: HpTF = recording / signal\n    # ------------------------------------------------------------------\n    signal_inv = pyfar.dsp.regularized_spectrum_inversion(\n        sig, frequency_range=(60, HIGH_CUTOFF)\n    )\n    hp_ir = hp_raw * signal_inv\n\n    # Normalize peak to 1\n    hp_ir.time *= 1 / numpy.max(hp_ir.time)\n\n    # Align IR to 10 ms\n    onset = pyfar.dsp.find_impulse_response_start(hp_ir, threshold=20)\n    shift_s = 0.01 - onset / hp_ir.sampling_rate\n    hp_ir = pyfar.dsp.time_shift(hp_ir, shift_s, unit=\"s\")\n\n    if show:\n        plt.figure()\n        plt.title(\"Raw HpTF / IR\")\n        pyfar.plot.time_freq(hp_ir)\n\n    # ------------------------------------------------------------------\n    # Regularization\n    # ------------------------------------------------------------------\n    reg = pyfar.dsp.filter.low_shelf(\n        pyfar.signals.impulse(hp_ir.n_samples), 60, 20, 2\n    )\n    reg = pyfar.dsp.filter.high_shelf(reg, 6000, 20, 2) * 0.1\n\n    hp_inv_reg = pyfar.dsp.regularized_spectrum_inversion(\n        hp_ir, (0, 20e3), regu_final=reg.freq * beta\n    )\n\n    # if show:\n    #     plt.figure()\n    #     plt.title(\"Regularized inverse\")\n    #     pyfar.plot.freq(hp_inv_reg)\n\n    # ------------------------------------------------------------------\n    # Minimum-phase + time windowing\n    # ------------------------------------------------------------------\n    hp_inv_reg = pyfar.dsp.minimum_phase(hp_inv_reg, truncate=False)\n\n    # window\n    hp_windowed = pyfar.dsp.time_window(\n        hp_inv_reg,\n        [0, n_samp_out - 1],\n        shape=\"right\",\n        window='boxcar',\n        crop='window'\n    )\n    # ------------------------------------------------------------------\n    # Final diagnostic plot\n    # ------------------------------------------------------------------\n    if show:\n        ears = ['left', 'right']\n        fig, axes = plt.subplots(1,2, figsize=(12,4))\n        for i, (ax, ear) in enumerate(zip(axes, ears)):\n            ax.set_title(f'{ear} ear')\n            pyfar.plot.freq(reg, linestyle=\"--\", label=\"Regularization\", ax=ax)\n            pyfar.plot.freq(hp_ir[i], label=\"HpTF\", ax=ax)\n            pyfar.plot.freq(hp_windowed[i], label=\"Inverse (regularized)\", ax=ax)\n            pyfar.plot.freq(pyfar.dsp.convolve(hp_ir[i], hp_windowed[i]), label=\"Equalized HpTF\", ax=ax)\n            ax.set_ylim(-25, 20)\n        plt.legend()\n        plt.show()\n\n    return hp_windowed\n\n\n# -------------------------------------------------------------------------\n# SAVE / LOAD CALIBRATION\n# -------------------------------------------------------------------------\n\ndef save_hp_filter(eq_filter: pyfar.Signal, path: Path):\n    \"\"\"Save a pyfar headphone equalization filter as .npz.\n\n    Stores ``filter`` with shape (n_channels, n_samples) and ``samplerate``.\n\n    Parameters\n    ----------\n    eq_filter : pyfar.Signal\n        Two-channel equalization filter.\n    path : Path\n        Output file path (should end in .npz).\n    \"\"\"\n    path = Path(path)\n    path.parent.mkdir(parents=True, exist_ok=True)\n    numpy.savez(\n        path,\n        filter=eq_filter.time.astype(\"float32\"),   # (n_channels, n_samples)\n        samplerate=numpy.array(eq_filter.sampling_rate),\n    )\n    logging.info(f\"Saved HP equalization filter to: {path}\")\n\n\ndef load_hp_filter(path: Path) -> pyfar.Signal:\n    \"\"\"Load a headphone equalization filter from .npz (or .wav as fallback).\n\n    Parameters\n    ----------\n    path : Path\n        Path to a ``.npz`` file written by :func:`save_hp_filter`.\n        If the file does not exist but a ``.wav`` with the same stem does,\n        that is loaded instead for backward compatibility.\n\n    Returns\n    -------\n    pyfar.Signal\n        Two-channel equalization filter.\n    \"\"\"\n    path = Path(path)\n    if path.exists():\n        npz = numpy.load(path, allow_pickle=False)\n        return pyfar.Signal(npz[\"filter\"], int(npz[\"samplerate\"]))\n    # backward-compat: try .wav with the same stem\n    wav_path = path.with_suffix(\".wav\")\n    if wav_path.exists():\n        logging.warning(f\"No .npz found at {path} – loading legacy .wav: {wav_path}\")\n        return pyfar.io.read_audio(wav_path)\n    raise FileNotFoundError(f\"HP filter not found: tried {path} and {wav_path}\")\n\n\ndef pyfar2wav(eq_filter: pyfar.Signal, path: Path):\n    \"\"\"Save a pyfar filter as WAV (legacy, kept for backward compatibility).\"\"\"\n    path = Path(path)\n    path.parent.mkdir(parents=True, exist_ok=True)\n    sf.write(path, eq_filter.time.T.astype(\"float32\"), eq_filter.sampling_rate, subtype=\"FLOAT\")\n    logging.info(f\"Saved HP equalization to: {path}\")\n\ndef ff_equalization(eq_filter, hp_id, save_freefield=True):\n    \"\"\"\n    Save equalization filter to a pickle file.\n\n    Parameters\n    ----------\n    eq_filter : pyfar.Signal\n        Equalization filter.\n    path : Path\n        Output file path.\n    \"\"\"\n    # convert to slab filter\n    filter = slab.Filter(\n        data=eq_filter.time,\n        samplerate=fs,\n        fir=\"IR\",\n    )\n    speakers = freefield.pick_speakers([0, 1])\n    equalization = dict()\n    equalization.update({f\"{speakers[0].index}\": {\"level\": 0, \"filter\": filter.channel(0)}})\n    equalization.update({f\"{speakers[1].index}\": {\"level\": 0, \"filter\": filter.channel(1)}})\n\n    if save_freefield:\n        with open(freefield.DIR / 'data' / f'calibration_{hp_id}.pkl', 'wb') as f:  # save the newly recorded calibration\n            pickle.dump(equalization, f, pickle.HIGHEST_PROTOCOL)\n        print(f\"Writing calibration to {freefield.DIR / 'data' / f'calibration_{hp_id}.pkl'}\")\n    return filter\n\n# -------------------------------------------------------------------------\n# MAIN PIPELINE\n# -------------------------------------------------------------------------\n\ndef calibrate_headphones(subject_id=SUB_ID, hp_id=HP_ID, n_rec=N_REC, show=True, save_freefield=True):\n    save_path = ROOT / \"data\" / \"hrtf\" / \"rec\" / subject_id / f\"{hp_id}_equalization.npz\"\n\n    # Initialize freefield for headphone playback\n    if not freefield.PROCESSORS.mode == 'bi_play_rec':\n        freefield.initialize(\"headphones\", default=\"bi_play_rec\")\n\n    # Generate chirp\n    excitation = generate_chirp()\n\n    # Load or measure HpIR\n    recordings = []\n    for i in range(n_rec):\n        input('Press Enter to record...')\n        recordings.append(measure_hp_raw(excitation, repeats=1))\n    recording = slab.Sound(data=numpy.mean(recordings, axis=0))\n\n    # Compute equalization\n    eq_filter = compute_headphone_equalization(recording, excitation, beta=0.01, show=False)\n    # adjust beta parameter if necessary\n\n    # Save to npz\n    save_hp_filter(eq_filter, save_path)\n\n    # test and alternatively save to freefield\n    hp_filter = ff_equalization(eq_filter, hp_id, save_freefield)\n    if show:\n        raw = freefield.play_and_record_headphones(speaker='both', sound=excitation, equalize=False)\n        filtered = hp_filter.apply(excitation)\n        equalized = freefield.play_and_record_headphones(speaker='both', sound=filtered, equalize=False)\n        fig ,axes = plt.subplots(2,1)\n        raw.spectrum(axis=axes[0])\n        axes[0].set_title('Raw HpTF')\n        equalized.spectrum(axis=axes[1])\n        axes[1].set_title('Equalized HpTF')\n        fig.suptitle(f'{hp_id} equalization')\n\n    return hp_filter\n\n# if __name__ == \"__main__\":\n#     main()\n
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/hrtf_relearning/hrtf/record/calibration/calibrate_headphones.py b/hrtf_relearning/hrtf/record/calibration/calibrate_headphones.py
+--- a/hrtf_relearning/hrtf/record/calibration/calibrate_headphones.py	(revision d4ec8f1a4bdbd0df96d48f4c806e4be5f9b8c244)
++++ b/hrtf_relearning/hrtf/record/calibration/calibrate_headphones.py	(date 1776102793165)
+@@ -24,6 +24,9 @@
+ """
+ 
+ import matplotlib
++from pyfar import Signal
++from slab import Filter
++
+ matplotlib.use("tkagg")
+ from matplotlib import pyplot as plt
+ import numpy
+@@ -246,7 +249,7 @@
+     logging.info(f"Saved HP equalization filter to: {path}")
+ 
+ 
+-def load_hp_filter(path: Path) -> pyfar.Signal:
++def load_hp_filter(path: Path, output='pyfar') -> Filter | Signal:
+     """Load a headphone equalization filter from .npz (or .wav as fallback).
+ 
+     Parameters
+@@ -258,18 +261,22 @@
+ 
+     Returns
+     -------
+-    pyfar.Signal
++    pyfar.Signal or slab.Filter
+         Two-channel equalization filter.
+     """
+     path = Path(path)
+     if path.exists():
+         npz = numpy.load(path, allow_pickle=False)
+-        return pyfar.Signal(npz["filter"], int(npz["samplerate"]))
++        if output == 'pyfar':
++            return pyfar.Signal(npz["filter"], int(npz["samplerate"]))
++        elif output == 'slab':
++            return slab.Filter(data=npz["filter"], samplerate=int(npz["samplerate"]), fir='FIR')
+     # backward-compat: try .wav with the same stem
+     wav_path = path.with_suffix(".wav")
+     if wav_path.exists():
+         logging.warning(f"No .npz found at {path} – loading legacy .wav: {wav_path}")
+-        return pyfar.io.read_audio(wav_path)
++        # return pyfar.io.read_audio(wav_path)
++        return slab.Filter(data=slab.Sound(wav_path).data, samplerate=48842, fir='FIR')
+     raise FileNotFoundError(f"HP filter not found: tried {path} and {wav_path}")
+ 
+ 
+Index: hrtf_relearning/hrtf/processing/deprecated/modifyold.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/hrtf_relearning/hrtf/processing/deprecated/modifyold.py b/hrtf_relearning/hrtf/processing/deprecated/modifyold.py
+new file mode 100644
+--- /dev/null	(date 1776091922952)
++++ b/hrtf_relearning/hrtf/processing/deprecated/modifyold.py	(date 1776091922952)
+@@ -0,0 +1,575 @@
++import copy
++import numpy
++import matplotlib
++matplotlib.use('tkagg')
++from matplotlib import pyplot as plt
++from sklearn.linear_model import LinearRegression
++from hrtf_relearning import PATH
++hrtf_dir = PATH / 'data' /'hrtf'/'sofa'
++import slab
++
++sub_id = 'VD'
++
++SMOOTH = True
++N_KEEP = 8 # all subjects reported complete externalization of the virtual sound image
++
++# ---------------------------------------------------------------------------
++# Spectral feature list
++# ---------------------------------------------------------------------------
++# Each entry is one spectral feature (notch or peak) added to the HRTF.
++# Parameters are linearly interpolated between two spatial anchor points
++# X1 and X2 (azimuth, elevation) in degrees.
++#
++# Keys per feature
++# ----------------
++# freqs : (f_at_X1, f_at_X2)   centre frequency [Hz]
++# width : (w_at_X1, w_at_X2)   Gaussian σ / bandwidth [Hz]
++# depth : (d_at_X1, d_at_X2)   magnitude in dB
++#     > 0  →  notch  (spectral attenuation)
++#     < 0  →  peak   (spectral boost)
++# X1, X2 : (azimuth, elevation) spatial anchor directions
++# ---------------------------------------------------------------------------
++FEATURES = [
++    {
++        'freqs': (6000, 8500),  # centre freq at X1 and X2 [Hz]
++        'width': (400,   400),   # Gaussian σ at X1 and X2 [Hz]
++        'depth': (12.0,  12.0), # >0 = notch, <0 = peak [dB]
++        'X1':    (0, 0),         # anchor 1 (az, az)
++        'X2':    (-40, 40),      # anchor 2 (el, el)
++    },
++    # Add further features here, e.g.:
++    {
++        'freqs': (9500, 11000),
++        'width': (300, 300),
++        'depth': (12, 12),   # negative → peak
++        'X1': (0, 0),
++        'X2': (40, -40),
++    },
++]
++
++def _smooth(mag, n_keep):
++    """
++    Smooth a one-sided HRTF magnitude spectrum by truncating the cosine-series
++    representation of its log-magnitude spectrum.
++
++    This implements the smoothing idea described in Kulkarni & Colburn (1998):
++    the log-magnitude spectrum is expressed as a cosine / Fourier series and
++    reconstructed using only the first M coefficients. Exact reconstruction
++    corresponds to the full set of coefficients; stronger smoothing uses fewer
++    coefficients.
++
++    Parameters
++    ----------
++    mag : numpy.ndarray
++        One-sided magnitude spectrum with shape (n_bins, n_channels), typically
++        from numpy.fft.rfft(...). Must be strictly non-negative.
++    n_keep : int
++        Number of cosine coefficients to retain, counting from the DC term C(0).
++        Thus:
++            - n_keep = full number of coefficients -> exact reconstruction
++            - n_keep = 1 -> flat log-magnitude at its average value
++        This interpretation matches the paper's description that the most extreme
++        smoothing retains only the average spectral shape. :contentReference[oaicite:3]{index=3}
++
++    Returns
++    -------
++    numpy.ndarray
++        Smoothed one-sided magnitude spectrum with the same shape as `mag`.
++
++    Notes
++    -----
++    The paper expresses the smoothing in terms of
++        log|H[k]| = sum_n C(n) cos(2*pi*n*k/N)
++    and reconstructs using a truncated series. Here this is implemented directly
++    by solving for cosine-series coefficients on the one-sided frequency grid
++    k = 0 ... N/2, where N is the original HRIR length. :contentReference[oaicite:4]{index=4}
++    """
++    mag = numpy.asarray(mag, dtype=float)
++    if mag.ndim != 2:
++        raise ValueError("mag must have shape (n_bins, n_channels)")
++
++    n_bins, n_channels = mag.shape
++    if n_bins < 2:
++        raise ValueError("mag must contain at least DC and one more frequency bin")
++
++    n_samples = 2 * (n_bins - 1)  # because n_bins = N/2 + 1 for rfft of length N
++    max_coeffs = n_bins
++    n_keep = int(n_keep)
++
++    if n_keep < 1 or n_keep > max_coeffs:
++        raise ValueError(f"n_keep must be between 1 and {max_coeffs}, got {n_keep}")
++
++    log_mag = numpy.log(numpy.maximum(mag, numpy.finfo(float).tiny))
++
++    # Cosine basis matching the paper's formula:
++    # log|H[k]| = sum_n C(n) cos(2*pi*n*k/N), k=0..N/2
++    k = numpy.arange(n_bins, dtype=float)[:, None]  # (n_bins, 1)
++    n = numpy.arange(n_bins, dtype=float)[None, :]  # (1, n_bins)
++    basis = numpy.cos(2.0 * numpy.pi * k * n / float(n_samples))  # (n_bins, n_bins)
++
++    log_mag_smooth = numpy.empty_like(log_mag)
++
++    for ch in range(n_channels):
++        coeffs, _, _, _ = numpy.linalg.lstsq(basis, log_mag[:, ch], rcond=None)
++        coeffs[n_keep:] = 0.0
++        log_mag_smooth[:, ch] = basis @ coeffs
++
++    mag_smooth = numpy.exp(log_mag_smooth)
++    return mag_smooth
++
++
++def _compute_feature_params(azimuth, elevation, feature):
++    """
++    Return interpolated spectral-feature parameters for a given source direction.
++
++    Parameters
++    ----------
++    azimuth, elevation : float
++        Source direction in degrees.
++    feature : dict
++        Feature specification with keys:
++            freqs : (f_at_X1, f_at_X2)  centre frequency [Hz]
++            width : (w_at_X1, w_at_X2)  Gaussian σ [Hz]
++            depth : (d_at_X1, d_at_X2)  signed depth [dB]
++                positive → notch (attenuation)
++                negative → peak  (boost)
++            X1, X2 : (azimuth, elevation)  spatial anchor directions
++
++    Returns
++    -------
++    dict with keys ``mu``, ``sigma``, ``depth_db`` (signed).
++    """
++    X1 = feature['X1']
++    X2 = feature['X2']
++
++    mu = linear_notch_position(azimuth, elevation, X1=X1, X2=X2, Y=feature['freqs'])
++    sigma = linear_notch_width(azimuth, elevation, X1=X1, X2=X2, Y=feature['width'])
++    # preserve sign: positive = notch, negative = peak
++    depth_db = linear_scaling_factor(azimuth, elevation, X1=X1, X2=X2, Y=feature['depth'])
++
++    return {
++        "mu":       float(mu),
++        "sigma":    float(max(sigma, numpy.finfo(float).eps)),
++        "depth_db": float(depth_db),
++    }
++
++def minimum_phase_from_magnitude(mag):
++    """
++    Reconstruct a one-sided minimum-phase HRTF spectrum from a one-sided
++    magnitude spectrum.
++
++    Parameters
++    ----------
++    mag : numpy.ndarray
++        One-sided magnitude spectrum with shape (n_bins, n_channels),
++        corresponding to an rFFT of an even-length HRIR.
++
++    Returns
++    -------
++    numpy.ndarray
++        One-sided complex minimum-phase spectrum with shape
++        (n_bins, n_channels).
++
++    Notes
++    -----
++    The paper states that modified HRTFs were implemented as
++    "minimum-phase filters, augmented with a frequency-independent time delay"
++    consistent with the original overall ITD.
++
++    This function performs the minimum-phase part only. ITD restoration is done
++    later in `restore_itd_from_onsets(...)`.
++
++    Method
++    ------
++    A standard real-cepstrum minimum-phase reconstruction is used:
++      1. build a full even-symmetric log-magnitude spectrum
++      2. take the IFFT to obtain the real cepstrum
++      3. zero the anti-causal cepstral part and double the causal part
++      4. exponentiate the resulting complex log spectrum
++    """
++    mag = numpy.asarray(mag, dtype=float)
++    if mag.ndim != 2:
++        raise ValueError("mag must have shape (n_bins, n_channels)")
++
++    n_bins, n_channels = mag.shape
++    if n_bins < 2:
++        raise ValueError("mag must contain at least DC and one more frequency bin")
++
++    n_samples = 2 * (n_bins - 1)
++    tiny = numpy.finfo(float).tiny
++    spec_min = numpy.empty((n_bins, n_channels), dtype=complex)
++
++    for ch in range(n_channels):
++        mag_ch = numpy.maximum(mag[:, ch], tiny)
++        log_mag_half = numpy.log(mag_ch)
++
++        # Build full, even-symmetric log-magnitude spectrum of length N.
++        # For even N:
++        # [0 ... N/2, N/2-1 ... 1]
++        log_mag_full = numpy.concatenate(
++            (log_mag_half, log_mag_half[-2:0:-1]),
++            axis=0,
++        )
++
++        cep = numpy.fft.ifft(log_mag_full).real
++
++        cep_min = numpy.zeros_like(cep)
++        cep_min[0] = cep[0]
++
++        # Keep causal cepstrum and double positive quefrencies
++        cep_min[1:n_samples // 2] = 2.0 * cep[1:n_samples // 2]
++
++        # Nyquist term stays unchanged for even-length transforms
++        cep_min[n_samples // 2] = cep[n_samples // 2]
++
++        log_spec_min = numpy.fft.fft(cep_min)
++        spec_full_min = numpy.exp(log_spec_min)
++
++        spec_min[:, ch] = spec_full_min[:n_bins]
++
++    return spec_min
++
++
++def find_ir_onsets(ir, threshold_db=15.0):
++    """
++    Estimate per-channel HRIR onset samples from a time-domain impulse response.
++
++    Parameters
++    ----------
++    ir : numpy.ndarray
++        Time-domain HRIR with shape (n_samples, n_channels).
++    threshold_db : float, default=15.0
++        Threshold below the channel peak, in dB. The onset is defined as the
++        first sample up to the peak whose absolute amplitude exceeds
++        peak / 10^(threshold_db / 20).
++
++    Returns
++    -------
++    numpy.ndarray
++        Integer onset sample for each channel, shape (n_channels,).
++
++    Notes
++    -----
++    This is a lightweight NumPy replacement for pyfar onset detection because
++    the slab Filter objects stored in the HRTF are not directly compatible with
++    pyfar's find_impulse_response_start function.
++
++    The paper preserves overall ITD by supplementing the modified minimum-phase
++    HRTFs with a frequency-independent delay. Here that delay is estimated from
++    binaural onset differences in the original and processed HRIRs.
++    """
++    ir = numpy.asarray(ir, dtype=float)
++    if ir.ndim != 2:
++        raise ValueError("ir must have shape (n_samples, n_channels)")
++
++    n_samples, n_channels = ir.shape
++    onsets = numpy.zeros(n_channels, dtype=int)
++
++    for ch in range(n_channels):
++        x = numpy.abs(ir[:, ch])
++        peak_idx = int(numpy.argmax(x))
++        peak_val = float(x[peak_idx])
++
++        if peak_val <= 0:
++            onsets[ch] = 0
++            continue
++
++        threshold = peak_val / (10.0 ** (float(threshold_db) / 20.0))
++        above = numpy.where(x[:peak_idx + 1] >= threshold)[0]
++
++        if len(above) == 0:
++            onsets[ch] = 0
++        else:
++            onsets[ch] = int(above[0])
++
++    return onsets
++
++def restore_itd_from_onsets(ir_original, ir_processed, threshold_db=15.0):
++    """
++    Restore original per-ear onset positions by shifting each processed ear
++    independently so that its onset matches the corresponding original ear onset.
++
++    Parameters
++    ----------
++    ir_original : numpy.ndarray
++        Original HRIR, shape (n_samples, 2).
++    ir_processed : numpy.ndarray
++        Processed HRIR, shape (n_samples, 2).
++    threshold_db : float, default=15.0
++        Threshold used in `find_ir_onsets(...)`.
++
++    Returns
++    -------
++    numpy.ndarray
++        Processed HRIR with restored per-ear onsets, shape (n_samples, 2).
++
++    Notes
++    -----
++    This restores both the common delay and the ITD, because both ears are
++    aligned to their original onset positions independently.
++    """
++    ir_original = numpy.asarray(ir_original, dtype=float)
++    ir_processed = numpy.asarray(ir_processed, dtype=float)
++
++    if ir_original.shape != ir_processed.shape:
++        raise ValueError("ir_original and ir_processed must have the same shape")
++    if ir_original.ndim != 2 or ir_original.shape[1] != 2:
++        raise ValueError("Both HRIRs must have shape (n_samples, 2)")
++
++    n_samples, n_channels = ir_original.shape
++    out = numpy.zeros_like(ir_processed)
++
++    on_orig = find_ir_onsets(ir_original, threshold_db=threshold_db)
++    on_proc = find_ir_onsets(ir_processed, threshold_db=threshold_db)
++
++    for ch in range(n_channels):
++        delta = int(on_orig[ch] - on_proc[ch])
++
++        if delta > 0:
++            # delay channel
++            if delta >= n_samples:
++                out[:, ch] = 0.0
++            else:
++                out[:, ch] = numpy.concatenate(
++                    (numpy.zeros(delta, dtype=ir_processed.dtype), ir_processed[:-delta, ch]),
++                    axis=0,
++                )
++        elif delta < 0:
++            # advance channel
++            d = -delta
++            if d >= n_samples:
++                out[:, ch] = 0.0
++            else:
++                out[:, ch] = numpy.concatenate(
++                    (ir_processed[d:, ch], numpy.zeros(d, dtype=ir_processed.dtype)),
++                    axis=0,
++                )
++        else:
++            out[:, ch] = ir_processed[:, ch]
++
++    return out
++
++
++def linear_notch_position(azimuth, elevation, X1, X2, Y):
++    X = numpy.column_stack((X1, X2))
++    model = LinearRegression()
++    model.fit(X, numpy.array(Y))
++    mu = model.predict(numpy.array((azimuth, elevation)).reshape(1, -1))[0]
++    return float(mu)
++
++def linear_notch_width(azimuth, elevation, X1, X2, Y):
++    X = numpy.column_stack((X1, X2))
++    model = LinearRegression()
++    model.fit(X, numpy.array(Y))
++    sigma = model.predict(numpy.array((azimuth, elevation)).reshape(1, -1))[0]
++    return float(max(sigma, numpy.finfo(float).eps))
++
++def linear_scaling_factor(azimuth, elevation, X1, X2, Y):
++    X = numpy.column_stack((X1, X2))
++    model = LinearRegression()
++    model.fit(X, numpy.array(Y))
++    scaling = model.predict(numpy.array((azimuth, elevation)).reshape(1, -1))[0]
++    return float(scaling)
++
++def smooth_and_notch_hrtf(
++        hrtf,
++        n_keep=12,
++        smooth=True,
++        features=None,
++        onset_threshold_db=15.0,
++):
++    """
++    Apply paper-style HRTF spectral smoothing, optional artificial spectral
++    features (notches and/or peaks), minimum-phase reconstruction, and
++    onset-based ITD restoration to a slab.HRTF object.
++
++    Parameters
++    ----------
++    hrtf : slab.HRTF
++        Input HRTF object. Each element is assumed to contain a binaural HRIR
++        in `filt.data` with shape (n_samples, 2).
++    n_keep : int
++        Number of cosine coefficients retained in the log-magnitude smoothing
++        step. This is the smoothing parameter analogous to the paper's M,
++        interpreted here as the number of retained coefficients including C(0).
++    smooth : bool, default=True
++        If True, apply Kulkarni & Colburn (1998) log-magnitude smoothing.
++    features : list of dict, optional
++        Spectral features to add. Each dict must contain:
++            freqs : (f_at_X1, f_at_X2)  Gaussian centre frequency [Hz]
++            width : (w_at_X1, w_at_X2)  Gaussian σ [Hz]
++            depth : (d_at_X1, d_at_X2)  signed depth [dB]
++                positive → notch (attenuation)
++                negative → peak  (boost)
++            X1, X2 : (azimuth, elevation)  spatial anchor directions
++        Parameters are linearly interpolated between X1 and X2 for every
++        source direction. Multiple features are accumulated in the dB domain
++        before converting to a linear gain, so they interact additively in dB.
++        Pass an empty list (or None) to skip this step.
++    onset_threshold_db : float, default=15.0
++        Threshold for onset detection when restoring ITD.
++
++    Returns
++    -------
++    slab.HRTF
++        Deep-copied and processed HRTF object.
++
++    Processing steps
++    ----------------
++    For each HRIR:
++      1. Transform to one-sided frequency domain via rFFT
++      2. Smooth the one-sided magnitude spectrum using truncated cosine-series
++         reconstruction of log-magnitude, following Kulkarni & Colburn (1998)
++      3. Accumulate all spectral features in the dB domain and apply as a
++         single linear gain vector
++      4. Reconstruct a minimum-phase spectrum from the final magnitude
++      5. Transform back to the time domain via irFFT
++      6. Restore the original onset-based ITD by a pure right-ear shift
++
++    Notes
++    -----
++    Smoothing follows the paper-style approach: log-magnitude is expressed as
++    a truncated cosine/Fourier series and the result is implemented as a
++    minimum-phase filter with the original ITD restored as a frequency-
++    independent delay.
++    """
++    if features is None:
++        features = []
++
++    out = copy.deepcopy(hrtf)
++
++    for filt, source in zip(out, out.sources.vertical_polar):
++        azimuth, elevation = float(source[0]), float(source[1])
++
++        ir_original = numpy.asarray(filt.data, dtype=float)
++        if ir_original.ndim != 2 or ir_original.shape[1] != 2:
++            raise ValueError(
++                "Each HRIR must have shape (n_samples, 2) for binaural processing"
++            )
++
++        n_samples, n_channels = ir_original.shape
++        fs = filt.samplerate
++
++        freqs = numpy.fft.rfftfreq(n_samples, d=1.0 / fs)
++        spec_original = numpy.fft.rfft(ir_original, axis=0)
++        mag_original = numpy.abs(spec_original)
++
++        # 1) Paper-style smoothing in log-magnitude / cosine-series domain
++        if smooth:
++            mag_processed = _smooth(mag_original, n_keep=n_keep)
++        else:
++            mag_processed = mag_original
++
++        # 2) Accumulate spectral features in the dB domain, then apply once
++        if features:
++            combined_db = numpy.zeros(len(freqs))
++            for feat in features:
++                params = _compute_feature_params(azimuth, elevation, feat)
++                # positive depth_db → attenuation (notch); negative → boost (peak)
++                gaussian = numpy.exp(
++                    -0.5 * ((freqs - params["mu"]) / params["sigma"]) ** 2
++                )
++                combined_db += -params["depth_db"] * gaussian
++
++            # leave DC and Nyquist untouched
++            combined_db[0]  = 0.0
++            combined_db[-1] = 0.0
++
++            combined_lin = 10.0 ** (combined_db / 20.0)
++            # guard against extreme attenuation / boost
++            combined_lin = numpy.clip(
++                combined_lin,
++                10.0 ** (-80.0 / 20.0),
++                10.0 ** ( 80.0 / 20.0),
++            )
++            mag_processed = mag_processed * combined_lin[:, None]
++
++        # 3) Enforce minimum phase once, after smoothing + features
++        spec_processed = minimum_phase_from_magnitude(mag_processed)
++
++        # 4) Back to time domain
++        ir_processed = numpy.fft.irfft(spec_processed, n=n_samples, axis=0)
++
++        # 5) Restore original ITD from HRIR onsets
++        ir_processed = restore_itd_from_onsets(
++            ir_original,
++            ir_processed,
++            threshold_db=onset_threshold_db,
++        )
++
++        filt.data = ir_processed
++
++    return out
++
++def plot(hrtf, hrtf_modified, kind='image', ear='left', xlim=(1000, 18000), clip_db=-25, n_levels=20):
++    """
++    Plot original and modified HRTF transfer functions side by side with a shared colorbar.
++
++    Uses tfs_from_sources to extract raw dB data from both HRTFs, computes the joint
++    min/max across both panels (after clipping at clip_db), and passes shared contour
++    levels to both contourf calls so the color scale is identical.
++
++    Parameters
++    ----------
++    hrtf, hrtf_modified : slab.HRTF
++    kind : str  (currently only 'image' is implemented here)
++    ear : 'left' | 'right'
++    xlim : (f_low, f_high) in Hz  frequency display range
++    clip_db : float  lower dB clip (matches slab's internal -25 dB clip)
++    n_levels : int  number of contour levels
++    """
++    sources = hrtf.cone_sources(0)
++    elevations = hrtf.sources.vertical_polar[sources, 1]
++
++    # Frequency axis from the first filter's tf method
++    freqs = hrtf[0].tf(show=False)[0]
++    freq_mask = (freqs >= xlim[0]) & (freqs <= xlim[1])
++    freqs_plot = freqs[freq_mask]
++
++    # Raw TF data: (n_sources, n_bins, 1) → (n_sources, n_bins)
++    tf_orig = hrtf.tfs_from_sources(sources, n_bins=None, ear=ear)[:, :, 0]
++    tf_mod  = hrtf_modified.tfs_from_sources(sources, n_bins=None, ear=ear)[:, :, 0]
++
++    # Frequency-band selection and dB clip (matching slab's own clipping in plot_tf)
++    tf_orig = numpy.clip(tf_orig[:, freq_mask], clip_db, None)
++    tf_mod  = numpy.clip(tf_mod[:, freq_mask],  clip_db, None)
++
++    # Joint colour range
++    vmin = min(tf_orig.min(), tf_mod.min())
++    vmax = max(tf_orig.max(), tf_mod.max())
++    levels = numpy.linspace(vmin, vmax, n_levels)
++
++    fig, ax = plt.subplots(1, 2, figsize=(15, 5))
++    c0 = ax[0].contourf(freqs_plot, elevations, tf_orig, cmap='hot', levels=levels)
++    c1 = ax[1].contourf(freqs_plot, elevations, tf_mod,  cmap='hot', levels=levels)
++    ax[0].set_title('original')
++    ax[1].set_title('modified')
++    for a in ax:
++        a.set_xlabel('Frequency (Hz)')
++        a.set_ylabel('Elevation (°)')
++
++    # Single shared colorbar
++    fig.colorbar(c0, ax=ax.tolist(), orientation='vertical', label='dB')
++
++    plt.show(block=False)
++    plt.pause(0.1)
++    return fig
++
++if __name__ == '__main__':
++    # modify
++    hrtf = slab.HRTF(hrtf_dir / str(sub_id + '.sofa'))
++    hrtf_modified = smooth_and_notch_hrtf(
++        hrtf,
++        n_keep=N_KEEP,
++        smooth=SMOOTH,
++        features=FEATURES,
++        onset_threshold_db=15.0,
++    )
++
++    # plot
++    fig = plot(hrtf, hrtf_modified, 'image', ear='right')
++    input('press enter to save')
++    fig.savefig(PATH / 'data' / 'results' / 'plot' / sub_id / str(sub_id + '_modified.png'))
++    hrtf_modified.write_sofa(hrtf_dir / str(sub_id + '_notch.sofa'))
++    import logging
++    logging.info(f"Modified HRTF written to {hrtf_dir / str(sub_id + '_notch.sofa')}")
+\ No newline at end of file
+Index: hrtf_relearning/hrtf/binsim/hrir2mat.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>import numpy\nfrom matplotlib import pyplot as plt\nfrom scipy.io import savemat\nimport slab\nimport logging\nimport pyfar\nfrom pathlib import Path\nimport hrtf_relearning\nfrom hrtf_relearning.hrtf.record.calibration.calibrate_headphones import load_hp_filter\nROOT = Path(hrtf_relearning.__file__).resolve().parent\nwav_path = ROOT / 'data' / 'hrtf' / 'binsim'\nsofa_path = ROOT / 'data' / 'hrtf' / 'sofa'\nsound_path = ROOT / 'data' / 'sounds'\nrec_path = ROOT / 'data' / 'hrtf' / 'rec'\n\ndef resample_sounds(target_samplerate, target_directory):\n    logging.info('Resampling sound files.')\n    for file in sound_path.glob('*.wav'): # resample sound files\n        sound = slab.Sound.read(file)\n        if not sound.samplerate == target_samplerate:\n            sound = sound.resample(target_samplerate)\n        sound.write(target_directory / file.name, normalise=True)\n\n# ---- mat writers ---- #\n\ndef write_filters(hrir, lr_ir, hp_ir, mat_path):\n    \"\"\"\n    Write a pyBinSim-compatible MAT database matching FilterStorage.parse_and_load_matfile()\n\n    Fields expected by pyBinSim (per row):\n      - type\n      - listenerOrientation (1x3)\n      - listenerPosition (1x3)\n      - sourceOrientation (1x3)\n      - sourcePosition (1x3)   (az, el, r) in your convention\n      - custom (1x3)\n      - ir  (nSamples x 2)\n    \"\"\"\n\n    # structured dtype with all required fields\n    dtype = numpy.dtype([\n        (\"type\", \"U2\"),\n        (\"listenerOrientation\", \"O\"),\n        (\"listenerPosition\", \"O\"),\n        (\"sourceOrientation\", \"O\"),\n        (\"sourcePosition\", \"O\"),\n        (\"custom\", \"O\"),\n        (\"filter\", \"O\"),\n    ])\n\n    rows = []\n\n    zeros3 = numpy.zeros(3, dtype=numpy.float32)\n\n    # ---------- DS rows ----------\n    for src_idx in range(hrir.n_sources):\n        az, el, _ = hrir.sources.vertical_polar[src_idx]\n\n        rows.append((\n            \"DS\",\n            zeros3.copy(),                 # listenerOrientation\n            zeros3.copy(),                 # listenerPosition\n            zeros3.copy(),                 # sourceOrientation\n            numpy.array([az, el, 0.0], dtype=numpy.float32),  # sourcePosition\n            zeros3.copy(),                 # custom\n            hrir[src_idx].data.astype(numpy.float32),         # ir\n        ))\n\n    # ---------- LR row ----------\n    if lr_ir is not None:\n        rows.append((\n            \"LR\",\n            zeros3.copy(),\n            zeros3.copy(),\n            zeros3.copy(),\n            zeros3.copy(),\n            zeros3.copy(),\n            lr_ir.astype(numpy.float32),\n        ))\n\n    # ---------- HP row ----------\n    if hp_ir is not None:\n        rows.append((\n            \"HP\",\n            zeros3.copy(),\n            zeros3.copy(),\n            zeros3.copy(),\n            zeros3.copy(),\n            zeros3.copy(),\n            hp_ir.astype(numpy.float32),\n        ))\n\n    filters = numpy.zeros((1, len(rows)), dtype=dtype)\n    for i, r in enumerate(rows):\n        filters[0, i][\"type\"] = r[0]\n        filters[0, i][\"listenerOrientation\"] = r[1]\n        filters[0, i][\"listenerPosition\"] = r[2]\n        filters[0, i][\"sourceOrientation\"] = r[3]\n        filters[0, i][\"sourcePosition\"] = r[4]\n        filters[0, i][\"custom\"] = r[5]\n        filters[0, i][\"filter\"] = r[6]\n\n    savemat(mat_path, {\"filters\": filters}, do_compression=True)\n\ndef write_filter_list(hrir):\n    pose = \"0 0 0  0 0 0  0 0 0  0 0 0  0 0 0\"\n    fname = wav_path / hrir.name / f\"filter_list_{hrir.name}.txt\"\n\n    with open(fname, \"w\") as f:\n        f.write(f\"DS {pose}\\n\")\n        f.write(f\"LR {pose}\\n\")\n        f.write(\"HP\\n\")\n\n    return fname\n\ndef compute_lr_ir(\n    hrir,\n    drr: float = 20.0,\n    block_size: int = 256,\n    tail_duration: float = 0.1,\n    predelay_ms: float = 3.0,\n    onset_threshold_db: float = 10.0,\n    show: bool = False,\n) -> numpy.ndarray:\n    \"\"\"\n    Compute a binaural late-reverb impulse response without writing a WAV file.\n\n    The function:\n    1. loads a binaural reverb tail from ``reverb.wav``,\n    2. crops it to a fixed duration aligned to ``block_size``,\n    3. applies a short onset ramp to avoid clicks,\n    4. delays the tail so it starts shortly after the average direct HRIR onset,\n    5. sets its level relative to the mean direct HRIR level using ``drr``.\n\n    Parameters\n    ----------\n    hrir\n        HRTF/HRIR object with attributes such as ``samplerate``, ``n_sources``,\n        ``name``, and item access ``hrir[idx].data`` returning an array of shape\n        ``[n_samples, 2]``.\n    drr : float, default=20.0\n        Desired direct-to-reverberant ratio in dB. The reverb tail level is set\n        to ``mean_direct_level - drr``.\n    block_size : int, default=256\n        Output length is cropped to an integer multiple of this block size.\n    tail_duration : float, default=0.3\n        Duration of the reverb tail in seconds before block alignment.\n    predelay_ms : float, default=1.5\n        Extra delay added after the estimated average HRIR onset. Small values\n        are appropriate here to reduce masking of direct spectral cues without\n        creating a perceptually oversized room.\n    onset_threshold_db : float, default=20.0\n        Threshold below the peak binaural energy used for onset detection.\n\n    Returns\n    -------\n    numpy.ndarray\n        Binaural late-reverb IR of shape ``[n_samples, 2]`` and dtype\n        ``numpy.float32``.\n\n    Notes\n    -----\n    This function assumes that the HRIRs are already short/windowed and mostly\n    contain direct sound. Under that assumption, HRIR RMS is a reasonable proxy\n    for direct level.\n    \"\"\"\n    # Load the stored binaural reverb tail.\n    reverb = slab.Sound(\n        wav_path / hrir.name / \"sounds\" / \"reverb.wav\"\n    ).data\n\n    # Ensure the reverb has shape [n_samples, 2].\n    # If the file is mono, duplicate it to both ears.\n    if reverb.ndim == 1:\n        reverb = numpy.column_stack([reverb, reverb])\n\n    if reverb.ndim != 2 or reverb.shape[1] != 2:\n        raise ValueError(\n            f\"Expected reverb.wav to have shape [n_samples, 2], got {reverb.shape}.\"\n        )\n\n    # Crop the reverb to the requested tail duration, rounded down to a whole block.\n    cropped_len = int(\n        (int(hrir.samplerate * tail_duration) // int(block_size)) * int(block_size)\n    )\n    if cropped_len <= 0:\n        raise ValueError(\"cropped_len is zero. Check tail_duration and block_size.\")\n\n    reverb = reverb[:cropped_len]\n\n    # If the file is shorter than the requested length, pad with zeros.\n    if reverb.shape[0] < cropped_len:\n        pad = numpy.zeros((cropped_len - reverb.shape[0], 2), dtype=reverb.dtype)\n        reverb = numpy.vstack([reverb, pad])\n\n    # Apply a short onset ramp to avoid clicks at the beginning of the tail.\n    reverb = slab.Sound(reverb).ramp(duration=0.005, when=\"onset\").data\n\n    def estimate_onset(ir: numpy.ndarray, threshold_db: float = 20.0) -> int:\n        \"\"\"\n        Estimate the binaural onset sample of one HRIR using an energy threshold.\n\n        Parameters\n        ----------\n        ir : numpy.ndarray\n            HRIR array of shape [n_samples, 2].\n        threshold_db : float, default=20.0\n            Onset threshold below the peak binaural energy.\n\n        Returns\n        -------\n        int\n            Estimated onset sample index.\n        \"\"\"\n        # Sum squared energy across ears to get one temporal energy curve.\n        energy = numpy.sum(ir ** 2, axis=1)\n\n        peak = numpy.max(energy)\n        if peak <= 0:\n            return 0\n\n        threshold = peak * 10 ** (-threshold_db / 10.0)\n        above = numpy.where(energy >= threshold)[0]\n\n        return int(above[0]) if len(above) else 0\n\n    # Estimate one onset per source, then average across all HRIRs.\n    mean_ir_onset = int(numpy.mean([\n        estimate_onset(hrir[idx].data, threshold_db=onset_threshold_db)\n        for idx in range(hrir.n_sources)\n    ]))\n\n    # Add a small extra delay so the late tail does not start directly on top of\n    # the direct HRIR region.\n    predelay_samples = int(round(predelay_ms * hrir.samplerate / 1000.0))\n    reverb_start = mean_ir_onset + predelay_samples\n\n    # Shift the reverb later in time while keeping its total length unchanged.\n    # Anything shifted beyond the end is discarded.\n    reverb = numpy.concatenate(\n        (numpy.zeros((reverb_start, 2), dtype=reverb.dtype), reverb[:-reverb_start]),\n        axis=0\n    )\n\n    # Estimate the mean direct HRIR level across sources.\n    # Since your HRIRs are short/windowed, this is effectively the direct level.\n    mean_ir_level = numpy.mean([\n        20.0 * numpy.log10(\n            max(numpy.sqrt(numpy.mean(hrir[idx].data ** 2)), 1e-12)\n        )\n        for idx in range(hrir.n_sources)\n    ])\n\n    # Set the reverb level relative to the direct HRIR level.\n    reverb_level = 20.0 * numpy.log10(\n            max(numpy.sqrt(numpy.mean(reverb ** 2)), 1e-12))\n\n    # Target reverb level from desired DRR:\n    # DRR = direct_level - reverb_level\n    target_reverb_level = mean_ir_level - drr\n\n    # Convert level difference to linear gain.\n    gain_db = target_reverb_level - reverb_level\n    gain = 10.0 ** (gain_db / 20.0)\n\n    # Apply gain.\n    reverb = reverb * gain\n\n    if show:\n        # Pick a representative source (midline fallback if needed)\n        try:\n            src_idx = hrir.get_source_idx((0, 0))[0]\n        except Exception:\n            src_idx = 0\n\n        direct = hrir[src_idx].data  # [n_samples, 2]\n\n        # --- length alignment ---\n        n = max(direct.shape[0], reverb.shape[0])\n\n        direct_pad = numpy.zeros((n, 2))\n        reverb_pad = numpy.zeros((n, 2))\n\n        direct_pad[:direct.shape[0]] = direct\n        reverb_pad[:reverb.shape[0]] = reverb\n\n        ir_sum = direct_pad + reverb_pad\n\n        # --- convert to pyfar ---\n        sig = pyfar.Signal(\n            ir_sum.T,  # pyfar expects [n_channels, n_samples]\n            sampling_rate=hrir.samplerate\n        )\n\n        # --- plot ---\n        pyfar.plot.time_freq(\n            sig,\n            dB_time=True,\n            dB_freq=True,\n            freq_scale=\"log\",\n        )\n\n    return reverb.astype(numpy.float32)\n\n\ndef compute_hp_ir(hrir, hp, subject_id, block_size=256):\n    \"\"\"\n    Load and crop headphone filter, return IR array [nSamples, 2].\n\n    Parameters\n    ----------\n    hrir : slab.HRTF\n        HRIR object (used for samplerate and block_size).\n    hp : str\n        Headphone model ID (e.g. 'MYSPHERE', 'DT990').\n    subject_id : str\n        Subject identifier.  The filter is loaded from\n        ``rec/{subject_id}/{hp}_equalization.npz`` (wav fallback supported).\n    block_size : int\n        Output length is rounded down to a multiple of this.\n    \"\"\"\n    hp_sig = load_hp_filter(rec_path / subject_id / f\"{hp}_equalization.npz\")\n\n    n_samp_out = int(\n        (int(hrir.samplerate * 0.02) // int(block_size))\n        * int(block_size)\n    )\n    if n_samp_out == 0:\n        n_samp_out = block_size\n\n    hp_sig = pyfar.dsp.time_window(\n        hp_sig,\n        [0, n_samp_out - 1],\n        shape=\"right\",\n        window='boxcar',\n        crop='window'\n    )\n\n    return hp_sig.time.astype(numpy.float32).T\n\n# ---- wav writers ------ #\n\ndef write_ds_filter_wav(hrir):\n    # zero pad and write IR to wav and coordinates to filter_list.txt\n    logging.info(f'Writing HRIR filters to wav and filter_list for {hrir.name}')\n    scaling_factor = min(1.0, 0.95 / numpy.max([hrir[idx].data for idx in range(hrir.n_sources)]))  # scaling factor\n    for source_idx in range(hrir.n_sources):\n        coordinates = hrir.sources.vertical_polar[source_idx]\n        fname = wav_path / hrir.name / 'IR_data' / f'{coordinates[0]}_{coordinates[1]}.wav'\n        fir_coefs = hrir[source_idx].data\n        fir_coefs *= scaling_factor\n        directional_ir = (slab.Sound(data=fir_coefs, samplerate=hrir.samplerate))\n        directional_ir.write(filename=fname)  # write IR to wav\n        with open(wav_path / hrir.name / f\"filter_list_{hrir.name}.txt\", 'a') as file:  # write to filter_list.txt\n            file.write(f'DS'\n                       f' 0 0 0'  # Value 1 - 3: listener orientation[yaw, pitch, roll]\n                       f' 0 0 0'  # Value 4 - 6: listener position[x, y, z]\n                       f' 0 0 0'  # Value 7 - 9: source orientation[yaw, pitch, roll]\n                       f' {coordinates[0]} {coordinates[1]} 0'  # Value 10 - 12: source position[x, y, z]\n                       f' 0 0 0'  # Value 13 - 15: custom values[a, b, c]\n                       f' {fname}\\n')\n\ndef write_lr_filter_wav(hrir, drr=20):\n    logging.info(f'Writing reverb filter to wav (DRR = {drr} dB)')\n    fname_out = wav_path / hrir.name / 'sounds' / 'scaled_reverb.wav'  # output file name (level adjusted)\n    reverb = slab.Sound(wav_path / hrir.name / 'sounds' / 'reverb.wav').data  # load reverb\n    # crop to 100 ms and multiple of block size (hrir taps / 2)\n    cropped_len = int((int(hrir.samplerate * 0.1) // int(hrir[0].n_taps / 2)) * int(hrir[0].n_taps / 2))\n    reverb = reverb[:cropped_len]\n    # ramp up reverb tail starting at the max impulse response\n    reverb = slab.Sound(reverb).ramp(duration=0.005, when='onset').data  # ramp reverb onset\n    mean_ir_onset = int(numpy.mean(  # average onset time of the direct IR\n                [numpy.where(hrir[idx].data == (hrir[idx].data).max())[0][0] for idx in range(hrir.n_sources)]))\n    reverb = numpy.concatenate((numpy.zeros((mean_ir_onset, 2)), reverb[:-mean_ir_onset]), axis=0)\n    # adjust reverb level to DRR\n    mean_ir_level = numpy.mean([20.0 * numpy.log10(numpy.maximum(\n        numpy.sqrt(numpy.mean(numpy.square(hrir[idx].data))), 1e-12))\n                for idx in range(hrir.n_sources)]) # get mean ir level of the impulse response in dB to apply DRR\n    reverb = slab.Sound(data=reverb)\n    reverb.level = mean_ir_level - drr\n    #  write reverb IR and filter list entry\n    reverb.write(fname_out, normalise=False)\n    with open(wav_path / hrir.name / f\"filter_list_{hrir.name}.txt\", 'a') as file:\n        file.write(f'LR'\n                   f' 0 0 0'  # Value 1 - 3: listener orientation[yaw, pitch, roll]\n                   f' 0 0 0'  # Value 4 - 6: listener position[x, y, z]\n                   f' 0 0 0'  # Value 7 - 9: source orientation[yaw, pitch, roll]\n                   f' 0 0 0'  # Value 10 - 12: source position[x, y, z]\n                   f' 0 0 0'  # Value 13 - 15: custom values[a, b, c]\n                   f' {fname_out}\\n')\n    # plot_reverb(hrir, reverb)\n\ndef write_hp_filter_wav(hrir, fname):\n    \"\"\"\n    Crop HP Filter to around 5 ms and write filter list entry\n    \"\"\"\n    fname_out = wav_path / hrir.name / 'sounds' / 'HP_filter.wav'  # output file name (length adjusted)\n    hp_filt = pyfar.io.read_audio( wav_path / hrir.name / 'sounds' / fname)  # load reverb\n    # crop close to 5 ms and multiple of block size (hrir taps / 2)\n    n_samp_out = int((int(hrir.samplerate * 0.005) // int(hrir[0].n_taps / 2)) * int(hrir[0].n_taps / 2))\n    hp_filt = pyfar.dsp.time_window(hp_filt, [0, n_samp_out - 1], shape=\"right\", window='boxcar', crop='window')\n    # pyfar.plot.time(hp_filt)\n    logging.info(f'Writing headphone filter {fname} to wav ({hp_filt.signal_length*1000:.2f} ms.)')\n    pyfar.io.write_audio(hp_filt, str(fname_out))\n    with open(wav_path / hrir.name / f\"filter_list_{hrir.name}.txt\", 'a') as file:  # write filename to filter list\n        file.write(f'HP {fname_out}\\n')\n
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/hrtf_relearning/hrtf/binsim/hrir2mat.py b/hrtf_relearning/hrtf/binsim/hrir2mat.py
+--- a/hrtf_relearning/hrtf/binsim/hrir2mat.py	(revision d4ec8f1a4bdbd0df96d48f4c806e4be5f9b8c244)
++++ b/hrtf_relearning/hrtf/binsim/hrir2mat.py	(date 1776102979713)
+@@ -319,7 +319,7 @@
+     block_size : int
+         Output length is rounded down to a multiple of this.
+     """
+-    hp_sig = load_hp_filter(rec_path / subject_id / f"{hp}_equalization.npz")
++    hp_sig = load_hp_filter(rec_path / subject_id / f"{hp}_equalization.npz", 'pyfar')
+ 
+     n_samp_out = int(
+         (int(hrir.samplerate * 0.02) // int(block_size))
+diff --git a/hrtf_relearning/hrtf/processing/add.py b/hrtf_relearning/hrtf/processing/deprecated/add.py
+rename from hrtf_relearning/hrtf/processing/add.py
+rename to hrtf_relearning/hrtf/processing/deprecated/add.py

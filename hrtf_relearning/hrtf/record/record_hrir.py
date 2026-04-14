@@ -167,8 +167,8 @@ def record_hrir(
     # 7) Export to slab.HRTF
     # -----------------------------------------------------------------
     hrtf = hrir_az_exp.to_slab_hrtf(datatype="FIR")
-    if overwrite:
-        out_file = base_dir / 'sofa' / f'{subject_id}.sofa'
+    out_file = base_dir / 'sofa' / f'{subject_id}.sofa'
+    if overwrite or not out_file.exists():
         logging.info("writing HRTF to {}".format(out_file))
         hrtf.write_sofa(out_file)
 

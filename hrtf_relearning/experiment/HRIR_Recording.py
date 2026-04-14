@@ -30,7 +30,7 @@ from hrtf_relearning.experiment.analysis.localization.localization_analysis impo
 
 # --- session defaults (override via main() arguments) ---
 subject_id   = 'VD'
-hp_id        = 'MYSPHERE'
+hp_id        = 'DT990'
 reference_id = 'ref_03.04'
 n_directions = 3  # directions for the hrir recording
 n_recordings = 10  #
@@ -79,7 +79,7 @@ def main(subject_id, reference_id, hp_id, hrir_settings,
             reverb      = True,
             drr         = 20,
             hp_filter   = True,
-            hp          = hp_id,
+            hp          = hp_id,  # todo access quickly later for ar test
             convolution = 'cpu',
             storage     = 'cpu',
         )

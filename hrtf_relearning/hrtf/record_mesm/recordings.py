@@ -3,30 +3,40 @@ recordings.py — Hardware interaction layer for MESM HRIR recording.
 
 Responsibilities
 ----------------
-- Reference measurement (single ES per speaker, sequential) to extract L1, K.
-- MESM measurement: write all N sweep buffers simultaneously, trigger,
-  read back the binaural recording.
+- Initialize the custom RCX circuits on RX8 (playback) and RP2 (recording).
+- Reference measurement: sequential single-sweep per speaker to extract L1, K.
+- MESM measurement: write all N sweep buffers, trigger once, read back.
 - Serialisation of raw recordings to .npz.
 
 Hardware layout
 ---------------
-  RX8   : playback — 7 BufOut components (tags sweep_0 … sweep_6),
-           each fed into a StereoScale (SFL=1, SFR=-1) → DAC pair.
-           Control tags: n_samples (buffer length).
-  RP2   : recording — 2 BufIn components (tags rec_l, rec_r).
-           Control tag: rec_len (recording length in samples).
+  RX8  : playback — 7 BufOut components, each wired to a dedicated DAC pair
+         via StereoScale (SFL=1, SFR=-1).
+         Tags written from Python:
+             sweep_0 … sweep_6   — float32 buffer, length n_samples
+             n_samples           — scalar, playback buffer length
 
-The zBusA trigger fires all components simultaneously.
+  RP2  : recording — 2 BufIn components (left + right ear mic).
+         Tags written from Python:
+             rec_len             — scalar, recording buffer length
+         Tags read from Python:
+             rec_l               — float32 buffer, left ear
+             rec_r               — float32 buffer, right ear
+             rec_idx             — scalar, running sample counter (completion poll)
 
-TODO (once RCX is finalised)
------------------------------
-- Confirm exact tag names from RPvdsEX (sweep_0 … sweep_6, n_samples,
-  rec_l, rec_r, rec_len). Update TAGS dict below.
-- Confirm processor names (RX8 device string, RP2 device string) and
-  update PROC_PLAY / PROC_REC below.
-- Confirm completion-detection strategy (polling tag vs. fixed wait).
-- Add speaker-equalization support once calibration data is available
-  for the new 7-speaker dome.
+  zBusA trigger fires RX8 and RP2 simultaneously (sample-accurate).
+
+Design notes
+------------
+- We use freefield.PROCESSORS (the global Processors instance) directly via
+  its .write() / .read() / .trigger() methods rather than going through the
+  high-level freefield.play_and_record(), which assumes a different tag
+  layout (playbuflen / chan / data / datal / datar) and the dome speaker table.
+- Speaker equalization is omitted: the new speakers are not in the freefield
+  speaker table and are expected to be calibrated externally (or not at all
+  in a first pass).
+- Spatial position (elevation / rotation angle from the turntable) is a plain
+  float passed directly to MESMRecording — no speaker table lookup needed.
 """
 from __future__ import annotations
 
@@ -43,19 +53,89 @@ import freefield
 from .sweep import MESMParams, build_speaker_buffers, exponential_sweep, inverse_sweep
 
 # ---------------------------------------------------------------------------
-# Hardware tag names — update when RCX is finalised
+# RCX tag names — keep in sync with the RPvdsEX circuit
 # ---------------------------------------------------------------------------
 TAGS = {
-    "sweep"   : "sweep_{i}",   # format with speaker index
-    "n_samples": "n_samples",  # BufOut length tag on RX8
-    "rec_l"   : "rec_l",       # left-ear BufIn tag on RP2
-    "rec_r"   : "rec_r",       # right-ear BufIn tag on RP2
-    "rec_len" : "rec_len",     # recording length tag on RP2
-    "rec_idx" : "rec_idx",     # running sample counter on RP2 (for completion poll)
+    "sweep"  : "sweep_{i}",  # one per speaker, format with index
+    "n_samp" : "n_samples",  # BufOut buffer length (RX8)
+    "rec_l"  : "rec_l",      # left-ear BufIn (RP2)
+    "rec_r"  : "rec_r",      # right-ear BufIn (RP2)
+    "rec_len": "rec_len",    # BufIn buffer length (RP2)
+    "rec_idx": "rec_idx",    # running sample counter for completion poll (RP2)
 }
 
-PROC_PLAY = "RX8"   # TODO: confirm device string
-PROC_REC  = "RP2"   # TODO: confirm device string
+# Processor names as passed to PROCESSORS.initialize()
+PROC_RX8 = "RX8"
+PROC_RP2 = "RP2"
+
+# D/A and A/D delays in samples (from freefield.get_recording_delay)
+_DA_DELAY = {"RX8": 24, "RP2": 30}
+_AD_DELAY = {"RX8": 47, "RP2": 65}
+_EMPIRICAL_S = 0.0014   # matches local freefield fork: int(.0014 * fs)
+
+
+# ---------------------------------------------------------------------------
+# Initialisation
+# ---------------------------------------------------------------------------
+
+def initialize(rcx_rx8: Path, rcx_rp2: Path, connection: str = "GB") -> None:
+    """
+    Load the MESM RCX circuits onto RX8 and RP2 and arm the zBus.
+
+    Parameters
+    ----------
+    rcx_rx8 : Path
+        Path to the RPvdsEX circuit for the RX8 (7-channel playback).
+    rcx_rp2 : Path
+        Path to the RPvdsEX circuit for the RP2 (binaural recording).
+    connection : str
+        TDT connection type — 'GB' (optical) or 'USB'.
+    """
+    freefield.PROCESSORS.initialize(
+        device=[
+            [PROC_RX8, "RX8", str(rcx_rx8)],
+            [PROC_RP2, "RP2", str(rcx_rp2)],
+        ],
+        zbus=True,
+        connection=connection,
+    )
+    logging.info("MESM hardware initialized.")
+
+
+# ---------------------------------------------------------------------------
+# Recording delay
+# ---------------------------------------------------------------------------
+
+def get_recording_delay(fs: int, distance: float = 1.4) -> int:
+    """
+    Total delay (samples) between trigger and a valid recording onset.
+
+    Matches the logic of freefield.get_recording_delay() + the empirical
+    correction added in freefield.play_and_record():
+
+        n = n_acoustic + n_DA(RX8) + n_AD(RP2) + int(0.0014 * fs)
+
+    Parameters
+    ----------
+    fs : int
+        Sample rate in Hz.
+    distance : float
+        Speaker-to-microphone distance in metres. Default 1.4 m.
+
+    Returns
+    -------
+    n_delay : int
+    """
+    n_acoustic  = int(distance / 343.0 * fs)
+    n_da        = _DA_DELAY[PROC_RX8]
+    n_ad        = _AD_DELAY[PROC_RP2]
+    n_empirical = int(_EMPIRICAL_S * fs)
+    n_delay = n_acoustic + n_da + n_ad + n_empirical
+    logging.debug(
+        f"Recording delay: acoustic={n_acoustic}, DA={n_da}, AD={n_ad}, "
+        f"empirical={n_empirical} → total={n_delay} samples ({n_delay/fs*1e3:.2f} ms)"
+    )
+    return n_delay
 
 
 # ---------------------------------------------------------------------------
@@ -66,7 +146,6 @@ PROC_REC  = "RP2"   # TODO: confirm device string
 class ReferenceParams:
     """
     Parameters extracted from the reference (single-sweep) measurement.
-    These are used to compute the MESM timing via sweep.compute_mesm_params().
 
     Attributes
     ----------
@@ -94,21 +173,19 @@ class ReferenceParams:
 
 class MESMRecording:
     """
-    Container for one raw MESM binaural recording and its associated params.
+    Container for one raw MESM binaural recording.
 
     Attributes
     ----------
-    left : np.ndarray, shape (T_total_samples,)
-        Left-ear pressure recording.
-    right : np.ndarray, shape (T_total_samples,)
-        Right-ear pressure recording.
+    left, right : np.ndarray, shape (T_total_samples,)
+        Delay-compensated binaural recording.
     params : MESMParams
-        Timing/sweep parameters used for this recording.
-    speaker_table : dict
-        Mapping speaker index → (azimuth, elevation) in degrees.
-        To be populated from the speaker table file.
+        Sweep / timing parameters.
+    position : float | None
+        Turntable position in degrees at the time of recording (elevation or
+        azimuth depending on platform orientation). None if not applicable.
     meta : dict
-        Arbitrary metadata (datetime, subject_id, …).
+        Arbitrary metadata (datetime, subject_id, n_repetitions, …).
     """
 
     def __init__(
@@ -116,14 +193,14 @@ class MESMRecording:
         left: np.ndarray,
         right: np.ndarray,
         params: MESMParams,
-        speaker_table: dict | None = None,
+        position: float | None = None,
         meta: dict | None = None,
     ):
-        self.left  = np.asarray(left,  dtype=np.float64)
-        self.right = np.asarray(right, dtype=np.float64)
-        self.params = params
-        self.speaker_table = speaker_table or {}
-        self.meta  = meta or {}
+        self.left     = np.asarray(left,  dtype=np.float64)
+        self.right    = np.asarray(right, dtype=np.float64)
+        self.params   = params
+        self.position = position
+        self.meta     = meta or {}
 
     # ------------------------------------------------------------------ I/O
 
@@ -138,6 +215,7 @@ class MESMRecording:
             fname,
             left=self.left,
             right=self.right,
+            position=np.array(self.position if self.position is not None else np.nan),
             # MESMParams fields
             f1=self.params.f1,
             f2=self.params.f2,
@@ -181,7 +259,102 @@ class MESMRecording:
             L1=float(npz["L1"]),
             L2=float(npz["L2"]),
         )
-        return cls(left=npz["left"], right=npz["right"], params=params)
+        pos = float(npz["position"])
+        return cls(
+            left=npz["left"],
+            right=npz["right"],
+            params=params,
+            position=None if np.isnan(pos) else pos,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Core play-and-record (custom, no speaker table)
+# ---------------------------------------------------------------------------
+
+def _play_and_record(
+    buffers: list[np.ndarray],
+    params: MESMParams,
+    n_delay: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Write sweep buffers to RX8, trigger, record from RP2, return trimmed arrays.
+
+    Parameters
+    ----------
+    buffers : list of np.ndarray
+        Zero-padded sweep buffers, one per speaker (length T_total_samples).
+    params : MESMParams
+    n_delay : int
+        Recording delay in samples (from get_recording_delay).
+
+    Returns
+    -------
+    rec_l, rec_r : np.ndarray, shape (T_total_samples,)
+        Delay-compensated binaural recording.
+    """
+    rec_n_samples = params.T_total_samples + n_delay
+
+    # --- write playback buffers and length to RX8 ---
+    freefield.PROCESSORS.write(
+        tag=TAGS["n_samp"], value=params.T_total_samples, processors=PROC_RX8
+    )
+    for i, buf in enumerate(buffers):
+        freefield.PROCESSORS.write(
+            tag=TAGS["sweep"].format(i=i),
+            value=buf.astype(np.float32),
+            processors=PROC_RX8,
+        )
+
+    # --- set extended recording length on RP2 ---
+    freefield.PROCESSORS.write(
+        tag=TAGS["rec_len"], value=rec_n_samples, processors=PROC_RP2
+    )
+
+    # --- fire simultaneous trigger via zBus ---
+    freefield.PROCESSORS.trigger(kind="zBusA")
+
+    # --- wait for RP2 buffer to fill ---
+    _wait_for_recording(rec_n_samples, params.fs)
+
+    # --- read back and strip leading delay samples ---
+    rec_l = freefield.PROCESSORS.read(TAGS["rec_l"], PROC_RP2, rec_n_samples)
+    rec_r = freefield.PROCESSORS.read(TAGS["rec_r"], PROC_RP2, rec_n_samples)
+    return (
+        np.asarray(rec_l, dtype=np.float64)[n_delay:],
+        np.asarray(rec_r, dtype=np.float64)[n_delay:],
+    )
+
+
+def _wait_for_recording(
+    rec_n_samples: int, fs: int, poll_interval: float = 0.05
+) -> None:
+    """
+    Block until the RP2 recording buffer is full.
+
+    Polls rec_idx tag; falls back to a timed wait if the tag is unavailable.
+
+    Parameters
+    ----------
+    rec_n_samples : int
+        Total buffer length written to RP2 (T_total_samples + n_delay).
+    fs : int
+        Sample rate, used to compute expected wall-clock duration.
+    """
+    expected = rec_n_samples / fs
+    deadline = time.time() + expected + 2.0  # 2 s safety margin
+
+    while time.time() < deadline:
+        try:
+            idx = freefield.PROCESSORS.read(TAGS["rec_idx"], PROC_RP2, n_samples=1)
+            if int(idx) >= rec_n_samples:
+                return
+        except Exception:
+            time.sleep(expected)
+            return
+        time.sleep(poll_interval)
+
+    logging.warning("_wait_for_recording: timed out.")
 
 
 # ---------------------------------------------------------------------------
@@ -194,31 +367,25 @@ def record_reference(
     f1: float = 20.0,
     f2: float = 20_000.0,
     T: float = 1.0,
-    ramp_ms: float = 0.5,
-    K_threshold_db: float = 70.0,
+    distance: float = 1.4,
 ) -> ReferenceParams:
     """
-    Sequential single-sweep measurement to extract L1, L2, K.
+    Sequential single-sweep measurement to determine L1, L2, K.
 
-    Plays one sweep per speaker one at a time (no overlapping), records the
-    binaural response, deconvolves to get IRs, and extracts the timing
-    parameters required by compute_mesm_params().
+    Plays one sweep per speaker in turn (no overlapping) and deconvolves
+    each recording to extract the timing parameters needed by
+    compute_mesm_params().
 
     Parameters
     ----------
     n_speakers : int
-        Number of speakers to measure.
     fs : int
-        Sample rate in Hz.
     f1, f2 : float
-        Sweep frequency bounds.
+        Sweep frequency bounds in Hz.
     T : float
-        Sweep duration in seconds. 1–2 s is typical.
-    ramp_ms : float
-        Fade-in/out ramp duration in ms.
-    K_threshold_db : float
-        Harmonics below this many dB relative to the linear IR peak are
-        ignored when determining K.
+        Sweep duration in seconds.
+    distance : float
+        Speaker-to-microphone distance in metres.
 
     Returns
     -------
@@ -226,49 +393,48 @@ def record_reference(
 
     TODO
     ----
-    - Implement hardware interaction (write sweep to RX8, trigger, read RP2).
-      For now raises NotImplementedError.
-    - Implement IR extraction and L1/L2/K estimation from deconvolved signal.
+    - Implement single-speaker sweep write + trigger + read loop.
+    - Implement _extract_reference_params() to get L1, L2, K from the
+      deconvolved HIR series of each speaker.
     """
     raise NotImplementedError(
-        "record_reference() is not yet implemented. "
-        "Implement the single-speaker sweep playback + recording loop here, "
-        "then call _extract_reference_params() on the deconvolved IRs."
+        "record_reference() not yet implemented. "
+        "Write one sweep per speaker sequentially using _play_and_record(), "
+        "deconvolve each result, then call _extract_reference_params()."
     )
 
 
 def _extract_reference_params(
     ir_series: np.ndarray,
     fs: int,
-    params_sweep: dict,
+    f1: float,
+    f2: float,
+    T_prime: float,
     threshold_db: float = 70.0,
-) -> ReferenceParams:
+) -> dict:
     """
-    Extract L1, L2, K from a deconvolved HIR series (reference measurement).
+    Extract L1, L2, K from one channel of a deconvolved HIR series.
 
     Parameters
     ----------
     ir_series : np.ndarray
-        Full deconvolved signal s(t) = y(t) * x'(t) for one speaker channel.
-        The linear IR is the rightmost peak (k=1); higher-order HIRs appear
-        further to the left.
+        s(t) = y(t) * x'(t) for one speaker / one ear.
     fs : int
-        Sample rate.
-    params_sweep : dict
-        Must contain 'f1', 'f2', 'T_prime' (seconds).
+    f1, f2, T_prime : float
+        Sweep parameters (needed to compute tau_k positions).
     threshold_db : float
-        Harmonics below this level relative to linear IR peak are discarded.
+        Harmonics below this level relative to the linear IR peak are ignored.
 
     Returns
     -------
-    ReferenceParams (partial — L1 and L2 from one channel; caller aggregates
-    across speakers and ears).
+    dict with keys 'L1', 'L2', 'K' (all in seconds / dimensionless).
 
     TODO
     ----
-    - Implement peak detection logic using tau_k positions to locate each HIR.
-    - Estimate L1 as the length of the linear IR above the noise floor.
-    - Estimate K as the highest harmonic above threshold_db.
+    - Locate linear IR peak (rightmost large peak in ir_series).
+    - Estimate L1 from IR decay to noise floor.
+    - Walk leftward through tau_k positions to find significant harmonics.
+    - Return max K across all speakers / both ears.
     """
     raise NotImplementedError("_extract_reference_params() not yet implemented.")
 
@@ -279,79 +445,50 @@ def _extract_reference_params(
 
 def record_mesm(
     params: MESMParams,
+    position: float | None = None,
     n_repetitions: int = 1,
+    distance: float = 1.4,
     subject_id: str | None = None,
 ) -> MESMRecording:
     """
     Run one MESM measurement: write all N sweep buffers, trigger, record.
 
-    Steps
-    -----
-    1. Build zero-padded sweep buffers (one per speaker).
-    2. Write each buffer to its RCX tag (sweep_0 … sweep_{N-1}).
-    3. Set n_samples and rec_len tags.
-    4. Fire zBusA trigger.
-    5. Wait for recording to complete.
-    6. Read back rec_l, rec_r from RP2.
-    7. Optionally average over n_repetitions.
-
     Parameters
     ----------
     params : MESMParams
         Output of sweep.compute_mesm_params().
+    position : float, optional
+        Current turntable position in degrees. Stored in MESMRecording for
+        bookkeeping; not used for routing or calibration.
     n_repetitions : int
-        Number of repeated measurements to average (improves SNR by
-        √n_repetitions). Default 1.
+        Number of repeated measurements to average for SNR improvement.
+    distance : float
+        Speaker-to-microphone distance in metres (for delay calculation).
     subject_id : str, optional
-        Written into meta dict.
+        Stored in metadata.
 
     Returns
     -------
     MESMRecording
-
-    TODO
-    ----
-    - Confirm tag names and processor strings (TAGS / PROC_PLAY / PROC_REC).
-    - Add speaker equalization (apply calibration filter to each sweep buffer
-      before writing, once calibration data is available for the new dome).
-    - Add head-tracker logging if real-time head orientation is needed.
     """
-    logging.info(f"Starting MESM measurement: {params.n_speakers} speakers, "
-                 f"T={params.T_prime:.2f}s, T_total={params.T_total:.2f}s")
+    logging.info(
+        f"MESM measurement: {params.n_speakers} speakers, "
+        f"T={params.T_prime:.2f} s, T_total={params.T_total:.2f} s"
+        + (f", position={position}°" if position is not None else "")
+    )
+
+    n_delay = get_recording_delay(fs=params.fs, distance=distance)
+    logging.info(f"  Recording delay: {n_delay} samples ({n_delay/params.fs*1e3:.2f} ms)")
 
     buffers = build_speaker_buffers(params)
 
     recs_l, recs_r = [], []
     for rep in range(n_repetitions):
         logging.info(f"  Repetition {rep + 1}/{n_repetitions}")
+        rec_l, rec_r = _play_and_record(buffers, params, n_delay)
+        recs_l.append(rec_l)
+        recs_r.append(rec_r)
 
-        # --- write sweep buffers to RX8 ---
-        freefield.write(tag=TAGS["n_samples"], value=params.T_total_samples,
-                        processors=PROC_PLAY)
-        for i, buf in enumerate(buffers):
-            tag = TAGS["sweep"].format(i=i)
-            freefield.write(tag=tag, value=buf.astype(np.float32),
-                            processors=PROC_PLAY)
-
-        # --- configure RP2 recording length ---
-        freefield.write(tag=TAGS["rec_len"], value=params.T_total_samples,
-                        processors=PROC_REC)
-
-        # --- trigger (sample-accurate across both devices via zBus) ---
-        freefield.play(kind="zBusA")
-
-        # --- wait for recording to complete ---
-        _wait_for_recording(params.T_total_samples, params.fs)
-
-        # --- read back binaural recording ---
-        rec_l = freefield.read(TAGS["rec_l"], proc=PROC_REC,
-                               n_samples=params.T_total_samples)
-        rec_r = freefield.read(TAGS["rec_r"], proc=PROC_REC,
-                               n_samples=params.T_total_samples)
-        recs_l.append(np.asarray(rec_l, dtype=np.float64))
-        recs_r.append(np.asarray(rec_r, dtype=np.float64))
-
-    # Average repetitions
     left  = np.mean(recs_l, axis=0)
     right = np.mean(recs_r, axis=0)
 
@@ -361,30 +498,7 @@ def record_mesm(
         "datetime"     : datetime.now().isoformat(),
     }
     logging.info("MESM measurement complete.")
-    return MESMRecording(left=left, right=right, params=params, meta=meta)
-
-
-def _wait_for_recording(n_samples: int, fs: int, poll_interval: float = 0.05) -> None:
-    """
-    Block until the RP2 has finished filling its recording buffer.
-
-    Strategy: poll rec_idx tag on RP2.  Fall back to a fixed sleep if the
-    tag is not available.
-
-    TODO: confirm that rec_idx is implemented in the RCX circuit.
-    """
-    expected_duration = n_samples / fs
-    deadline = time.time() + expected_duration + 2.0   # 2 s safety margin
-
-    while time.time() < deadline:
-        try:
-            idx = freefield.read(TAGS["rec_idx"], proc=PROC_REC, n_samples=1)
-            if int(idx) >= n_samples:
-                return
-        except Exception:
-            # Tag not available yet — fall back to timed wait
-            time.sleep(expected_duration)
-            return
-        time.sleep(poll_interval)
-
-    logging.warning("_wait_for_recording: timed out waiting for RP2.")
+    return MESMRecording(
+        left=left, right=right,
+        params=params, position=position, meta=meta,
+    )

@@ -166,9 +166,11 @@ def record_hrir(
     # -----------------------------------------------------------------
     # 7) Export to slab.HRTF
     # -----------------------------------------------------------------
-    logging.info("Converting to slab.HRTF")
     hrtf = hrir_az_exp.to_slab_hrtf(datatype="FIR")
-    hrtf.write_sofa(base_dir / 'sofa' / f'{subject_id}.sofa')
+    if overwrite:
+        out_file = base_dir / 'sofa' / f'{subject_id}.sofa'
+        logging.info("writing HRTF to {}".format(out_file))
+        hrtf.write_sofa(out_file)
 
     if show:
         import matplotlib.pyplot as plt

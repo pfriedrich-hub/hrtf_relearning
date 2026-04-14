@@ -8,11 +8,6 @@ First-session pipeline
 5. Dome localization     (real speakers, vertical midline)
 6. Virtual localization  (pybinsim, same locations, independent randomisation)
 7. Comparison plots      (dome vs virtual, side by side)
-
-Note: Localization_AR imports hrtf2binsim at module level, so it is imported
-lazily inside main() (step 6) to ensure our subject's binsim files already
-exist at that point. Removing the module-level call in Localization_AR.py
-would be a cleaner long-term fix.
 """
 import matplotlib
 matplotlib.use('TkAgg')
@@ -111,8 +106,8 @@ def main(subject_id, reference_id, hp_id, hrir_settings,
     # ------------------------------------------------------------------
     logging.info('--- Step 2: HP calibration ---')
     try:
-        # alternatively load from disk  - todo convert to slab for acoustic test
-        hp_filter = load_hp_filter(ROOT / 'data' / 'hrtf' / 'rec' / subject_id / f'{hp_id}_equalization.npz')
+        # alternatively load from disk
+        hp_filter = load_hp_filter(ROOT / 'data' / 'hrtf' / 'rec' / subject_id / f'{hp_id}_equalization.npz','slab')
         print(f'Loading hp filter from disk: {hp_id}_equalization.npz')
     except FileNotFoundError:
         hp_filter = calibrate_headphones(
@@ -148,18 +143,10 @@ def main(subject_id, reference_id, hp_id, hrir_settings,
     # Lazy import avoids module-level hrtf2binsim call in Localization_AR
     # ------------------------------------------------------------------
     logging.info('--- Step 6: Virtual localization ---')
-    # midline_settings = {
-    #     'kind': 'standard',
-    #     'targets_per_speaker': 3,
-    #     'min_distance': 15,
-    #     'gain': 0.2,
-    #     'azimuth_range': (-1, 1)
-    # }
-    midline_settings = {  # todo doesnt play each location multiple times, doesnt release sensor
+    midline_settings = {
         'kind': 'standard',
         'azimuth_range': (-1, 1), 'elevation_range': (-35, 35),
-        'sector_size': (2, 14),
-        'targets_per_sector': 3, 'replace': False, 'min_distance': 20,
+        'targets_per_speaker': 3, 'min_distance': 15,
         'gain': .2,
     }
     ar_loc = Localization(subject, hrir_binsim, settings=midline_settings, ear=None, mirror=False)

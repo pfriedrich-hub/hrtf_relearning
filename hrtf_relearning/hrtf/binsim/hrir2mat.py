@@ -319,7 +319,7 @@ def compute_hp_ir(hrir, hp, subject_id, block_size=256):
     block_size : int
         Output length is rounded down to a multiple of this.
     """
-    hp_sig = load_hp_filter(rec_path / subject_id / f"{hp}_equalization.npz")
+    hp_sig = load_hp_filter(rec_path / subject_id / f"{hp}_equalization.npz", 'pyfar')
 
     n_samp_out = int(
         (int(hrir.samplerate * 0.02) // int(block_size))

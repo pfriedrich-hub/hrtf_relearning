@@ -24,6 +24,9 @@ Dependencies:
 """
 
 import matplotlib
+from pyfar import Signal
+from slab import Filter
+
 matplotlib.use("tkagg")
 from matplotlib import pyplot as plt
 import numpy
@@ -246,7 +249,7 @@ def save_hp_filter(eq_filter: pyfar.Signal, path: Path):
     logging.info(f"Saved HP equalization filter to: {path}")
 
 
-def load_hp_filter(path: Path) -> pyfar.Signal:
+def load_hp_filter(path: Path, output='pyfar') -> Filter | Signal:
     """Load a headphone equalization filter from .npz (or .wav as fallback).
 
     Parameters
@@ -258,18 +261,22 @@ def load_hp_filter(path: Path) -> pyfar.Signal:
 
     Returns
     -------
-    pyfar.Signal
+    pyfar.Signal or slab.Filter
         Two-channel equalization filter.
     """
     path = Path(path)
     if path.exists():
         npz = numpy.load(path, allow_pickle=False)
-        return pyfar.Signal(npz["filter"], int(npz["samplerate"]))
+        if output == 'pyfar':
+            return pyfar.Signal(npz["filter"], int(npz["samplerate"]))
+        elif output == 'slab':
+            return slab.Filter(data=npz["filter"], samplerate=int(npz["samplerate"]), fir='FIR')
     # backward-compat: try .wav with the same stem
     wav_path = path.with_suffix(".wav")
     if wav_path.exists():
         logging.warning(f"No .npz found at {path} – loading legacy .wav: {wav_path}")
-        return pyfar.io.read_audio(wav_path)
+        # return pyfar.io.read_audio(wav_path)
+        return slab.Filter(data=slab.Sound(wav_path).data, samplerate=48842, fir='FIR')
     raise FileNotFoundError(f"HP filter not found: tried {path} and {wav_path}")
 
 

@@ -98,18 +98,19 @@ def main(subject_id, reference_id, hp_id, hrir_settings,
         fs           = fs,
         hp_freq      = hp_freq,
         show         = show,
-        overwrite = False ,  #todo fix this
+        overwrite = False ,
     )
 
     # ------------------------------------------------------------------
     # 2. HP calibration  (in-ear mics still in place)
     # ------------------------------------------------------------------
     logging.info('--- Step 2: HP calibration ---')
+    hp_id = 'MYSPHERE'
+    logging.warning('--------- Check HP Jack and ID ---------')
     try:
         # alternatively load from disk
         hp_filter = load_hp_filter(ROOT / 'data' / 'hrtf' / 'rec' / subject_id / f'{hp_id}_equalization.npz','slab')
         print(f'Loading hp filter from disk: {hp_id}_equalization.npz')
-        # todo print change hp jack and hp id in code
     except FileNotFoundError:
         hp_filter = calibrate_headphones(
             subject_id    = subject_id,
@@ -136,14 +137,19 @@ def main(subject_id, reference_id, hp_id, hrir_settings,
     # ------------------------------------------------------------------
     logging.info('--- Step 5: Dome localization ---')
     dome_loc = LocalizationDome(subject, hrir_binsim)  # todo add option to run twice - tracker disconnect
-    dome_loc.run()  # todo plot immediately
+    dome_loc.run()
+    sequence = subject.localization[dome_loc.filename]
+    plot_dir = ROOT / 'data' / 'results' / 'plot' / subject.id
+    plot_localization(sequence, report_stats=['azimuth', 'elevation'], filepath=plot_dir)
+    plot_elevation_response(sequence, filepath=plot_dir)
+    plt.show()
 
     # ------------------------------------------------------------------
     # 6. Virtual localization (pybinsim, independent randomisation)
     # Lazy import avoids module-level hrtf2binsim call in Localization_AR
     # ------------------------------------------------------------------
     logging.info('--- Step 6: Virtual localization ---')
-    logging.warning("Switch HP jack to PC!")
+    logging.warning('--------- HP Jack to PC ---------')
 
     midline_settings = {
         'kind': 'standard',
@@ -152,7 +158,12 @@ def main(subject_id, reference_id, hp_id, hrir_settings,
         'gain': .2,
     }
     ar_loc = Localization(subject, hrir_binsim, settings=midline_settings, ear=None, mirror=False)
-    ar_loc.run()  # todo plot immediately
+    ar_loc.run()
+    sequence = subject.localization[ar_loc.filename]
+    plot_dir = ROOT / 'data' / 'results' / 'plot' / subject.id
+    plot_localization(sequence, report_stats=['azimuth', 'elevation'], filepath=plot_dir)
+    plot_elevation_response(sequence, filepath=plot_dir)
+    plt.show()
 
     # ------------------------------------------------------------------
     # 7. Comparison plots

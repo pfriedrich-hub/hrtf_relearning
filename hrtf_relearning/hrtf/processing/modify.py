@@ -48,7 +48,7 @@ from hrtf_relearning.hrtf.analysis.vsi import vsi as _vsi, vsi_dissimilarity as 
 sub_id = 'VD'
 
 SMOOTH = True
-N_KEEP = 8
+N_KEEP = 4
 PLOT = 'image'
 # ---------------------------------------------------------------------------
 # Spectral feature list
@@ -91,7 +91,9 @@ FEATURES = [
     },
 ]
 
+# FEATURES = []  # no features
 
+fname = '_notch'
 
 # ---------------------------------------------------------------------------
 # Shared helpers (same as modify.py)
@@ -463,4 +465,4 @@ if __name__ == '__main__':
     input('press enter to save')
     fig.savefig(PATH / 'data' / 'results' / 'plot' / sub_id / str(sub_id + '_modified.png'),
                 bbox_inches='tight')
-    hrtf_modified.write_sofa(hrtf_dir / str(sub_id + '_notch.sofa'))
+    hrtf_modified.write_sofa(hrtf_dir / str(sub_id + f'_{fname}.sofa'))

@@ -386,7 +386,7 @@ def plot_elevation_response(sequence, axis=None, add_fit=True, filepath=None):
             filepath.mkdir(parents=True, exist_ok=True)
         plt.savefig(filepath / f'{sequence.name}_el_response.png')
 
-    return eg, ele_rmse, ele_sd, ag, az_rmse, az_sd
+    return fig
 
 
 

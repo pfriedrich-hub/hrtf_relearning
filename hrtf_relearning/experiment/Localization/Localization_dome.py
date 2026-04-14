@@ -82,14 +82,17 @@ class LocalizationDome:
             freefield.initialize('dome', default='play_rec', sensor_tracking=False)
         self.motion_sensor = self._init_sensor()
 
-        for self.target in self.sequence:
-            self.wait_for_enter('Look at the center and press Enter...')
-            self.motion_sensor.calibrate()
-            self.play_trial()
+        try:
+            for self.target in self.sequence:
+                self.wait_for_enter('Look at the center and press Enter...')
+                self.motion_sensor.calibrate()
+                self.play_trial()
 
-        self.subject.last_sequence = self.sequence
-        self.write()
-        logging.info('Dome localization complete.')
+            self.subject.last_sequence = self.sequence
+            self.write()
+            logging.info('Dome localization complete.')
+        finally:
+            self.motion_sensor.halt()
 
     def play_trial(self):
         stim = self.make_stim()

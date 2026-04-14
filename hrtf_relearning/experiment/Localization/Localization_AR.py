@@ -64,16 +64,20 @@ class Localization:
         self.motion_sensor = self.init_sensor()
         time.sleep(.2)
 
-        self.play_sound('beep')
-        for self.target in self.sequence:
-            self.wait_for_button('Look at the Center and press Enter')
-            self.motion_sensor.calibrate()
-            self.play_trial()  # generate and play stim, get pose response and write to file
-        self.subject.last_sequence = self.sequence
-        self.sequence.response_errors = target_p(self.sequence, show=False)
-        self.write()
-        logging.info('Finished.')
-        return
+        try:
+            self.play_sound('beep')
+            for self.target in self.sequence:
+                self.wait_for_button('Look at the Center and press Enter')
+                self.motion_sensor.calibrate()
+                self.play_trial()  # generate and play stim, get pose response and write to file
+            self.subject.last_sequence = self.sequence
+            self.sequence.response_errors = target_p(self.sequence, show=False)
+            self.write()
+            logging.info('Finished.')
+        finally:
+            self.motion_sensor.halt()
+            self.binsim_worker.terminate()
+            self.binsim_worker.join()
 
     def play_trial(self):
         # generate stimulus

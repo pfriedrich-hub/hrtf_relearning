@@ -11,7 +11,7 @@ compute_ir_mesm    : deconvolution + windowing (DSP only, no hardware)
 """
 from .record_hrir_mesm import record_hrir_mesm
 from .sweep import compute_mesm_params, MESMParams
-from .recordings import MESMRecording, ReferenceParams, record_mesm, record_reference
+from .recordings import MESMRecording, ReferenceParams, initialize, record_mesm, record_reference
 from .processing import compute_ir_mesm
 
 __all__ = [

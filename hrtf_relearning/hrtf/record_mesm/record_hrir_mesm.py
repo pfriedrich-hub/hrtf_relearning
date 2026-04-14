@@ -65,7 +65,7 @@ head_radius  = 0.0875         # metres
 n_samples_out = 512           # final HRIR length after processing
 hp_freq      = 20.0           # Hz — only needed if low-freq noise persists
 overwrite    = False
-expand_az    = True
+expand_az    = True  # todo disable for rotating platform
 show         = True
 
 freefield.set_logger("info")

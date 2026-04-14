@@ -29,7 +29,7 @@ from hrtf_relearning.experiment.analysis.localization.localization_analysis impo
 )
 
 # --- session defaults (override via main() arguments) ---
-subject_id   = 'MSc'
+subject_id   = 'NKa_01'
 hp_id        = 'MYSPHERE'
 reference_id = 'ref_03.04'
 n_directions = 3  # directions for the hrir recording
@@ -98,7 +98,7 @@ def main(subject_id, reference_id, hp_id, hrir_settings,
         fs           = fs,
         hp_freq      = hp_freq,
         show         = show,
-        overwrite = False ,
+        overwrite = False ,  #todo fix this
     )
 
     # ------------------------------------------------------------------
@@ -109,6 +109,7 @@ def main(subject_id, reference_id, hp_id, hrir_settings,
         # alternatively load from disk
         hp_filter = load_hp_filter(ROOT / 'data' / 'hrtf' / 'rec' / subject_id / f'{hp_id}_equalization.npz','slab')
         print(f'Loading hp filter from disk: {hp_id}_equalization.npz')
+        # todo print change hp jack and hp id in code
     except FileNotFoundError:
         hp_filter = calibrate_headphones(
             subject_id    = subject_id,
@@ -127,7 +128,6 @@ def main(subject_id, reference_id, hp_id, hrir_settings,
     # ------------------------------------------------------------------
     # 4. Prepare binsim files
     # ------------------------------------------------------------------
-    logging.warning("Switch HP jack to PC!")
     logging.info('--- Step 4: Preparing binsim files ---')
     hrir_binsim = hrtf2binsim(hrir_settings, overwrite=True)
 
@@ -136,13 +136,15 @@ def main(subject_id, reference_id, hp_id, hrir_settings,
     # ------------------------------------------------------------------
     logging.info('--- Step 5: Dome localization ---')
     dome_loc = LocalizationDome(subject, hrir_binsim)  # todo add option to run twice - tracker disconnect
-    dome_loc.run()
+    dome_loc.run()  # todo plot immediately
 
     # ------------------------------------------------------------------
     # 6. Virtual localization (pybinsim, independent randomisation)
     # Lazy import avoids module-level hrtf2binsim call in Localization_AR
     # ------------------------------------------------------------------
     logging.info('--- Step 6: Virtual localization ---')
+    logging.warning("Switch HP jack to PC!")
+
     midline_settings = {
         'kind': 'standard',
         'azimuth_range': (-1, 1), 'elevation_range': (-35, 35),
@@ -150,7 +152,7 @@ def main(subject_id, reference_id, hp_id, hrir_settings,
         'gain': .2,
     }
     ar_loc = Localization(subject, hrir_binsim, settings=midline_settings, ear=None, mirror=False)
-    ar_loc.run()
+    ar_loc.run()  # todo plot immediately
 
     # ------------------------------------------------------------------
     # 7. Comparison plots

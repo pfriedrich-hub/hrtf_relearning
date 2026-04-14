@@ -9,46 +9,34 @@ from pythonosc import udp_client
 from hrtf_relearning.experiment.misc.training_helpers import meta_motion
 from hrtf_relearning.hrtf.binsim.hrtf2binsim import hrtf2binsim
 from pynput import keyboard
-date = datetime.datetime.now()
-date = f'{date.strftime("%d")}.{date.strftime("%m")}_{date.strftime("%H")}-{date.strftime("%M")}'
+
 logging.getLogger().setLevel('INFO')
 ROOT = hr.PATH
-
-# --- settings ----
-SUBJECT_ID = "MSc"
-HRIR_NAME = "MSc"  # 'KU100', 'kemar', etc.
-EAR = None
-HP = 'MYSPHERE'
-STIM = 'noise'  # 'noise' or 'uso'
-AZ_RANGE = (-1, 1)
-SECTOR_SIZE = (14, 14)
-MIRROR = False # set TRUE to mirror HRIRs left-right
-
-# --- load HRIR and Subject
-hrir_settings = dict(name=HRIR_NAME, ear=EAR, mirror=MIRROR,
-                     reverb=True, drr=20, hp_filter=True, hp=HP, convolution="cpu",storage="cpu")
-hrir = hrtf2binsim(hrir_settings, overwrite=True)
-subject = hr.Subject(SUBJECT_ID)  # todo init class with settings, so we can call it from test_hrir_recording.py
 
 class Localization:
     """
     Localization test:
         Test localization at uniformly random positions within sectors0
     """
-    def __init__(self, subject, hrir, settings=None, ear=EAR, mirror=MIRROR, stim=STIM):
+    def __init__(self, subject, hrir, settings=None, ear=None, mirror=False, stim='noise'):
         self.subject = subject
+        date = datetime.datetime.now()
+        date = f'{date.strftime("%d")}.{date.strftime("%m")}_{date.strftime("%H")}-{date.strftime("%M")}'
         self.filename = subject.id + '_' + date + '_' + hrir.name
 
         slab.set_default_samplerate(hrir.samplerate)
         self.hrir_sources = hrir.sources.vertical_polar
+        self.hrir_name = hrir.name
+        self.samplerate = hrir.samplerate
+        self.stim_type = stim
         self.sound_path = ROOT / 'data' / 'hrtf' / 'binsim' / hrir.name / 'sounds'
         self.target = None
 
         if settings is None:
             settings = {
                 'kind': 'sectors',
-                'azimuth_range': AZ_RANGE, 'elevation_range': (-35, 35),
-                'sector_size': SECTOR_SIZE,
+                'azimuth_range': (-180, 180), 'elevation_range': (-35, 35),
+                'sector_size': (14, 14),
                 'targets_per_sector': 3, 'replace': False, 'min_distance': 20,
                 'gain': .2,
             }
@@ -69,7 +57,7 @@ class Localization:
         # init pybinsim
         self.osc_client_1 = self._make_osc_client(port=10000)
         self.osc_client_2 = self._make_osc_client(port=10003)
-        self.binsim_worker = mp.Process(target=self._binsim_stream, args=(hrir.name,))
+        self.binsim_worker = mp.Process(target=self._binsim_stream, args=(self.hrir_name,))
         self.binsim_worker.start()
 
         # init motion sensor
@@ -148,9 +136,8 @@ class Localization:
         state = meta_motion.State(device)
         return meta_motion.Sensor(state)
 
-    @staticmethod
-    def make_stim():
-        if STIM == 'noise':
+    def make_stim(self):
+        if self.stim_type == 'noise':
             stim = slab.Sound.pinknoise(duration=0.225, level=80).ramp(when='both', duration=0.01)
             n_silent = (numpy.arange(25,221,25).reshape(4,2) * stim.samplerate / 1000).astype(int)
             ramp_len = int(.005 * stim.samplerate)
@@ -165,16 +152,10 @@ class Localization:
                 stim.data[end - half_len: end + half_len] *= (1 - ramp_down)
                 # Silence the center
                 stim.data[start + half_len: end - half_len] = 0
-            # stim = slab.Sound.pinknoise(duration=0.5, level=90).ramp(when='both', duration=0.01)
-            # noise = slab.Sound.pinknoise(duration=0.025, level=90)
-            # noise = noise.ramp(when='both', duration=0.01)
-            # silence = slab.Sound.silence(duration=0.025)
-            # stim = slab.Sound.sequence(noise, silence, noise, silence, noise,
-            #                            silence, noise, silence, noise)
-            # stim.ramp('both', 0.01)
-        elif STIM == 'uso':
-            stim = generate_uso(samplerate=hrir.samplerate)
-        else: raise ValueError('STIM must be "noise" or "uso".')
+        elif self.stim_type == 'uso':
+            stim = generate_uso(samplerate=self.samplerate)
+        else:
+            raise ValueError('stim_type must be "noise" or "uso".')
         stim.level = 80
         return stim
 
@@ -188,10 +169,27 @@ class Localization:
             listener.join()  # block until listener.stop() is called
 
 if __name__ == "__main__":
-    loc_test = Localization(subject, hrir)
+    # --- settings (edit here when running standalone) ---
+    _SUBJECT_ID = "MSc"
+    _HRIR_NAME  = "MSc"   # 'KU100', 'kemar', etc.
+    _HP         = 'MYSPHERE'
+    _EAR        = None
+    _MIRROR     = False   # set True to mirror HRIRs left-right
+
+    _hrir_settings = dict(
+        name=_HRIR_NAME, subject_id=_SUBJECT_ID,
+        ear=_EAR, mirror=_MIRROR,
+        reverb=True, drr=20,
+        hp_filter=True, hp=_HP,
+        convolution='cpu', storage='cpu',
+    )
+    _hrir    = hrtf2binsim(_hrir_settings, overwrite=True)
+    _subject = hr.Subject(_SUBJECT_ID)
+
+    loc_test = Localization(_subject, _hrir)
     loc_test.run()
-    sequence = subject.localization[loc_test.filename]
-    plot_dir = ROOT / 'data'  / 'results' / 'plot' / subject.id
+    sequence = _subject.localization[loc_test.filename]
+    plot_dir = ROOT / 'data' / 'results' / 'plot' / _subject.id
     plot_localization(sequence, report_stats=['azimuth', 'elevation'], filepath=plot_dir)
     plot_elevation_response(sequence, filepath=plot_dir)
     plt.show()

@@ -34,6 +34,7 @@ from .sweep import compute_mesm_params, MESMParams
 from .recordings import (
     MESMRecording,
     ReferenceParams,
+    initialize,
     record_reference,
     record_mesm,
 )
@@ -84,6 +85,8 @@ def record_hrir_mesm(
     f2: float = 20_000.0,
     T_prime: float = 1.0,
     n_repetitions: int = 1,
+    position: float | None = None,
+    distance: float = 1.4,
     head_radius: float = 0.0875,
     n_samples_out: int = 512,
     hp_freq: float = 20.0,
@@ -93,8 +96,8 @@ def record_hrir_mesm(
     base_dir: Path | str | None = None,
 ) -> slab.HRTF:
     """
-    Full MESM HRIR acquisition + processing pipeline for one subject
-    (one platform position).
+    Full MESM HRIR acquisition + processing pipeline for one subject /
+    one platform position.
 
     Parameters
     ----------
@@ -112,12 +115,18 @@ def record_hrir_mesm(
         Sweep duration in seconds (longer → higher SNR, longer measurement).
     n_repetitions : int
         Number of MESM repetitions to average.
+    position : float, optional
+        Turntable angle in degrees at the time of recording. Stored in the
+        MESMRecording for bookkeeping. When the rotating platform is in use
+        the outer loop passes this value for each platform step.
+    distance : float
+        Speaker-to-microphone distance in metres. Used for delay calculation.
     head_radius : float
         Used for spherical-head low-frequency extrapolation.
     n_samples_out : int
         Final HRIR filter length in samples.
     hp_freq : float
-        High-pass frequency for equalization (Hz).
+        High-pass cutoff for equalization in Hz.
     expand_az : bool
         Whether to expand measured azimuths symmetrically.
     overwrite : bool
@@ -183,7 +192,9 @@ def record_hrir_mesm(
         subj_dir.mkdir(parents=True, exist_ok=True)
         subject_rec = record_mesm(
             params=params,
+            position=position,
             n_repetitions=n_repetitions,
+            distance=distance,
             subject_id=subject_id,
         )
         subject_rec.to_npz(subj_dir, overwrite=overwrite)
@@ -191,8 +202,6 @@ def record_hrir_mesm(
         logging.info("Loading subject MESM recording from disk ...")
         subject_rec = MESMRecording.from_npz(subj_dir)
 
-    # Attach speaker table so IR keys carry az/el info
-    subject_rec.speaker_table = _load_speaker_table(n_speakers)
 
     # -----------------------------------------------------------------
     # 4) Reference MESM recording (for equalization)
@@ -328,15 +337,3 @@ def _load_or_record_reference(
     return params
 
 
-def _load_speaker_table(n_speakers: int) -> dict:
-    """
-    Load azimuth/elevation for each speaker from the new speaker table file.
-
-    TODO: implement once the new 7-speaker table is created with freefield.
-    Returns a placeholder dict for now.
-    """
-    logging.warning(
-        "_load_speaker_table(): speaker table not yet implemented. "
-        "Az/El will default to 0.0/0.0 for all speakers."
-    )
-    return {i: {"azimuth": 0.0, "elevation": 0.0} for i in range(n_speakers)}

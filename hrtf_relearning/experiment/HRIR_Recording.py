@@ -29,7 +29,7 @@ from hrtf_relearning.experiment.analysis.localization.localization_analysis impo
 )
 
 # --- session defaults (override via main() arguments) ---
-subject_id   = 'NKa_01'
+subject_id   = 'VD'
 hp_id        = 'MYSPHERE'
 reference_id = 'ref_03.04'
 n_directions = 3  # directions for the hrir recording
@@ -85,6 +85,7 @@ def main(subject_id, reference_id, hp_id, hrir_settings,
         )
 
     subject = Subject(subject_id)
+    plot_dir = ROOT / 'data' / 'results' / 'plot' / subject_id
 
     # ------------------------------------------------------------------
     # 1. Record / load HRIR
@@ -136,13 +137,9 @@ def main(subject_id, reference_id, hp_id, hrir_settings,
     # 5. Dome localization (real speakers, vertical midline)
     # ------------------------------------------------------------------
     logging.info('--- Step 5: Dome localization ---')
-    dome_loc = LocalizationDome(subject, hrir_binsim)  # todo add option to run twice - tracker disconnect
+    dome_loc = LocalizationDome(subject, hrir_binsim)  # todo test run twice - tracker disconnect
     dome_loc.run()
-    sequence = subject.localization[dome_loc.filename]
-    plot_dir = ROOT / 'data' / 'results' / 'plot' / subject.id
-    plot_localization(sequence, report_stats=['azimuth', 'elevation'], filepath=plot_dir)
-    plot_elevation_response(sequence, filepath=plot_dir)
-    plt.show()
+    plot_elevation_response(subject.localization[dome_loc.filename], filepath=plot_dir)
 
     # ------------------------------------------------------------------
     # 6. Virtual localization (pybinsim, independent randomisation)
@@ -159,11 +156,7 @@ def main(subject_id, reference_id, hp_id, hrir_settings,
     }
     ar_loc = Localization(subject, hrir_binsim, settings=midline_settings, ear=None, mirror=False)
     ar_loc.run()
-    sequence = subject.localization[ar_loc.filename]
-    plot_dir = ROOT / 'data' / 'results' / 'plot' / subject.id
-    plot_localization(sequence, report_stats=['azimuth', 'elevation'], filepath=plot_dir)
-    plot_elevation_response(sequence, filepath=plot_dir)
-    plt.show()
+    plot_elevation_response(subject.localization[ar_loc.filename], filepath=plot_dir)
 
     # ------------------------------------------------------------------
     # 7. Comparison plots

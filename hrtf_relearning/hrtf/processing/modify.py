@@ -36,12 +36,14 @@ to be there.
 import copy
 import numpy
 import matplotlib
+import matplotlib.ticker
 matplotlib.use('tkagg')
 from matplotlib import pyplot as plt
 from sklearn.linear_model import LinearRegression
 from hrtf_relearning import PATH
 hrtf_dir = PATH / 'data' / 'hrtf' / 'sofa'
 import slab
+from hrtf_relearning.hrtf.analysis.vsi import vsi as _vsi, vsi_dissimilarity as _vsi_dissimilarity
 
 sub_id = 'VD'
 
@@ -66,8 +68,8 @@ PLOT = 'image'
 # ---------------------------------------------------------------------------
 FEATURES = [
     {
-        'freqs': (6000, 8500),  # centre freq at X1 and X2 [Hz]
-        'width': (400,   400),   # Gaussian σ at X1 and X2 [Hz]
+        'freqs': (6000, 8000),  # centre freq at X1 and X2 [Hz]
+        'width': (300,   300),   # Gaussian σ at X1 and X2 [Hz]
         'depth': (12.0,  12.0), # >0 = notch, <0 = peak [dB]
         'X1':    (0, 0),         # anchor 1 (az, az)
         'X2':    (-40, 40),      # anchor 2 (el, el)
@@ -75,10 +77,17 @@ FEATURES = [
     # Add further features here, e.g.:
     {
         'freqs': (9000, 11000),
-        'width': (400, 400),
+        'width': (300, 300),
         'depth': (12, 12),   # negative → peak
         'X1': (0, 0),
         'X2': (40, -40),
+    },
+    {
+        'freqs': (16000, 17000),
+        'width': (300, 300),
+        'depth': (12, 12),  # negative → peak
+        'X1': (0, 0),
+        'X2': (-40, 40),
     },
 ]
 
@@ -343,14 +352,90 @@ def smooth_and_replace_hrtf(
     return out
 
 
-def plot(hrtf, hrtf_modified, kind='image', ear='left'):
-    fig, ax = plt.subplots(1, 2, figsize=(15, 5))
-    hrtf.plot_tf(hrtf.cone_sources(0), kind=kind, axis=ax[0], ear=ear)
-    hrtf_modified.plot_tf(hrtf.cone_sources(0), kind=kind, axis=ax[1], ear=ear)
-    ax[0].set_title('original')
-    ax[1].set_title('modified (replacement)')
-    ax[0].set_xscale('log')
-    ax[1].set_xscale('log')
+def _build_tf_image(hrtf, sourceidx, ear, n_bins, xlim, floor_db=-25):
+    """
+    Build the image array used by plot_tf's 'image' mode, using
+    tfs_from_sources to obtain the raw dB data.
+
+    Returns
+    -------
+    freqs      : 1-D array, frequency axis trimmed to xlim[1]
+    elevations : 1-D array, elevation for each source
+    img        : 2-D array (n_freq_bins, n_sources), clipped at floor_db
+    """
+    chan = {'left': 0, 'right': 1}[ear]
+    n_b = n_bins if n_bins is not None else hrtf[sourceidx[0]].n_taps
+    # tfs_from_sources returns (n_sources, n_bins, 1) — squeeze to (n_sources, n_bins)
+    tfs = hrtf.tfs_from_sources(sourceidx, n_bins=n_b, ear=ear)
+    img = numpy.clip(tfs.squeeze(-1).T, floor_db, None)   # (n_bins, n_sources)
+    freqs, _ = hrtf[sourceidx[0]].tf(channels=chan, n_bins=n_bins, show=False)
+    elevations = hrtf.sources.vertical_polar[sourceidx, 1]
+    mask = freqs <= xlim[1]
+    return freqs[mask], elevations, img[mask, :]
+
+
+def plot(hrtf, hrtf_modified, kind='image', ear='left', n_bins=None, xlim=(1000, 18000),
+         vsi_orig=None, vsi_mod=None, vsi_dis=None, vsi_bw=None):
+    sources = hrtf.cone_sources(0)
+    fig, axes = plt.subplots(1, 2, figsize=(13, 5))
+
+    if kind == 'image':
+        # Build raw dB image data for both HRTFs via tfs_from_sources
+        freqs, elevations, img_orig = _build_tf_image(hrtf,         sources, ear, n_bins, xlim)
+        _,     _,          img_mod  = _build_tf_image(hrtf_modified, sources, ear, n_bins, xlim)
+
+        # Joint colorbar limits across both images
+        vmin   = float(min(img_orig.min(), img_mod.min()))
+        vmax   = float(max(img_orig.max(), img_mod.max()))
+        levels = numpy.linspace(vmin, vmax, 21)
+
+        ct = None
+        for ax, img, title, vsi_val in zip(
+                axes,
+                [img_orig, img_mod],
+                ['original', 'modified'],
+                [vsi_orig,  vsi_mod]):
+            ct = ax.contourf(freqs, elevations, img.T, cmap='hot', levels=levels)
+            ax.set_title(title)
+            # VSI value as a second line below the x-axis label
+            xlabel = 'Frequency [kHz]'
+            if vsi_val is not None:
+                xlabel += f'\nVSI = {vsi_val:.3f}'
+            ax.set(xlabel=xlabel, ylabel='Elevation [°]', xlim=xlim)
+            ax.xaxis.set_major_formatter(
+                matplotlib.ticker.FuncFormatter(lambda x, pos: str(int(x / 1000))))
+            ax.autoscale(tight=True)
+            ax.tick_params('both', length=2, pad=2)
+
+        # Single shared colorbar to the right of both subplots
+        # fig.colorbar(ct, ax=list(axes), location='right', shrink=1, pad=0.02)
+
+        cbar_ticks = numpy.arange(vmin, vmax, 6)
+        cax_pos = list(axes[-1].get_position().bounds)  # (x0, y0, width, height)
+        cax_pos[2] = cax_pos[2] * 0.06  # cbar width in fractions of axis width
+        cax_pos[0] = 0.92
+        cbar_axis = fig.add_axes(cax_pos)
+        cbar = fig.colorbar(ct, cbar_axis, orientation='vertical', ticks=cbar_ticks)
+
+        # VSI dissimilarity as a footer below both plots
+        if vsi_dis is not None:
+            bw_str = (f'{vsi_bw[0]/1000:.1f}–{vsi_bw[1]/1000:.1f} kHz'
+                      if vsi_bw is not None else '')
+            fig.text(0.5, 0.0,
+                     f'VSI dissimilarity = {vsi_dis:.3f}   ({bw_str}, Trapeau et al. 2016)',
+                     ha='center', va='bottom', fontsize=9)
+            # plt.tight_layout(rect=[0, 0.07, 1, 1])
+        else:
+            plt.tight_layout()
+
+    else:
+        # waterfall / surface: fall back to plot_tf (no shared scale needed)
+        hrtf.plot_tf(         sources, kind=kind, axis=axes[0], ear=ear, xlim=xlim, show=False)
+        hrtf_modified.plot_tf(sources, kind=kind, axis=axes[1], ear=ear, xlim=xlim, show=False)
+        axes[0].set_title('original')
+        axes[1].set_title('modified')
+        plt.tight_layout()
+
     plt.show(block=False)
     plt.pause(0.1)
     return fig
@@ -367,7 +452,15 @@ if __name__ == '__main__':
         onset_threshold_db=15.0,
     )
 
-    fig = plot(hrtf, hrtf_modified, PLOT, ear='right')
+    # VSI metrics in the 5.7–11.3 kHz band (peak VSI band, Trapeau et al. 2016)
+    VSI_BW = (5700, 11300)
+    vsi_orig = _vsi(hrtf,          bandwidth=VSI_BW)
+    vsi_mod  = _vsi(hrtf_modified, bandwidth=VSI_BW)
+    vsi_dis  = _vsi_dissimilarity(hrtf, hrtf_modified, bandwidth=VSI_BW)
+
+    fig = plot(hrtf, hrtf_modified, PLOT, ear='right',
+               vsi_orig=vsi_orig, vsi_mod=vsi_mod, vsi_dis=vsi_dis, vsi_bw=VSI_BW)
     input('press enter to save')
-    fig.savefig(PATH / 'data' / 'results' / 'plot' / sub_id / str(sub_id + '_modified.png'))
+    fig.savefig(PATH / 'data' / 'results' / 'plot' / sub_id / str(sub_id + '_modified.png'),
+                bbox_inches='tight')
     hrtf_modified.write_sofa(hrtf_dir / str(sub_id + '_notch.sofa'))

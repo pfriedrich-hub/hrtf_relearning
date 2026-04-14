@@ -174,9 +174,9 @@ class Localization:
 
 if __name__ == "__main__":
     # --- settings (edit here when running standalone) ---
-    _SUBJECT_ID = "MSc"
-    _HRIR_NAME  = "MSc"   # 'KU100', 'kemar', etc.
-    _HP         = 'MYSPHERE'
+    _SUBJECT_ID = "VD"
+    _HRIR_NAME  = "VD_notch"   # 'KU100', 'kemar', etc.
+    _HP         = 'DT990'
     _EAR        = None
     _MIRROR     = False   # set True to mirror HRIRs left-right
 
@@ -190,7 +190,14 @@ if __name__ == "__main__":
     _hrir    = hrtf2binsim(_hrir_settings, overwrite=True)
     _subject = hr.Subject(_SUBJECT_ID)
 
-    loc_test = Localization(_subject, _hrir)
+    midline_settings = {
+        'kind': 'standard',
+        'azimuth_range': (-1, 1), 'elevation_range': (-35, 35),
+        'targets_per_speaker': 3, 'min_distance': 15,
+        'gain': .2,
+    }
+
+    loc_test = Localization(_subject, _hrir, settings=midline_settings)
     loc_test.run()
     sequence = _subject.localization[loc_test.filename]
     plot_dir = ROOT / 'data' / 'results' / 'plot' / _subject.id

@@ -27,8 +27,8 @@ from hrtf_relearning.experiment.analysis.localization.localization_analysis impo
 )
 
 # --- session defaults (override via main() arguments) ---
-subject_id   = 'VD'
-hp_id        = 'DT990'
+subject_id   = 'NKa'
+hp_id        = 'MYSPHERE'
 reference_id = 'ref_03.04'
 n_directions = 3  # directions for the hrir recording
 n_recordings = 10  #
@@ -68,19 +68,6 @@ def main(subject_id, reference_id, hp_id, hrir_settings,
     show : bool
         Show intermediate plots.
     """
-    if hrir_settings is None:
-        hrir_settings = dict(
-            name        = subject_id,
-            subject_id  = subject_id,
-            ear         = None,
-            mirror      = False,
-            reverb      = True,
-            drr         = 20,
-            hp_filter   = True,
-            hp          = hp_id,  # todo access quickly later for ar test
-            convolution = 'cpu',
-            storage     = 'cpu',
-        )
 
     subject = Subject(subject_id)
     plot_dir = ROOT / 'data' / 'results' / 'plot' / subject_id
@@ -141,20 +128,36 @@ def main(subject_id, reference_id, hp_id, hrir_settings,
     # ------------------------------------------------------------------
     # 5. Virtual localization (pybinsim)
     #    hrtf2binsim + hp filter loading are handled inside Localization()
-    # ------------------------------------------------------------------
     logging.warning('--------- Switch HP jack to PC ---------')
+    # ------------------------------------------------------------------
+
     logging.info('--- Step 5: Virtual localization ---')
+
+
+    hrir_settings = dict(
+        name        = subject_id+'_s_4_notch',
+        subject_id  = subject_id,
+        ear         = None,
+        mirror      = False,
+        reverb      = True,
+        drr         = 20,
+        hp_filter   = True,
+        hp          = hp_id,  # todo access quickly later for ar test
+        convolution = 'cpu',
+        storage     = 'cpu',
+    )
+
     ar_loc_settings = {
         'kind': 'standard',
         'azimuth_range': (-1, 1), 'elevation_range': (-35, 35),
-        'targets_per_speaker': 3, 'min_distance': 15,
+        'targets_per_speaker': 2, 'min_distance': 15,
         'gain': .2,
         'stim': 'noise',
     }
     ar_loc = Localization(subject, hrir_settings, loc_settings=ar_loc_settings)
     ar_loc.run()
     plot_elevation_response(subject.localization[ar_loc.filename], filepath=plot_dir)
-
+----------------------
     # ------------------------------------------------------------------
     # 6. Comparison plots
     # ------------------------------------------------------------------

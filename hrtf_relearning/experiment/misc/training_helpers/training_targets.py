@@ -100,10 +100,14 @@ def set_target_probabilistic(target, settings, sequence, hrir, max_sector_hops=1
     try:
         sector_centers = sequence.response_errors[:, :2]
     except AttributeError:
-        logging.debug('Could not load target probabilities. Returning random target.')
+        logging.debug('No response_errors on sequence. Falling back to uniform sampling.')
         return set_target(target, settings, hrir)
 
-    sector_size = sequence.settings['sector_size']
+    # sector_size may be absent on simple 'standard' sequences (e.g. midline-only)
+    sector_size = sequence.settings.get('sector_size', None)
+    if sector_size is None:
+        logging.debug('No sector_size in sequence settings. Falling back to uniform sampling.')
+        return set_target(target, settings, hrir)
 
     # training ranges
     train_az = settings['az_range']
@@ -113,6 +117,16 @@ def set_target_probabilistic(target, settings, sequence, hrir, max_sector_hops=1
     candidates_per_sector = _build_sector_candidate_indices(
         hrir, sector_centers, sector_size, train_az, train_el
     )
+
+    # If the sequence has no overlap with the training range (e.g. midline-only
+    # sequence used before a wide-field training session), skip probabilistic
+    # targeting entirely rather than falling back to all sources.
+    if not any(len(idx) > 0 for idx in candidates_per_sector):
+        logging.warning(
+            'Sequence sectors have no overlap with training range az=%s el=%s. '
+            'Falling back to uniform sampling.', train_az, train_el
+        )
+        return set_target(target, settings, hrir)
 
     # probabilities from response_errors
     probs = sequence.response_errors[:, 3]
@@ -139,10 +153,9 @@ def set_target_probabilistic(target, settings, sequence, hrir, max_sector_hops=1
                 break
             probs /= probs.sum()
 
-    # Fallback: uniform over *all* candidates that meet min_dist
+    # Fallback: uniform over all training-range candidates that meet min_dist
     logging.warning("Probabilistic sector selection failed to satisfy min_dist; falling back to uniform.")
-    all_idx = numpy.concatenate([idx for idx in candidates_per_sector if len(idx) > 0]) \
-              if any(len(idx) > 0 for idx in candidates_per_sector) else numpy.arange(sources.shape[0])
+    all_idx = numpy.concatenate([idx for idx in candidates_per_sector if len(idx) > 0])
     numpy.random.shuffle(all_idx)
     for i in all_idx:
         az = _wrap180(sources[i, 0]); el = sources[i, 1]

@@ -72,6 +72,19 @@ def record_hrir(
     else:
         base_dir = Path(base_dir)
 
+    out_file = base_dir / 'sofa' / f'{subject_id}.sofa'
+
+    # Early exit: load and return existing SOFA without re-running the pipeline
+    if not overwrite and out_file.exists():
+        logging.info(f"Loading existing HRTF from {out_file}")
+        hrtf = slab.HRTF(str(out_file))
+        if show:
+            import matplotlib.pyplot as plt
+            fig, axes = plt.subplots(1, 2)
+            hrtf.plot_tf(hrtf.cone_sources(0), axis=axes, ear='both')
+            plt.show()
+        return hrtf
+
     subj_dir = base_dir / "rec" / subject_id
     ref_dir = base_dir / "rec" / "reference" / reference_id
 
@@ -167,10 +180,8 @@ def record_hrir(
     # 7) Export to slab.HRTF
     # -----------------------------------------------------------------
     hrtf = hrir_az_exp.to_slab_hrtf(datatype="FIR")
-    out_file = base_dir / 'sofa' / f'{subject_id}.sofa'
-    if overwrite or not out_file.exists():
-        logging.info("writing HRTF to {}".format(out_file))
-        hrtf.write_sofa(out_file)
+    logging.info(f"Writing HRTF to {out_file}")
+    hrtf.write_sofa(out_file)
 
     if show:
         import matplotlib.pyplot as plt

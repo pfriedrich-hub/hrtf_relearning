@@ -43,7 +43,7 @@ from sklearn.linear_model import LinearRegression
 from hrtf_relearning import PATH
 hrtf_dir = PATH / 'data' / 'hrtf' / 'sofa'
 import slab
-from hrtf_relearning.hrtf.analysis.vsi import vsi as _vsi, vsi_dissimilarity as _vsi_dissimilarity
+from hrtf_relearning.hrtf.analysis.vsi import (vsi as _vsi, vsi_dissimilarity as _vsi_dissimilarity)
 
 sub_id = 'NKa'
 
@@ -77,7 +77,7 @@ FEATURES = [
     },
     # Add further features here, e.g.:
     {
-        'freqs': (9000, 11000),
+        'freqs': (9000, 10000),
         'width': (300, 300),
         'depth': (12, 12),   # negative → peak
         'X1': (0, 0),
@@ -94,7 +94,7 @@ FEATURES = [
 
 # FEATURES = []  # no features
 
-
+FEATURES = []
 
 # ---------------------------------------------------------------------------
 # Shared helpers (same as modify.py)

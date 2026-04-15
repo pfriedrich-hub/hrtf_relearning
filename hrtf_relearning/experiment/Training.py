@@ -372,15 +372,9 @@ def play_session():
     subject = Subject(SUBJECT_ID)
     sequence = subject.last_sequence
 
-    if sequence and not(settings['azimuth_range'] and settings['elevation_range']):
-        az_range = tuple(sequence.settings["azimuth_range"])
-        ele_range = tuple(sequence.settings["elevation_range"])
-        logging.info("Using sequence-based target ranges: az=%s el=%s", az_range, ele_range)
-    else:
-        az_range = settings['azimuth_range']
-        ele_range = settings['elevation_range']
-        logging.info("Using custom target range: az=%s el=%s", az_range, ele_range)
-
+    az_range  = settings['azimuth_range']
+    ele_range = settings['elevation_range']
+    logging.info("Training target range: az=%s el=%s", az_range, ele_range)
     settings = dict(settings, az_range=az_range, ele_range=ele_range)
 
     # Shared state for workers

@@ -85,8 +85,16 @@ class Localization:
             logging.info('Finished.')
         finally:
             self.motion_sensor.halt()
+            try:  # mute before killing so the audio stream stops cleanly
+                self.osc_client_2.send_message('/pyBinSimLoudness', 0)
+                time.sleep(0.1)
+            except Exception:
+                pass
             self.binsim_worker.terminate()
-            self.binsim_worker.join()
+            self.binsim_worker.join(timeout=3)
+            if self.binsim_worker.is_alive():  # SIGTERM wasn't enough — force-kill
+                self.binsim_worker.kill()
+                self.binsim_worker.join()
 
     def play_trial(self):
         # generate stimulus

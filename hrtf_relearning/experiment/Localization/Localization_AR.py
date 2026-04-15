@@ -18,36 +18,45 @@ class Localization:
     Localization test:
         Test localization at uniformly random positions within sectors0
     """
-    def __init__(self, subject, hrir, settings=None, ear=None, mirror=False, stim='noise'):
+    def __init__(self, subject, hrir_settings, loc_settings=None):
         self.subject = subject
         date = datetime.datetime.now()
         date = f'{date.strftime("%d")}.{date.strftime("%m")}_{date.strftime("%H")}-{date.strftime("%M")}'
-        self.filename = subject.id + '_' + date + '_' + hrir.name
 
+        # Build / refresh binsim files — hp filter loaded automatically from disk
+        hrir = hrtf2binsim(hrir_settings, overwrite=True)
+
+        ear    = hrir_settings.get('ear', None)
+        mirror = hrir_settings.get('mirror', False)
+        hp     = hrir_settings.get('hp', None)
+
+        self.filename = subject.id + '_' + date + '_' + hrir.name
         slab.set_default_samplerate(hrir.samplerate)
         self.hrir_sources = hrir.sources.vertical_polar
         self.hrir_name = hrir.name
         self.samplerate = hrir.samplerate
-        self.stim_type = stim
         self.sound_path = ROOT / 'data' / 'hrtf' / 'binsim' / hrir.name / 'sounds'
         self.target = None
 
-        if settings is None:
-            settings = {
+        if loc_settings is None:
+            loc_settings = {
                 'kind': 'sectors',
                 'azimuth_range': (-180, 180), 'elevation_range': (-35, 35),
                 'sector_size': (14, 14),
                 'targets_per_sector': 3, 'replace': False, 'min_distance': 20,
                 'gain': .2,
+                'stim': 'noise',
             }
-        self.settings = settings
+        self.stim_type = loc_settings.get('stim', 'noise')
+        self.settings = loc_settings
 
         self.sequence = make_sequence(self.settings, self.hrir_sources)
         self.sequence.name = self.filename
         self.sequence.hrir = hrir.name
         self.sequence.ear = ear
         self.sequence.mirrored = mirror
-        self.sequence.stim = stim
+        self.sequence.stim = self.stim_type
+        self.sequence.hp = hp
 
     def write(self):
         self.subject.localization[self.filename] = self.sequence
@@ -173,31 +182,43 @@ class Localization:
             listener.join()  # block until listener.stop() is called
 
 if __name__ == "__main__":
-    # --- settings (edit here when running standalone) ---
-    _SUBJECT_ID = "VD"
-    _HRIR_NAME  = "VD_notch"   # 'KU100', 'kemar', etc.
-    _HP         = 'DT990'
-    _EAR        = None
-    _MIRROR     = False   # set True to mirror HRIRs left-right
+    # --- SETTINGS ---
+    _SUBJECT_ID = "MSc"
+    _HRIR_NAME  = "MSc"   # 'KU100', 'kemar', etc.
+    _HP         = 'MYSPHERE'
+    _EAR        = None    # None (binaural), 'left', or 'right'
+    _MIRROR     = False   # True to swap left/right spectral cues
+    _AZ_RANGE = (-35, 35)
+    _STIM = 'noise'
 
-    _hrir_settings = dict(
-        name=_HRIR_NAME, subject_id=_SUBJECT_ID,
-        ear=_EAR, mirror=_MIRROR,
-        reverb=True, drr=20,
-        hp_filter=True, hp=_HP,
-        convolution='cpu', storage='cpu',
-    )
-    _hrir    = hrtf2binsim(_hrir_settings, overwrite=True)
-    _subject = hr.Subject(_SUBJECT_ID)
-
-    midline_settings = {
-        'kind': 'standard',
-        'azimuth_range': (-1, 1), 'elevation_range': (-35, 35),
-        'targets_per_speaker': 3, 'min_distance': 15,
-        'gain': .2,
+    # --- HRIR / binsim settings ---
+    _hrir_settings = {
+        'name'       : _HRIR_NAME,
+        'subject_id' : _SUBJECT_ID,
+        'ear'        : _EAR,        # None (binaural), 'left', or 'right'
+        'mirror'     : _MIRROR,     # True to swap left/right spectral cues
+        'reverb'     : True,
+        'drr'        : 20,
+        'hp_filter'  : True,
+        'hp'         : _HP,
+        'convolution': 'cpu',  # todo change to cuda for VR Lab PC
+        'storage'    : 'cpu',
     }
 
-    loc_test = Localization(_subject, _hrir, settings=midline_settings)
+    # --- localization / sequence settings ---
+    _loc_settings = {
+        'kind': 'sectors',          # 'standard' or 'sectors'
+        'azimuth_range': _AZ_RANGE,    # (-1, 1) for midline-only, (-180, 180) for full sphere
+        'elevation_range': (-35, 35),
+        'targets_per_speaker': 3,
+        'min_distance': 15,          # min angular distance between successive targets (°)
+        'gain': .2,
+        'stim': _STIM,             # 'noise' or 'uso'
+    }
+
+    _subject = hr.Subject(_SUBJECT_ID)
+
+    loc_test = Localization(_subject, _hrir_settings, loc_settings=_loc_settings)
     loc_test.run()
     sequence = _subject.localization[loc_test.filename]
     plot_dir = ROOT / 'data' / 'results' / 'plot' / _subject.id

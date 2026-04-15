@@ -35,42 +35,41 @@ class LocalizationDome:
     Parameters
     ----------
     subject : Subject
-    hrir : slab.HRTF
-    repetitions : int
-        How many times each speaker location is presented.
-    min_distance : float
-        Minimum angular distance (°) between successive targets.
+    hrir_settings : dict
+        Must contain 'name' (str, SOFA basename) and optionally 'hp' (str,
+        headphone model). Used only for sequence metadata — no file is loaded.
+    loc_settings : dict, optional
+        Sequence and stimulus parameters. Keys: 'targets_per_speaker' (int),
+        'min_distance' (float), 'gain' (float). Stim is always 'pinknoise_burst'.
     """
 
-    # todo init class with all settings, so we can call it from test_hrir_recording.py
-    def __init__(self, subject, hrir, repetitions=3, min_distance=15):
+    def __init__(self, subject, hrir_settings, loc_settings=None):
         self.subject = subject
         date = datetime.datetime.now().strftime('%d.%m_%H-%M')
-        self.filename = f"{subject.id}_{date}_{hrir.name}_dome"
 
-        slab.set_default_samplerate(hrir.samplerate)
-        self.hrir_sources = hrir.sources.vertical_polar  # (az, el, r)
+        hrir_name = hrir_settings.get('name', None)
 
-        # Pre-filter to vertical midline (az ≈ 0) — same locations as HRIR recording
-        sources = hrir.sources.vertical_polar
-        midline = sources[numpy.isclose(sources[:, 0], 0, atol=1.0), :2]  # (az, el) # hardcode instead
-        # hardcode instead
+        self.filename = f"{subject.id}_{date}_{hrir_name}_dome"
+
+        if loc_settings is None:
+            loc_settings = {
+                'targets_per_speaker': 3,
+                'min_distance': 15,
+                'gain': 1,
+            }
+
+        # Vertical midline speaker positions (hardcoded to match dome layout)
         midline = numpy.array([[  0. , -37.5],
-       [  0. , -25. ],
-       [  0. , -12.5],
-       [  0. ,   0. ],
-       [  0. ,  12.5],
-       [  0. ,  25. ],
-       [  0. ,  37.5]])
-        settings = {
-            'kind': 'standard',
-            'targets_per_speaker': repetitions,
-            'min_distance': min_distance,
-            'gain': 1,
-        }
-        self.sequence = make_sequence(settings, midline)
+                               [  0. , -25. ],
+                               [  0. , -12.5],
+                               [  0. ,   0. ],
+                               [  0. ,  12.5],
+                               [  0. ,  25. ],
+                               [  0. ,  37.5]])
+        self.sequence = make_sequence({'kind': 'standard', **loc_settings}, midline)
         self.sequence.name = self.filename
-        self.sequence.hrir = hrir.name
+        self.sequence.hrir = hrir_name
+        self.sequence.stim = 'pinknoise_burst'
         self.target = None
 
     def write(self):

@@ -4,10 +4,9 @@ First-session pipeline
 1. Record (or load) HRIR
 2. Calibrate headphones  (mics still in)
 3. Acoustic sanity check (dome speaker vs HRIR rendering, spectrum comparison)
-4. Prepare binsim files
-5. Dome localization     (real speakers, vertical midline)
-6. Virtual localization  (pybinsim, same locations, independent randomisation)
-7. Comparison plots      (dome vs virtual, side by side)
+4. Dome localization     (real speakers, vertical midline)
+5. Virtual localization  (pybinsim, same locations, independent randomisation)
+6. Comparison plots      (dome vs virtual, side by side)
 """
 import matplotlib
 matplotlib.use('TkAgg')
@@ -22,7 +21,6 @@ from hrtf_relearning import PATH as ROOT
 from hrtf_relearning.experiment.Subject import Subject
 from hrtf_relearning.hrtf.record.record_hrir import record_hrir
 from hrtf_relearning.hrtf.record.calibration.calibrate_headphones import calibrate_headphones, load_hp_filter
-from hrtf_relearning.hrtf.binsim.hrtf2binsim import hrtf2binsim
 from hrtf_relearning.experiment.Localization.Localization_dome import LocalizationDome
 from hrtf_relearning.experiment.analysis.localization.localization_analysis import (
     localization_accuracy, plot_localization, plot_elevation_response,
@@ -128,40 +126,39 @@ def main(subject_id, reference_id, hp_id, hrir_settings,
     acoustic_test(hrir, hp_filter, subject_id=subject_id, hp_id=hp_id, show=show)
 
     # ------------------------------------------------------------------
-    # 4. Prepare binsim files
+    # 4. Dome localization (real speakers, vertical midline)
     # ------------------------------------------------------------------
-    logging.info('--- Step 4: Preparing binsim files ---')
-    hrir_binsim = hrtf2binsim(hrir_settings, overwrite=True)
-
-    # ------------------------------------------------------------------
-    # 5. Dome localization (real speakers, vertical midline)
-    # ------------------------------------------------------------------
-    logging.info('--- Step 5: Dome localization ---')
-    dome_loc = LocalizationDome(subject, hrir_binsim)  # todo test run twice - tracker disconnect
+    logging.info('--- Step 4: Dome localization ---')
+    dome_loc_settings = {
+        'targets_per_speaker': 3,
+        'min_distance': 15,
+        'gain': 1,
+    }
+    dome_loc = LocalizationDome(subject, hrir_settings, loc_settings=dome_loc_settings)
     dome_loc.run()
     plot_elevation_response(subject.localization[dome_loc.filename], filepath=plot_dir)
 
     # ------------------------------------------------------------------
-    # 6. Virtual localization (pybinsim, independent randomisation)
-    # Lazy import avoids module-level hrtf2binsim call in Localization_AR
+    # 5. Virtual localization (pybinsim)
+    #    hrtf2binsim + hp filter loading are handled inside Localization()
     # ------------------------------------------------------------------
-    logging.info('--- Step 6: Virtual localization ---')
-    logging.warning('--------- HP Jack to PC ---------')
-
-    midline_settings = {
+    logging.warning('--------- Switch HP jack to PC ---------')
+    logging.info('--- Step 5: Virtual localization ---')
+    ar_loc_settings = {
         'kind': 'standard',
         'azimuth_range': (-1, 1), 'elevation_range': (-35, 35),
         'targets_per_speaker': 3, 'min_distance': 15,
         'gain': .2,
+        'stim': 'noise',
     }
-    ar_loc = Localization(subject, hrir_binsim, settings=midline_settings, ear=None, mirror=False)
+    ar_loc = Localization(subject, hrir_settings, loc_settings=ar_loc_settings)
     ar_loc.run()
     plot_elevation_response(subject.localization[ar_loc.filename], filepath=plot_dir)
 
     # ------------------------------------------------------------------
-    # 7. Comparison plots
+    # 6. Comparison plots
     # ------------------------------------------------------------------
-    logging.info('--- Step 7: Results ---')
+    logging.info('--- Step 6: Results ---')
     plot_dir = ROOT / 'data' / 'results' / 'plot' / subject_id
     compare_localization(
         dome_seq  = dome_loc.sequence,

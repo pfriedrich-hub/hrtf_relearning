@@ -83,6 +83,9 @@ class Localization:
             self.sequence.response_errors = target_p(self.sequence, show=False)
             self.write()
             logging.info('Finished.')
+            plot_dir = ROOT / 'data' / 'results' / 'plot' / self.subject.id
+            plot_elevation_response(self.sequence, filepath=plot_dir)
+            plot_localization(self.sequence, report_stats=['elevation', 'azimuth'], filepath=plot_dir)
         finally:
             self.motion_sensor.halt()
             try:  # mute before killing so the audio stream stops cleanly

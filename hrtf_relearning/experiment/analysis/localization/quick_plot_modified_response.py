@@ -15,10 +15,16 @@ from hrtf_relearning.hrtf.processing.modify import plot
 idx = 14.05
 
 # load subject localization
-sub_id = 'Nka'
+sub_id = 'NKa'
 subject = hrtf_relearning.Subject(sub_id)
-loc = subject.localization['NKa_14.04_10-52_NKa']
 
+# ---- elevation response
+sequence = 'NKa_15.04_10-50_NKa'
+loc = subject.localization[sequence]
+fig = plot_elevation_response(loc)
+fig.savefig(PATH / 'data' / 'results' / 'plot' / sub_id / f'{sequence}.png', bbox_inches='tight')
+
+# --- plot hrtf
 # load modified
 hrtf_original = slab.HRTF('C:/projects/hrtf_relearning/hrtf_relearning/data/hrtf/sofa/VD.sofa')
 
@@ -35,6 +41,3 @@ fig_h = plot(hrtf_original, hrtf_modified, 'image', ear='right',
 fig_h.savefig(PATH / 'data' / 'results' / 'plot' / sub_id / str(sub_id + f'_modified_{idx}.png'),
             bbox_inches='tight')
 
-fig = plot_elevation_response(loc)
-fig.savefig(PATH / 'data' / 'results' / 'plot' / sub_id / str(sub_id + f'loc_modified_{idx}.png'),
-            bbox_inches='tight')

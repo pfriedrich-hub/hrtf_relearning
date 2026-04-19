@@ -69,9 +69,6 @@ def main(subject_id, reference_id, hp_id, hrir_settings,
         Show intermediate plots.
     """
 
-    subject = Subject(subject_id)
-    plot_dir = ROOT / 'data' / 'results' / 'plot' / subject_id
-
     # ------------------------------------------------------------------
     # 1. Record / load HRIR
     # ------------------------------------------------------------------
@@ -91,7 +88,7 @@ def main(subject_id, reference_id, hp_id, hrir_settings,
     # 2. HP calibration  (in-ear mics still in place)
     # ------------------------------------------------------------------
     logging.info('--- Step 2: HP calibration ---')
-    hp_id = 'MYSPHERE'
+    # hp_id = 'MYSPHERE'
     logging.warning('--------- Check HP Jack and ID ---------')
     try:
         # alternatively load from disk
@@ -111,67 +108,6 @@ def main(subject_id, reference_id, hp_id, hrir_settings,
     # ------------------------------------------------------------------
     logging.info('--- Step 3: Acoustic test ---')
     acoustic_test(hrir, hp_filter, subject_id=subject_id, hp_id=hp_id, show=show)
-
-    # ------------------------------------------------------------------
-    # 4. Dome localization (real speakers, vertical midline)
-    # ------------------------------------------------------------------
-    logging.info('--- Step 4: Dome localization ---')
-    dome_loc_settings = {
-        'targets_per_speaker': 3,
-        'min_distance': 15,
-        'gain': 1,
-    }
-    dome_loc = LocalizationDome(subject, hrir_settings, loc_settings=dome_loc_settings)
-    dome_loc.run()
-    plot_elevation_response(subject.localization[dome_loc.filename], filepath=plot_dir)
-
-    # ------------------------------------------------------------------
-    # 5. Virtual localization (pybinsim)
-    #    hrtf2binsim + hp filter loading are handled inside Localization()
-    logging.warning('--------- Switch HP jack to PC ---------')
-    # ------------------------------------------------------------------
-
-    logging.info('--- Step 5: Virtual localization ---')
-
-
-    hrir_settings = dict(
-        name        = subject_id+'_s_4_notch',
-        subject_id  = subject_id,
-        ear         = None,
-        mirror      = False,
-        reverb      = True,
-        drr         = 20,
-        hp_filter   = True,
-        hp          = hp_id,  # todo access quickly later for ar test
-        convolution = 'cpu',
-        storage     = 'cpu',
-    )
-
-    ar_loc_settings = {
-        'kind': 'standard',
-        'azimuth_range': (-1, 1), 'elevation_range': (-35, 35),
-        'targets_per_speaker': 2, 'min_distance': 15,
-        'gain': .2,
-        'stim': 'noise',
-    }
-    ar_loc = Localization(subject, hrir_settings, loc_settings=ar_loc_settings)
-    ar_loc.run()
-    plot_elevation_response(subject.localization[ar_loc.filename], filepath=plot_dir)
-----------------------
-    # ------------------------------------------------------------------
-    # 6. Comparison plots
-    # ------------------------------------------------------------------
-    logging.info('--- Step 6: Results ---')
-    plot_dir = ROOT / 'data' / 'results' / 'plot' / subject_id
-    compare_localization(
-        dome_seq  = dome_loc.sequence,
-        vr_seq    = ar_loc.sequence,
-        subject_id = subject_id,
-        filepath  = plot_dir,
-    )
-
-    return subject
-
 
 # ---------------------------------------------------------------------
 # Acoustic test
@@ -250,47 +186,3 @@ def acoustic_test(hrir, hp_filter, subject_id, hp_id, show=True):
         save_dir.mkdir(parents=True, exist_ok=True)
         fig.savefig(save_dir / f'acoustic_test_{hp_id}.svg')
         plt.show()
-
-
-# ---------------------------------------------------------------------
-# Comparison plots
-# ---------------------------------------------------------------------
-
-def compare_localization(dome_seq, vr_seq, subject_id, filepath=None):
-    """
-    Plot dome vs virtual localization results side by side.
-
-    Top row  : elevation response (target vs response scatter + linear fit)
-    Bottom row: full localization scatter (plot_localization)
-    """
-    from pathlib import Path
-    if filepath is not None:
-        filepath = Path(filepath)
-        filepath.mkdir(parents=True, exist_ok=True)
-
-    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
-    fig.suptitle(f'{subject_id} — first session localization', fontsize=13)
-
-    labels = ('Dome (real speakers)', 'Virtual (HRIR)')
-    sequences = (dome_seq, vr_seq)
-
-    for col, (seq, label) in enumerate(zip(sequences, labels)):
-        eg, ele_rmse, ele_sd, az_gain, az_rmse, az_sd = localization_accuracy(seq)
-        stats = f'EG={eg:.2f}  RMSE={ele_rmse:.1f}°  SD={ele_sd:.1f}°'
-
-        # top: elevation response
-        plot_elevation_response(seq, axis=axes[0, col])
-        axes[0, col].set_title(f'{label}\n{stats}')
-
-        # bottom: full scatter
-        plot_localization(seq, report_stats=['elevation'], axis=axes[1, col])
-        axes[1, col].set_title(label)
-
-    plt.tight_layout()
-    if filepath is not None:
-        fig.savefig(filepath / f'{subject_id}_localization_comparison.svg')
-    plt.show()
-
-
-# if __name__ == '__main__':
-#     main()

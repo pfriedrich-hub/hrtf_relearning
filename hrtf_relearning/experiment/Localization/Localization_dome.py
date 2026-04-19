@@ -19,6 +19,9 @@ from pynput import keyboard
 import hrtf_relearning
 from hrtf_relearning.experiment.misc.localization_helpers.make_sequence import make_sequence
 from hrtf_relearning.experiment.misc.training_helpers import meta_motion
+from hrtf_relearning.experiment.analysis.localization.localization_analysis import (
+    plot_localization, plot_elevation_response,
+)
 
 ROOT = hrtf_relearning.PATH
 
@@ -43,19 +46,15 @@ class LocalizationDome:
         'min_distance' (float), 'gain' (float). Stim is always 'pinknoise_burst'.
     """
 
-    def __init__(self, subject, hrir_settings, loc_settings=None):
+    def __init__(self, subject, loc_settings=None):
         self.subject = subject
         date = datetime.datetime.now().strftime('%d.%m_%H-%M')
-
-        hrir_name = hrir_settings.get('name', None)
-
-        self.filename = f"{subject.id}_{date}_{hrir_name}_dome"
+        self.filename = f"{subject.id}_{date}_dome"
 
         if loc_settings is None:
             loc_settings = {
                 'targets_per_speaker': 3,
                 'min_distance': 15,
-                'gain': 1,
             }
 
         # Vertical midline speaker positions (hardcoded to match dome layout)
@@ -90,6 +89,9 @@ class LocalizationDome:
             self.subject.last_sequence = self.sequence
             self.write()
             logging.info('Dome localization complete.')
+            plot_dir = ROOT / 'data' / 'results' / 'plot' / self.subject.id
+            plot_elevation_response(self.sequence, filepath=plot_dir)
+            plot_localization(self.sequence, report_stats=['elevation'], filepath=plot_dir)
         finally:
             self.motion_sensor.halt()
 

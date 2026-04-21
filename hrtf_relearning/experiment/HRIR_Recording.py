@@ -26,52 +26,22 @@ from hrtf_relearning.experiment.analysis.localization.localization_analysis impo
     localization_accuracy, plot_localization, plot_elevation_response,
 )
 
-# --- session defaults (override via main() arguments) ---
-subject_id   = 'NKa'
-hp_id        = 'MYSPHERE'
+subject_id   = 'AGV'
 reference_id = 'ref_03.04'
 n_directions = 3  # directions for the hrir recording
 n_recordings = 10  #
 fs           = 48828
 hp_freq      = 120
 n_rec_hp     = 3
-hrir_settings= None
 show = True
-
 slab.set_default_samplerate(fs)
 freefield.set_logger('info')
-
-
-# ---------------------------------------------------------------------
-# Main pipeline
-# ---------------------------------------------------------------------
+subject  = Subject(subject_id)
 
 def main(subject_id, reference_id, hp_id, hrir_settings,
          n_directions, n_recordings, n_rec_hp=3, show=True):
-    """
-    Full first-session pipeline.
 
-    Parameters
-    ----------
-    subject_id : str
-    reference_id : str
-    hp_id : str
-        Headphone model (e.g. 'MYSPHERE', 'DT990').
-    hrir_settings : dict, optional
-        Passed to hrtf2binsim. Defaults to binaural, no spectral modification.
-    n_directions : int
-        Head-tilt directions for HRIR recording.
-    n_recordings : int
-        Sweeps per speaker for HRIR recording.
-    n_rec_hp : int
-        HP calibration recordings (headphone re-placement repetitions).
-    show : bool
-        Show intermediate plots.
-    """
-
-    # ------------------------------------------------------------------
     # 1. Record / load HRIR
-    # ------------------------------------------------------------------
     logging.info('--- Step 1: HRIR recording ---')
     hrir = record_hrir(
         subject_id   = subject_id,
@@ -84,30 +54,35 @@ def main(subject_id, reference_id, hp_id, hrir_settings,
         overwrite = False ,
     )
 
-    # ------------------------------------------------------------------
-    # 2. HP calibration  (in-ear mics still in place)
-    # ------------------------------------------------------------------
     logging.info('--- Step 2: HP calibration ---')
-    # hp_id = 'MYSPHERE'
-    logging.warning('--------- Check HP Jack and ID ---------')
-    try:
-        # alternatively load from disk
-        hp_filter = load_hp_filter(ROOT / 'data' / 'hrtf' / 'rec' / subject_id / f'{hp_id}_equalization.npz','slab')
-        print(f'Loading hp filter from disk: {hp_id}_equalization.npz')
-    except FileNotFoundError:
-        hp_filter = calibrate_headphones(
-            subject_id    = subject_id,
-            hp_id         = hp_id,
-            n_rec         = n_rec_hp,
-            show          = show,
-            save_freefield = False,
-        )
+    hp_filter = calibrate_headphones(subject_id, 'MYSPHERE', n_rec_hp, show, False)
+    hp_filter = calibrate_headphones(subject_id, 'DT990', n_rec_hp, show, False)
 
-    # ------------------------------------------------------------------
-    # 3. Acoustic sanity check
-    # ------------------------------------------------------------------
     logging.info('--- Step 3: Acoustic test ---')
-    acoustic_test(hrir, hp_filter, subject_id=subject_id, hp_id=hp_id, show=show)
+    acoustic_test(hrir, hp_filter, subject_id=subject_id, hp_id='DT990', show=show)
+
+    logging.info('--- Step 4: Dome localization ---')
+    dome_loc = LocalizationDome(subject, {'targets_per_speaker': 3, 'min_distance': 15})
+    dome_loc.run()
+
+
+    logging.info('--- Step 4: Dome localization ---')
+    ar_loc_settings = {'kind': 'standard', 'azimuth_range': (-1, 1), 'elevation_range': (-35, 35),
+        'targets_per_speaker': 2, 'min_distance': 15, 'gain': .2, 'stim': 'noise'}
+
+    hrir_settings = dict(name=subject_id, subject_id=subject_id, ear=None, mirror=False, reverb=True,
+        drr=20, hp_filter=True, hp='MYSPHERE', convolution='cpu', storage='cpu')
+    ar_loc = Localization(subject, hrir_settings, ar_loc_settings)
+
+
+
+    ar_loc.run()
+
+    hrir_settings = dict(name=subject_id, subject_id=subject_id, ear=None, mirror=False, reverb=True,
+        drr=20, hp_filter=True, hp='DT990', convolution='cpu', storage='cpu')
+    ar_loc = Localization(subject, hrir_settings, ar_loc_settings)
+    ar_loc.run()
+
 
 # ---------------------------------------------------------------------
 # Acoustic test

@@ -67,7 +67,6 @@ class LocalizationDome:
                                [  0. ,  37.5]])
         self.sequence = make_sequence({'kind': 'standard', **loc_settings}, midline)
         self.sequence.name = self.filename
-        self.sequence.hrir = hrir_name
         self.sequence.stim = 'pinknoise_burst'
         self.target = None
 

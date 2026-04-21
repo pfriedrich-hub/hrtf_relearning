@@ -193,38 +193,43 @@ class Localization:
             listener.join()  # block until listener.stop() is called
 
 if __name__ == "__main__":
-    # --- SETTINGS ---
-    _SUBJECT_ID = "MSc"
-    _HRIR_NAME  = "MSc"   # 'KU100', 'kemar', etc.
-    _HP         = 'MYSPHERE'
-    _EAR        = None    # None (binaural), 'left', or 'right'
-    _MIRROR     = False   # True to swap left/right spectral cues
-    _AZ_RANGE = (-35, 35)
-    _STIM = 'noise'
 
-    # --- HRIR / binsim settings ---
-    _hrir_settings = {
-        'name'       : _HRIR_NAME,
-        'subject_id' : _SUBJECT_ID,
-        'ear'        : _EAR,        # None (binaural), 'left', or 'right'
-        'mirror'     : _MIRROR,     # True to swap left/right spectral cues
-        'reverb'     : True,
-        'drr'        : 20,
-        'hp_filter'  : True,
-        'hp'         : _HP,
-        'convolution': 'cpu',  # todo change to cuda for VR Lab PC
-        'storage'    : 'cpu',
-    }
+    # --- SETTINGS ---
+    _SUBJECT_ID = "AGV"
+    _HRIR_NAME = "AGV_notch"  # 'KU100', 'kemar', etc.
+    _HP = 'DT990'
+    _EAR = None  # None (binaural), 'left', or 'right'
+    _MIRROR = False  # True to swap left/right spectral cues
+    _AZ_RANGE = (-35, 35)
+    _SECTOR_SIZE = (14, 14)
+    _STIM = 'noise'
 
     # --- localization / sequence settings ---
     _loc_settings = {
-        'kind': 'sectors',          # 'standard' or 'sectors'
-        'azimuth_range': _AZ_RANGE,    # (-1, 1) for midline-only, (-180, 180) for full sphere
+        'kind': 'sectors',  # 'standard' or 'sectors'
+        'azimuth_range': _AZ_RANGE,  # (-1, 1) for midline-only, (-180, 180) for full sphere
         'elevation_range': (-35, 35),
-        'targets_per_speaker': 3,
-        'min_distance': 15,          # min angular distance between successive targets (°)
+        'targets_per_speaker': 2,
+        'targets_per_sector': 3,
+        'min_distance': 20,  # min angular distance between successive targets (°)
         'gain': .2,
-        'stim': _STIM,             # 'noise' or 'uso'
+        'stim': _STIM,  # 'noise' or 'uso'
+        'sector_size': _SECTOR_SIZE,
+        'replace': False
+    }
+
+    # --- HRIR / binsim settings ---
+    _hrir_settings = {
+        'name': _HRIR_NAME,
+        'subject_id': _SUBJECT_ID,
+        'ear': _EAR,  # None (binaural), 'left', or 'right'
+        'mirror': _MIRROR,  # True to swap left/right spectral cues
+        'reverb': True,
+        'drr': 20,
+        'hp_filter': True,
+        'hp': _HP,
+        'convolution': 'cuda',
+        'storage': 'cuda',
     }
 
     _subject = hr.Subject(_SUBJECT_ID)

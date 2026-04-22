@@ -18,10 +18,11 @@ matplotlib.rcParams['figure.raise_window'] = False
 logging.getLogger().setLevel('INFO')
 
 # -------------------- Config --------------------
-SUBJECT_ID = "PC"
-HRIR_NAME = "PC_notch"  # 'KU100', 'kemar', etc.
+SUBJECT_ID = "AGV"
+HRIR_NAME = "AGV_notch"  # 'KU100', 'kemar', etc.
 EAR = 'left'
 HP = 'DT990'
+
 STIM = 'noise'  # 'noise' or 'uso'
 AZ_RANGE = (-35, 0)
 

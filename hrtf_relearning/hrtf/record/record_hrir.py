@@ -40,8 +40,10 @@ def record_hrir(
     fs: int = 48828,
     hp_freq: float = 120,
     equalize_dome: bool = False,
-    overwrite: bool = False,
+    overwrite_rec: bool = False,
+    overwrite_hrir: bool = True,
     align_interaural: bool = True,
+    head_radius: float = head_radius,
     n_samples_out: int = 512,
     expand_az: bool = True,
     show: bool = True,
@@ -75,7 +77,7 @@ def record_hrir(
     out_file = base_dir / 'sofa' / f'{subject_id}.sofa'
 
     # Early exit: load and return existing SOFA without re-running the pipeline
-    if not overwrite and out_file.exists():
+    if not overwrite_hrir and out_file.exists():
         logging.info(f"Loading existing HRTF from {out_file}")
         hrtf = slab.HRTF(str(out_file))
         if show:
@@ -92,7 +94,7 @@ def record_hrir(
     # 1) Subject recordings
     # -----------------------------------------------------------------
     npz_file = subj_dir / "recordings.npz"
-    if overwrite or not npz_file.exists():
+    if overwrite_rec or not npz_file.exists():
         logging.info("Recording subject ear pressure")
         subj_dir.mkdir(parents=True, exist_ok=True)
 
@@ -112,8 +114,7 @@ def record_hrir(
     # -----------------------------------------------------------------
     # 2) Reference recordings
     # -----------------------------------------------------------------
-    """    
-    if overwrite or not ref_dir.exists():
+    if not ref_dir.exists():
         logging.info("Recording reference")
         ref_dir.mkdir(parents=True, exist_ok=True)
         reference_rec = Recordings.record_dome(
@@ -126,9 +127,8 @@ def record_hrir(
             key=False)
         reference_rec.to_npz(ref_dir, overwrite=overwrite)
     else:
-    """
-    logging.info("Loading reference recordings from disk")
-    reference_rec = Recordings.load(ref_dir)
+        logging.info("Loading reference recordings from disk")
+        reference_rec = Recordings.load(ref_dir)
 
     # -----------------------------------------------------------------
     # 3) Deconvolution: sweeps -> IRs
@@ -166,7 +166,7 @@ def record_hrir(
     # 6) Azimuth expansion + binaural cues
     # -----------------------------------------------------------------
     if expand_az:
-        logging.info("Expanding azimuths and imposing binaural cues")
+        logging.info(f"Expanding azimuths and imposing binaural cues. Head radius: {head_radius}")
         hrir_az_exp = expand_azimuths_with_binaural_cues(
             hrir_extrapol,
             az_range=(-50, 50),

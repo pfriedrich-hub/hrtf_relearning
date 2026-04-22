@@ -27,6 +27,7 @@ from hrtf_relearning.experiment.analysis.localization.localization_analysis impo
 )
 
 subject_id   = 'AGV'
+head_radius = 0.078
 reference_id = 'ref_03.04'
 n_directions = 3  # directions for the hrir recording
 n_recordings = 10  #
@@ -38,7 +39,7 @@ slab.set_default_samplerate(fs)
 freefield.set_logger('info')
 subject  = Subject(subject_id)
 
-def main(subject_id, reference_id, hp_id, hrir_settings,
+def main(subject_id, reference_id, head_radius, hrir_settings,
          n_directions, n_recordings, n_rec_hp=3, show=True):
 
     # 1. Record / load HRIR
@@ -50,8 +51,10 @@ def main(subject_id, reference_id, hp_id, hrir_settings,
         n_recordings = n_recordings,
         fs           = fs,
         hp_freq      = hp_freq,
+        head_radius = head_radius,
         show         = show,
-        overwrite = False ,
+        overwrite_rec = False,
+        overwrite_hrir = True,
     )
 
     logging.info('--- Step 2: HP calibration ---')
@@ -70,14 +73,13 @@ def main(subject_id, reference_id, hp_id, hrir_settings,
     ar_loc_settings = {'kind': 'standard', 'azimuth_range': (-1, 1), 'elevation_range': (-35, 35),
         'targets_per_speaker': 2, 'min_distance': 15, 'gain': .2, 'stim': 'noise'}
 
+    # mysphere localization
     hrir_settings = dict(name=subject_id, subject_id=subject_id, ear=None, mirror=False, reverb=True,
         drr=20, hp_filter=True, hp='MYSPHERE', convolution='cpu', storage='cpu')
     ar_loc = Localization(subject, hrir_settings, ar_loc_settings)
-
-
-
     ar_loc.run()
 
+    # dt990 localization
     hrir_settings = dict(name=subject_id, subject_id=subject_id, ear=None, mirror=False, reverb=True,
         drr=20, hp_filter=True, hp='DT990', convolution='cpu', storage='cpu')
     ar_loc = Localization(subject, hrir_settings, ar_loc_settings)

@@ -45,12 +45,12 @@ hrtf_dir = PATH / 'data' / 'hrtf' / 'sofa'
 import slab
 from hrtf_relearning.hrtf.analysis.vsi import (vsi as _vsi, vsi_dissimilarity as _vsi_dissimilarity)
 
-sub_id = 'NKa'
+sub_id = 'AGV'
 
 SMOOTH = True
 N_KEEP = 4
 PLOT = 'image'
-fname = 's_4_notch'
+fname = 'notch'
 # ---------------------------------------------------------------------------
 # Spectral feature list
 # ---------------------------------------------------------------------------
@@ -94,7 +94,6 @@ FEATURES = [
 
 # FEATURES = []  # no features
 
-FEATURES = []
 
 # ---------------------------------------------------------------------------
 # Shared helpers (same as modify.py)

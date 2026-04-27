@@ -1,0 +1,91 @@
+Index: experiment/misc/helpers/make_sequence.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>import matplotlib\r\n# matplotlib.use(\"TkAgg\")\r\nfrom matplotlib import pyplot as plt\r\nimport slab\r\nimport numpy\r\nimport random\r\nimport logging\r\n\r\n\r\ndef make_sequence_from_sources(settings, hrir_sources=None):\r\n    \"\"\"\r\n    Picks random targets from the HRIR source space within sectors,\r\n    while ensuring a minimum distance between successive sectors.\r\n\r\n    Parameters:\r\n    - azimuth_range: tuple (min_azimuth, max_azimuth)\r\n    - elevation_range: tuple (min_elevation, max_elevation)\r\n    - sector_size: tuple (azimuth_size, elevation_size) in degrees\r\n    - min_distance: minimum distance between successive sectors in sequence\r\n    - targets_per_sector: number of points per sector\r\n    - hrir_sources: list of HRIR sources (hrir.sources.vertical_polar)\r\n\r\n    Returns:\r\n        slab.Trialsequence\r\n    \"\"\"\r\n    azimuth_range = settings['azimuth_range']\r\n    elevation_range = settings['elevation_range']\r\n    sector_size = settings['sector_size']  # (azimuth_size, elevation_size)\r\n    targets_per_sector = settings['targets_per_sector']\r\n    min_distance = settings['min_distance']\r\n    azimuth_size, elevation_size = sector_size\r\n    num_azimuth_sectors = (azimuth_range[1] - azimuth_range[0]) // azimuth_size\r\n\r\n    if elevation_range == (0,0):  # only place targets on the horizontal plane\r\n        sector_centers = [\r\n            (azimuth_range[0] + (i + 0.5) * azimuth_size, 0)\r\n            for i in range(num_azimuth_sectors)\r\n        ]\r\n        random.shuffle(sector_centers)\r\n        num_sectors = num_azimuth_sectors\r\n    else:\r\n        # Compute sector centers\r\n        num_elevation_sectors = (elevation_range[1] - elevation_range[0]) // elevation_size\r\n        num_sectors = num_azimuth_sectors * num_elevation_sectors\r\n        sector_centers = [\r\n            (azimuth_range[0] + (i + 0.5) * azimuth_size, elevation_range[0] + (j + 0.5) * elevation_size)\r\n            for i in range(num_azimuth_sectors) for j in range(num_elevation_sectors)\r\n        ]\r\n        random.shuffle(sector_centers)\r\n\r\n    # Select sectors ensuring minimum distance constraint\r\n    selected_sectors = []\r\n    remaining_sectors = sector_centers[:]\r\n    while len(selected_sectors) < num_sectors:\r\n        if not selected_sectors:\r\n            selected_sectors.append(remaining_sectors.pop(0))\r\n        else:\r\n            last_sector = selected_sectors[-1]\r\n            valid_sectors = [\r\n                sec for sec in remaining_sectors\r\n                if numpy.linalg.norm(numpy.array(sec) - numpy.array(last_sector)) >= min_distance\r\n            ]\r\n            if valid_sectors:\r\n                selected_sector = valid_sectors.pop(0)\r\n                selected_sectors.append(selected_sector)\r\n                remaining_sectors.remove(selected_sector)\r\n            else:\r\n                logging.error('Can not create target sequence with given settings. '\r\n                              'Check min distance and target range.')\r\n                break  # Stop if no valid sector is found\r\n\r\n    # pick random targets from the hrir sources within each selected sector\r\n    src_az = numpy.asarray(hrir_sources[:, 0], dtype=float)\r\n    src_el = numpy.asarray(hrir_sources[:, 1], dtype=float)\r\n\r\n    def _wrap_diff(a, b):\r\n        \"\"\"Smallest signed difference a-b on a 360° circle, result in [-180, 180).\"\"\"\r\n        d = (a - b + 180.0) % 360.0 - 180.0\r\n        return d\r\n\r\n    def sources_in_sector(center_az, center_el):\r\n        \"\"\"\r\n        Return indices of sources that fall inside the az/el rectangular sector\r\n        centered at (center_az, center_el) with half-sizes azimuth_size/2, elevation_size/2.\r\n        Azimuth is treated circularly (0..360). Elevation is linear.\r\n        \"\"\"\r\n        # Azimuth within bounds (circular)\r\n        d_az = numpy.abs(_wrap_diff(src_az, center_az))\r\n        az_ok = d_az <= (azimuth_size / 2.0)\r\n        # Elevation within bounds (linear)\r\n        el_min = center_el - (elevation_size / 2.0)\r\n        el_max = center_el + (elevation_size / 2.0)\r\n        el_ok = (src_el >= el_min) & (src_el <= el_max)\r\n        return numpy.nonzero(az_ok & el_ok)[0]\r\n\r\n    # Build candidate lists per sector (indices into the sources grid)\r\n    sector_candidates = []\r\n    for (caz, cel) in selected_sectors:\r\n        idx = sources_in_sector(caz, cel)\r\n        if idx.size < targets_per_sector:\r\n            logging.error(\r\n                f'Not enough sources in sector centered at (az={caz:.2f}, el={cel:.2f}). '\r\n                f'Required {targets_per_sector}, found {idx.size}. '\r\n                'Consider enlarging sector_size, adjusting ranges, or lowering targets_per_sector.'\r\n            )\r\n            raise ValueError('Insufficient sources in one or more sectors for requested targets_per_sector.')\r\n        # shuffle for randomness\r\n        idx = numpy.random.permutation(idx).tolist()\r\n        sector_candidates.append(idx)\r\n\r\n    # Global-unique sampling across sectors (round-robin)\r\n    num_sectors = len(selected_sectors)\r\n    T = targets_per_sector\r\n    used = set()\r\n    sector_picks = [[] for _ in range(num_sectors)]\r\n\r\n    for t in range(T):  # pass t: give each sector 1 pick\r\n        for s in range(num_sectors):\r\n            cand = sector_candidates[s]\r\n            # advance until we find an unused index or run out\r\n            while cand and cand[-1] in used:\r\n                cand.pop()\r\n            if not cand:\r\n                # No unused left for this sector → cannot satisfy global uniqueness\r\n                caz, cel = selected_sectors[s]\r\n                logging.error(\r\n                    f'Global-unique sampling failed for sector (az={caz:.2f}, el={cel:.2f}) '\r\n                    f'at pass {t + 1}/{T}. Try increasing sector_size or lowering targets_per_sector.'\r\n                )\r\n                raise ValueError('Not enough unique grid points across overlapping sectors.')\r\n            pick = cand.pop()  # take one unused\r\n            used.add(pick)\r\n            sector_picks[s].append(pick)\r\n\r\n    # Interleave to preserve min-distance between consecutive sectors\r\n    chosen_indices = []\r\n    for t in range(T):\r\n        for s in range(num_sectors):\r\n            chosen_indices.append(sector_picks[s][t])\r\n\r\n    # Build (az, el) points from unique picks\r\n    points = numpy.column_stack([src_az[chosen_indices], src_el[chosen_indices]])\r\n    points = numpy.round(points, 2)  # only keep 2nd decimal\r\n    points[:, 0] = (points[:, 0] + 180) % 360 - 180  # wrap to (-180,180)\r\n    sequence = slab.Trialsequence(points)\r\n    sequence.sector_centers = sector_centers\r\n    sequence.settings = settings  # ← store all parameters here\r\n    return sequence\r\n\r\ndef make_sequence(settings):\r\n    \"\"\"\r\n    Generates uniformly random points within sectors while ensuring a minimum distance between successive sectors.\r\n\r\n    Parameters:\r\n    - azimuth_range: tuple (min_azimuth, max_azimuth)\r\n    - elevation_range: tuple (min_elevation, max_elevation)\r\n    - sector_size: tuple (azimuth_size, elevation_size) in degrees\r\n    - min_distance: minimum distance between successive sectors in sequence\r\n    - targets_per_sector: number of points per sector\r\n\r\n    Returns:\r\n    - points: List of (azimuth, elevation) tuples\r\n    - selected_sectors: List of selected sector centers\r\n    \"\"\"\r\n    azimuth_range = settings['azimuth_range']\r\n    elevation_range = settings['elevation_range']\r\n    sector_size = settings['sector_size']  # (azimuth_size, elevation_size)\r\n    targets_per_sector = settings['targets_per_sector']\r\n    min_distance = settings['min_distance']\r\n    azimuth_size, elevation_size = sector_size\r\n    num_azimuth_sectors = (azimuth_range[1] - azimuth_range[0]) // azimuth_size\r\n\r\n    if elevation_range == (0,0):  # only plce targets on the horizontal plane\r\n        sector_centers = [\r\n            (azimuth_range[0] + (i + 0.5) * azimuth_size, 0)\r\n            for i in range(num_azimuth_sectors)\r\n        ]\r\n        random.shuffle(sector_centers)\r\n        num_sectors = num_azimuth_sectors\r\n    else:\r\n        # Compute sector centers\r\n        num_elevation_sectors = (elevation_range[1] - elevation_range[0]) // elevation_size\r\n        num_sectors = num_azimuth_sectors * num_elevation_sectors\r\n        sector_centers = [\r\n            (azimuth_range[0] + (i + 0.5) * azimuth_size, elevation_range[0] + (j + 0.5) * elevation_size)\r\n            for i in range(num_azimuth_sectors) for j in range(num_elevation_sectors)\r\n        ]\r\n        random.shuffle(sector_centers)\r\n\r\n    # Select sectors ensuring minimum distance constraint\r\n    selected_sectors = []\r\n    remaining_sectors = sector_centers[:]\r\n    while len(selected_sectors) < num_sectors:\r\n        if not selected_sectors:\r\n            selected_sectors.append(remaining_sectors.pop(0))\r\n        else:\r\n            last_sector = selected_sectors[-1]\r\n            valid_sectors = [\r\n                sec for sec in remaining_sectors\r\n                if numpy.linalg.norm(numpy.array(sec) - numpy.array(last_sector)) >= min_distance\r\n            ]\r\n            if valid_sectors:\r\n                selected_sector = valid_sectors.pop(0)\r\n                selected_sectors.append(selected_sector)\r\n                remaining_sectors.remove(selected_sector)\r\n            else:\r\n                logging.error('Can not create target sequence with given settings. '\r\n                              'Check min distance and target range.')\r\n                break  # Stop if no valid sector is found\r\n\r\n\r\n    # Generate random points within each selected sector\r\n    points = numpy.float16([\r\n        (\r\n            numpy.random.uniform(sector[0] - azimuth_size / 2, sector[0] + azimuth_size / 2),\r\n            numpy.random.uniform(sector[1] - elevation_size / 2, sector[1] + elevation_size / 2)\r\n        )\r\n        for _ in range(targets_per_sector) for sector in selected_sectors\r\n    ])\r\n    points = numpy.round(points, 2)\r\n    sequence = slab.Trialsequence(points)\r\n    sequence.sector_centers = sector_centers\r\n    sequence.sector_size = sector_size\r\n    return sequence\r\n\r\ndef plot_sequence_targets(sequence, title=\"Recorded targets over sectors\"):\r\n    \"\"\"\r\n    Plot target coordinates from sequence.data over the sector grid.\r\n    Uses sequence.settings to retrieve az/el ranges and sector size.\r\n    \"\"\"\r\n    if not hasattr(sequence, \"settings\"):\r\n        raise AttributeError(\"sequence must have a 'settings' attribute (dict).\")\r\n    if not hasattr(sequence, \"sector_centers\"):\r\n        raise AttributeError(\"sequence must have 'sector_centers' attribute.\")\r\n\r\n    settings = sequence.settings\r\n    sector_centers = list(sequence.sector_centers)\r\n    az_size, el_size = settings['sector_size']\r\n    az_range = settings['azimuth_range']\r\n    el_range = settings['elevation_range']\r\n\r\n    # --- extract target coordinates (2nd row) from sequence.data ---\r\n    points = []\r\n    for entry in sequence.conditions:\r\n        points.append(entry)  # target row\r\n    points = numpy.asarray(points, dtype=float)\r\n    points[:, 0] = (points[:, 0] + 180) % 360 - 180  # wrap azimuth\r\n\r\n    # --- plotting ---\r\n    fig, ax = plt.subplots(figsize=(8, 6))\r\n    ax.set_xlim(az_range)\r\n    ax.set_ylim(el_range)\r\n    ax.set_xlabel(\"Azimuth (°)\")\r\n    ax.set_ylabel(\"Elevation (°)\")\r\n    ax.set_title(title)\r\n\r\n    # sector rectangles\r\n    for (caz, cel) in sector_centers:\r\n        rect = matplotlib.patches.Rectangle(\r\n            (caz - az_size / 2.0, cel - el_size / 2.0),\r\n            az_size, el_size,\r\n            fill=False, linestyle=\"--\", linewidth=1.0\r\n        )\r\n        ax.add_patch(rect)\r\n\r\n    # grid\r\n    az_ticks = numpy.arange(az_range[0], az_range[1] + az_size, az_size)\r\n    el_ticks = numpy.arange(el_range[0], el_range[1] + el_size, el_size)\r\n    ax.set_xticks(az_ticks)\r\n    ax.set_yticks(el_ticks)\r\n    ax.grid(True, linestyle=\"--\", linewidth=0.5)\r\n\r\n    # scatter\r\n    ax.scatter(points[:, 0], points[:, 1], s=25, color=\"red\", label=\"Targets\")\r\n    ax.legend(loc=\"best\")\r\n    plt.tight_layout()\r\n    plt.show()\r\n\r\n# Example usage\r\n# azimuth_range = (-50, 50)\r\n# elevation_range = (-40, 40)\r\n# sector_size = (10, 10)  # (azimuth_size, elevation_size)\r\n# min_distance = 30\r\n# targets_per_sector = 3\r\n#\r\n# _, points, selected_sectors = make_sequence(\r\n#     azimuth_range, elevation_range, sector_size, min_distance, targets_per_sector\r\n# )\r\n# plot_random_points(points, selected_sectors, azimuth_range, elevation_range, sector_size)\r\n\r\n# import matplotlib\r\n# matplotlib.use(\"Qt5Agg\")\r\n# # matplotlib.use(\"TkAgg\")
+===================================================================
+diff --git a/experiment/misc/helpers/make_sequence.py b/experiment/misc/helpers/make_sequence.py
+--- a/experiment/misc/helpers/make_sequence.py	(revision d54491b9f806a2a0f824233e1686618ec4701d97)
++++ b/experiment/misc/helpers/make_sequence.py	(date 1761555220436)
+@@ -7,18 +7,19 @@
+ import logging
+ 
+ 
+-def make_sequence_from_sources(settings, hrir_sources=None):
++def make_sequence_from_sources(settings, hrir):
+     """
+     Picks random targets from the HRIR source space within sectors,
+     while ensuring a minimum distance between successive sectors.
+ 
+     Parameters:
+-    - azimuth_range: tuple (min_azimuth, max_azimuth)
+-    - elevation_range: tuple (min_elevation, max_elevation)
+-    - sector_size: tuple (azimuth_size, elevation_size) in degrees
+-    - min_distance: minimum distance between successive sectors in sequence
+-    - targets_per_sector: number of points per sector
+-    - hrir_sources: list of HRIR sources (hrir.sources.vertical_polar)
++    settings (dict): contains the following key-value pairs:
++        - azimuth_range: tuple (min_azimuth, max_azimuth)
++        - elevation_range: tuple (min_elevation, max_elevation)
++        - sector_size: tuple (azimuth_size, elevation_size) in degrees
++        - targets_per_sector: number of points per sector
++        - min_distance: minimum distance between successive sectors in sequence
++    hrir_sources (list): HRIR sources (hrir.sources.vertical_polar)
+ 
+     Returns:
+         slab.Trialsequence
+@@ -30,6 +31,7 @@
+     min_distance = settings['min_distance']
+     azimuth_size, elevation_size = sector_size
+     num_azimuth_sectors = (azimuth_range[1] - azimuth_range[0]) // azimuth_size
++    hrir_sources = hrir.sources.vertical_polar
+ 
+     if elevation_range == (0,0):  # only place targets on the horizontal plane
+         sector_centers = [
+@@ -40,7 +42,7 @@
+         num_sectors = num_azimuth_sectors
+     else:
+         # Compute sector centers
+-        num_elevation_sectors = (elevation_range[1] - elevation_range[0]) // elevation_size
++        num_elevation_sectors = int(elevation_range[1] - elevation_range[0]) // elevation_size
+         num_sectors = num_azimuth_sectors * num_elevation_sectors
+         sector_centers = [
+             (azimuth_range[0] + (i + 0.5) * azimuth_size, elevation_range[0] + (j + 0.5) * elevation_size)
+@@ -73,33 +75,14 @@
+     src_az = numpy.asarray(hrir_sources[:, 0], dtype=float)
+     src_el = numpy.asarray(hrir_sources[:, 1], dtype=float)
+ 
+-    def _wrap_diff(a, b):
+-        """Smallest signed difference a-b on a 360° circle, result in [-180, 180)."""
+-        d = (a - b + 180.0) % 360.0 - 180.0
+-        return d
+-
+-    def sources_in_sector(center_az, center_el):
+-        """
+-        Return indices of sources that fall inside the az/el rectangular sector
+-        centered at (center_az, center_el) with half-sizes azimuth_size/2, elevation_size/2.
+-        Azimuth is treated circularly (0..360). Elevation is linear.
+-        """
+-        # Azimuth within bounds (circular)
+-        d_az = numpy.abs(_wrap_diff(src_az, center_az))
+-        az_ok = d_az <= (azimuth_size / 2.0)
+-        # Elevation within bounds (linear)
+-        el_min = center_el - (elevation_size / 2.0)
+-        el_max = center_el + (elevation_size / 2.0)
+-        el_ok = (src_el >= el_min) & (src_el <= el_max)
+-        return numpy.nonzero(az_ok & el_ok)[0]
+-
+     # Build candidate lists per sector (indices into the sources grid)
+     sector_candidates = []
+-    for (caz, cel) in selected_sectors:
+-        idx = sources_in_sector(caz, cel)
+-        if idx.size < targets_per_sector:
++    for (center_az, center_el) in selected_sectors:
++        idx = hrir.get_source_idx((center_az-azimuth_size/2, center_az+azimuth_size/2),
++                                  (center_el-elevation_size/2, center_el+elevation_size/2))
++        if len(idx) < targets_per_sector:
+             logging.error(
+-                f'Not enough sources in sector centered at (az={caz:.2f}, el={cel:.2f}). '
++                f'Not enough sources in sector centered at (az={center_az:.2f}, el={center_el:.2f}). '
+                 f'Required {targets_per_sector}, found {idx.size}. '
+                 'Consider enlarging sector_size, adjusting ranges, or lowering targets_per_sector.'
+             )

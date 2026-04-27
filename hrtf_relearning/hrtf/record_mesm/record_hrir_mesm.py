@@ -94,6 +94,11 @@ def record_hrir_mesm(
     overwrite: bool = False,
     show: bool = True,
     base_dir: Path | str | None = None,
+    # Manual overrides — use these while record_reference() is not yet
+    # implemented, or to lock in known-good values from a prior session.
+    L1: float | None = None,
+    L2: float | None = None,
+    K: int | None = None,
 ) -> slab.HRTF:
     """
     Full MESM HRIR acquisition + processing pipeline for one subject /
@@ -156,15 +161,25 @@ def record_hrir_mesm(
     # -----------------------------------------------------------------
     # 1) Reference measurement → timing parameters
     # -----------------------------------------------------------------
-    ref_params = _load_or_record_reference(
-        ref_dir=ref_dir,
-        n_speakers=n_speakers,
-        fs=fs,
-        f1=f1,
-        f2=f2,
-        T_prime=T_prime,
-        overwrite=overwrite,
-    )
+    if L1 is not None and K is not None:
+        # Manual override — skip hardware reference measurement
+        logging.info(
+            f"Using manually specified reference params: "
+            f"L1={L1*1e3:.1f} ms, L2={L2*1e3:.1f if L2 else 0:.1f} ms, K={K}"
+        )
+        ref_params = ReferenceParams(
+            L1=L1, L2=L2 or 0.0, K=K, fs=fs, n_speakers=n_speakers
+        )
+    else:
+        ref_params = _load_or_record_reference(
+            ref_dir=ref_dir,
+            n_speakers=n_speakers,
+            fs=fs,
+            f1=f1,
+            f2=f2,
+            T_prime=T_prime,
+            overwrite=overwrite,
+        )
     logging.info(f"Reference: L1={ref_params.L1*1e3:.1f} ms, "
                  f"L2={ref_params.L2*1e3:.1f} ms, K={ref_params.K}")
 

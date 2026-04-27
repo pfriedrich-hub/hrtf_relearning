@@ -1,0 +1,31 @@
+<changelist name="Uncommitted_changes_before_Update_at_22_04_26,_13_48_[Changes]" date="1776858490256" recycled="false" toDelete="true">
+  <option name="PATH" value="$PROJECT_DIR$/.idea/shelf/Uncommitted_changes_before_Update_at_22_04_26,_13_48_[Changes]/shelved.patch" />
+  <option name="DESCRIPTION" value="Uncommitted changes before Update at 22.04.26, 13:48 [Changes]" />
+  <binary>
+    <option name="AFTER_PATH" value="hrtf_relearning/data/hrtf/rec/NKa/NKa_old/MYSPHERE_equalization.npz" />
+    <option name="SHELVED_PATH" value="$PROJECT_DIR$/.idea/shelf/Uncommitted_changes_before_Update_at_22_04_26,_13_48_[Changes]/MYSPHERE_equalization.npz" />
+  </binary>
+  <binary>
+    <option name="BEFORE_PATH" value="hrtf_relearning/data/hrtf/rec/NKa_01/recordings.npz" />
+    <option name="AFTER_PATH" value="hrtf_relearning/data/hrtf/rec/NKa/NKa_old/recordings.npz" />
+    <option name="SHELVED_PATH" value="$PROJECT_DIR$/.idea/shelf/Uncommitted_changes_before_Update_at_22_04_26,_13_48_[Changes]/recordings.npz" />
+  </binary>
+  <binary>
+    <option name="BEFORE_PATH" value="hrtf_relearning/data/hrtf/rec/NKa/MYSPHERE_equalization.npz" />
+    <option name="AFTER_PATH" value="hrtf_relearning/data/hrtf/rec/NKa/MYSPHERE_equalization.npz" />
+    <option name="SHELVED_PATH" value="$PROJECT_DIR$/.idea/shelf/Uncommitted_changes_before_Update_at_22_04_26,_13_48_[Changes]/MYSPHERE_equalization1.npz" />
+  </binary>
+  <binary>
+    <option name="BEFORE_PATH" value="hrtf_relearning/data/hrtf/rec/NKa/recordings.npz" />
+    <option name="AFTER_PATH" value="hrtf_relearning/data/hrtf/rec/NKa/recordings.npz" />
+    <option name="SHELVED_PATH" value="$PROJECT_DIR$/.idea/shelf/Uncommitted_changes_before_Update_at_22_04_26,_13_48_[Changes]/recordings1.npz" />
+  </binary>
+  <binary>
+    <option name="BEFORE_PATH" value="hrtf_relearning/data/hrtf/rec/NKa_01/DT990_equalization.npz" />
+    <option name="AFTER_PATH" value="hrtf_relearning/data/hrtf/rec/NKa/DT990_equalization.npz" />
+    <option name="SHELVED_PATH" value="$PROJECT_DIR$/.idea/shelf/Uncommitted_changes_before_Update_at_22_04_26,_13_48_[Changes]/DT990_equalization.npz" />
+  </binary>
+  <binary>
+    <option name="BEFORE_PATH" value="hrtf_relearning/data/hrtf/rec/NKa_01/MYSPHERE_equalization.npz" />
+  </binary>
+</changelist>

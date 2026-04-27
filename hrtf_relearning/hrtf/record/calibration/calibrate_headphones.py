@@ -24,6 +24,9 @@ Dependencies:
 """
 
 import matplotlib
+from pyfar import Signal
+from slab import Filter
+
 matplotlib.use("tkagg")
 from matplotlib import pyplot as plt
 import numpy
@@ -246,7 +249,7 @@ def save_hp_filter(eq_filter: pyfar.Signal, path: Path):
     logging.info(f"Saved HP equalization filter to: {path}")
 
 
-def load_hp_filter(path: Path) -> pyfar.Signal:
+def load_hp_filter(path: Path, output='pyfar') -> Filter | Signal:
     """Load a headphone equalization filter from .npz (or .wav as fallback).
 
     Parameters
@@ -258,18 +261,22 @@ def load_hp_filter(path: Path) -> pyfar.Signal:
 
     Returns
     -------
-    pyfar.Signal
+    pyfar.Signal or slab.Filter
         Two-channel equalization filter.
     """
     path = Path(path)
     if path.exists():
         npz = numpy.load(path, allow_pickle=False)
-        return pyfar.Signal(npz["filter"], int(npz["samplerate"]))
+        if output == 'pyfar':
+            return pyfar.Signal(npz["filter"], int(npz["samplerate"]))
+        elif output == 'slab':
+            return slab.Filter(data=npz["filter"], samplerate=int(npz["samplerate"]), fir='FIR')
     # backward-compat: try .wav with the same stem
     wav_path = path.with_suffix(".wav")
     if wav_path.exists():
         logging.warning(f"No .npz found at {path} – loading legacy .wav: {wav_path}")
-        return pyfar.io.read_audio(wav_path)
+        # return pyfar.io.read_audio(wav_path)
+        return slab.Filter(data=slab.Sound(wav_path).data, samplerate=48842, fir='FIR')
     raise FileNotFoundError(f"HP filter not found: tried {path} and {wav_path}")
 
 
@@ -312,44 +319,51 @@ def ff_equalization(eq_filter, hp_id, save_freefield=True):
 # MAIN PIPELINE
 # -------------------------------------------------------------------------
 
-def calibrate_headphones(subject_id=SUB_ID, hp_id=HP_ID, n_rec=N_REC, show=True, save_freefield=True):
+def calibrate_headphones(subject_id=SUB_ID, hp_id=HP_ID, n_rec=N_REC, show=True, save_freefield=False):
     save_path = ROOT / "data" / "hrtf" / "rec" / subject_id / f"{hp_id}_equalization.npz"
 
-    # Initialize freefield for headphone playback
-    if not freefield.PROCESSORS.mode == 'bi_play_rec':
-        freefield.initialize("headphones", default="bi_play_rec")
+    try:
+        # alternatively load from disk
+        hp_filter = load_hp_filter(save_path,'slab')
+        print(f'Loading hp filter from disk: {hp_id}_equalization.npz')
+        return hp_filter
 
-    # Generate chirp
-    excitation = generate_chirp()
+    except FileNotFoundError:
+        # Initialize freefield for headphone playback
+        if not freefield.PROCESSORS.mode == 'bi_play_rec':
+            freefield.initialize("headphones", default="bi_play_rec")
 
-    # Load or measure HpIR
-    recordings = []
-    for i in range(n_rec):
-        input('Press Enter to record...')
-        recordings.append(measure_hp_raw(excitation, repeats=1))
-    recording = slab.Sound(data=numpy.mean(recordings, axis=0))
+        # Generate chirp
+        excitation = generate_chirp()
 
-    # Compute equalization
-    eq_filter = compute_headphone_equalization(recording, excitation, beta=0.01, show=False)
-    # adjust beta parameter if necessary
+        # Load or measure HpIR
+        recordings = []
+        for i in range(n_rec):
+            input('Press Enter to record...')
+            recordings.append(measure_hp_raw(excitation, repeats=1))
+        recording = slab.Sound(data=numpy.mean(recordings, axis=0))
 
-    # Save to npz
-    save_hp_filter(eq_filter, save_path)
+        # Compute equalization
+        eq_filter = compute_headphone_equalization(recording, excitation, beta=0.01, show=False)
+        # adjust beta parameter if necessary
 
-    # test and alternatively save to freefield
-    hp_filter = ff_equalization(eq_filter, hp_id, save_freefield)
-    if show:
-        raw = freefield.play_and_record_headphones(speaker='both', sound=excitation, equalize=False)
-        filtered = hp_filter.apply(excitation)
-        equalized = freefield.play_and_record_headphones(speaker='both', sound=filtered, equalize=False)
-        fig ,axes = plt.subplots(2,1)
-        raw.spectrum(axis=axes[0])
-        axes[0].set_title('Raw HpTF')
-        equalized.spectrum(axis=axes[1])
-        axes[1].set_title('Equalized HpTF')
-        fig.suptitle(f'{hp_id} equalization')
+        # Save to npz
+        save_hp_filter(eq_filter, save_path)
 
-    return hp_filter
+        # test and alternatively save to freefield
+        hp_filter = ff_equalization(eq_filter, hp_id, save_freefield)
+        if show:
+            raw = freefield.play_and_record_headphones(speaker='both', sound=excitation, equalize=False)
+            filtered = hp_filter.apply(excitation)
+            equalized = freefield.play_and_record_headphones(speaker='both', sound=filtered, equalize=False)
+            fig ,axes = plt.subplots(2,1)
+            raw.spectrum(axis=axes[0])
+            axes[0].set_title('Raw HpTF')
+            equalized.spectrum(axis=axes[1])
+            axes[1].set_title('Equalized HpTF')
+            fig.suptitle(f'{hp_id} equalization')
+
+        return hp_filter
 
 # if __name__ == "__main__":
 #     main()

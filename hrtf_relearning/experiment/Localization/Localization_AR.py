@@ -2,7 +2,6 @@ import multiprocessing as mp
 import hrtf_relearning as hr
 import datetime
 import time
-from pathlib import Path
 from hrtf_relearning.experiment.analysis.localization.localization_analysis import *
 from hrtf_relearning.experiment.misc.localization_helpers.make_sequence import *
 from hrtf_relearning.experiment.misc.localization_helpers.uso_generation import generate_uso
@@ -10,58 +9,54 @@ from pythonosc import udp_client
 from hrtf_relearning.experiment.misc.training_helpers import meta_motion
 from hrtf_relearning.hrtf.binsim.hrtf2binsim import hrtf2binsim
 from pynput import keyboard
-date = datetime.datetime.now()
-date = f'{date.strftime("%d")}.{date.strftime("%m")}_{date.strftime("%H")}-{date.strftime("%M")}'
+
 logging.getLogger().setLevel('INFO')
 ROOT = hr.PATH
-
-# --- settings ----
-SUBJECT_ID = "PC"
-HRIR_NAME = "PC_notch"  # 'KU100', 'kemar', etc.
-EAR = 'left'
-HP = 'DT990'
-STIM = 'noise'  # 'noise' or 'uso'
-AZ_RANGE = (-35, 0)
-SECTOR_SIZE = (7, 14)
-MIRROR = False # set TRUE to mirror HRIRs left-right
-
-# --- load HRIR and Subject
-hrir_settings = dict(name=HRIR_NAME, ear=EAR, mirror=MIRROR,
-                     reverb=True, drr=20, hp_filter=True, hp=HP, convolution="cpu",storage="cpu")
-hrir = hrtf2binsim(hrir_settings, overwrite=True)
-subject = hr.Subject(SUBJECT_ID)
 
 class Localization:
     """
     Localization test:
         Test localization at uniformly random positions within sectors0
     """
-    def __init__(self, subject, hrir):
-        # make trial sequence and write to subject-
-
-        self.settings = {'kind': 'sectors',
-                         'azimuth_range': AZ_RANGE, 'elevation_range': (-35, 35),
-                         'sector_size': SECTOR_SIZE,
-                         'targets_per_sector': 3, 'replace': False, 'min_distance': 30,
-                         'gain': .2}
-        # alternative setting: play 3 times from each source in the hrir (works well for dome recorded hrirs)
-        # self.settings = {'kind': 'standard', 'azimuth_range': (-60, 60), 'elevation_range': (-40, 40),
-        #                  'targets_per_speaker': 3, 'min_distance': 10, 'gain': .2}
+    def __init__(self, subject, hrir_settings, loc_settings=None):
         self.subject = subject
+        date = datetime.datetime.now()
+        date = f'{date.strftime("%d")}.{date.strftime("%m")}_{date.strftime("%H")}-{date.strftime("%M")}'
+
+        # Build / refresh binsim files — hp filter loaded automatically from disk
+        hrir = hrtf2binsim(hrir_settings, overwrite=True)
+
+        ear    = hrir_settings.get('ear', None)
+        mirror = hrir_settings.get('mirror', False)
+        hp     = hrir_settings.get('hp', None)
+
         self.filename = subject.id + '_' + date + '_' + hrir.name
-        # metadata
         slab.set_default_samplerate(hrir.samplerate)
         self.hrir_sources = hrir.sources.vertical_polar
+        self.hrir_name = hrir.name
+        self.samplerate = hrir.samplerate
         self.sound_path = ROOT / 'data' / 'hrtf' / 'binsim' / hrir.name / 'sounds'
         self.target = None
 
-        # make sequence
+        if loc_settings is None:
+            loc_settings = {
+                'kind': 'sectors',
+                'azimuth_range': (-180, 180), 'elevation_range': (-35, 35),
+                'sector_size': (14, 14),
+                'targets_per_sector': 3, 'replace': False, 'min_distance': 20,
+                'gain': .2,
+                'stim': 'noise',
+            }
+        self.stim_type = loc_settings.get('stim', 'noise')
+        self.settings = loc_settings
+
         self.sequence = make_sequence(self.settings, self.hrir_sources)
         self.sequence.name = self.filename
         self.sequence.hrir = hrir.name
-        self.sequence.ear = EAR
-        self.sequence.mirrored = MIRROR
-        self.sequence.stim = STIM
+        self.sequence.ear = ear
+        self.sequence.mirrored = mirror
+        self.sequence.stim = self.stim_type
+        self.sequence.hp = hp
 
     def write(self):
         self.subject.localization[self.filename] = self.sequence
@@ -71,23 +66,38 @@ class Localization:
         # init pybinsim
         self.osc_client_1 = self._make_osc_client(port=10000)
         self.osc_client_2 = self._make_osc_client(port=10003)
-        self.binsim_worker = mp.Process(target=self._binsim_stream, args=(hrir.name,))
+        self.binsim_worker = mp.Process(target=self._binsim_stream, args=(self.hrir_name,))
         self.binsim_worker.start()
 
         # init motion sensor
         self.motion_sensor = self.init_sensor()
         time.sleep(.2)
 
-        self.play_sound('beep')
-        for self.target in self.sequence:
-            self.wait_for_button('Look at the Center and press Enter')
-            self.motion_sensor.calibrate()
-            self.play_trial()  # generate and play stim, get pose response and write to file
-        self.subject.last_sequence = self.sequence
-        self.sequence.response_errors = target_p(self.sequence, show=False)
-        self.write()
-        logging.info('Finished.')
-        return
+        try:
+            self.play_sound('beep')
+            for self.target in self.sequence:
+                self.wait_for_button('Look at the Center and press Enter')
+                self.motion_sensor.calibrate()
+                self.play_trial()  # generate and play stim, get pose response and write to file
+            self.subject.last_sequence = self.sequence
+            self.sequence.response_errors = target_p(self.sequence, show=False)
+            self.write()
+            logging.info('Finished.')
+            plot_dir = ROOT / 'data' / 'results' / 'plot' / self.subject.id
+            plot_elevation_response(self.sequence, filepath=plot_dir)
+            plot_localization(self.sequence, report_stats=['elevation', 'azimuth'], filepath=plot_dir)
+        finally:
+            self.motion_sensor.halt()
+            try:  # mute before killing so the audio stream stops cleanly
+                self.osc_client_2.send_message('/pyBinSimLoudness', 0)
+                time.sleep(0.1)
+            except Exception:
+                pass
+            self.binsim_worker.terminate()
+            self.binsim_worker.join(timeout=3)
+            if self.binsim_worker.is_alive():  # SIGTERM wasn't enough — force-kill
+                self.binsim_worker.kill()
+                self.binsim_worker.join()
 
     def play_trial(self):
         # generate stimulus
@@ -150,9 +160,8 @@ class Localization:
         state = meta_motion.State(device)
         return meta_motion.Sensor(state)
 
-    @staticmethod
-    def make_stim():
-        if STIM == 'noise':
+    def make_stim(self):
+        if self.stim_type == 'noise':
             stim = slab.Sound.pinknoise(duration=0.225, level=80).ramp(when='both', duration=0.01)
             n_silent = (numpy.arange(25,221,25).reshape(4,2) * stim.samplerate / 1000).astype(int)
             ramp_len = int(.005 * stim.samplerate)
@@ -167,16 +176,10 @@ class Localization:
                 stim.data[end - half_len: end + half_len] *= (1 - ramp_down)
                 # Silence the center
                 stim.data[start + half_len: end - half_len] = 0
-            # stim = slab.Sound.pinknoise(duration=0.5, level=90).ramp(when='both', duration=0.01)
-            # noise = slab.Sound.pinknoise(duration=0.025, level=90)
-            # noise = noise.ramp(when='both', duration=0.01)
-            # silence = slab.Sound.silence(duration=0.025)
-            # stim = slab.Sound.sequence(noise, silence, noise, silence, noise,
-            #                            silence, noise, silence, noise)
-            # stim.ramp('both', 0.01)
-        elif STIM == 'uso':
-            stim = generate_uso(samplerate=hrir.samplerate)
-        else: raise ValueError('STIM must be "noise" or "uso".')
+        elif self.stim_type == 'uso':
+            stim = generate_uso(samplerate=self.samplerate)
+        else:
+            raise ValueError('stim_type must be "noise" or "uso".')
         stim.level = 80
         return stim
 
@@ -190,10 +193,51 @@ class Localization:
             listener.join()  # block until listener.stop() is called
 
 if __name__ == "__main__":
-    loc_test = Localization(subject, hrir)
+
+    # --- SETTINGS ---
+    _SUBJECT_ID = "AGV"
+    _HRIR_NAME = "AGV_notch"  # 'KU100', 'kemar', etc.
+    _HP = 'DT990'
+    _EAR = None  # None (binaural), 'left', or 'right'
+    _MIRROR = False  # True to swap left/right spectral cues
+    _AZ_RANGE = (-35, 35)
+    _SECTOR_SIZE = (14, 14)
+    _STIM = 'noise'
+
+    # --- localization / sequence settings ---
+    _loc_settings = {
+        'kind': 'sectors',  # 'standard' or 'sectors'
+        'azimuth_range': _AZ_RANGE,  # (-1, 1) for midline-only, (-180, 180) for full sphere
+        'elevation_range': (-35, 35),
+        'targets_per_speaker': 2,
+        'targets_per_sector': 3,
+        'min_distance': 20,  # min angular distance between successive targets (°)
+        'gain': .2,
+        'stim': _STIM,  # 'noise' or 'uso'
+        'sector_size': _SECTOR_SIZE,
+        'replace': False
+    }
+
+    # --- HRIR / binsim settings ---
+    _hrir_settings = {
+        'name': _HRIR_NAME,
+        'subject_id': _SUBJECT_ID,
+        'ear': _EAR,  # None (binaural), 'left', or 'right'
+        'mirror': _MIRROR,  # True to swap left/right spectral cues
+        'reverb': True,
+        'drr': 20,
+        'hp_filter': True,
+        'hp': _HP,
+        'convolution': 'cuda',
+        'storage': 'cuda',
+    }
+
+    _subject = hr.Subject(_SUBJECT_ID)
+
+    loc_test = Localization(_subject, _hrir_settings, loc_settings=_loc_settings)
     loc_test.run()
-    sequence = subject.localization[loc_test.filename]
-    plot_dir = ROOT / 'data'  / 'results' / 'plot' / subject.id
+    sequence = _subject.localization[loc_test.filename]
+    plot_dir = ROOT / 'data' / 'results' / 'plot' / _subject.id
     plot_localization(sequence, report_stats=['azimuth', 'elevation'], filepath=plot_dir)
     plot_elevation_response(sequence, filepath=plot_dir)
     plt.show()

@@ -19,6 +19,9 @@ from pynput import keyboard
 import hrtf_relearning
 from hrtf_relearning.experiment.misc.localization_helpers.make_sequence import make_sequence
 from hrtf_relearning.experiment.misc.training_helpers import meta_motion
+from hrtf_relearning.experiment.analysis.localization.localization_analysis import (
+    plot_localization, plot_elevation_response,
+)
 
 ROOT = hrtf_relearning.PATH
 
@@ -35,34 +38,36 @@ class LocalizationDome:
     Parameters
     ----------
     subject : Subject
-    hrir : slab.HRTF
-    repetitions : int
-        How many times each speaker location is presented.
-    min_distance : float
-        Minimum angular distance (°) between successive targets.
+    hrir_settings : dict
+        Must contain 'name' (str, SOFA basename) and optionally 'hp' (str,
+        headphone model). Used only for sequence metadata — no file is loaded.
+    loc_settings : dict, optional
+        Sequence and stimulus parameters. Keys: 'targets_per_speaker' (int),
+        'min_distance' (float), 'gain' (float). Stim is always 'pinknoise_burst'.
     """
 
-    def __init__(self, subject, hrir, repetitions=3, min_distance=15):
+    def __init__(self, subject, loc_settings=None):
         self.subject = subject
         date = datetime.datetime.now().strftime('%d.%m_%H-%M')
-        self.filename = f"{subject.id}_{date}_{hrir.name}_dome"
+        self.filename = f"{subject.id}_{date}_dome"
 
-        slab.set_default_samplerate(hrir.samplerate)
-        self.hrir_sources = hrir.sources.vertical_polar  # (az, el, r)
+        if loc_settings is None:
+            loc_settings = {
+                'targets_per_speaker': 3,
+                'min_distance': 15,
+            }
 
-        # Pre-filter to vertical midline (az ≈ 0) — same locations as HRIR recording
-        sources = hrir.sources.vertical_polar
-        midline = sources[numpy.isclose(sources[:, 0], 0, atol=1.0), :2]  # (az, el)
-
-        settings = {
-            'kind': 'standard',
-            'targets_per_speaker': repetitions,
-            'min_distance': min_distance,
-            'gain': 0.2,
-        }
-        self.sequence = make_sequence(settings, midline)
+        # Vertical midline speaker positions (hardcoded to match dome layout)
+        midline = numpy.array([[  0. , -37.5],
+                               [  0. , -25. ],
+                               [  0. , -12.5],
+                               [  0. ,   0. ],
+                               [  0. ,  12.5],
+                               [  0. ,  25. ],
+                               [  0. ,  37.5]])
+        self.sequence = make_sequence({'kind': 'standard', **loc_settings}, midline)
         self.sequence.name = self.filename
-        self.sequence.hrir = hrir.name
+        self.sequence.stim = 'pinknoise_burst'
         self.target = None
 
     def write(self):
@@ -74,14 +79,20 @@ class LocalizationDome:
             freefield.initialize('dome', default='play_rec', sensor_tracking=False)
         self.motion_sensor = self._init_sensor()
 
-        for self.target in self.sequence:
-            self.wait_for_enter('Look at the center and press Enter...')
-            self.motion_sensor.calibrate()
-            self.play_trial()
+        try:
+            for self.target in self.sequence:
+                self.wait_for_enter('Look at the center and press Enter...')
+                self.motion_sensor.calibrate()
+                self.play_trial()
 
-        self.subject.last_sequence = self.sequence
-        self.write()
-        logging.info('Dome localization complete.')
+            self.subject.last_sequence = self.sequence
+            self.write()
+            logging.info('Dome localization complete.')
+            plot_dir = ROOT / 'data' / 'results' / 'plot' / self.subject.id
+            plot_elevation_response(self.sequence, filepath=plot_dir)
+            plot_localization(self.sequence, report_stats=['elevation'], filepath=plot_dir)
+        finally:
+            self.motion_sensor.halt()
 
     def play_trial(self):
         stim = self.make_stim()
@@ -97,7 +108,7 @@ class LocalizationDome:
         self.write()
 
     @staticmethod
-    def make_stim(level=75):
+    def make_stim(level=85):
         noise = slab.Sound.pinknoise(duration=0.025, level=level).ramp(when='both', duration=0.01)
         silence = slab.Sound.silence(duration=0.025)
         stim = slab.Sound.sequence(noise, silence, noise, silence, noise,

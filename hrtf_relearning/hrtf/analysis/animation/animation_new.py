@@ -6,8 +6,26 @@ from pathlib import Path
 
 from hrtf_relearning import PATH
 
-hrtf_dir = PATH / "data" / "hrtf" / "sofa"
-hrtf_id = "VG"
+hrtf_dir = PATH / "data" / "hrtf" / "sofa" / "pilot"
+
+# ---------------------------------------------------------------------------
+# Parameters – edit here
+# ---------------------------------------------------------------------------
+hrtf_id         = "universal"   # HRTF file stem (loads <hrtf_id>.sofa)
+
+azimuth_range   = (-37.5, 37.5)     # (min, max) in degrees; None = all
+elevation_range = (-40, 40)     # (min, max) in degrees; None = all
+ear             = "both"        # "left", "right", or "both"
+kind            = "image"   # "image" (contourf) or "waterfall"
+bandwidth       = (1000, 18000) # frequency range in Hz
+sampling_mode   = "interpolate" # "measured", "nearest", or "interpolate"
+azimuth_step    = 5.0           # grid step in degrees (nearest/interpolate)
+elevation_step  = 2.0           # grid step in degrees (nearest/interpolate)
+n_bins          = None          # frequency resolution for interpolation; None = default
+interval        = 220           # frame interval in ms
+write           = True          # False | True/'ffmpeg' (mp4) | 'pillow' (gif)
+show            = True          # display the animation window
+# ---------------------------------------------------------------------------
 
 
 def _sorted_unique(values):
@@ -720,19 +738,19 @@ def main(hrtf_id):
 
     ani, frames = hrtf_animation(
         hrtf,
-        azimuth_range=(-50, 50),
-        elevation_range=(-40, 40),
-        ear="both",
-        kind="waterfall",
-        bandwidth=(1000, 18000),
-        sampling_mode="interpolate",   # "measured", "nearest", or "interpolate"
-        azimuth_step=5.0,
-        elevation_step=5.0,
-        n_bins=None,
-        interval=120,
+        azimuth_range=azimuth_range,
+        elevation_range=elevation_range,
+        ear=ear,
+        kind=kind,
+        bandwidth=bandwidth,
+        sampling_mode=sampling_mode,
+        azimuth_step=azimuth_step,
+        elevation_step=elevation_step,
+        n_bins=n_bins,
+        interval=interval,
         filename=f"{hrtf_id}_animation",
-        write=True,
-        show=True,
+        write=write,
+        show=show,
     )
     return ani, frames
 

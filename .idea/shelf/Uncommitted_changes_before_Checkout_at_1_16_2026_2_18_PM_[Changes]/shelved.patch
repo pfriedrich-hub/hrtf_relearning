@@ -1,0 +1,15 @@
+Index: hrtf_relearning.egg-info/top_level.txt
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>hrtf_relearning\r\nlegacy\r\n
+===================================================================
+diff --git a/hrtf_relearning.egg-info/top_level.txt b/hrtf_relearning.egg-info/top_level.txt
+--- a/hrtf_relearning.egg-info/top_level.txt	(revision b04fdb71cb85573e04e88209fb938591870fa235)
++++ b/hrtf_relearning.egg-info/top_level.txt	(date 1765984657585)
+@@ -1,2 +1,6 @@
++analysis
++data
++experiment
++hrtf
+ hrtf_relearning
+ legacy

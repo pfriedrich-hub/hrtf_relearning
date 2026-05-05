@@ -22,7 +22,7 @@ N_REPEATS = 5
 BETA = 0.1
 SHOW = False
 
-OUTPUT_FILE = ROOT / 'hrtf' / 'record' / 'calibration' / 'calibration_dome_19.02.pkl'
+OUTPUT_FILE = ROOT / 'hrtf' / 'record' / 'calibration' / 'calibration_dome_auditory_attention.pkl'
 
 # ------------------------ SETUP ------------------------
 
@@ -32,14 +32,14 @@ def initialize_dome():
     slab.set_default_samplerate(FS)
 
 
-def select_speakers():
-    if SPEAKERS == 'full':
-        speaker_idx = numpy.arange(0, 46).tolist()
-    elif SPEAKERS == 'center':
-        speaker_idx = [20, 21, 22, 23, 24, 25, 26]
-    else:
-        raise ValueError
-
+def select_speakers(speaker_idx):
+    if not speaker_idx:
+        if SPEAKERS == 'full':
+            speaker_idx = numpy.arange(0, 46).tolist()
+        elif SPEAKERS == 'center':
+            speaker_idx = [20, 21, 22, 23, 24, 25, 26]
+        else:
+            raise ValueError
     return freefield.pick_speakers(speaker_idx)
 
 
@@ -286,7 +286,8 @@ def build_inverse_filter(recording, excitation):
 
 def main():
     initialize_dome()
-    speakers = select_speakers()
+    speaker_idx = [15, 20, 21, 22, 23, 24, 25, 26, 31]
+    speakers = select_speakers(speaker_idx)  # indices of speakers to calibrate
     excitation = make_excitation()
 
     # --------------------------------------------------
@@ -298,7 +299,7 @@ def main():
         equalize=False,
     )
 
-    fig, axes = plt.subplots(7, 1, figsize=(16, 6))
+    fig, axes = plt.subplots(len(speaker_idx), 1, figsize=(16, 6))
     for idx, (speaker, recording) in enumerate(raw_recordings.items()):
         recording.spectrum(axis=axes[idx])
 
@@ -326,45 +327,45 @@ def main():
         calibration=calibration,
     )
 
-    fig, axes = plt.subplots(7, 1, figsize=(16, 6))
+    fig, axes = plt.subplots(len(speaker_idx), 1, figsize=(16, 6))
     for idx, (speaker, recording) in enumerate(verified_recordings.items()):
         recording.spectrum(axis=axes[idx])
-
-    # --------------------------------------------------
-    # UPDATE LEVELS (NEW, INTEGRATED)
-    # --------------------------------------------------
-    residuals = update_levels_from_recordings(
-        verified_recordings,
-        calibration,
-        reference="mean",
-    )
-
-    # --------------------------------------------------
-    # OPTIONAL: SECOND VERIFICATION PASS
-    # --------------------------------------------------
-    verified_recordings_2 = record_speakers(
-        speakers,
-        excitation,
-        equalize=True,
-        calibration=calibration,
-    )
-
-    fig, axes = plt.subplots(7, 1, figsize=(16, 6))
-    for idx, (speaker, recording) in enumerate(verified_recordings_2.items()):
-        recording.spectrum(axis=axes[idx])
-
-    if SHOW:  # inspect
-        fig, axis = plt.subplots(1, 1)
-
-        for idx, rec in verified_recordings_2.items():
-            rec.spectrum(axis=axis)
-
-            # catch the last plotted line
-            line = axis.lines[-1]
-            line.set_label(f"Speaker {idx}")
-
-        axis.legend()
-        plt.show()
+    #
+    # # --------------------------------------------------
+    # # UPDATE LEVELS (NEW, INTEGRATED)
+    # # --------------------------------------------------
+    # residuals = update_levels_from_recordings(
+    #     verified_recordings,
+    #     calibration,
+    #     reference="mean",
+    # )
+    #
+    # # --------------------------------------------------
+    # # OPTIONAL: SECOND VERIFICATION PASS
+    # # --------------------------------------------------
+    # verified_recordings_2 = record_speakers(
+    #     speakers,
+    #     excitation,
+    #     equalize=True,
+    #     calibration=calibration,
+    # )
+    #
+    # fig, axes = plt.subplots(7, 1, figsize=(16, 6))
+    # for idx, (speaker, recording) in enumerate(verified_recordings_2.items()):
+    #     recording.spectrum(axis=axes[idx])
+    #
+    # if SHOW:  # inspect
+    #     fig, axis = plt.subplots(1, 1)
+    #
+    #     for idx, rec in verified_recordings_2.items():
+    #         rec.spectrum(axis=axis)
+    #
+    #         # catch the last plotted line
+    #         line = axis.lines[-1]
+    #         line.set_label(f"Speaker {idx}")
+    #
+    #     axis.legend()
+    #     plt.show()
 
     # --------------------------------------------------
     # SAVE FOR FREEFIELD (ONLY NOW)
@@ -377,6 +378,5 @@ def main():
     print(f"Calibration verified and saved to {OUTPUT_FILE}")
 
 
-# 
-# if __name__ == "__main__":
-#     main()
+if __name__ == "__main__":
+      main()

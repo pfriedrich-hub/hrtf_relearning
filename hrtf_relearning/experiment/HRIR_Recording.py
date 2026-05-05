@@ -26,14 +26,14 @@ from hrtf_relearning.experiment.analysis.localization.localization_analysis impo
     localization_accuracy, plot_localization, plot_elevation_response,
 )
 
-subject_id   = 'AGV'
-head_radius = 0.078
+subject_id   = 'IM'
+head_radius = 0.085
 reference_id = 'ref_03.04'
 n_directions = 3  # directions for the hrir recording
 n_recordings = 10  #
 fs           = 48828
 hp_freq      = 120
-n_rec_hp     = 3
+n_rec_hp     = 2
 show = True
 slab.set_default_samplerate(fs)
 freefield.set_logger('info')
@@ -53,20 +53,21 @@ def main(subject_id, reference_id, head_radius, hrir_settings,
         hp_freq      = hp_freq,
         head_radius = head_radius,
         show         = show,
-        overwrite_rec = False,
-        overwrite_hrir = True,
+        overwrite_rec = True,
+        overwrite_hrir = True, #todo doesnt overwrite
     )
 
     logging.info('--- Step 2: HP calibration ---')
-    hp_filter = calibrate_headphones(subject_id, 'MYSPHERE', n_rec_hp, show, False)
+    hp_filter = calibrate_headphones(subject_id, 'MYSPHERE', n_rec_hp, show, True)
     hp_filter = calibrate_headphones(subject_id, 'DT990', n_rec_hp, show, False)
 
     logging.info('--- Step 3: Acoustic test ---')
-    acoustic_test(hrir, hp_filter, subject_id=subject_id, hp_id='DT990', show=show)
+    acoustic_test(hrir, hp_filter, subject_id=subject_id, hp_id='MYSPHERE', show=show)
 
     logging.info('--- Step 4: Dome localization ---')
     dome_loc = LocalizationDome(subject, {'targets_per_speaker': 3, 'min_distance': 15})
     dome_loc.run()
+
 
 
     logging.info('--- Step 4: Dome localization ---')

@@ -304,7 +304,7 @@ def build_speaker_buffers(
         fs=params.fs,
         f1=params.f1,
         f2=params.f2,
-        ramp_samples=ramp_samples,
+        ramp_samples=ramp_samples,  # todo this should be part of params as well as loudness?
     )
 
     buffers = []

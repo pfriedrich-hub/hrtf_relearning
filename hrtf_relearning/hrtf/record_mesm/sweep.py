@@ -57,6 +57,10 @@ class MESMParams:
         Linear IR length used for parameter calculation, in seconds.
     L2 : float
         Second-order HIR length, in seconds.
+    amplitude : float
+        Peak amplitude of the sweep signal. Default 0.05.
+    ramp_samples : int
+        Half-Hann fade-in/fade-out length in samples. Default 48.
     """
     f1: float
     f2: float
@@ -74,6 +78,8 @@ class MESMParams:
     K: int
     L1: float
     L2: float
+    amplitude: float = 0.05
+    ramp_samples: int = 48
 
     def summary(self) -> str:
         lines = [
@@ -87,6 +93,8 @@ class MESMParams:
             f"  L1              : {self.L1*1e3:.1f} ms",
             f"  Onset gap Δ     : {self.delta*1e3:.1f} ms",
             f"  Total duration  : {self.T_total:.3f} s  ({self.T_total_samples} samples)",
+            f"  Amplitude       : {self.amplitude}",
+            f"  Ramp            : {self.ramp_samples} samples",
             "  Onset times     :",
         ]
         for i, t in enumerate(self.onset_times_s):
@@ -107,6 +115,8 @@ def compute_mesm_params(
     f1: float = 20.0,
     f2: float = 20_000.0,
     L2: float = 0.0,
+    amplitude: float = 0.05,
+    ramp_samples: int = 48,
 ) -> MESMParams:
     """
     Compute all MESM timing parameters for the pure-overlapping (η=1) design.
@@ -143,6 +153,10 @@ def compute_mesm_params(
     L2 : float
         Second-order HIR length in seconds (informational, not used in
         overlapping-mode timing). Default 0.
+    amplitude : float
+        Peak amplitude of the generated sweep. Default 0.05.
+    ramp_samples : int
+        Half-Hann fade-in/fade-out length in samples. Default 48.
 
     Returns
     -------
@@ -186,6 +200,8 @@ def compute_mesm_params(
         K=K,
         L1=L1,
         L2=L2,
+        amplitude=amplitude,
+        ramp_samples=ramp_samples,
     )
 
 
@@ -280,20 +296,18 @@ def inverse_sweep(sweep: np.ndarray, f1: float, f2: float) -> np.ndarray:
 
 def build_speaker_buffers(
     params: MESMParams,
-    ramp_samples: int = 48,
 ) -> list[np.ndarray]:
     """
     Build the N zero-padded sweep buffers ready to write to the RCX.
 
     Each buffer has length `params.T_total_samples`. Speaker i's sweep
-    starts at `params.onset_samples[i]`.
+    starts at `params.onset_samples[i]`. Amplitude and ramp are taken
+    from `params.amplitude` and `params.ramp_samples`.
 
     Parameters
     ----------
     params : MESMParams
         Output of `compute_mesm_params()`.
-    ramp_samples : int
-        Passed to `exponential_sweep()`. Default ~0.5 ms at 96 kHz.
 
     Returns
     -------
@@ -304,8 +318,8 @@ def build_speaker_buffers(
         fs=params.fs,
         f1=params.f1,
         f2=params.f2,
-        ramp_samples=ramp_samples,  # todo this should be part of params as well as loudness?
-    )
+        ramp_samples=params.ramp_samples,
+    ) * params.amplitude
 
     buffers = []
     for onset in params.onset_samples:

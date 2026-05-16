@@ -119,7 +119,8 @@ def run_test(plot: bool = True) -> None:
     # ------------------------------------------------------------------
     if plot:
         _plot_buffers(params)
-        input("\nCheck sweep buffer plot — press Enter to continue to recording ...")
+        input("\nCheck sweep buffer plot git"
+              "— press Enter to continue to recording ...")
 
     # ------------------------------------------------------------------
     # 4. Record

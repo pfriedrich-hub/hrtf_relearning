@@ -43,6 +43,7 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s | %(message)s")
 
 RCX_RX8  = hrtf_relearning.PATH / "hrtf" / "record_mesm" / "rcx" / "record_hrtf_rx8.rcx"
 RCX_RP2  = hrtf_relearning.PATH /  "hrtf" / "record_mesm" / "rcx" / "record_hrtf_rp2.rcx"
+# RCX_RX8  = hrtf_relearning.PATH / "hrtf" / "record_mesm" / "rcx" / "test.rcx"
 
 FS           = 48828    # start at 48 kHz; switch to 96000 once confirmed working
 N_SPEAKERS   = 7
@@ -102,6 +103,7 @@ def run_test(plot: bool = True) -> None:
         f1=F1,
         f2=F2,
         L2=L2_S,
+        amplitude=0.005
     )
     logging.info("\n" + params.summary())
 

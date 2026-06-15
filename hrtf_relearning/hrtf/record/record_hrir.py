@@ -13,7 +13,6 @@ import logging
 subject_id = 'kemar_pir'
 head_radius = 0.0875
 reference_id = 'ref_03.04'
-overwrite = False
 n_directions = 1
 n_recordings = 10
 n_samples_out = 512
@@ -106,7 +105,7 @@ def record_hrir(
             fs=fs,
             equalize=equalize_dome,
             key=True)
-        subject_rec.to_npz(subj_dir, overwrite=overwrite)
+        subject_rec.to_npz(subj_dir, overwrite=overwrite_rec)
     else:
         logging.info("Loading subject recordings from disk")
         subject_rec = Recordings.load(subj_dir)
@@ -125,7 +124,7 @@ def record_hrir(
             fs=fs,
             equalize=equalize_dome,
             key=False)
-        reference_rec.to_npz(ref_dir, overwrite=overwrite)
+        reference_rec.to_npz(ref_dir, overwrite=overwrite_rec)
     else:
         logging.info("Loading reference recordings from disk")
         reference_rec = Recordings.load(ref_dir)
@@ -191,19 +190,6 @@ def record_hrir(
 
     logging.info("HRIR pipeline finished successfully")
     return hrtf
-
-
-from pynput import keyboard
-def wait_for_button(msg=None):
-    if msg:
-        logging.info(msg)
-
-    def on_press(key):
-        if key == keyboard.Key.enter:
-            listener.stop()
-
-    with keyboard.Listener(on_press=on_press) as listener:
-        listener.join()
 
 
 # if __name__ == "__main__":

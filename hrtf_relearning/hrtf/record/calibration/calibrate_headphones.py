@@ -32,6 +32,7 @@ from matplotlib import pyplot as plt
 import numpy
 import pyfar
 import slab
+from hrtf_relearning.utils import wait_for_enter
 import freefield
 import warnings
 import soundfile as sf
@@ -339,7 +340,7 @@ def calibrate_headphones(subject_id=SUB_ID, hp_id=HP_ID, n_rec=N_REC, show=True,
         # Load or measure HpIR
         recordings = []
         for i in range(n_rec):
-            input('Press Enter to record...')
+            wait_for_enter('Press Enter to record...')
             recordings.append(measure_hp_raw(excitation, repeats=1))
         recording = slab.Sound(data=numpy.mean(recordings, axis=0))
 

@@ -50,7 +50,7 @@ import numpy as np
 import slab
 import freefield
 
-from .sweep import MESMParams, build_speaker_buffers, exponential_sweep, inverse_sweep
+from hrtf_relearning.hrtf.record_mesm.sweep import MESMParams, build_speaker_buffers, exponential_sweep, inverse_sweep
 
 # ---------------------------------------------------------------------------
 # RCX tag names — keep in sync with the RPvdsEX circuit

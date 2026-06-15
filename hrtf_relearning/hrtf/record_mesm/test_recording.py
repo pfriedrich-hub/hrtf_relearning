@@ -41,10 +41,11 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s | %(message)s")
 # Configuration — edit before each test session
 # ---------------------------------------------------------------------------
 
-RCX_RX8  = hrtf_relearning.PATH / "data" / "rcx" / "record_hrtf_rx8.rcx"
-RCX_RP2  = hrtf_relearning.PATH / "data" / "rcx" / "record_hrtf_rp2.rcx"
+RCX_RX8  = hrtf_relearning.PATH / "hrtf" / "record_mesm" / "rcx" / "record_hrtf_rx8.rcx"
+RCX_RP2  = hrtf_relearning.PATH /  "hrtf" / "record_mesm" / "rcx" / "record_hrtf_rp2.rcx"
+# RCX_RX8  = hrtf_relearning.PATH / "hrtf" / "record_mesm" / "rcx" / "test.rcx"
 
-FS           = 48000    # start at 48 kHz; switch to 96000 once confirmed working
+FS           = 48828    # start at 48 kHz; switch to 96000 once confirmed working
 N_SPEAKERS   = 7
 F1           = 20.0     # Hz
 F2           = 20_000.0 # Hz
@@ -102,6 +103,7 @@ def run_test(plot: bool = True) -> None:
         f1=F1,
         f2=F2,
         L2=L2_S,
+        amplitude=0.005
     )
     logging.info("\n" + params.summary())
 
@@ -117,7 +119,8 @@ def run_test(plot: bool = True) -> None:
     # ------------------------------------------------------------------
     if plot:
         _plot_buffers(params)
-        input("\nCheck sweep buffer plot — press Enter to continue to recording ...")
+        input("\nCheck sweep buffer plot git"
+              "— press Enter to continue to recording ...")
 
     # ------------------------------------------------------------------
     # 4. Record
@@ -236,5 +239,5 @@ def _plot_hrirs(hrirs, params) -> None:
     plt.tight_layout()
 
 
-if __name__ == "__main__":
-    run_test()
+# if __name__ == "__main__":
+#     run_test()

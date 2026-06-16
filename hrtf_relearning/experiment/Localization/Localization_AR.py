@@ -195,13 +195,13 @@ class Localization:
 if __name__ == "__main__":
 
     # --- SETTINGS ---
-    _SUBJECT_ID = "AGV"
-    _HRIR_NAME = "AGV_notch"  # 'KU100', 'kemar', etc.
+    _SUBJECT_ID = "AH"
+    _HRIR_NAME = "AH_notch"  # 'KU100', 'kemar', etc.
     _HP = 'DT990'
-    _EAR = None  # None (binaural), 'left', or 'right'
+    _EAR = 'left'  # None (binaural), 'left', or 'right'
     _MIRROR = False  # True to swap left/right spectral cues
-    _AZ_RANGE = (-35, 35)
-    _SECTOR_SIZE = (14, 14)
+    _AZ_RANGE = (-35, 0)
+    _SECTOR_SIZE = (7, 14)
     _STIM = 'noise'
 
     # --- localization / sequence settings ---

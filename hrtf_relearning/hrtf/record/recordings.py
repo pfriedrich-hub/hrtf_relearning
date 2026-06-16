@@ -11,6 +11,7 @@ import slab
 import freefield
 import soundfile as sf
 import pyfar
+from hrtf_relearning.utils import wait_for_enter
 
 # ---------------------------------------------------------------------
 # Base grid container
@@ -133,7 +134,7 @@ class Recordings(SpeakerGridBase):
                 print(f"Press Button when head is at {0 + elevation_step}° elevation ...")
                 freefield.wait_for_button()
             if key:
-                input(f'Press Enter when head is at {0 + elevation_step}° elevation ...')
+                wait_for_enter(f'Press Enter when head is at {0 + elevation_step}° elevation ...')
             for base_spk in speakers:
                 [spk] = copy.deepcopy(freefield.pick_speakers(base_spk.index))
                 spk.elevation -= elevation_step

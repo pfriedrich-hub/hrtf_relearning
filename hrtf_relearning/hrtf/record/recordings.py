@@ -130,10 +130,10 @@ class Recordings(SpeakerGridBase):
             elevation_step = n * res
             freefield.write(tag='bitmask', value=led_bits[n], processors='RX81')
             if button:
-                print(f"Press Button when head is at {0 + elevation_step}° elevation ...")
+                print(f"Press Button when head is at {elevation_step:.2f}° elevation ...")
                 freefield.wait_for_button()
             if key:
-                input(f'Press Enter when head is at {0 + elevation_step}° elevation ...')
+                input(f'Press Enter when head is at {elevation_step:.2f}° elevation ...')
             for base_spk in speakers:
                 [spk] = copy.deepcopy(freefield.pick_speakers(base_spk.index))
                 spk.elevation -= elevation_step

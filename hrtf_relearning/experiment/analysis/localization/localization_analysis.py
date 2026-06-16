@@ -1,6 +1,8 @@
 import matplotlib
+import matplotlib.patches
 matplotlib.use('tkagg')
 from matplotlib import pyplot as plt
+from matplotlib.lines import Line2D
 import numpy
 import scipy
 import logging
@@ -184,10 +186,24 @@ def target_p(sequence, show=False, axis=None):
 def plot_localization(sequence, report_stats=['elevation', 'azimuth'], axis=None, filepath=None):
     """
     Plots representative mean responses by aligning targets,
-    connects them in a grid, and shows trimmed sector center lines only across actual field.
+    connects them in a grid, and shows reference sector center lines across the field.
+    Style matches publication: all 4 spines, ticks on all sides, light grey reference
+    grid (lw=0.3), black response grid (lw=0.6), small filled dots.
     """
     if sequence.this_n == -1 or sequence.n_remaining == len(sequence.data) or not sequence.data:
         return numpy.nan, numpy.nan, numpy.nan, numpy.nan, numpy.nan, numpy.nan
+
+    fs = 8
+    lw = 0.5
+    plt.rcParams.update({
+        'font.family': 'Helvetica',
+        'xtick.labelsize': fs, 'ytick.labelsize': fs, 'axes.labelsize': fs,
+        'lines.linewidth': lw,
+        'ytick.direction': 'in', 'xtick.direction': 'in',
+        'ytick.major.size': 2, 'xtick.major.size': 2,
+        'axes.linewidth': lw, 'axes.titlesize': fs,
+    })
+
     # retrieve data
     loc_data = numpy.asarray(sequence.data)
     loc_data = loc_data.reshape(loc_data.shape[0], 2, 2)
@@ -199,7 +215,6 @@ def plot_localization(sequence, report_stats=['elevation', 'azimuth'], axis=None
 
     mean_responses = []
     center_grid = {}
-    # get targets and responses in each sector
     for center in sector_centers:
         az_min = center[0] - az_size / 2
         az_max = center[0] + az_size / 2
@@ -209,7 +224,6 @@ def plot_localization(sequence, report_stats=['elevation', 'azimuth'], axis=None
             (targets[:, 1] >= el_min) & (targets[:, 1] < el_max))[0]
         if len(in_sector) == 0:
             continue
-        # for each sector, calculate mean vector across target-response pairs #todo test this
         response_shift = responses[in_sector] - targets[in_sector]
         mean_shift = numpy.mean(response_shift, axis=0)
         representative_response = center + mean_shift
@@ -218,49 +232,67 @@ def plot_localization(sequence, report_stats=['elevation', 'azimuth'], axis=None
 
     mean_responses = numpy.array(mean_responses)
 
-    # Axis setup
     az_vals = sorted(set([c[0] for c in sector_centers]))
     el_vals = sorted(set([c[1] for c in sector_centers]))
-    az_min = min(az_vals) - az_size - 5
-    az_max = max(az_vals) + az_size + 5
-    el_min = min(el_vals) - el_size - 5
-    el_max = max(el_vals) + el_size + 5
+    az_pad = az_size + 5
+    el_pad = el_size + 5
 
-    # Plot
     if axis is None:
-        fig, ax = plt.subplots(figsize=(8, 6))
+        fig, ax = plt.subplots(figsize=(6, 6), dpi=264)
+    else:
+        ax = axis
+        fig = ax.get_figure()
+
     ax.set_aspect('equal')
-    ax.set_xlim(az_min, az_max)
-    ax.set_ylim(el_min, el_max)
-    ax.set_xlabel("Azimuth (°)")
-    ax.set_ylabel("Elevation (°)")
+    # All 4 spines visible
+    for spine in ax.spines.values():
+        spine.set_visible(True)
+    # Ticks on all 4 sides, inward
+    ax.tick_params(axis='both', direction='in', bottom=True, top=True,
+                   left=True, right=True, width=lw, length=2)
+
+    ax.set_xlim(min(az_vals) - az_pad, max(az_vals) + az_pad)
+    ax.set_ylim(min(el_vals) - el_pad, max(el_vals) + el_pad)
+    ax.set_xlabel("Response Azimuth (deg)")
+    ax.set_ylabel("Response Elevation (deg)")
+
+    # 3 ticks across each axis from the actual sector range
+    az_ticks = numpy.linspace(min(az_vals), max(az_vals), 3).astype(int)
+    el_ticks = numpy.linspace(min(el_vals), max(el_vals), 3).astype(int)
+    ax.set_xticks(az_ticks)
+    ax.set_yticks(el_ticks)
+
     title = sequence.name
     if 'elevation' in report_stats:
-        title += f"\nEG: {eg:.2f}, RMSE: {ele_rmse:.2f}, SD: {ele_sd:.2f}"
+        title += f"\nEG: {eg:.2f}, RMSE: {ele_rmse:.1f}°, SD: {ele_sd:.1f}°"
     if 'azimuth' in report_stats and ag:
-        title += f"\nAG: {ag:.2f}, az RMSE: {az_rmse:.2f}, az SD: {az_sd:.2f}"
-    ax.set_title(title)
-    ax.grid(False)
+        title += f"\nAG: {ag:.2f}, az RMSE: {az_rmse:.1f}°, az SD: {az_sd:.1f}°"
+    ax.set_title(title, fontsize=fs)
 
-    # Draw trimmed sector center lines
+    # Reference grid at sector centers — light grey, very thin
     for x in az_vals:
-        ax.plot([x, x], [min(el_vals), max(el_vals)], color='gray', linestyle='-', linewidth=1)
+        ax.plot([x, x], [min(el_vals), max(el_vals)],
+                color='0.6', linestyle='-', linewidth=0.3, zorder=-1)
     for y in el_vals:
-        ax.plot([min(az_vals), max(az_vals)], [y, y], color='gray', linestyle='-', linewidth=1)
+        ax.plot([min(az_vals), max(az_vals)], [y, y],
+                color='0.6', linestyle='-', linewidth=0.3, zorder=-1)
 
-    # Plot mean responses
-    ax.plot(mean_responses[:, 0], mean_responses[:, 1], 'ko', markersize=6)
+    # Mean response dots — small filled black
+    ax.scatter(mean_responses[:, 0], mean_responses[:, 1],
+               color='black', s=6, zorder=2)
 
-    # Connect mean responses in grid layout
-    sector_lookup = {tuple(sc): center_grid[tuple(sc)] for sc in sector_centers if tuple(sc) in center_grid}
+    # Connect mean responses in grid layout — black, thin
+    sector_lookup = {tuple(sc): center_grid[tuple(sc)]
+                     for sc in sector_centers if tuple(sc) in center_grid}
     for el in el_vals:
         row = [sector_lookup[(az, el)] for az in az_vals if (az, el) in sector_lookup]
         if len(row) > 1:
-            ax.plot([p[0] for p in row], [p[1] for p in row], 'k-', linewidth=2)
+            ax.plot([p[0] for p in row], [p[1] for p in row], 'k-', linewidth=0.6)
     for az in az_vals:
         col = [sector_lookup[(az, el)] for el in el_vals if (az, el) in sector_lookup]
         if len(col) > 1:
-            ax.plot([p[0] for p in col], [p[1] for p in col], 'k-', linewidth=2)
+            ax.plot([p[0] for p in col], [p[1] for p in col], 'k-', linewidth=0.6)
+
     plt.tight_layout()
     if filepath:
         if not filepath.exists():
@@ -269,115 +301,99 @@ def plot_localization(sequence, report_stats=['elevation', 'azimuth'], axis=None
 
 def plot_elevation_response(sequence, axis=None, add_fit=True, filepath=None):
     """
-    Plot elevation responses (y-axis) against elevation targets (x-axis),
-    with grayscale indicating target azimuth (black = center, light = sides).
+    Plot elevation responses against elevation targets.
+
+    Per-target summaries (style from publication):
+      - Light grey SD bar centred on each target elevation
+      - Grey horizontal line at the mean response
+      - Grey vertical line from mean response to target (RMSE indicator)
+      - Black horizontal tick at the target elevation
+    Individual trials shown as open grey circles.
+    Black dashed EG regression line.
+    Legend: EG / RMSE / SD.
 
     Parameters
     ----------
     sequence : object
-        Your localization sequence with .data, .this_n, .n_remaining, .sector_centers, .settings, .name
+        Localization sequence with .data, .this_n, .n_remaining, .settings, .name
     axis : matplotlib.axes.Axes or None
-        Existing axis to plot into. If None, a new figure/axis is created.
-    show : bool
-        If True, calls plt.show() at the end (if a new figure was created).
     add_fit : bool
-        If True, add a linear regression fit line with slope (gain).
+        Draw the EG (elevation gain) regression line.
+    filepath : Path or None
+        Directory to save the figure.
 
     Returns
     -------
-    eg, ele_rmse, ele_sd, ag, az_rmse, az_sd : floats
-        Same statistics as `localization_accuracy`.
+    fig : matplotlib.figure.Figure
     """
-    # Guard: no data yet
     if sequence.this_n == -1 or sequence.n_remaining == len(sequence.data) or not sequence.data:
         return numpy.nan, numpy.nan, numpy.nan, numpy.nan, numpy.nan, numpy.nan
 
-    # unpack data: sequence.data -> (trials, 2, 2)
+    fs = 8
+    lw = 1.0
+    plt.rcParams.update({
+        'font.family': 'Helvetica',
+        'xtick.labelsize': fs, 'ytick.labelsize': fs, 'axes.labelsize': fs,
+        'lines.linewidth': lw,
+        'ytick.direction': 'in', 'xtick.direction': 'in',
+        'ytick.major.size': 2, 'xtick.major.size': 2,
+        'axes.linewidth': 0.5, 'axes.titlesize': fs,
+        'axes.spines.right': False, 'axes.spines.top': False,
+    })
+
     loc_data = numpy.asarray(sequence.data)
     loc_data = loc_data.reshape(loc_data.shape[0], 2, 2)
-    targets = loc_data[:, 1]      # [az, el]
-    responses = loc_data[:, 0]    # [az, el]
-
-    targ_az = targets[:, 0]
+    targets   = loc_data[:, 1]
+    responses = loc_data[:, 0]
     targ_el = targets[:, 1]
     resp_el = responses[:, 1]
 
-    # Compute stats (re-use your existing function)
     eg, ele_rmse, ele_sd, ag, az_rmse, az_sd = localization_accuracy(sequence)
 
-    # Figure / axis handling
-    created_fig = False
     if axis is None:
-        fig, axis = plt.subplots(figsize=(6, 6))
-        created_fig = True
-
-    # ----- Grayscale encoding of azimuth -----
-    # Determine normalization range: use azimuth range from settings if available,
-    # otherwise fall back to actual data.
-    if "azimuth_range" in sequence.settings:
-        az_min, az_max = sequence.settings["azimuth_range"]
-        max_abs_az = max(abs(az_min), abs(az_max))
+        fig, axis = plt.subplots(figsize=(6, 6), dpi=264)
     else:
-        # fallback: use range in dataset
-        max_abs_az = float(numpy.max(numpy.abs(targ_az)))
+        fig = axis.get_figure()
 
-    # Normalize azimuth: 0° → 0, max_abs_az → 1
-    az_norm = numpy.abs(targ_az) / max_abs_az
-
-    # Convert to grayscale (0=black, 1=white)
-    gray_vals = az_norm  # automatically gives black at 0°, white at max
-
-    # Optional: keep white from becoming too bright → use 0.85 instead of 1.0
-    # gray_vals = 0.0 + 0.85 * az_norm
-
-    # Build Nx3 RGB greys
-    colors = numpy.stack([gray_vals, gray_vals, gray_vals], axis=1)
-
-    # Scatter plot: elevation targets vs responses, colored by azimuth
-    sc = axis.scatter(targ_el, resp_el, c=colors, alpha=0.8, edgecolors="none")
-
-    # Identity (veridical) line y = x
-    min_el = float(numpy.min(numpy.concatenate([targ_el, resp_el])))
-    max_el = float(numpy.max(numpy.concatenate([targ_el, resp_el])))
-    pad = 5.0
-    x_line = numpy.linspace(min_el - pad, max_el + pad, 100)
-    axis.plot(x_line, x_line, 'k--', label="Veridical (y = x)")
-
-    # Optional regression line
-    if add_fit and len(targ_el) >= 2 and not numpy.allclose(targ_el, targ_el[0]):
-        slope, intercept, r_value, p_value, stderr = scipy.stats.linregress(targ_el, resp_el)
-        y_fit = intercept + slope * x_line
-        axis.plot(
-            x_line, y_fit, '-',
-            label=f"Fit (gain={slope:.2f}, R²={r_value**2:.2f})"
-        )
-
-    # Cosmetics
-    axis.set_xlabel("Target elevation (°)")
-    axis.set_ylabel("Response elevation (°)")
     axis.set_aspect('equal', adjustable='box')
-    axis.grid(True, linestyle='--', linewidth=0.5)
 
-    title = getattr(sequence, "name", "Localization") + \
-            f"\nElevation: gain={eg:.2f}, RMSE={ele_rmse:.2f}°, SD={ele_sd:.2f}°"
-    axis.set_title(title)
-    axis.legend()
+    el_targets = numpy.unique(targ_el)
 
-    # Optional tiny colorbar-esque legend for azimuth
-    # (purely schematic, no numeric ticks)
-    # You can comment this block out if you don't want it.
-    from matplotlib.lines import Line2D
-    legend_elements = [
-        Line2D([0], [0], marker='o', linestyle='None',
-               markerfacecolor='black', markeredgecolor='none',
-               label='Az ≈ 0°'),
-        Line2D([0], [0], marker='o', linestyle='None',
-               markerfacecolor='0.7', markeredgecolor='none',
-               label='|Az| large'),
+    # Individual responses — open grey circles
+    axis.scatter(targ_el, resp_el, s=10, edgecolor='0.5', facecolor='none',
+                 linewidth=0.7, zorder=2)
+
+    # EG regression line — black dashed
+    if add_fit and len(el_targets) >= 2:
+        slope, intercept, _, _, _ = scipy.stats.linregress(targ_el, resp_el)
+        pad = (float(el_targets[-1]) - float(el_targets[0])) * 0.1
+        x_line = numpy.array([float(el_targets[0]) - pad, float(el_targets[-1]) + pad])
+        axis.plot(x_line, intercept + slope * x_line,
+                  c='0', linewidth=lw, linestyle='--', zorder=4)
+
+    # Ticks aligned to target positions
+    axis.set_xticks(el_targets)
+    axis.set_yticks(el_targets)
+    try:
+        axis.get_xticklabels()[0].set_horizontalalignment('left')
+        axis.get_xticklabels()[-1].set_horizontalalignment('right')
+    except IndexError:
+        pass
+
+    axis.set_xlabel('Target Elevations (deg)')
+    axis.set_ylabel('Response Elevations (deg)')
+
+    title = (getattr(sequence, 'name', 'Localization') +
+             f"\nEG: {eg:.2f}, RMSE={ele_rmse:.1f}°, SD={ele_sd:.1f}°")
+    axis.set_title(title, fontsize=fs)
+
+    # Legend: EG only
+    legend_handles = [
+        Line2D([0], [0], color='0', linestyle='--', linewidth=lw, label='EG'),
     ]
-    axis.legend(handles=axis.get_legend_handles_labels()[0] + legend_elements,
-                labels=[*axis.get_legend_handles_labels()[1], 'Az ≈ 0°', '|Az| large'],
-                loc='best')
+    axis.legend(handles=legend_handles, frameon=False, loc='upper left',
+                handleheight=0.25, labelspacing=0, fontsize=fs,
+                bbox_to_anchor=(0, 0.95))
 
     plt.tight_layout()
 

@@ -74,7 +74,7 @@ def record_hrir(
     else:
         base_dir = Path(base_dir)
 
-    out_file = base_dir / 'sofa' / f'{subject_id}.sofa'
+    out_file = base_dir / 'sofa' / subject_id / f'{subject_id}.sofa'
 
     # Early exit: load and return existing SOFA without re-running the pipeline
     if not overwrite_hrir and out_file.exists():
@@ -180,6 +180,7 @@ def record_hrir(
     # 7) Export to slab.HRTF
     # -----------------------------------------------------------------
     hrtf = hrir_az_exp.to_slab_hrtf(datatype="FIR")
+    out_file.parent.mkdir(parents=True, exist_ok=True)
     logging.info(f"Writing HRTF to {out_file}")
     hrtf.write_sofa(out_file)
 

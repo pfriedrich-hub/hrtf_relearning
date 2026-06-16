@@ -187,7 +187,7 @@ def hrtf2binsim(hrir_settings, overwrite: bool = True):
         sofa_name, ear or "binaural", drr, hp,
     )
 
-    hrir = slab.HRTF(data_dir / "sofa" / f"{sofa_name}.sofa")
+    hrir = slab.HRTF(data_dir / "sofa" / subject_id / f"{sofa_name}.sofa")
     hrir.name = sofa_name
     slab.set_default_samplerate(hrir.samplerate)
 

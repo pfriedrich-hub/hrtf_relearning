@@ -285,7 +285,7 @@ if __name__ == "__main__":
     hrir_name, fig, axes = learning_plot(subject_id, annotate_times=True)
     plt.savefig(hr.PATH / 'data' / 'results' / 'plot' / subject_id / f'learning_plot.svg')
     import slab
-    h = slab.HRTF(hr.PATH / 'data' / 'hrtf' / 'sofa' / str(subject_id+'_notch.sofa'))
+    h = slab.HRTF(hr.PATH / 'data' / 'hrtf' / 'sofa' / subject_id / str(subject_id+'_notch.sofa'))
     h.plot_tf(h.cone_sources(0), ear='left')
     plt.title(f"{hrir_name}")
     # plt.savefig(hr.PATH / 'data' / 'results' / 'plot' / subject_id / f"{hrir_name}")

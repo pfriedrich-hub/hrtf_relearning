@@ -18,8 +18,8 @@ matplotlib.rcParams['figure.raise_window'] = False
 logging.getLogger().setLevel('INFO')
 
 # -------------------- Config --------------------
-SUBJECT_ID = "JS"
-HRIR_NAME = "JS_notch"  # 'KU100', 'kemar', etc.
+SUBJECT_ID = "AH"
+HRIR_NAME = "AH_notch"  # 'KU100', 'kemar', etc.
 EAR = 'left'
 HP = 'DT990'
 

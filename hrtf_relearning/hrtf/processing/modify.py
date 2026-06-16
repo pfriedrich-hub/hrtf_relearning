@@ -45,7 +45,7 @@ hrtf_dir = PATH / 'data' / 'hrtf' / 'sofa'
 import slab
 from hrtf_relearning.hrtf.analysis.vsi import (vsi as _vsi, vsi_dissimilarity as _vsi_dissimilarity)
 
-sub_id = 'JS'
+sub_id = 'AH'
 
 SMOOTH = True
 N_KEEP = 4

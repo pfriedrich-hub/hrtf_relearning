@@ -25,3 +25,5 @@
 /.idea/workspace.xml
 __pycache__/
 *.pyc
+__pycache__/
+*.pyc

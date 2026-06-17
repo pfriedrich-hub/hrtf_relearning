@@ -38,7 +38,7 @@ settings = dict(
     target_time=0.5,
     min_dist=30,
     game_time=90,
-    trial_time=10,
+    trial_time=20,
     score_time=3,
     gain=.10,
     azimuth_range=AZ_RANGE, elevation_range=(-35, 35)

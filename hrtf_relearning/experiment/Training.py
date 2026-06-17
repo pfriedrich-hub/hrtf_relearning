@@ -78,16 +78,23 @@ def _drain_pose_queue(q):
             break
     return items
 
+def timestamp_id():
+    """Fresh 'day.month_hour.minute' id for the current wall-clock time.
+
+    NB: must read datetime.now() at call time — the module-level `date` is
+    frozen at import, so do not use it here.
+    """
+    return datetime.datetime.now().strftime("%d.%m_%H.%M")
+
+
 def begin_session(subject):
+    """Call once per sitting to get a session id and the starting trial index.
+
+    A *session* is one run of the training script. Within it there are several
+    90s *games*, each made of individual target *trials*. Game and trial
+    bookkeeping is handled explicitly in play_session / play_trial.
     """
-    Call this once at the beginning of a session to get:
-      - session_id (timestamp-based)
-      - base_index = current length of subject.trials
-    """
-    now = f'{date.strftime("%d")}.{date.strftime("%m")}_{date.strftime("%H")}.{date.strftime("%M")}'
-    session_id = datetime.datetime.now().strftime(now)
-    base_index = len(subject.trials)
-    return {"session_id": session_id, "base_index": base_index}
+    return {"session_id": timestamp_id(), "base_index": len(subject.trials)}
 
 def play_sound(osc_client, soundfile=None, duration=None, sleep=False):
     """Wrapper: set /pyBinSimFile to play a file (or synthesize pink noise pulses)."""
@@ -253,7 +260,8 @@ def head_tracker(distance, target, sensor_state, pose_queue, current_trial, plot
         time.sleep(0.02)
 
 def play_trial(subject, trial_idx, current_trial, target, distance, pulse_interval, pulse_state, sensor_state,
-               game_time_left, game_timer, session_total, last_goal_points, pose_queue):
+               game_time_left, game_timer, session_total, last_goal_points, pose_queue,
+               game_idx, trial_in_game, game_start_wall, session_id):
     """
     Returns: (game_timer, score)
     """
@@ -340,27 +348,37 @@ def play_trial(subject, trial_idx, current_trial, target, distance, pulse_interv
 
     # Collect pose samples; keep those for our trial id & time window
     raw = _drain_pose_queue(pose_queue)
-    # raw items are (t_monotonic, trial_id, yaw, pitch, roll)
+    # raw items are (t_wall, trial_id, yaw, pitch)
     trace = [(t, yaw, pitch,) for (t, tid, yaw, pitch) in raw
              if (tid == trial_idx) and (t0 <= t <= t1)]
 
-    # Store on subject
+    # Store on subject. Trials are appended sequentially (no index padding):
+    # trial_idx is set to the position this trial will occupy, so it is a
+    # unique, monotonically increasing id with no empty placeholder slots.
     trial_dict = {
         "trial_idx": int(trial_idx),
+        # explicit game bookkeeping (no longer inferred from a clock reset)
+        "game_idx": int(game_idx),                 # which 90s game (session-local)
+        "trial_in_game": int(trial_in_game),        # position within the game
+        "game_start_time": float(game_start_wall),  # wall clock when game began
+        "session_id": session_id,                   # one id per training run
+        # timing
+        "t_start": float(t0),                       # wall clock at trial start
+        "t_end": float(t1),                         # wall clock at trial end
+        "trial_duration": float(t1 - t0),           # actual trial length (s)
+        "game_clock": float(game_timer),            # cumulative time within game (s)
+        "duration": float(game_timer),              # legacy alias (== game_clock)
+        # stimulus / response
         "target": tuple(target.tolist() if hasattr(target, "tolist") else target),
-        "pose_trace": trace,  # [(t, yaw, pitch, roll), ...]
-        "duration": float(game_timer),
-        # add session id if you used begin_session():
-        "session_id": globals().get("_current_session_id", None)
+        "pose_trace": trace,                        # [(t, yaw, pitch), ...]
+        "score": int(score),                        # 0 miss, 1 hit, 2 fast hit
+        "reached_target": bool(score > 0),
     }
-    if trial_idx == len(subject.trials):
-        subject.trials.append(trial_dict)
-    elif 0 <= trial_idx < len(subject.trials):
-        subject.trials[trial_idx].update(trial_dict)
-    else:
-        while len(subject.trials) < (trial_idx + 1):
-            subject.trials.append({})
+    if 0 <= trial_idx < len(subject.trials):
+        # defensive: overwrite if a slot already exists (e.g. resumed run)
         subject.trials[trial_idx] = trial_dict
+    else:
+        subject.trials.append(trial_dict)
     subject.write()
     return game_timer, score
 
@@ -431,17 +449,19 @@ def play_session():
     while sensor_state.value != 1:
         time.sleep(0.05)
 
+    # One session id per run of the script; games within it are numbered.
+    session_id = timestamp_id()
     games_played = 0
     try:
-        while True:  # multiple sessions
+        while True:  # multiple games per session
             games_played += 1
-            # Reset per-session state
+            # Reset per-game state
             session_total.value = 0
             last_goal_points.value = 0
             game_time_left.value = float(settings["game_time"])
             enter_pressed.value = 0
 
-            # --- PRE-SESSION PROMPT ---
+            # --- PRE-GAME PROMPT ---
             ui_state.value = 1  # waiting to start
             while enter_pressed.value == 0:
                 time.sleep(0.05)
@@ -450,12 +470,16 @@ def play_session():
             scores = []
             game_timer = 0.0
             game_time_left.value = float(settings["game_time"])
+            # Explicit, per-game bookkeeping (recorded on every trial). This
+            # removes the need to infer game boundaries from clock resets and
+            # is robust to mid-game rests (which previously hid block breaks).
+            game_start_wall = time.time()
+            trial_in_game = 0
 
             while game_timer < settings["game_time"]:
-                # init new session for recording
-                sess = begin_session(subject)
-                globals()["_current_session_id"] = sess['session_id']
-                trial_idx = sess["base_index"] + 1
+                trial_in_game += 1
+                # next trial goes at the end of the list (sequential append)
+                trial_idx = len(subject.trials)
 
                 # pick next target
                 try:
@@ -476,7 +500,9 @@ def play_session():
 
                 game_timer, score = play_trial(subject, trial_idx, current_trial, target, distance, pulse_interval,
                                                pulse_state, sensor_state, game_time_left, game_timer, session_total,
-                                               last_goal_points, pose_queue)
+                                               last_goal_points, pose_queue,
+                                               game_idx=games_played, trial_in_game=trial_in_game,
+                                               game_start_wall=game_start_wall, session_id=session_id)
                 scores.append(score)
 
                 # if time is up, break

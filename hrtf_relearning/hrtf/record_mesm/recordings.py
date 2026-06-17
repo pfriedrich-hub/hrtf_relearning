@@ -443,12 +443,35 @@ def _extract_reference_params(
 # MESM measurement
 # ---------------------------------------------------------------------------
 
+def load_calibration(path: Path | str) -> dict:
+    """
+    Load a probe-mic speaker calibration pickle produced by
+    `record_mesm.calibration.calibrate_mesm`.
+
+    Parameters
+    ----------
+    path : Path-like
+        Path to the calibration .pkl.
+
+    Returns
+    -------
+    dict
+        {speaker_index: {"level": float (dB), "filter": slab.Filter}}
+    """
+    import pickle
+    path = Path(path)
+    with open(path, "rb") as f:
+        return pickle.load(f)
+
+
 def record_mesm(
     params: MESMParams,
     position: float | None = None,
     n_repetitions: int = 1,
     distance: float = 1.4,
     subject_id: str | None = None,
+    calibration: dict | None = None,
+    amplitude_only: bool = False,
 ) -> MESMRecording:
     """
     Run one MESM measurement: write all N sweep buffers, trigger, record.
@@ -466,21 +489,38 @@ def record_mesm(
         Speaker-to-microphone distance in metres (for delay calculation).
     subject_id : str, optional
         Stored in metadata.
+    calibration : dict, optional
+        Probe-mic speaker calibration ({idx: {"level", "filter"}}). When given,
+        each speaker's emitted sweep is level- and spectrum-equalised before
+        playback. Pass the same calibration for the reference and the subject
+        recordings. See `load_calibration`.
+    amplitude_only : bool
+        Apply only the per-speaker level offsets and skip the inverse FIR (for
+        broadband level differences such as a cinch vs XLR feed). Ignored when
+        `calibration` is None.
 
     Returns
     -------
     MESMRecording
     """
+    if calibration is None:
+        eq_msg = ", no speaker EQ"
+    elif amplitude_only:
+        eq_msg = ", speaker level EQ only"
+    else:
+        eq_msg = ", speaker level + spectral EQ"
     logging.info(
         f"MESM measurement: {params.n_speakers} speakers, "
         f"T={params.T_prime:.2f} s, T_total={params.T_total:.2f} s"
         + (f", position={position}°" if position is not None else "")
+        + eq_msg
     )
 
     n_delay = get_recording_delay(fs=params.fs, distance=distance)
     logging.info(f"  Recording delay: {n_delay} samples ({n_delay/params.fs*1e3:.2f} ms)")
 
-    buffers = build_speaker_buffers(params)
+    buffers = build_speaker_buffers(
+        params, calibration=calibration, amplitude_only=amplitude_only)
 
     recs_l, recs_r = [], []
     for rep in range(n_repetitions):

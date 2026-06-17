@@ -9,6 +9,7 @@ Measurement of Head-Related Transfer Functions." J. Audio Eng. Soc. 55(7/8).
 Equations cited as (Eq. N) refer to that paper.
 """
 from __future__ import annotations
+import logging
 import numpy as np
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -296,6 +297,8 @@ def inverse_sweep(sweep: np.ndarray, f1: float, f2: float) -> np.ndarray:
 
 def build_speaker_buffers(
     params: MESMParams,
+    calibration: dict | None = None,
+    amplitude_only: bool = False,
 ) -> list[np.ndarray]:
     """
     Build the N zero-padded sweep buffers ready to write to the RCX.
@@ -308,12 +311,25 @@ def build_speaker_buffers(
     ----------
     params : MESMParams
         Output of `compute_mesm_params()`.
+    calibration : dict, optional
+        Probe-mic speaker calibration from `record_mesm.calibration`, mapping
+        speaker index → {"level": float (dB), "filter": slab.Filter}. When
+        given, each speaker's sweep is pre-emphasised with that speaker's
+        inverse FIR and level offset before being placed in the buffer, so the
+        emitted sweep is level- and spectrum-equalised. Speakers absent from the
+        dict are left uncalibrated. When None, all speakers play the raw sweep.
+    amplitude_only : bool
+        Apply only the per-speaker level offset and skip the inverse FIR. Use
+        this when speakers differ only in broadband level (e.g. an unbalanced
+        cinch vs balanced XLR feed to the same speaker model) and no spectral
+        correction is wanted. Also used as a fallback for any speaker whose
+        calibration entry has no "filter".
 
     Returns
     -------
     buffers : list of np.ndarray, length N, each shape (T_total_samples,)
     """
-    sweep = exponential_sweep(
+    base = exponential_sweep(
         T_samples=params.T_prime_samples,
         fs=params.fs,
         f1=params.f1,
@@ -322,15 +338,47 @@ def build_speaker_buffers(
     ) * params.amplitude
 
     buffers = []
-    for onset in params.onset_samples:
+    for i, onset in enumerate(params.onset_samples):
+        sweep = base
+        if calibration is not None and i in calibration:
+            cal = calibration[i]
+            gain = 10.0 ** (cal["level"] / 20.0)
+            if amplitude_only or cal.get("filter") is None:
+                # level-matched only — no spectral correction, no filter tail
+                sweep = base * gain
+            else:
+                taps = np.asarray(cal["filter"].data).squeeze()
+                # pre-emphasis: emit the inverse-filtered, level-matched sweep
+                sweep = np.convolve(base * gain, taps)
+
         buf = np.zeros(params.T_total_samples)
-        end = onset + params.T_prime_samples
+        end = onset + len(sweep)
         if end > params.T_total_samples:
-            raise ValueError(
-                f"Sweep extends beyond buffer: onset={onset}, "
-                f"T_prime={params.T_prime_samples}, T_total={params.T_total_samples}"
+            # Filtered sweep (sweep + FIR tail) overruns the buffer. The EQ
+            # filter is minimum phase, so the clipped tail is low-energy.
+            overrun = end - params.T_total_samples
+            if onset + params.T_prime_samples > params.T_total_samples:
+                # even the raw sweep doesn't fit — a real timing error
+                raise ValueError(
+                    f"Sweep extends beyond buffer: onset={onset}, "
+                    f"T_prime={params.T_prime_samples}, "
+                    f"T_total={params.T_total_samples}"
+                )
+            logging.warning(
+                f"Speaker {i}: calibrated sweep tail exceeds buffer by "
+                f"{overrun} samples — truncating low-energy filter tail."
             )
+            sweep = sweep[: params.T_total_samples - onset]
+            end = params.T_total_samples
+
         buf[onset:end] = sweep
+
+        peak = np.max(np.abs(buf))
+        if peak > 1.0:
+            logging.warning(
+                f"Speaker {i}: calibrated sweep peak {peak:.3f} exceeds DAC "
+                f"full scale — reduce params.amplitude to avoid clipping."
+            )
         buffers.append(buf)
 
     return buffers

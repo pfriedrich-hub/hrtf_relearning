@@ -37,6 +37,7 @@ from .recordings import (
     initialize,
     record_reference,
     record_mesm,
+    load_calibration,
 )
 from .processing import compute_ir_mesm
 
@@ -66,6 +67,8 @@ n_samples_out = 512           # final HRIR length after processing
 hp_freq      = 20.0           # Hz — only needed if low-freq noise persists
 overwrite    = False
 expand_az    = True  # todo disable for rotating platform
+calibrate    = True  # apply probe-mic speaker EQ; False = reference-only correction
+amplitude_only = False  # True = level offsets only (e.g. cinch vs XLR), skip spectral FIR
 show         = True
 
 freefield.set_logger("info")
@@ -94,6 +97,9 @@ def record_hrir_mesm(
     overwrite: bool = False,
     show: bool = True,
     base_dir: Path | str | None = None,
+    calibrate: bool = True,
+    amplitude_only: bool = False,
+    calibration_file: Path | str | None = None,
     # Manual overrides — use these while record_reference() is not yet
     # implemented, or to lock in known-good values from a prior session.
     L1: float | None = None,
@@ -134,6 +140,20 @@ def record_hrir_mesm(
         High-pass cutoff for equalization in Hz.
     expand_az : bool
         Whether to expand measured azimuths symmetrically.
+    calibrate : bool
+        Apply the probe-mic speaker calibration to the emitted sweeps. When
+        False, no speaker EQ is applied and the reference recording alone
+        corrects the speaker/mic/room response. Use the same setting for the
+        reference and the subject recordings.
+    amplitude_only : bool
+        When calibrating, apply only the per-speaker level offsets and skip the
+        inverse FIR. Intended for setups where speakers differ only in broadband
+        level (e.g. one speaker on an unbalanced cinch feed, the rest on
+        balanced XLR) and no spectral correction is desired. Ignored when
+        calibrate=False.
+    calibration_file : Path-like, optional
+        Path to the calibration pickle. Defaults to
+        record_mesm/calibration/calibration_mesm.pkl. Ignored if calibrate=False.
     overwrite : bool
         Re-record even if data already exists on disk.
     show : bool
@@ -199,6 +219,43 @@ def record_hrir_mesm(
     logging.info(params.summary())
 
     # -----------------------------------------------------------------
+    # 2b) Optionally load probe-mic speaker calibration (applied to the sweeps)
+    # -----------------------------------------------------------------
+    # Skipping calibration is acceptable: the reference recording divides out the
+    # common speaker/mic/room response, so the DTF magnitude is largely unaffected
+    # (the main cost is SNR at the band edges). The only hard rule is consistency —
+    # use the same `calibrate` setting for the reference and the subject.
+    if not calibrate:
+        calibration = None
+        logging.info(
+            "Speaker calibration disabled (calibrate=False) — relying on the "
+            "reference recording to correct the speaker/mic/room response."
+        )
+    else:
+        if calibration_file is None:
+            calibration_file = (
+                hrtf_relearning.PATH / "hrtf" / "record_mesm"
+                / "calibration" / "calibration_mesm.pkl"
+            )
+        else:
+            calibration_file = Path(calibration_file)
+
+        if calibration_file.exists():
+            calibration = load_calibration(calibration_file)
+            mode = "level only" if amplitude_only else "level + spectral"
+            logging.info(
+                f"Loaded speaker calibration ({len(calibration)} speakers, "
+                f"{mode}) from {calibration_file}"
+            )
+        else:
+            calibration = None
+            logging.warning(
+                f"No speaker calibration at {calibration_file} — recording "
+                f"without speaker EQ. Run calibration.calibrate_mesm, or pass "
+                f"calibrate=False to silence this warning."
+            )
+
+    # -----------------------------------------------------------------
     # 3) Subject MESM recording
     # -----------------------------------------------------------------
     npz_file = subj_dir / "mesm_recording.npz"
@@ -211,6 +268,8 @@ def record_hrir_mesm(
             n_repetitions=n_repetitions,
             distance=distance,
             subject_id=subject_id,
+            calibration=calibration,
+            amplitude_only=amplitude_only,
         )
         subject_rec.to_npz(subj_dir, overwrite=overwrite)
     else:

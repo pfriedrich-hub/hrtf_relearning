@@ -52,6 +52,7 @@ class Localization:
 
         self.sequence = make_sequence(self.settings, self.hrir_sources)
         self.sequence.name = self.filename
+        self.sequence.label = hrir.name
         self.sequence.hrir = hrir.name
         self.sequence.ear = ear
         self.sequence.mirrored = mirror

@@ -289,7 +289,7 @@ def record_hrir_mesm(
     # 9) Export
     # -----------------------------------------------------------------
     hrtf = hrir_final.to_slab_hrtf(datatype="FIR")
-    out_file = base_dir / "sofa" / f"{subject_id}_mesm.sofa"
+    out_file = base_dir / "sofa" / subject_id / f"{subject_id}_mesm.sofa"
     if overwrite or not out_file.exists():
         out_file.parent.mkdir(parents=True, exist_ok=True)
         logging.info(f"Writing HRTF to {out_file}")

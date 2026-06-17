@@ -431,8 +431,10 @@ def play_session():
     while sensor_state.value != 1:
         time.sleep(0.05)
 
+    games_played = 0
     try:
         while True:  # multiple sessions
+            games_played += 1
             # Reset per-session state
             session_total.value = 0
             last_goal_points.value = 0
@@ -493,7 +495,7 @@ def play_session():
                 subject.write()  # your Subject.write() persists object
             else:
                 play_sound(osc_client, soundfile='buzzer.wav', duration=None, sleep=True)
-            logging.info(f"Game Over! Total Score: {int(session_total.value)}")
+            logging.info(f"Game {games_played} Over! Total Score: {int(session_total.value)}")
 
             # Show play-again prompt (same big overlay, different text)
             ui_state.value = 3  # session over → "Press Enter to play again"

@@ -45,7 +45,7 @@ hrtf_dir = PATH / 'data' / 'hrtf' / 'sofa'
 import slab
 from hrtf_relearning.hrtf.analysis.vsi import (vsi as _vsi, vsi_dissimilarity as _vsi_dissimilarity)
 
-sub_id = 'AH'
+sub_id = 'JS'
 
 SMOOTH = True
 N_KEEP = 4
@@ -444,7 +444,7 @@ def plot(hrtf, hrtf_modified, kind='image', ear='left', n_bins=None, xlim=(1000,
 
 
 if __name__ == '__main__':
-    hrtf = slab.HRTF(hrtf_dir / str(sub_id + '.sofa'))
+    hrtf = slab.HRTF(hrtf_dir / sub_id / str(sub_id + '.sofa'))
     hrtf_modified = smooth_and_replace_hrtf(
         hrtf,
         n_keep=N_KEEP,
@@ -465,4 +465,5 @@ if __name__ == '__main__':
     input('press enter to save')
     fig.savefig(PATH / 'data' / 'results' / 'plot' / sub_id / str(sub_id + '_modified.png'),
                 bbox_inches='tight')
-    hrtf_modified.write_sofa(hrtf_dir / str(sub_id + f'_{fname}.sofa'))
+    (hrtf_dir / sub_id).mkdir(parents=True, exist_ok=True)
+    hrtf_modified.write_sofa(hrtf_dir / sub_id / str(sub_id + f'_{fname}.sofa'))

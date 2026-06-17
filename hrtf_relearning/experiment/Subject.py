@@ -4,13 +4,15 @@ from pathlib import Path
 import pickle
 import hrtf_relearning
 results_dir = Path(hrtf_relearning.__file__).resolve().parent / "data" / "results"
+backup_dir = results_dir / "backup"
 results_dir.mkdir(parents=True, exist_ok=True)
+backup_dir.mkdir(parents=True, exist_ok=True)
 
 
 class Subject:
     def __init__(self, id: str):
         self.file_path = results_dir / f"{id}.pkl"
-        self.backup_path = self.file_path.with_suffix(".json")
+        self.backup_path = backup_dir / f"{id}.json"
         self.id = id
         if self.file_path.exists():
             self._load()

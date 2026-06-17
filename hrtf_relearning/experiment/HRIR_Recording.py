@@ -25,28 +25,26 @@ from hrtf_relearning.experiment.Localization.Localization_dome import Localizati
 from hrtf_relearning.experiment.analysis.localization.localization_analysis import (
     localization_accuracy, plot_localization, plot_elevation_response,
 )
-from hrtf_relearning.utils import wait_for_enter
 
 subject_id   = 'UG'
-head_diameter = 0.0835
+head_radius = 0.0835  # todo get the right tool
 reference_id = 'ref_03.04'
 n_directions = 3  # directions for the hrir recording
 n_recordings = 10  #
 fs           = 48828
 hp_freq      = 120
-n_rec_hp     = 3
+n_rec_hp     = 2
 show = True
 slab.set_default_samplerate(fs)
 freefield.set_logger('info')
 subject  = Subject(subject_id)
-head_radius = head_diameter / 2
 
-def main(subject_id, reference_id, head_radius,
+def main(subject_id, reference_id, head_radius, hrir_settings,
          n_directions, n_recordings, n_rec_hp=3, show=True):
 
     # 1. Record / load HRIR
     logging.info('--- Step 1: HRIR recording ---')
-    hrir = record_hrir(
+    hrir = record_hrir(  # todo catch enter in any case
         subject_id   = subject_id,
         reference_id = reference_id,
         n_directions = n_directions,
@@ -56,7 +54,7 @@ def main(subject_id, reference_id, head_radius,
         head_radius = head_radius,
         show         = show,
         overwrite_rec = True,
-        overwrite_hrir = True,
+        overwrite_hrir = True, #todo doesnt overwrite
     )
 
     logging.info('--- Step 2: HP calibration ---')
@@ -73,16 +71,16 @@ def main(subject_id, reference_id, head_radius,
     logging.info('--- Step 5: HP localization ---')
     ar_loc_settings = {'kind': 'standard', 'azimuth_range': (-1, 1), 'elevation_range': (-35, 35),
         'targets_per_speaker': 2, 'min_distance': 15, 'gain': .2, 'stim': 'noise'}
-    hrir_settings = dict(name=subject_id, subject_id=subject_id, ear=None, mirror=False, reverb=True,
-                         drr=20, hp_filter=True, convolution='cpu', storage='cpu')
 
     # mysphere localization
-    # hrir_settings['hp'] = 'MYSPHERE'
-    # ar_loc = Localization(subject, hrir_settings, ar_loc_settings)
-    # ar_loc.run()
+    hrir_settings = dict(name=subject_id, subject_id=subject_id, ear=None, mirror=False, reverb=True,
+        drr=20, hp_filter=True, hp='MYSPHERE', convolution='cpu', storage='cpu')
+    ar_loc = Localization(subject, hrir_settings, ar_loc_settings)
+    ar_loc.run()
 
     # dt990 localization
-    hrir_settings['hp'] = 'DT990'
+    hrir_settings = dict(name=subject_id, subject_id=subject_id, ear=None, mirror=False, reverb=True,
+        drr=20, hp_filter=True, hp='DT990', convolution='cpu', storage='cpu')
     ar_loc = Localization(subject, hrir_settings, ar_loc_settings)
     ar_loc.run()
 
@@ -114,7 +112,7 @@ def acoustic_test(hrir, hp_filter, subject_id, hp_id, show=True):
         freefield.initialize('headphones', default='bi_play_rec')
 
     hp_signal = hp_filter.apply(signal)
-    wait_for_enter('Put on headphones and press Enter to continue...')
+    input('Put on headphones and press Enter to continue...')
     hp_recordings = {}
     for src in hrir.sources.vertical_polar[src_idx]:
         idx = hrir.get_source_idx(src[0], src[1])[0]
@@ -129,7 +127,7 @@ def acoustic_test(hrir, hp_filter, subject_id, hp_id, show=True):
     freefield.initialize('dome', default='play_birec')
     spk_signal = copy.deepcopy(signal)
     spk_signal.level = 85
-    wait_for_enter('Remove headphones and press Enter to continue...')
+    input('Remove headphones and press Enter to continue...')
     dome_recordings = {}
     for src in hrir.sources.vertical_polar[src_idx]:
         speaker = freefield.pick_speakers((src[0], src[1]))

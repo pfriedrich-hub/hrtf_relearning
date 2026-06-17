@@ -23,5 +23,6 @@
 
 /.idea/vcs.xml
 /.idea/workspace.xml
-__pycache__
+__pycache__/
 *.pyc
+*.pyo

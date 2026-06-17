@@ -50,7 +50,25 @@ sub_id = 'JS'
 SMOOTH = True
 N_KEEP = 4
 PLOT = 'image'
-fname = 'notch'
+fname = 'notch'   # output SOFA suffix: <sub_id>_<fname>.sofa
+
+# ---------------------------------------------------------------------------
+# Modification mode
+# ---------------------------------------------------------------------------
+# 'synth' : cepstral smoothing + synthetic spectral features (FEATURES below).
+#           This is the original behaviour.
+# 'shift' : cepstral envelope/detail split + frequency-shift of the subject's
+#           OWN fine cues inside a band (SHIFT_* params below).  Ignores
+#           SMOOTH / N_KEEP / FEATURES.
+MODE = 'synth'
+
+# --- 'shift' mode parameters (only used when MODE == 'shift') --------------
+SHIFT_CENTER    = 8000   # band centre frequency [Hz]
+SHIFT_OCTAVES   = 1.0    # band width in octaves (fraction for octave_band)
+SHIFT_FACTOR    = 1.10   # >1 shifts cues up, <1 down, 1.0 = rebuild no-op
+SHIFT_ENV_NKEEP = 3      # cepstral coeffs kept for the envelope (lower = more detail shifted)
+SHIFT_SKIRT     = 0.25   # cosine taper outside the band [octaves]
+
 # ---------------------------------------------------------------------------
 # Spectral feature list
 # ---------------------------------------------------------------------------
@@ -354,6 +372,203 @@ def smooth_and_replace_hrtf(
     return out
 
 
+# ---------------------------------------------------------------------------
+# Band-limited frequency shift of fine spectral detail
+# ---------------------------------------------------------------------------
+# Ported from hrtf_course.manipulations.shift_band (2026-06-17).  Reuses this
+# module's native primitives (_smooth, minimum_phase_from_magnitude,
+# restore_itd_from_onsets) rather than the vendored copies in hrtf_course.
+#
+# Where smooth_and_replace_hrtf *adds synthetic* spectral features, shift_band
+# warps the subject's *own* fine spectral structure (the high-quefrency detail
+# that carries vertical-localisation cues) up or down in frequency within a
+# chosen band, leaving the broad spectral envelope in place.  Intended as a
+# fallback manipulation for the main experiment when fully synthetic cues prove
+# unlearnable: the shifted cues are spectrally realistic but remapped.
+
+
+def octave_band(center_hz, fraction=1.0):
+    """Return (low, high) Hz for an octave (or fractional-octave) band.
+
+    >>> octave_band(8000)            # one octave centred on 8 kHz
+    (5656.85..., 11313.70...)
+    >>> octave_band(8000, 1 / 3)     # third-octave
+    (7127.18..., 8979.69...)
+    """
+    if center_hz <= 0:
+        raise ValueError(f"center_hz must be positive, got {center_hz}")
+    if fraction <= 0:
+        raise ValueError(f"fraction must be positive, got {fraction}")
+    factor = 2.0 ** (fraction / 2.0)
+    return float(center_hz / factor), float(center_hz * factor)
+
+
+def erb_bandwidth(center_hz):
+    """Glasberg & Moore (1990) equivalent rectangular bandwidth, in Hz.
+
+    Useful for choosing band widths comparable to a single auditory filter.
+    """
+    f_kHz = center_hz / 1000.0
+    return 24.7 * (4.37 * f_kHz + 1.0)
+
+
+def band_window(freqs, low_hz, high_hz, skirt_octaves=0.25):
+    """Smooth in-band window on a log-frequency axis.
+
+    The window is 1 inside ``[low_hz, high_hz]`` and tapers to 0 over a skirt of
+    ``skirt_octaves`` on each side via a raised cosine in log frequency.  DC and
+    Nyquist are forced to 0 so the manipulation stays phase-coherent and cannot
+    blow up the band edges during minimum-phase reconstruction.
+    """
+    if not (0 < low_hz < high_hz):
+        raise ValueError(f"need 0 < low_hz < high_hz, got {low_hz}, {high_hz}")
+    if skirt_octaves < 0:
+        raise ValueError(f"skirt_octaves must be >= 0, got {skirt_octaves}")
+
+    f = numpy.asarray(freqs, dtype=float)
+    w = numpy.zeros_like(f)
+
+    pos = f > 0
+    if not numpy.any(pos):
+        return w
+
+    f_pos = f[pos]
+    log_f = numpy.log2(f_pos)
+    log_lo = numpy.log2(low_hz)
+    log_hi = numpy.log2(high_hz)
+    skirt = float(skirt_octaves)
+
+    if skirt == 0:
+        w_pos = ((log_f >= log_lo) & (log_f <= log_hi)).astype(float)
+    else:
+        w_pos = numpy.zeros_like(f_pos)
+
+        ramp_up = (log_f >= log_lo - skirt) & (log_f < log_lo)
+        x = (log_f[ramp_up] - (log_lo - skirt)) / skirt
+        w_pos[ramp_up] = 0.5 * (1 - numpy.cos(numpy.pi * x))
+
+        flat = (log_f >= log_lo) & (log_f <= log_hi)
+        w_pos[flat] = 1.0
+
+        ramp_dn = (log_f > log_hi) & (log_f <= log_hi + skirt)
+        x = (log_f[ramp_dn] - log_hi) / skirt
+        w_pos[ramp_dn] = 0.5 * (1 + numpy.cos(numpy.pi * x))
+
+    w[pos] = w_pos
+    w[0] = 0.0
+    if f.size and f[-1] > 0:
+        w[-1] = 0.0
+    return w
+
+
+def shift_band(
+        hrtf,
+        low_hz,
+        high_hz,
+        factor,
+        envelope_n_keep=3,
+        skirt_octaves=0.25,
+        onset_threshold_db=15.0,
+):
+    """Shift only the fine spectral structure inside ``[low_hz, high_hz]`` in
+    frequency, while leaving the broad spectral envelope in place.
+
+    Cepstral split (same decomposition the synthetic-feature path uses):
+
+    1. ``envelope = _smooth(|H|, n_keep=envelope_n_keep)`` — the broad spectral
+       slope (low-quefrency).  Carries coarse / externalisation information.
+    2. ``detail   = log|H| - envelope`` — the high-quefrency residual: sharp
+       peaks and notches that carry vertical-localisation cues.
+    3. Warp only ``detail`` in log-frequency by ``factor`` (each output
+       frequency ``f`` samples ``detail`` at ``f / factor``).
+    4. ``new_log_mag = envelope + window * detail_warped`` — recombine with the
+       in-band window so the warped detail vanishes outside the band; the
+       envelope is left untouched.
+    5. Minimum-phase reconstruction; restore original onset-based ITD.
+
+    Parameters
+    ----------
+    hrtf : slab.HRTF
+        Input HRTF.  Not modified (a deep copy is returned).
+    low_hz, high_hz : float
+        Band edges in Hz.  See :func:`octave_band` / :func:`erb_bandwidth` for
+        choosing these from a single centre frequency.
+    factor : float
+        Multiplicative shift applied to the high-quefrency detail.
+        ``> 1`` shifts cues up in frequency (e.g. 1.10 ≈ +10 %, ~+1.4
+        semitones), ``< 1`` shifts them down, ``== 1`` is a rebuild no-op.
+    envelope_n_keep : int, default 3
+        Cosine coefficients retained for the envelope.  Lower → more detail
+        gets shifted; higher → only the very sharpest peaks/notches move.
+    skirt_octaves : float, default 0.25
+        Width of the cosine taper outside the band, in octaves.
+    onset_threshold_db : float, default 15.0
+        Threshold for onset-based ITD restoration.
+
+    Returns
+    -------
+    slab.HRTF  (deep copy, processed)
+    """
+    if factor <= 0:
+        raise ValueError(f"factor must be positive, got {factor}")
+    if envelope_n_keep < 1:
+        raise ValueError(f"envelope_n_keep must be >= 1, got {envelope_n_keep}")
+
+    out = copy.deepcopy(hrtf)
+
+    for filt, source in zip(out, out.sources.vertical_polar):
+        ir_original = numpy.asarray(filt.data, dtype=float)
+        if ir_original.ndim != 2 or ir_original.shape[1] != 2:
+            raise ValueError("Each HRIR must have shape (n_samples, 2)")
+
+        n_samples, _ = ir_original.shape
+        fs = filt.samplerate
+        freqs = numpy.fft.rfftfreq(n_samples, d=1.0 / fs)
+
+        spec_original = numpy.fft.rfft(ir_original, axis=0)
+        mag_in = numpy.abs(spec_original)
+
+        eps = numpy.finfo(float).tiny
+        log_mag_db = 20.0 * numpy.log10(numpy.maximum(mag_in, eps))
+
+        # 1) envelope (low-quefrency) via the shared cepstral smoother
+        envelope_mag = _smooth(mag_in, n_keep=int(envelope_n_keep))
+        envelope_db = 20.0 * numpy.log10(numpy.maximum(envelope_mag, eps))
+
+        # 2) detail (high-quefrency residual)
+        detail_db = log_mag_db - envelope_db
+
+        # 3) warp the detail in log-frequency by `factor`
+        src_freqs = freqs / factor
+        detail_warped = numpy.empty_like(detail_db)
+        for ch in range(detail_db.shape[1]):
+            detail_warped[:, ch] = numpy.interp(
+                src_freqs, freqs, detail_db[:, ch],
+                left=detail_db[0, ch], right=detail_db[-1, ch],
+            )
+
+        # 4) confine the warp to the band; envelope preserved everywhere
+        w = band_window(freqs, low_hz, high_hz, skirt_octaves=skirt_octaves)
+        new_log_mag = envelope_db + w[:, None] * detail_warped
+        new_mag = 10.0 ** (new_log_mag / 20.0)
+
+        # blend in-band only; outside the skirt w = 0 ⇒ mag_out = mag_in
+        mag_out = (1.0 - w[:, None]) * mag_in + w[:, None] * new_mag
+
+        # 5) minimum-phase reconstruction
+        spec_processed = minimum_phase_from_magnitude(mag_out)
+        ir_processed = numpy.fft.irfft(spec_processed, n=n_samples, axis=0)
+
+        # 6) restore original ITD
+        ir_processed = restore_itd_from_onsets(
+            ir_original, ir_processed, threshold_db=onset_threshold_db,
+        )
+
+        filt.data = ir_processed
+
+    return out
+
+
 def _build_tf_image(hrtf, sourceidx, ear, n_bins, xlim, floor_db=-25):
     """
     Build the image array used by plot_tf's 'image' mode, using
@@ -444,15 +659,32 @@ def plot(hrtf, hrtf_modified, kind='image', ear='left', n_bins=None, xlim=(1000,
 
 
 if __name__ == '__main__':
+    if MODE not in ('synth', 'shift'):
+        raise ValueError(f"MODE must be 'synth' or 'shift', got {MODE!r}")
+
     hrtf = slab.HRTF(hrtf_dir / sub_id / str(sub_id + '.sofa'))
-    hrtf_modified = smooth_and_replace_hrtf(
-        hrtf,
-        n_keep=N_KEEP,
-        smooth=SMOOTH,
-        features=FEATURES,
-        ref_n_keep=4,
-        onset_threshold_db=15.0,
-    )
+
+    if MODE == 'shift':
+        low_hz, high_hz = octave_band(SHIFT_CENTER, fraction=SHIFT_OCTAVES)
+        print(f"shift_band: {low_hz:.0f}-{high_hz:.0f} Hz, factor={SHIFT_FACTOR}")
+        hrtf_modified = shift_band(
+            hrtf,
+            low_hz,
+            high_hz,
+            factor=SHIFT_FACTOR,
+            envelope_n_keep=SHIFT_ENV_NKEEP,
+            skirt_octaves=SHIFT_SKIRT,
+            onset_threshold_db=15.0,
+        )
+    else:  # 'synth'
+        hrtf_modified = smooth_and_replace_hrtf(
+            hrtf,
+            n_keep=N_KEEP,
+            smooth=SMOOTH,
+            features=FEATURES,
+            ref_n_keep=4,
+            onset_threshold_db=15.0,
+        )
 
     # VSI metrics in the 5.7–11.3 kHz band (peak VSI band, Trapeau et al. 2016)
     VSI_BW = (5700, 11300)

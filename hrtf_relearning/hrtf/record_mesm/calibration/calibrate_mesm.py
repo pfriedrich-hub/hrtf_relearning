@@ -296,6 +296,7 @@ def main() -> dict:
 
     # OFFLINE DESIGN
     level_eq = compute_level_equalization(raw_recordings)
+    #todo level spread at 2 db still too high, run multiple level calibrations?
     calibration = {}
     for idx in SPEAKER_IDX:
         calibration[idx] = {

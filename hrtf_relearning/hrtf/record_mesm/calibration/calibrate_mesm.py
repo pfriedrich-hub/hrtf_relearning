@@ -78,8 +78,8 @@ SPEAKER_IDX   = list(range(N_SPEAKERS))   # which speakers to calibrate
 
 LOW_FREQ      = 20.0          # Hz — inversion lower bound
 HIGH_FREQ     = FS / 2        # Hz — inversion upper bound
-SWEEP_DUR     = 1.0          # s — calibration sweep duration
-LEVEL         = 80           # dB — excitation level
+SWEEP_DUR     = 0.5          # s — calibration sweep duration
+LEVEL         = 50           # dB — excitation level
 TAIL_S        = 0.10         # s — recording tail after the sweep (IR capture)
 DISTANCE      = 1.4          # m — speaker-to-mic distance (delay compensation)
 
@@ -286,7 +286,7 @@ def main() -> dict:
     matplotlib.use("TkAgg")
     from matplotlib import pyplot as plt
 
-    from .diagnostics import plot_calibration_result, calibration_metrics
+    from hrtf_relearning.hrtf.record_mesm.calibration.diagnostics import plot_calibration_result, calibration_metrics
 
     initialize_mesm()
     excitation = make_excitation()
@@ -320,4 +320,4 @@ def main() -> dict:
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(levelname)s | %(message)s")
-    main()
+    # main()

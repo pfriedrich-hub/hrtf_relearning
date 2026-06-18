@@ -342,7 +342,7 @@ def _wait_for_recording(
         Sample rate, used to compute expected wall-clock duration.
     """
     expected = rec_n_samples / fs
-    deadline = time.time() + expected + 2.0  # 2 s safety margin
+    deadline = time.time() + expected  # 2 s safety margin
 
     while time.time() < deadline:
         try:

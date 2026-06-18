@@ -61,7 +61,11 @@ hrir_settings = dict(
 # -------------------- Global HRIR/Sequence --------------------
 
 # --- load and process HRIR
-hrir = hrtf2binsim(hrir_settings)
+# Under the spawn start method (Windows/macOS) every worker re-imports this
+# module, so this line runs once per process. Only the parent (__main__) needs
+# to build the pyBinSim database/settings on disk; spawned workers
+# (__mp_main__) just reconstruct the in-memory HRIR object.
+hrir = hrtf2binsim(hrir_settings, build=(__name__ == "__main__"))
 slab.set_default_samplerate(hrir.samplerate)
 HRIR_DIR = ROOT / "data" / "hrtf" / "binsim" / hrir.name
 

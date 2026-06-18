@@ -162,12 +162,17 @@ def write_settings(
 # Main entry point
 # ---------------------------------------------------------------------
 
-def hrtf2binsim(hrir_settings, overwrite: bool = True):
+def hrtf2binsim(hrir_settings, overwrite: bool = True, build: bool = True):
     """
     Convert a SOFA HRTF to a pyBinSim-compatible MAT database and write settings.
 
     DS filters are written only if the database does not exist or overwrite=True.
     LR / HP filters and settings are updated on every call.
+
+    If build=False, only the in-memory HRIR object is reconstructed and returned;
+    all disk side effects (sound resampling, LR/HP IR computation, MAT + settings
+    writing) are skipped. Use this in spawned worker processes that re-import the
+    training module and only need the HRIR object, not a fresh database rebuild.
     """
     sofa_name = hrir_settings.get("name", None)
     # subject_id is the base name before any modifier suffix (e.g. 'JP' from 'JP_notch_left')
@@ -210,6 +215,12 @@ def hrtf2binsim(hrir_settings, overwrite: bool = True):
 
     base_dir = data_dir / "binsim" / hrir.name
     mat_path = base_dir / f"{hrir.name}_filters.mat"
+
+    if not build:
+        # Cheap path: only the in-memory HRIR object is needed (e.g. in spawned
+        # worker processes). Skip all disk side effects.
+        logger.info("hrtf2binsim | build=False, returning HRIR object only")
+        return hrir
 
     first_build = (not base_dir.exists()) or overwrite
     if first_build:

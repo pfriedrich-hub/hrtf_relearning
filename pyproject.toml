@@ -8,7 +8,8 @@ version = "0.1.0"
 dependencies = [
     "slab @ git+https://github.com/pfriedrich-hub/slab.git",
     "pybinsim @ git+https://github.com/pfriedrich-hub/pybinsim_tuil.git",
-"h5py", "h5netcdf", "metawear", "pyqt5", "pynput", "pyfar"
+"h5py", "h5netcdf", "metawear", "pyqt5", "pynput", "pyfar",
+    "pycaw ; sys_platform == 'win32'"
 ]
 
 [tool.setuptools.packages.find]

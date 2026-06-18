@@ -10,6 +10,7 @@ date = datetime.datetime.now()
 import hrtf_relearning
 ROOT = hrtf_relearning.PATH
 
+from hrtf_relearning.experiment.misc.system_volume import set_windows_volume
 from hrtf_relearning.experiment.misc.training_helpers import meta_motion, game_ui
 from hrtf_relearning.experiment.Subject import Subject
 from hrtf_relearning.experiment.misc.training_helpers.training_targets import set_target_probabilistic
@@ -19,7 +20,7 @@ logging.getLogger().setLevel('INFO')
 
 # -------------------- Config --------------------
 SUBJECT_ID = "JS"
-HRIR_NAME = "JS_notch"  # 'KU100', 'kemar', etc.
+HRIR_NAME = "AH_notch"  # 'KU100', 'kemar', etc.
 EAR = 'left'
 HP = 'DT990'
 
@@ -38,7 +39,7 @@ settings = dict(
     target_time=0.5,
     min_dist=30,
     game_time=90,
-    trial_time=10,
+    trial_time=20,
     score_time=3,
     gain=.10,
     azimuth_range=AZ_RANGE, elevation_range=(-35, 35)
@@ -60,7 +61,11 @@ hrir_settings = dict(
 # -------------------- Global HRIR/Sequence --------------------
 
 # --- load and process HRIR
-hrir = hrtf2binsim(hrir_settings)
+# Under the spawn start method (Windows/macOS) every worker re-imports this
+# module, so this line runs once per process. Only the parent (__main__) needs
+# to build the pyBinSim database/settings on disk; spawned workers
+# (__mp_main__) just reconstruct the in-memory HRIR object.
+hrir = hrtf2binsim(hrir_settings, build=(__name__ == "__main__"))
 slab.set_default_samplerate(hrir.samplerate)
 HRIR_DIR = ROOT / "data" / "hrtf" / "binsim" / hrir.name
 
@@ -559,6 +564,7 @@ def play_session():
 # -------------------- Main --------------------
 
 if __name__ == "__main__":
+    set_windows_volume(50)
     try:
         play_session()
     except KeyboardInterrupt:

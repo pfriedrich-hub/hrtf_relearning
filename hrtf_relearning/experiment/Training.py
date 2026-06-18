@@ -10,6 +10,7 @@ date = datetime.datetime.now()
 import hrtf_relearning
 ROOT = hrtf_relearning.PATH
 
+from hrtf_relearning.experiment.misc.system_volume import set_windows_volume
 from hrtf_relearning.experiment.misc.training_helpers import meta_motion, game_ui
 from hrtf_relearning.experiment.Subject import Subject
 from hrtf_relearning.experiment.misc.training_helpers.training_targets import set_target_probabilistic
@@ -18,7 +19,7 @@ matplotlib.rcParams['figure.raise_window'] = False
 logging.getLogger().setLevel('INFO')
 
 # -------------------- Config --------------------
-SUBJECT_ID = "AH"
+SUBJECT_ID = "JS"
 HRIR_NAME = "AH_notch"  # 'KU100', 'kemar', etc.
 EAR = 'left'
 HP = 'DT990'
@@ -559,6 +560,7 @@ def play_session():
 # -------------------- Main --------------------
 
 if __name__ == "__main__":
+    set_windows_volume(50)
     try:
         play_session()
     except KeyboardInterrupt:

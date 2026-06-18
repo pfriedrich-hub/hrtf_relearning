@@ -6,6 +6,7 @@ from hrtf_relearning.experiment.analysis.localization.localization_analysis impo
 from hrtf_relearning.experiment.misc.localization_helpers.make_sequence import *
 from hrtf_relearning.experiment.misc.localization_helpers.uso_generation import generate_uso
 from hrtf_relearning.experiment.misc.training_helpers import meta_motion
+from hrtf_relearning.experiment.misc.system_volume import set_windows_volume
 from hrtf_relearning.hrtf.binsim.hrtf2binsim import hrtf2binsim
 from pynput import keyboard
 date = datetime.datetime.now()
@@ -262,6 +263,7 @@ class VRPoseBridge:
             return self.latest_pose.copy()
 
 if __name__ == "__main__":
+    set_windows_volume(50)
     loc_test = Localization(subject, hrir)
     loc_test.run()
     sequence = subject.localization[loc_test.filename]

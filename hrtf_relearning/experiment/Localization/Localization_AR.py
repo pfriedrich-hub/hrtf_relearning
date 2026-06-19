@@ -197,12 +197,12 @@ if __name__ == "__main__":
 
     # --- SETTINGS ---
     _SUBJECT_ID = "JS"
-    _HRIR_NAME = "JS_notch"  # 'KU100', 'kemar', etc.
+    _HRIR_NAME = "JS_test_1"  # 'KU100', 'kemar', etc.
     _HP = 'DT990'
-    _EAR = 'left'  # None (binaural), 'left', or 'right'
+    _EAR = None  # None (binaural), 'left', or 'right'
     _MIRROR = False  # True to swap left/right spectral cues
-    _AZ_RANGE = (-35, 0)
-    _SECTOR_SIZE = (7, 14)
+    _AZ_RANGE = (-35, 35)
+    _SECTOR_SIZE = (14, 14)
     _STIM = 'noise'
 
     # --- localization / sequence settings ---
@@ -211,7 +211,7 @@ if __name__ == "__main__":
         'azimuth_range': _AZ_RANGE,  # (-1, 1) for midline-only, (-180, 180) for full sphere
         'elevation_range': (-35, 35),
         'targets_per_speaker': 2,
-        'targets_per_sector': 3,
+        'targets_per_sector': 2,
         'min_distance': 20,  # min angular distance between successive targets (°)
         'gain': .2,
         'stim': _STIM,  # 'noise' or 'uso'

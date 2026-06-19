@@ -20,7 +20,7 @@ logging.getLogger().setLevel('INFO')
 
 # -------------------- Config --------------------
 SUBJECT_ID = "JS"
-HRIR_NAME = "AH_notch"  # 'KU100', 'kemar', etc.
+HRIR_NAME = "JS_notch"  # 'KU100', 'kemar', etc.
 EAR = 'left'
 HP = 'DT990'
 
@@ -39,7 +39,7 @@ settings = dict(
     target_time=0.5,
     min_dist=30,
     game_time=90,
-    trial_time=20,
+    trial_time=10,
     score_time=3,
     gain=.10,
     azimuth_range=AZ_RANGE, elevation_range=(-35, 35)

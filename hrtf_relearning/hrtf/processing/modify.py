@@ -50,7 +50,7 @@ sub_id = 'JS'
 SMOOTH = True
 N_KEEP = 4
 PLOT = 'image'
-fname = 'notch'   # output SOFA suffix: <sub_id>_<fname>.sofa
+fname = 'test_1'   # output SOFA suffix: <sub_id>_<fname>.sofa
 
 # ---------------------------------------------------------------------------
 # Modification mode
@@ -60,10 +60,10 @@ fname = 'notch'   # output SOFA suffix: <sub_id>_<fname>.sofa
 # 'shift' : cepstral envelope/detail split + frequency-shift of the subject's
 #           OWN fine cues inside a band (SHIFT_* params below).  Ignores
 #           SMOOTH / N_KEEP / FEATURES.
-MODE = 'synth'
+MODE = 'shift'
 
 # --- 'shift' mode parameters (only used when MODE == 'shift') --------------
-SHIFT_CENTER    = 8000   # band centre frequency [Hz]
+SHIFT_CENTER    = 9000   # band centre frequency [Hz]
 SHIFT_OCTAVES   = 1.0    # band width in octaves (fraction for octave_band)
 SHIFT_FACTOR    = 1.10   # >1 shifts cues up, <1 down, 1.0 = rebuild no-op
 SHIFT_ENV_NKEEP = 3      # cepstral coeffs kept for the envelope (lower = more detail shifted)
@@ -87,7 +87,7 @@ SHIFT_SKIRT     = 0.25   # cosine taper outside the band [octaves]
 # ---------------------------------------------------------------------------
 FEATURES = [
     {
-        'freqs': (6000, 8000),  # centre freq at X1 and X2 [Hz]
+        'freqs': (7000, 9000),  # centre freq at X1 and X2 [Hz]
         'width': (300,   300),   # Gaussian σ at X1 and X2 [Hz]
         'depth': (12.0,  12.0), # >0 = notch, <0 = peak [dB]
         'X1':    (0, 0),         # anchor 1 (az, az)
@@ -95,14 +95,14 @@ FEATURES = [
     },
     # Add further features here, e.g.:
     {
-        'freqs': (9000, 10000),
+        'freqs': (11000, 12500),
         'width': (300, 300),
         'depth': (12, 12),   # negative → peak
         'X1': (0, 0),
-        'X2': (40, -40),
+        'X2': (-40, 40),
     },
     {
-        'freqs': (16000, 17000),
+        'freqs': (17000, 16000),
         'width': (300, 300),
         'depth': (12, 12),  # negative → peak
         'X1': (0, 0),
@@ -695,7 +695,7 @@ if __name__ == '__main__':
     fig = plot(hrtf, hrtf_modified, PLOT, ear='right',
                vsi_orig=vsi_orig, vsi_mod=vsi_mod, vsi_dis=vsi_dis, vsi_bw=VSI_BW)
     input('press enter to save')
-    fig.savefig(PATH / 'data' / 'results' / 'plot' / sub_id / str(sub_id + '_modified.png'),
+    fig.savefig(PATH / 'data' / 'results' / 'plot' / sub_id / str(sub_id + f'_{fname}.png'),
                 bbox_inches='tight')
     (hrtf_dir / sub_id).mkdir(parents=True, exist_ok=True)
     hrtf_modified.write_sofa(hrtf_dir / sub_id / str(sub_id + f'_{fname}.sofa'))

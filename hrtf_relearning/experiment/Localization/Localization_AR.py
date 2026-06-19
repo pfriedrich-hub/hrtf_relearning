@@ -196,8 +196,8 @@ class Localization:
 if __name__ == "__main__":
 
     # --- SETTINGS ---
-    _SUBJECT_ID = "JS"
-    _HRIR_NAME = "JS_test_1"  # 'KU100', 'kemar', etc.
+    _SUBJECT_ID = "AH"
+    _HRIR_NAME = "AH_test_1"  # 'KU100', 'kemar', etc.
     _HP = 'DT990'
     _EAR = None  # None (binaural), 'left', or 'right'
     _MIRROR = False  # True to swap left/right spectral cues

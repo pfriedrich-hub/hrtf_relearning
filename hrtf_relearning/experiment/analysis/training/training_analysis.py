@@ -206,7 +206,7 @@ class PoseAnalysis:
         min_error = err.min()
 
         # --- path geometry ---
-        path_length = numpy.trapz(vspeed, t)
+        path_length = numpy.trapezoid(vspeed, t)
         # straight-line angular distance the head actually travelled (start->end)
         net_disp = numpy.sqrt(
             (data["yaw_unw"][-1] - data["yaw_unw"][0]) ** 2
@@ -241,7 +241,7 @@ class PoseAnalysis:
         # time-averaged absolute elevation error over the whole search
         dur = t[-1] - t[0]
         if dur > 0:
-            ele_mean_abs_error = numpy.trapz(ele_abs, t) / dur
+            ele_mean_abs_error = numpy.trapezoid(ele_abs, t) / dur
         else:
             ele_mean_abs_error = ele_abs.mean()
 
@@ -786,7 +786,7 @@ class BlockElevationAnalysis:
 # runner
 # ======================================================================
 
-def main(subject_id="AH", target_radius_deg=4.0, block_gap_s=BLOCK_GAP_S,
+def main(subject_id="JS", target_radius_deg=4.0, block_gap_s=BLOCK_GAP_S,
          day_gap_s=DAY_GAP_S, drop_first_day=True, export_dir="analysis_results"):
     """Load a subject, run both analyses, plot, and export CSVs."""
     import matplotlib

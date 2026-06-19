@@ -45,7 +45,7 @@ hrtf_dir = PATH / 'data' / 'hrtf' / 'sofa'
 import slab
 from hrtf_relearning.hrtf.analysis.vsi import (vsi as _vsi, vsi_dissimilarity as _vsi_dissimilarity)
 
-sub_id = 'JS'
+sub_id = 'AH'
 
 SMOOTH = True
 N_KEEP = 4
@@ -63,7 +63,7 @@ fname = 'test_1'   # output SOFA suffix: <sub_id>_<fname>.sofa
 MODE = 'shift'
 
 # --- 'shift' mode parameters (only used when MODE == 'shift') --------------
-SHIFT_CENTER    = 9000   # band centre frequency [Hz]
+SHIFT_CENTER    = 8000   # band centre frequency [Hz]
 SHIFT_OCTAVES   = 1.0    # band width in octaves (fraction for octave_band)
 SHIFT_FACTOR    = 1.10   # >1 shifts cues up, <1 down, 1.0 = rebuild no-op
 SHIFT_ENV_NKEEP = 3      # cepstral coeffs kept for the envelope (lower = more detail shifted)

@@ -50,7 +50,7 @@ sub_id = 'AH'
 SMOOTH = True
 N_KEEP = 4
 PLOT = 'image'
-fname = 'test_1'   # output SOFA suffix: <sub_id>_<fname>.sofa
+fname = 'test_0'   # output SOFA suffix: <sub_id>_<fname>.sofa
 
 # ---------------------------------------------------------------------------
 # Modification mode
@@ -60,7 +60,7 @@ fname = 'test_1'   # output SOFA suffix: <sub_id>_<fname>.sofa
 # 'shift' : cepstral envelope/detail split + frequency-shift of the subject's
 #           OWN fine cues inside a band (SHIFT_* params below).  Ignores
 #           SMOOTH / N_KEEP / FEATURES.
-MODE = 'shift'
+MODE = 'synth'
 
 # --- 'shift' mode parameters (only used when MODE == 'shift') --------------
 SHIFT_CENTER    = 8000   # band centre frequency [Hz]
@@ -87,7 +87,7 @@ SHIFT_SKIRT     = 0.25   # cosine taper outside the band [octaves]
 # ---------------------------------------------------------------------------
 FEATURES = [
     {
-        'freqs': (7000, 9000),  # centre freq at X1 and X2 [Hz]
+        'freqs': (6000, 8000),  # centre freq at X1 and X2 [Hz]
         'width': (300,   300),   # Gaussian σ at X1 and X2 [Hz]
         'depth': (12.0,  12.0), # >0 = notch, <0 = peak [dB]
         'X1':    (0, 0),         # anchor 1 (az, az)
@@ -95,7 +95,7 @@ FEATURES = [
     },
     # Add further features here, e.g.:
     {
-        'freqs': (11000, 12500),
+        'freqs': (8500, 9000),
         'width': (300, 300),
         'depth': (12, 12),   # negative → peak
         'X1': (0, 0),

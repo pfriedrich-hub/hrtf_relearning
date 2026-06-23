@@ -783,6 +783,109 @@ class BlockElevationAnalysis:
 
 
 # ======================================================================
+# multi-participant day x metric grid
+# ======================================================================
+
+# (column in game_dataframe, y-axis label, y-limits or None)
+_GRID_METRICS = [
+    ("ele_mean_abs_error", "Mean abs. elevation\nerror (deg)", None),
+    ("ele_efficiency",     "Elevation approach\nefficiency",   None),
+    ("ele_dir_correct",    "P(initial pitch\nmove correct)",   (0, 1)),
+    ("success_rate",       "Success rate",                     (0, 1)),
+]
+
+
+def _per_game_by_day(subject, block_gap_s=BLOCK_GAP_S, day_gap_s=DAY_GAP_S,
+                     drop_first_day=True, **pose_kwargs):
+    """Per-game dataframe for one subject with display day number (1..N) and
+    game-within-day index attached. Days are aggregated only (no blocks)."""
+    bea = BlockElevationAnalysis(
+        subject, block_gap_s=block_gap_s, day_gap_s=day_gap_s,
+        drop_first_day=drop_first_day, **pose_kwargs,
+    )
+    g = bea.game_dataframe(verbose=False)
+    if g.empty:
+        return g
+    day_codes = {d: i + 1 for i, d in enumerate(sorted(g["day"].unique()))}
+    g = g.copy()
+    g["day_n"] = g["day"].map(day_codes)
+    g["game_in_day"] = g.groupby("day").cumcount() + 1
+    return g
+
+
+def plot_day_metric_grid(subjects, labels=None, metrics=None,
+                         block_gap_s=BLOCK_GAP_S, day_gap_s=DAY_GAP_S,
+                         drop_first_day=True, show=True, **pose_kwargs):
+    """Grid of rows = metrics, columns = training days, with all participants
+    overlaid. x within each panel = game number within that day; the dashed
+    horizontal line is that participant's day mean.
+
+    `subjects` is a list of subject objects (each with `.id` and `.trials`).
+    """
+    metrics = metrics or _GRID_METRICS
+    if labels is None:
+        labels = [getattr(s, "id", f"S{i}") for i, s in enumerate(subjects)]
+    colors = {lab: f"C{i}" for i, lab in enumerate(labels)}
+
+    frames, days = {}, set()
+    for lab, subj in zip(labels, subjects):
+        g = _per_game_by_day(subj, block_gap_s, day_gap_s, drop_first_day, **pose_kwargs)
+        if not g.empty:
+            frames[lab] = g
+            days |= set(g["day_n"].unique())
+    if not frames:
+        print("No data to plot.")
+        return None
+    days = sorted(days)
+
+    nrow, ncol = len(metrics), len(days)
+    fig, axes = plt.subplots(nrow, ncol, figsize=(3.3 * ncol, 2.4 * nrow),
+                             squeeze=False, sharex="col", sharey="row")
+
+    for i, (col, ylabel, ylim) in enumerate(metrics):
+        for j, day in enumerate(days):
+            ax = axes[i][j]
+            for lab, g in frames.items():
+                sub = g[g["day_n"] == day]
+                if sub.empty:
+                    continue
+                ax.plot(sub["game_in_day"], sub[col], marker="o", ms=4,
+                        color=colors[lab], label=lab)
+                ax.axhline(sub[col].mean(), color=colors[lab], ls="--", lw=1, alpha=0.5)
+            if col == "ele_dir_correct":
+                ax.axhline(0.5, color="grey", ls=":", lw=0.8)
+            if i == 0:
+                ax.set_title(f"Day {day}")
+            if j == 0:
+                ax.set_ylabel(ylabel, fontsize=9)
+            if i == nrow - 1:
+                ax.set_xlabel("Game # within day")
+            ax.grid(True, alpha=0.3)
+        if ylim:
+            axes[i][0].set_ylim(*ylim)
+
+    handles, lbls = axes[0][0].get_legend_handles_labels()
+    seen, uniq_h, uniq_l = set(), [], []
+    for h, l in zip(handles, lbls):
+        if l not in seen:
+            seen.add(l); uniq_h.append(h); uniq_l.append(l)
+    fig.legend(uniq_h, uniq_l, loc="upper right", ncol=len(uniq_l), fontsize=9)
+    fig.suptitle("Training learning — day × metric (dashed = day mean)")
+    fig.tight_layout(rect=(0, 0, 1, 0.97))
+    if show:
+        plt.show()
+    return fig
+
+
+def plot_group(subject_ids=("AH", "JS"), target_radius_deg=4.0, show=True, **kw):
+    """Convenience: load several subjects and draw the day × metric grid."""
+    from hrtf_relearning.experiment.Subject import Subject
+    subjects = [Subject(sid) for sid in subject_ids]
+    return plot_day_metric_grid(subjects, labels=list(subject_ids),
+                                target_radius_deg=target_radius_deg, show=show, **kw)
+
+
+# ======================================================================
 # runner
 # ======================================================================
 

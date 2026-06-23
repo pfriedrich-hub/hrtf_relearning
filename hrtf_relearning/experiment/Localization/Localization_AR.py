@@ -196,8 +196,8 @@ class Localization:
 if __name__ == "__main__":
 
     # --- SETTINGS ---
-    _SUBJECT_ID = "AH"
-    _HRIR_NAME = "AH_test_1"  # 'KU100', 'kemar', etc.
+    _SUBJECT_ID = "CA"
+    _HRIR_NAME = "CA_shift"  # 'KU100', 'kemar', etc.
     _HP = 'DT990'
     _EAR = None  # None (binaural), 'left', or 'right'
     _MIRROR = False  # True to swap left/right spectral cues
@@ -210,7 +210,7 @@ if __name__ == "__main__":
         'kind': 'sectors',  # 'standard' or 'sectors'
         'azimuth_range': _AZ_RANGE,  # (-1, 1) for midline-only, (-180, 180) for full sphere
         'elevation_range': (-35, 35),
-        'targets_per_speaker': 2,
+        'targets_per_speaker': 3,
         'targets_per_sector': 2,
         'min_distance': 20,  # min angular distance between successive targets (°)
         'gain': .2,

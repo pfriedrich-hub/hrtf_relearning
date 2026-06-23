@@ -64,9 +64,9 @@ MODE = 'shift'
 fname = MODE
 
 # --- 'shift' mode parameters (only used when MODE == 'shift') --------------
-SHIFT_CENTER    = 8000   # band centre frequency [Hz]
+SHIFT_CENTER    = 9000   # band centre frequency [Hz]
 SHIFT_OCTAVES   = 1.0    # band width in octaves (fraction for octave_band)
-SHIFT_FACTOR    = 1.10   # >1 shifts cues up, <1 down, 1.0 = rebuild no-op
+SHIFT_FACTOR    = 1.2   # >1 shifts cues up, <1 down, 1.0 = rebuild no-op
 SHIFT_ENV_NKEEP = 3      # cepstral coeffs kept for the envelope (lower = more detail shifted)
 SHIFT_SKIRT     = 0.25   # cosine taper outside the band [octaves]
 

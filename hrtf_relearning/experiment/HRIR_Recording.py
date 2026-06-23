@@ -26,14 +26,14 @@ from hrtf_relearning.experiment.analysis.localization.localization_analysis impo
     localization_accuracy, plot_localization, plot_elevation_response,
 )
 
-subject_id   = 'UG'
-head_radius = 0.0835  # todo get the right tool
+subject_id   = 'CA'
+head_radius = 0.078
 reference_id = 'ref_03.04'
 n_directions = 3  # directions for the hrir recording
 n_recordings = 10  #
 fs           = 48828
 hp_freq      = 120
-n_rec_hp     = 2
+n_rec_hp     = 3
 show = True
 slab.set_default_samplerate(fs)
 freefield.set_logger('info')
@@ -44,7 +44,7 @@ def main(subject_id, reference_id, head_radius, hrir_settings,
 
     # 1. Record / load HRIR
     logging.info('--- Step 1: HRIR recording ---')
-    hrir = record_hrir(  # todo catch enter in any case
+    hrir = record_hrir(
         subject_id   = subject_id,
         reference_id = reference_id,
         n_directions = n_directions,
@@ -54,12 +54,12 @@ def main(subject_id, reference_id, head_radius, hrir_settings,
         head_radius = head_radius,
         show         = show,
         overwrite_rec = True,
-        overwrite_hrir = True, #todo doesnt overwrite
+        overwrite_hrir = True,
     )
 
     logging.info('--- Step 2: HP calibration ---')
     # hp_filter = calibrate_headphones(subject_id, 'MYSPHERE', n_rec_hp, show, True)
-    hp_filter = calibrate_headphones(subject_id, 'DT990', n_rec_hp, show, False)
+    hp_filter = calibrate_headphones(subject_id, 'DT990', n_rec_hp, show, False) # todo add overwrite parameter
 
     # logging.info('--- Step 3: Acoustic test ---')
     # acoustic_test(hrir, hp_filter, subject_id=subject_id, hp_id='MYSPHERE', show=show)
@@ -73,10 +73,10 @@ def main(subject_id, reference_id, head_radius, hrir_settings,
         'targets_per_speaker': 2, 'min_distance': 15, 'gain': .2, 'stim': 'noise'}
 
     # mysphere localization
-    hrir_settings = dict(name=subject_id, subject_id=subject_id, ear=None, mirror=False, reverb=True,
-        drr=20, hp_filter=True, hp='MYSPHERE', convolution='cpu', storage='cpu')
-    ar_loc = Localization(subject, hrir_settings, ar_loc_settings)
-    ar_loc.run()
+    # hrir_settings = dict(name=subject_id, subject_id=subject_id, ear=None, mirror=False, reverb=True,
+    #     drr=20, hp_filter=True, hp='MYSPHERE', convolution='cpu', storage='cpu')
+    # ar_loc = Localization(subject, hrir_settings, ar_loc_settings)
+    # ar_loc.run()
 
     # dt990 localization
     hrir_settings = dict(name=subject_id, subject_id=subject_id, ear=None, mirror=False, reverb=True,

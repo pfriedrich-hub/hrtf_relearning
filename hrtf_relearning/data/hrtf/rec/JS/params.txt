@@ -1,4 +1,4 @@
-id: UG
+id: JS
 fs: 48828
 n_recordings: 10
 n_directions: 3
@@ -11,4 +11,4 @@ signal:
   samplerate: 48828
 highpass_frequency: 120
 equalize_dome: False
-datetime: 2026-06-16T09:29:38.599865
+datetime: 2026-06-23T11:25:05.156204

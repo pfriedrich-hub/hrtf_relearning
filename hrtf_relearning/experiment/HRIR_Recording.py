@@ -26,8 +26,8 @@ from hrtf_relearning.experiment.analysis.localization.localization_analysis impo
     localization_accuracy, plot_localization, plot_elevation_response,
 )
 
-subject_id   = 'CA'
-head_radius = 0.078
+subject_id   = 'JS'  # 17
+head_radius = 0.085  #
 reference_id = 'ref_03.04'
 n_directions = 3  # directions for the hrir recording
 n_recordings = 10  #

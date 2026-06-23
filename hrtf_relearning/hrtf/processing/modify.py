@@ -45,7 +45,7 @@ hrtf_dir = PATH / 'data' / 'hrtf' / 'sofa'
 import slab
 from hrtf_relearning.hrtf.analysis.vsi import (vsi as _vsi, vsi_dissimilarity as _vsi_dissimilarity)
 
-sub_id = 'CA'
+sub_id = 'JS'
 
 SMOOTH = True
 N_KEEP = 4
@@ -64,9 +64,9 @@ MODE = 'shift'
 fname = MODE
 
 # --- 'shift' mode parameters (only used when MODE == 'shift') --------------
-SHIFT_CENTER    = 9000   # band centre frequency [Hz]
-SHIFT_OCTAVES   = 1.0    # band width in octaves (fraction for octave_band)
-SHIFT_FACTOR    = 1.2   # >1 shifts cues up, <1 down, 1.0 = rebuild no-op
+SHIFT_CENTER    = 10000   # band centre frequency [Hz]
+SHIFT_OCTAVES   = 1.5    # band width in octaves (fraction for octave_band)
+SHIFT_FACTOR    = 0.9   # >1 shifts cues up, <1 down, 1.0 = rebuild no-op  # todo desdcribe better, optionally plot waterfall
 SHIFT_ENV_NKEEP = 3      # cepstral coeffs kept for the envelope (lower = more detail shifted)
 SHIFT_SKIRT     = 0.25   # cosine taper outside the band [octaves]
 
@@ -88,7 +88,7 @@ SHIFT_SKIRT     = 0.25   # cosine taper outside the band [octaves]
 # ---------------------------------------------------------------------------
 FEATURES = [
     {
-        'freqs': (7000, 8000),  # centre freq at X1 and X2 [Hz]
+        'freqs': (8000, 9000),  # centre freq at X1 and X2 [Hz]
         'width': (300,   300),   # Gaussian σ at X1 and X2 [Hz]
         'depth': (12.0,  12.0), # >0 = notch, <0 = peak [dB]
         'X1':    (0, 0),         # anchor 1 (az, az)
@@ -96,14 +96,14 @@ FEATURES = [
     },
     # Add further features here, e.g.:
     {
-        'freqs': (10500, 9500),
+        'freqs': (11000, 10000),
         'width': (300, 300),
         'depth': (12, 12),   # negative → peak
         'X1': (0, 0),
         'X2': (-40, 40),
     },
     # {
-    #     'freqs': (17000, 16000),
+    #     'freqs': (15500, 16000),
     #     'width': (300, 300),
     #     'depth': (12, 12),  # negative → peak
     #     'X1': (0, 0),

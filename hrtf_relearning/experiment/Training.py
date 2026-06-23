@@ -19,8 +19,8 @@ matplotlib.rcParams['figure.raise_window'] = False
 logging.getLogger().setLevel('INFO')
 
 # -------------------- Config --------------------
-SUBJECT_ID = "CA"
-HRIR_NAME = "CA_shift"  # 'KU100', 'kemar', etc.
+SUBJECT_ID = "JS"
+HRIR_NAME = "JS_shift"  # 'KU100', 'kemar', etc.
 EAR = 'left'
 HP = 'DT990'
 

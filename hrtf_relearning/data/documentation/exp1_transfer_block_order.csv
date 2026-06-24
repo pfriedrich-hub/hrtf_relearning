@@ -1,0 +1,17 @@
+participant_id,subject,cue_type,trained_ear,latin_order,block_order,block_1,block_2,block_3,block_4
+1,JS,synth,left,1,A-B-D-C,A: trained-ear / same-loc (baseline),B: trained-ear / mirrored-loc,D: untrained-ear / mirrored-loc (main),C: untrained-ear / same-loc
+2,(assign),synth,left,2,B-C-A-D,B: trained-ear / mirrored-loc,C: untrained-ear / same-loc,A: trained-ear / same-loc (baseline),D: untrained-ear / mirrored-loc (main)
+3,(assign),synth,left,3,C-D-B-A,C: untrained-ear / same-loc,D: untrained-ear / mirrored-loc (main),B: trained-ear / mirrored-loc,A: trained-ear / same-loc (baseline)
+4,(assign),synth,left,4,D-A-C-B,D: untrained-ear / mirrored-loc (main),A: trained-ear / same-loc (baseline),C: untrained-ear / same-loc,B: trained-ear / mirrored-loc
+5,(assign),synth,right,1,A-B-D-C,A: trained-ear / same-loc (baseline),B: trained-ear / mirrored-loc,D: untrained-ear / mirrored-loc (main),C: untrained-ear / same-loc
+6,(assign),synth,right,2,B-C-A-D,B: trained-ear / mirrored-loc,C: untrained-ear / same-loc,A: trained-ear / same-loc (baseline),D: untrained-ear / mirrored-loc (main)
+7,(assign),synth,right,3,C-D-B-A,C: untrained-ear / same-loc,D: untrained-ear / mirrored-loc (main),B: trained-ear / mirrored-loc,A: trained-ear / same-loc (baseline)
+8,(assign),synth,right,4,D-A-C-B,D: untrained-ear / mirrored-loc (main),A: trained-ear / same-loc (baseline),C: untrained-ear / same-loc,B: trained-ear / mirrored-loc
+9,(assign),shift,left,1,A-B-D-C,A: trained-ear / same-loc (baseline),B: trained-ear / mirrored-loc,D: untrained-ear / mirrored-loc (main),C: untrained-ear / same-loc
+10,(assign),shift,left,2,B-C-A-D,B: trained-ear / mirrored-loc,C: untrained-ear / same-loc,A: trained-ear / same-loc (baseline),D: untrained-ear / mirrored-loc (main)
+11,(assign),shift,left,3,C-D-B-A,C: untrained-ear / same-loc,D: untrained-ear / mirrored-loc (main),B: trained-ear / mirrored-loc,A: trained-ear / same-loc (baseline)
+12,(assign),shift,left,4,D-A-C-B,D: untrained-ear / mirrored-loc (main),A: trained-ear / same-loc (baseline),C: untrained-ear / same-loc,B: trained-ear / mirrored-loc
+13,CA,shift,right,1,A-B-D-C,A: trained-ear / same-loc (baseline),B: trained-ear / mirrored-loc,D: untrained-ear / mirrored-loc (main),C: untrained-ear / same-loc
+14,(assign),shift,right,2,B-C-A-D,B: trained-ear / mirrored-loc,C: untrained-ear / same-loc,A: trained-ear / same-loc (baseline),D: untrained-ear / mirrored-loc (main)
+15,(assign),shift,right,3,C-D-B-A,C: untrained-ear / same-loc,D: untrained-ear / mirrored-loc (main),B: trained-ear / mirrored-loc,A: trained-ear / same-loc (baseline)
+16,(assign),shift,right,4,D-A-C-B,D: untrained-ear / mirrored-loc (main),A: trained-ear / same-loc (baseline),C: untrained-ear / same-loc,B: trained-ear / mirrored-loc

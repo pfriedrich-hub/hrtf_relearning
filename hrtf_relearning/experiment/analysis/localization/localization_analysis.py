@@ -17,60 +17,25 @@ def localization_accuracy(sequence):
     responses = loc_data[:, 0]
 
     #  elevation gain, rmse, response variability
+    #  SD = scatter of responses around the gain-fit regression line (precision).
+    #  Residuals around the fit remove the (1 - gain) * target term, so the SD is
+    #  not confounded by gain (unlike per-sector target-aligned spread).
     try:
-        elevation_gain, n = scipy.stats.linregress(targets[:, 1], responses[:, 1])[:2]
+        elevation_gain, ele_intercept = scipy.stats.linregress(targets[:, 1], responses[:, 1])[:2]
+        ele_resid = responses[:, 1] - (elevation_gain * targets[:, 1] + ele_intercept)
+        ele_sd = float(numpy.std(ele_resid, ddof=1)) if len(ele_resid) > 1 else numpy.nan
     except ValueError:
-        elevation_gain = 0
+        elevation_gain, ele_sd = 0, numpy.nan
     if not len(numpy.unique(targets[:, 0])) == 1:
-        azimuth_gain, n = scipy.stats.linregress(targets[:, 0], responses[:, 0])[:2]
+        azimuth_gain, az_intercept = scipy.stats.linregress(targets[:, 0], responses[:, 0])[:2]
+        az_resid = responses[:, 0] - (azimuth_gain * targets[:, 0] + az_intercept)
+        az_sd = float(numpy.std(az_resid, ddof=1)) if len(az_resid) > 1 else numpy.nan
     else:
         azimuth_gain = None
+        az_sd = numpy.nan
     rmse = numpy.sqrt(numpy.mean(numpy.square(targets - responses), axis=0))
     az_rmse, ele_rmse = rmse[0], rmse[1]
-    variability = compute_sector_precision(targets, responses, sequence.settings['sector_centers'], sequence.settings['sector_size'])
-    az_sd, ele_sd = variability[0], variability[1]
     return elevation_gain, ele_rmse, ele_sd, azimuth_gain, az_rmse, az_sd
-
-
-def compute_sector_precision(targets, responses, sector_centers, sector_size):
-    """
-    Estimates response precision per sector by aligning targets and measuring
-    the spread (std) of aligned responses, then averaging over sectors.
-
-    Parameters:
-    - targets: Nx2 array (azimuth, elevation)
-    - responses: Nx2 array (azimuth, elevation)
-    - sector_centers: Mx2 array of sector center coordinates
-    - sector_size: tuple (az_size, el_size)
-
-    Returns:
-    - per_sector_std: list of (azimuth_std, elevation_std) for each sector
-    - mean_std: tuple of (mean_azimuth_std, mean_elevation_std)
-    """
-    az_size, el_size = sector_size
-    per_sector_std = []
-    for center in sector_centers:
-        # Define bounds of the current sector
-        az_min = center[0] - az_size / 2
-        az_max = center[0] + az_size / 2
-        el_min = center[1] - el_size / 2
-        el_max = center[1] + el_size / 2
-        # Get indices of targets in this sector
-        in_sector = numpy.where((targets[:, 0] >= az_min) & (targets[:, 0] < az_max) &
-            (targets[:, 1] >= el_min) & (targets[:, 1] < el_max))[0]
-        if len(in_sector) >= 2:
-            # Shift targets and responses so that all targets align at origin
-            response_shift = responses[in_sector] - targets[in_sector]
-            az_std = numpy.std(response_shift[:, 0])
-            el_std = numpy.std(response_shift[:, 1])
-            per_sector_std.append((az_std, el_std))
-    # Compute mean std across sectors
-    if per_sector_std:
-        per_sector_std = numpy.array(per_sector_std)
-        mean_std = tuple(numpy.mean(per_sector_std, axis=0))
-    else:
-        mean_std = (numpy.nan, numpy.nan)
-    return mean_std
 
 
 def _wrap_diff_deg(a, b):

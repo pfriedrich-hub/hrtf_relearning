@@ -1,0 +1,623 @@
+Index: hrtf_relearning/experiment/experiment_procedure.py
+===================================================================
+diff --git a/hrtf_relearning/experiment/experiment_procedure.py b/hrtf_relearning/experiment/experiment_procedure.py
+deleted file mode 100644
+--- a/hrtf_relearning/experiment/experiment_procedure.py	(revision 858412ba58ac647e8ff6913dace076d18e5bd4bd)
++++ /dev/null	(revision 858412ba58ac647e8ff6913dace076d18e5bd4bd)
+@@ -1,116 +0,0 @@
+-import logging
+-import matplotlib
+-matplotlib.use("TkAgg")
+-from matplotlib import pyplot as plt
+-import slab
+-import freefield
+-import hrtf_relearning as hr
+-from hrtf_relearning.experiment.Subject import Subject
+-from hrtf_relearning.hrtf.binsim.hrtf2binsim import hrtf2binsim
+-from hrtf_relearning.experiment.Localization.Localization_dome import LocalizationDome
+-from hrtf_relearning.experiment.Localization.Localization_AR import Localization
+-from hrtf_relearning.experiment.analysis.localization.localization_analysis import (
+-    plot_localization, plot_elevation_response)
+-import hrtf_relearning.experiment.Training as Training
+-logging.getLogger().setLevel("INFO")
+-freefield.set_logger("info")
+-ROOT = hr.PATH
+-
+-
+-SUBJECT_ID   = "NKa"
+-HP_ID        = "MYSPHERE"       # headphone model
+-subject  = Subject(SUBJECT_ID)
+-
+-def main():
+-    # --- Localization settings ---------------------------------------------------
+-    HRIR_NAME = f"{SUBJECT_ID}"
+-    
+-    hrir_settings = dict(
+-        name=HRIR_NAME,
+-        subject_id=SUBJECT_ID,
+-        ear=None,
+-        mirror=False,
+-        reverb=True,
+-        drr=20,
+-        hp_filter=True,
+-        hp=HP_ID,
+-        convolution='cpu',
+-        storage='cpu',)
+-
+-    loc_settings = dict(
+-        kind              = "sectors",
+-        azimuth_range     = (-35, 35),
+-        elevation_range   = (-35, 35),
+-        sector_size       = (14, 14),
+-        targets_per_sector = 3,
+-        replace           = False,
+-        min_distance      = 20,
+-        gain              = 0.2,
+-        stim              = "noise",)
+-
+-    vr_loc = Localization(subject, hrir_settings, loc_settings=loc_settings)
+-    vr_loc.run()
+-
+-    # -----------------------------------------------------------------------------
+-    # 4b.  TRAINING SESSION  (standalone — run daily after localization)
+-
+-    training_settings = dict(
+-        target_size     = 4,
+-        target_time     = 0.5,
+-        min_dist        = 30,
+-        game_time       = 90,      # seconds per game
+-        trial_time      = 10,
+-        score_time      = 3,
+-        gain            = 0.10,
+-        azimuth_range   = (0, 35),
+-        elevation_range = (-35, 35),
+-    )
+-
+-    Training.SUBJECT_ID = SUBJECT_ID
+-    Training.HRIR_NAME  = hrir_settings["name"]
+-    Training.EAR        = hrir_settings.get("ear")
+-    Training.HP         = HP_ID
+-    Training.AZ_RANGE   = training_settings["azimuth_range"]
+-    Training.settings.update(training_settings)
+-    # Reload HRIR inside Training with current settings
+-    Training.hrir = hrtf2binsim(hrir_settings)
+-    Training.subject = Subject(SUBJECT_ID)
+-    Training.play_session()
+-
+-    # ------------------------------------------------------------------
+-    # 4. Dome localization (real speakers, vertical midline)
+-    # ------------------------------------------------------------------
+-    logging.info('--- Step 4: Dome localization ---')
+-    dome_loc_settings = {
+-        'targets_per_speaker': 3,
+-        'min_distance': 15,
+-        'gain': 1,
+-    }
+-    dome_loc = LocalizationDome(subject, hrir_settings, loc_settings=dome_loc_settings)
+-    dome_loc.run()
+-
+-    # ------------------------------------------------------------------
+-    # 5. Virtual localization (pybinsim)
+-    #    hrtf2binsim + hp filter loading are handled inside Localization()
+-    logging.warning('--------- Switch HP jack to PC ---------')
+-    # ------------------------------------------------------------------
+-
+-    logging.info('--- Step 5: Virtual localization ---')
+-
+-
+-    ar_loc_settings = {
+-        'kind': 'standard',
+-        'azimuth_range': (-1, 1), 'elevation_range': (-35, 35),
+-        'targets_per_speaker': 2, 'min_distance': 15,
+-        'gain': .2,
+-        'stim': 'noise',
+-    }
+-    ar_loc = Localization(subject, hrir_settings, loc_settings=ar_loc_settings)
+-    ar_loc.run()
+-
+-
+-    # -----------------------------------------------------------------------------
+-    # DOME LOCALIZATION  (real speakers — standalone call)
+-    # -----------------------------------------------------------------------------
+-    dome_loc = LocalizationDome(subject)
+-    dome_loc.run()
+Index: hrtf_relearning/experiment/analysis/localization/localization_analysis.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>import matplotlib\nimport matplotlib.patches\nmatplotlib.use('tkagg')\nfrom matplotlib import pyplot as plt\nfrom matplotlib.lines import Line2D\nimport numpy\nimport scipy\nimport logging\n\ndef localization_accuracy(sequence):\n    if sequence.this_n == -1 or sequence.n_remaining == len(sequence.data) or not sequence.data:\n        return numpy.nan, numpy.nan, numpy.nan, numpy.nan, numpy.nan, numpy.nan\n    # retrieve data\n    loc_data = numpy.asarray(sequence.data)\n    loc_data = loc_data.reshape(loc_data.shape[0], 2, 2)\n    targets = loc_data[:, 1]  # [az, ele]\n    responses = loc_data[:, 0]\n\n    #  elevation gain, rmse, response variability\n    try:\n        elevation_gain, n = scipy.stats.linregress(targets[:, 1], responses[:, 1])[:2]\n    except ValueError:\n        elevation_gain = 0\n    if not len(numpy.unique(targets[:, 0])) == 1:\n        azimuth_gain, n = scipy.stats.linregress(targets[:, 0], responses[:, 0])[:2]\n    else:\n        azimuth_gain = None\n    rmse = numpy.sqrt(numpy.mean(numpy.square(targets - responses), axis=0))\n    az_rmse, ele_rmse = rmse[0], rmse[1]\n    variability = compute_sector_precision(targets, responses, sequence.settings['sector_centers'], sequence.settings['sector_size'])\n    az_sd, ele_sd = variability[0], variability[1]\n    return elevation_gain, ele_rmse, ele_sd, azimuth_gain, az_rmse, az_sd\n\n\ndef compute_sector_precision(targets, responses, sector_centers, sector_size):\n    \"\"\"\n    Estimates response precision per sector by aligning targets and measuring\n    the spread (std) of aligned responses, then averaging over sectors.\n\n    Parameters:\n    - targets: Nx2 array (azimuth, elevation)\n    - responses: Nx2 array (azimuth, elevation)\n    - sector_centers: Mx2 array of sector center coordinates\n    - sector_size: tuple (az_size, el_size)\n\n    Returns:\n    - per_sector_std: list of (azimuth_std, elevation_std) for each sector\n    - mean_std: tuple of (mean_azimuth_std, mean_elevation_std)\n    \"\"\"\n    az_size, el_size = sector_size\n    per_sector_std = []\n    for center in sector_centers:\n        # Define bounds of the current sector\n        az_min = center[0] - az_size / 2\n        az_max = center[0] + az_size / 2\n        el_min = center[1] - el_size / 2\n        el_max = center[1] + el_size / 2\n        # Get indices of targets in this sector\n        in_sector = numpy.where((targets[:, 0] >= az_min) & (targets[:, 0] < az_max) &\n            (targets[:, 1] >= el_min) & (targets[:, 1] < el_max))[0]\n        if len(in_sector) >= 2:\n            # Shift targets and responses so that all targets align at origin\n            response_shift = responses[in_sector] - targets[in_sector]\n            az_std = numpy.std(response_shift[:, 0])\n            el_std = numpy.std(response_shift[:, 1])\n            per_sector_std.append((az_std, el_std))\n    # Compute mean std across sectors\n    if per_sector_std:\n        per_sector_std = numpy.array(per_sector_std)\n        mean_std = tuple(numpy.mean(per_sector_std, axis=0))\n    else:\n        mean_std = (numpy.nan, numpy.nan)\n    return mean_std\n\n\ndef _wrap_diff_deg(a, b):\n    \"\"\"Smallest signed difference a-b on a 360° circle, result in [-180, 180).\"\"\"\n    return (numpy.asarray(a) - numpy.asarray(b) + 180.0) % 360.0 - 180.0\n\n\ndef target_p(sequence, show=False, axis=None):\n    \"\"\"\n    Compute per-sector error and target probabilities from a localization run.\n\n    Returns\n    -------\n    response_errors : (N_sectors, 4) array\n        columns: [sector_center_az, sector_center_el, polar_error, probability]\n    \"\"\"\n    if not sequence:\n        logging.debug('No sequence found')\n        return None\n    if not hasattr(sequence, \"settings\"):\n        raise AttributeError(\"sequence must have a 'settings' dict.\")\n    settings = sequence.settings\n    az_size, el_size = settings['sector_size']\n    half_az, half_el = az_size / 2.0, el_size / 2.0\n    centers = numpy.asarray(sequence.settings['sector_centers'], dtype=float)  # (N,2)\n    # --- unpack data (targets = 2nd row, responses = 1st row) ---\n    loc_data = numpy.asarray(sequence.data)\n    loc_data = loc_data.reshape(loc_data.shape[0], 2, 2)\n    targets = loc_data[:, 1]  # [az, ele]\n    responses = loc_data[:, 0]\n    # --- assign each target to exactly one sector (nearest center within box) ---\n    # Compute deltas of each target to every center\n    d_az = _wrap_diff_deg(targets[:, None, 0], centers[None, :, 0])  # (T,N)\n    d_el = targets[:, None, 1] - centers[None, :, 1]                # (T,N)\n    # inside rectangular box?\n    inside = (numpy.abs(d_az) <= half_az) & (numpy.abs(d_el) <= half_el)  # (T,N)\n    # If multiple sectors match (edge cases), pick the nearest; if none match,\n    # pick the nearest anyway (prevents drops due to rounding).\n    rect_dist = numpy.stack([numpy.abs(d_az) / half_az, numpy.abs(d_el) / half_el], axis=-1)  # (T,N,2)\n    rect_dist = numpy.linalg.norm(rect_dist, axis=-1)  # normalized rectangular distance (T,N)\n    # Prefer valid-inside sectors; if none, fall back to absolute nearest\n    big = 1e6\n    choice_inside = numpy.where(inside, rect_dist, big)\n    idx_inside = numpy.argmin(choice_inside, axis=1)  # (T,)\n    none_inside = ~inside.any(axis=1)\n    if numpy.any(none_inside):\n        # fall back to nearest by rect_dist for those\n        idx_fallback = numpy.argmin(rect_dist[none_inside], axis=1)\n        idx_inside[none_inside] = idx_fallback\n    # Now we have, for each trial, the chosen sector index\n    T = targets.shape[0]\n    N = centers.shape[0]\n    # --- aggregate per-sector errors ---\n    response_errors = numpy.zeros((N, 3), dtype=float)\n    # Prepare lists of trial indices per sector\n    trials_per_sector = [[] for _ in range(N)]\n    for t in range(T):\n        s = int(idx_inside[t])\n        trials_per_sector[s].append(t)\n    # Compute RMSE in az/el, then use polar (el) RMSE as your training metric\n    for s, center in enumerate(centers):\n        idxs = trials_per_sector[s]\n        if len(idxs) == 0:\n            rmse_el = 0.0\n        else:\n            tgt_s = targets[idxs]        # (#,2)\n            rsp_s = responses[idxs]      # (#,2)\n            # Polar (elevation) error only, per your definition\n            el_err = tgt_s[:, 1] - rsp_s[:, 1]\n            rmse_el = float(numpy.sqrt(numpy.mean(el_err ** 2)))\n        response_errors[s, :] = [center[0], center[1], rmse_el]\n    # --- probabilities proportional to polar error (handle all-zero safely) ---\n    pe = response_errors[:, 2]\n    total = float(pe.sum())\n    if total <= 0:\n        probs = numpy.full_like(pe, 1.0 / len(pe))\n    else:\n        probs = pe / total\n    response_errors = numpy.column_stack([response_errors, probs])  # (N,4)\n    # --- optional heatmap ---\n    if show:\n        # make regular grids of unique az/el from centers\n        az_vals = numpy.unique(centers[:, 0])\n        el_vals = numpy.unique(centers[:, 1])\n        # map each sector to its grid cell\n        P = numpy.zeros((len(el_vals), len(az_vals)))\n        for row in response_errors:\n            az, el, _, p = row\n            xi = numpy.where(az_vals == az)[0][0]\n            yi = numpy.where(el_vals == el)[0][0]\n            P[yi, xi] = p\n        if axis is None:\n            fig, axis = plt.subplots(figsize=(7, 5))\n        mesh = axis.pcolormesh(az_vals, el_vals, P, shading='auto')\n        cbar = plt.colorbar(mesh, ax=axis)\n        cbar.set_label('Probability')\n        # ticks aligned to sector edges\n        axis.set_xlabel('Azimuth (°)')\n        axis.set_ylabel('Elevation (°)')\n        axis.set_xticks(az_vals)\n        axis.set_yticks(el_vals)\n        axis.grid(True, linestyle='--', linewidth=0.4)\n        # optional: draw sector boxes lightly\n        for (caz, cel) in centers:\n            axis.add_patch(\n                plt.Rectangle((caz - half_az, cel - half_el),\n                              az_size, el_size, fill=False, linestyle='--', linewidth=0.6, alpha=0.7)\n            )\n        axis.set_title('Per-sector training probability (from polar RMSE)')\n    return response_errors\n\n\ndef plot_localization(sequence, report_stats=['elevation', 'azimuth'], axis=None, filepath=None):\n    \"\"\"\n    Plots representative mean responses by aligning targets,\n    connects them in a grid, and shows reference sector center lines across the field.\n    Style matches publication: all 4 spines, ticks on all sides, light grey reference\n    grid (lw=0.3), black response grid (lw=0.6), small filled dots.\n    \"\"\"\n    if sequence.this_n == -1 or sequence.n_remaining == len(sequence.data) or not sequence.data:\n        return numpy.nan, numpy.nan, numpy.nan, numpy.nan, numpy.nan, numpy.nan\n\n    fs = 8\n    lw = 0.5\n    plt.rcParams.update({\n        'font.family': 'Helvetica',\n        'xtick.labelsize': fs, 'ytick.labelsize': fs, 'axes.labelsize': fs,\n        'lines.linewidth': lw,\n        'ytick.direction': 'in', 'xtick.direction': 'in',\n        'ytick.major.size': 2, 'xtick.major.size': 2,\n        'axes.linewidth': lw, 'axes.titlesize': fs,\n    })\n\n    # retrieve data\n    loc_data = numpy.asarray(sequence.data)\n    loc_data = loc_data.reshape(loc_data.shape[0], 2, 2)\n    targets = loc_data[:, 1]  # [az, ele]\n    responses = loc_data[:, 0]\n    sector_centers = sequence.settings['sector_centers']\n    az_size, el_size = sequence.settings['sector_size']\n    eg, ele_rmse, ele_sd, ag, az_rmse, az_sd = localization_accuracy(sequence)\n\n    mean_responses = []\n    center_grid = {}\n    for center in sector_centers:\n        az_min = center[0] - az_size / 2\n        az_max = center[0] + az_size / 2\n        el_min = center[1] - el_size / 2\n        el_max = center[1] + el_size / 2\n        in_sector = numpy.where((targets[:, 0] >= az_min) & (targets[:, 0] < az_max) &\n            (targets[:, 1] >= el_min) & (targets[:, 1] < el_max))[0]\n        if len(in_sector) == 0:\n            continue\n        response_shift = responses[in_sector] - targets[in_sector]\n        mean_shift = numpy.mean(response_shift, axis=0)\n        representative_response = center + mean_shift\n        mean_responses.append(representative_response)\n        center_grid[tuple(center)] = representative_response\n\n    mean_responses = numpy.array(mean_responses)\n\n    az_vals = sorted(set([c[0] for c in sector_centers]))\n    el_vals = sorted(set([c[1] for c in sector_centers]))\n    az_pad = az_size + 5\n    el_pad = el_size + 5\n\n    if axis is None:\n        fig, ax = plt.subplots(figsize=(6, 6), dpi=264)\n    else:\n        ax = axis\n        fig = ax.get_figure()\n\n    ax.set_aspect('equal')\n    # All 4 spines visible\n    for spine in ax.spines.values():\n        spine.set_visible(True)\n    # Ticks on all 4 sides, inward\n    ax.tick_params(axis='both', direction='in', bottom=True, top=True,\n                   left=True, right=True, width=lw, length=2)\n\n    ax.set_xlim(min(az_vals) - az_pad, max(az_vals) + az_pad)\n    ax.set_ylim(min(el_vals) - el_pad, max(el_vals) + el_pad)\n    ax.set_xlabel(\"Response Azimuth (deg)\")\n    ax.set_ylabel(\"Response Elevation (deg)\")\n\n    # 3 ticks across each axis from the actual sector range\n    az_ticks = numpy.linspace(min(az_vals), max(az_vals), 3).astype(int)\n    el_ticks = numpy.linspace(min(el_vals), max(el_vals), 3).astype(int)\n    ax.set_xticks(az_ticks)\n    ax.set_yticks(el_ticks)\n\n    title = sequence.name\n    if 'elevation' in report_stats:\n        title += f\"\\nEG: {eg:.2f}, RMSE: {ele_rmse:.1f}°, SD: {ele_sd:.1f}°\"\n    if 'azimuth' in report_stats and ag:\n        title += f\"\\nAG: {ag:.2f}, az RMSE: {az_rmse:.1f}°, az SD: {az_sd:.1f}°\"\n    ax.set_title(title, fontsize=fs)\n\n    # Reference grid at sector centers — light grey, very thin\n    for x in az_vals:\n        ax.plot([x, x], [min(el_vals), max(el_vals)],\n                color='0.6', linestyle='-', linewidth=0.3, zorder=-1)\n    for y in el_vals:\n        ax.plot([min(az_vals), max(az_vals)], [y, y],\n                color='0.6', linestyle='-', linewidth=0.3, zorder=-1)\n\n    # Mean response dots — small filled black\n    ax.scatter(mean_responses[:, 0], mean_responses[:, 1],\n               color='black', s=6, zorder=2)\n\n    # Connect mean responses in grid layout — black, thin\n    sector_lookup = {tuple(sc): center_grid[tuple(sc)]\n                     for sc in sector_centers if tuple(sc) in center_grid}\n    for el in el_vals:\n        row = [sector_lookup[(az, el)] for az in az_vals if (az, el) in sector_lookup]\n        if len(row) > 1:\n            ax.plot([p[0] for p in row], [p[1] for p in row], 'k-', linewidth=0.6)\n    for az in az_vals:\n        col = [sector_lookup[(az, el)] for el in el_vals if (az, el) in sector_lookup]\n        if len(col) > 1:\n            ax.plot([p[0] for p in col], [p[1] for p in col], 'k-', linewidth=0.6)\n\n    plt.tight_layout()\n    if filepath:\n        if not filepath.exists():\n            filepath.mkdir(parents=True, exist_ok=True)\n        plt.savefig(filepath / f'{sequence.name}.png')\n\ndef plot_elevation_response(sequence, axis=None, add_fit=True, filepath=None):\n    \"\"\"\n    Plot elevation responses against elevation targets.\n\n    Per-target summaries (style from publication):\n      - Light grey SD bar centred on each target elevation\n      - Grey horizontal line at the mean response\n      - Grey vertical line from mean response to target (RMSE indicator)\n      - Black horizontal tick at the target elevation\n    Individual trials shown as open grey circles.\n    Black dashed EG regression line.\n    Legend: EG / RMSE / SD.\n\n    Parameters\n    ----------\n    sequence : object\n        Localization sequence with .data, .this_n, .n_remaining, .settings, .name\n    axis : matplotlib.axes.Axes or None\n    add_fit : bool\n        Draw the EG (elevation gain) regression line.\n    filepath : Path or None\n        Directory to save the figure.\n\n    Returns\n    -------\n    fig : matplotlib.figure.Figure\n    \"\"\"\n    if sequence.this_n == -1 or sequence.n_remaining == len(sequence.data) or not sequence.data:\n        return numpy.nan, numpy.nan, numpy.nan, numpy.nan, numpy.nan, numpy.nan\n\n    fs = 8\n    lw = 1.0\n    plt.rcParams.update({\n        'font.family': 'Helvetica',\n        'xtick.labelsize': fs, 'ytick.labelsize': fs, 'axes.labelsize': fs,\n        'lines.linewidth': lw,\n        'ytick.direction': 'in', 'xtick.direction': 'in',\n        'ytick.major.size': 2, 'xtick.major.size': 2,\n        'axes.linewidth': 0.5, 'axes.titlesize': fs,\n        'axes.spines.right': False, 'axes.spines.top': False,\n    })\n\n    loc_data = numpy.asarray(sequence.data)\n    loc_data = loc_data.reshape(loc_data.shape[0], 2, 2)\n    targets   = loc_data[:, 1]\n    responses = loc_data[:, 0]\n    targ_el = targets[:, 1]\n    resp_el = responses[:, 1]\n\n    eg, ele_rmse, ele_sd, ag, az_rmse, az_sd = localization_accuracy(sequence)\n\n    if axis is None:\n        fig, axis = plt.subplots(figsize=(6, 6), dpi=264)\n    else:\n        fig = axis.get_figure()\n\n    axis.set_aspect('equal', adjustable='box')\n\n    el_targets = numpy.unique(targ_el)\n\n    # Individual responses — open grey circles\n    axis.scatter(targ_el, resp_el, s=10, edgecolor='0.5', facecolor='none',\n                 linewidth=0.7, zorder=2)\n\n    # EG regression line — black dashed\n    if add_fit and len(el_targets) >= 2:\n        slope, intercept, _, _, _ = scipy.stats.linregress(targ_el, resp_el)\n        pad = (float(el_targets[-1]) - float(el_targets[0])) * 0.1\n        x_line = numpy.array([float(el_targets[0]) - pad, float(el_targets[-1]) + pad])\n        axis.plot(x_line, intercept + slope * x_line,\n                  c='0', linewidth=lw, linestyle='--', zorder=4)\n\n    # Ticks aligned to target positions\n    axis.set_xticks(el_targets)\n    axis.set_yticks(el_targets)\n    try:\n        axis.get_xticklabels()[0].set_horizontalalignment('left')\n        axis.get_xticklabels()[-1].set_horizontalalignment('right')\n    except IndexError:\n        pass\n\n    axis.set_xlabel('Target Elevations (deg)')\n    axis.set_ylabel('Response Elevations (deg)')\n\n    title = (getattr(sequence, 'name', 'Localization') +\n             f\"\\nEG: {eg:.2f}, RMSE={ele_rmse:.1f}°, SD={ele_sd:.1f}°\")\n    axis.set_title(title, fontsize=fs)\n\n    # Legend: EG only\n    legend_handles = [\n        Line2D([0], [0], color='0', linestyle='--', linewidth=lw, label='EG'),\n    ]\n    axis.legend(handles=legend_handles, frameon=False, loc='upper left',\n                handleheight=0.25, labelspacing=0, fontsize=fs,\n                bbox_to_anchor=(0, 0.95))\n\n    plt.tight_layout()\n\n    if filepath:\n        if not filepath.exists():\n            filepath.mkdir(parents=True, exist_ok=True)\n        plt.savefig(filepath / f'{sequence.name}_el_response.png')\n\n    return fig\n\n\n\n
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/hrtf_relearning/experiment/analysis/localization/localization_analysis.py b/hrtf_relearning/experiment/analysis/localization/localization_analysis.py
+--- a/hrtf_relearning/experiment/analysis/localization/localization_analysis.py	(revision 858412ba58ac647e8ff6913dace076d18e5bd4bd)
++++ b/hrtf_relearning/experiment/analysis/localization/localization_analysis.py	(date 1782294032972)
+@@ -17,62 +17,27 @@
+     responses = loc_data[:, 0]
+ 
+     #  elevation gain, rmse, response variability
++    #  SD = scatter of responses around the gain-fit regression line (precision).
++    #  Residuals around the fit remove the (1 - gain) * target term, so the SD is
++    #  not confounded by gain (unlike per-sector target-aligned spread).
+     try:
+-        elevation_gain, n = scipy.stats.linregress(targets[:, 1], responses[:, 1])[:2]
++        elevation_gain, ele_intercept = scipy.stats.linregress(targets[:, 1], responses[:, 1])[:2]
++        ele_resid = responses[:, 1] - (elevation_gain * targets[:, 1] + ele_intercept)
++        ele_sd = float(numpy.std(ele_resid, ddof=1)) if len(ele_resid) > 1 else numpy.nan
+     except ValueError:
+-        elevation_gain = 0
++        elevation_gain, ele_sd = 0, numpy.nan
+     if not len(numpy.unique(targets[:, 0])) == 1:
+-        azimuth_gain, n = scipy.stats.linregress(targets[:, 0], responses[:, 0])[:2]
++        azimuth_gain, az_intercept = scipy.stats.linregress(targets[:, 0], responses[:, 0])[:2]
++        az_resid = responses[:, 0] - (azimuth_gain * targets[:, 0] + az_intercept)
++        az_sd = float(numpy.std(az_resid, ddof=1)) if len(az_resid) > 1 else numpy.nan
+     else:
+         azimuth_gain = None
++        az_sd = numpy.nan
+     rmse = numpy.sqrt(numpy.mean(numpy.square(targets - responses), axis=0))
+     az_rmse, ele_rmse = rmse[0], rmse[1]
+-    variability = compute_sector_precision(targets, responses, sequence.settings['sector_centers'], sequence.settings['sector_size'])
+-    az_sd, ele_sd = variability[0], variability[1]
+     return elevation_gain, ele_rmse, ele_sd, azimuth_gain, az_rmse, az_sd
+ 
+ 
+-def compute_sector_precision(targets, responses, sector_centers, sector_size):
+-    """
+-    Estimates response precision per sector by aligning targets and measuring
+-    the spread (std) of aligned responses, then averaging over sectors.
+-
+-    Parameters:
+-    - targets: Nx2 array (azimuth, elevation)
+-    - responses: Nx2 array (azimuth, elevation)
+-    - sector_centers: Mx2 array of sector center coordinates
+-    - sector_size: tuple (az_size, el_size)
+-
+-    Returns:
+-    - per_sector_std: list of (azimuth_std, elevation_std) for each sector
+-    - mean_std: tuple of (mean_azimuth_std, mean_elevation_std)
+-    """
+-    az_size, el_size = sector_size
+-    per_sector_std = []
+-    for center in sector_centers:
+-        # Define bounds of the current sector
+-        az_min = center[0] - az_size / 2
+-        az_max = center[0] + az_size / 2
+-        el_min = center[1] - el_size / 2
+-        el_max = center[1] + el_size / 2
+-        # Get indices of targets in this sector
+-        in_sector = numpy.where((targets[:, 0] >= az_min) & (targets[:, 0] < az_max) &
+-            (targets[:, 1] >= el_min) & (targets[:, 1] < el_max))[0]
+-        if len(in_sector) >= 2:
+-            # Shift targets and responses so that all targets align at origin
+-            response_shift = responses[in_sector] - targets[in_sector]
+-            az_std = numpy.std(response_shift[:, 0])
+-            el_std = numpy.std(response_shift[:, 1])
+-            per_sector_std.append((az_std, el_std))
+-    # Compute mean std across sectors
+-    if per_sector_std:
+-        per_sector_std = numpy.array(per_sector_std)
+-        mean_std = tuple(numpy.mean(per_sector_std, axis=0))
+-    else:
+-        mean_std = (numpy.nan, numpy.nan)
+-    return mean_std
+-
+-
+ def _wrap_diff_deg(a, b):
+     """Smallest signed difference a-b on a 360° circle, result in [-180, 180)."""
+     return (numpy.asarray(a) - numpy.asarray(b) + 180.0) % 360.0 - 180.0
+Index: hrtf_relearning/hrtf/record/calibration/calibrate_headphones.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>\"\"\"\nHeadphone Equalization Script\n-----------------------------\n\nThis script measures or loads a raw headphone impulse response (HpIR), and\ncomputes an equalization filter that compensates the headphone transfer\nfunction. The resulting inverse filter can be used for HRTF recordings or\npsychophysical experiments requiring flat headphone playback.\n\nSteps:\n1. Initialize hardware and generate the test signal (logarithmic chirp).\n2. Record or load the raw headphone response.\n3. Convert to pyfar.Signal.\n4. Compute the headphone transfer function.\n5. Build a regularized minimum-phase inverse filter.\n6. Optionally plot TF/IR and intermediate steps.\n7. Return or save the equalization filter in a dictionary.\n\nDependencies:\n- freefield\n- slab\n- pyfar\n- matplotlib\n\"\"\"\n\nimport matplotlib\nfrom pyfar import Signal\nfrom slab import Filter\n\nmatplotlib.use(\"tkagg\")\nfrom matplotlib import pyplot as plt\nimport numpy\nimport pyfar\nimport slab\nimport freefield\nimport warnings\nimport soundfile as sf\nfrom pathlib import Path\nimport pickle\nimport logging\nwarnings.filterwarnings(\"ignore\", category=pyfar._utils.PyfarDeprecationWarning)\nfreefield.set_logger(\"info\")\nimport hrtf_relearning\nROOT = hrtf_relearning.PATH\n\n# -------------------------------------------------------------------------\n# CONFIG\n# -------------------------------------------------------------------------\nSUB_ID = 'KEMAR'\nHP_ID = 'MYSPHERE'  # MYSPHERE, DT990\n\n\nfs = 48828\nslab.set_default_samplerate(fs)\n\n# sweep parameters\nLEVEL = 70\nN_REC = 3\nLOW_CUTOFF = 20\nHIGH_CUTOFF = fs/2\nCHIRP_DURATION = 1.0\nRAMP_DURATION = .001  # 1ms ramp\n\n# regularization parameters\nBETA = 0.1\n\nN_OUT = 256\n# -------------------------------------------------------------------------\n# SIGNAL GENERATION\n# -------------------------------------------------------------------------\n\ndef generate_chirp():\n    \"\"\"\n    Generate a logarithmic binaural test chirp for measuring headphone TF.\n\n    Returns\n    -------\n    signal : slab.Binaural\n        Two-channel chirp from LOW_CUTOFF to HIGH_CUTOFF Hz.\n    \"\"\"\n    signal =  slab.Binaural.chirp(\n        duration=CHIRP_DURATION,\n        level=LEVEL,\n        from_frequency=LOW_CUTOFF,\n        to_frequency=HIGH_CUTOFF,\n        kind=\"logarithmic\"\n    )\n    signal = signal.ramp('both', RAMP_DURATION)\n    return signal\n\n# -------------------------------------------------------------------------\n# MEASUREMENT OR LOADING\n# -------------------------------------------------------------------------\n\ndef measure_hp_raw(signal, repeats=1):\n    \"\"\"\n    Measure raw headphone impulse response using freefield.\n\n    Parameters\n    ----------\n    signal : slab.Sound\n        Test signal to be played.\n    repeats : int\n        Number of repeated measurements to average.\n\n    Returns\n    -------\n    slab.Binaural\n        Averaged binaural recording.\n    \"\"\"\n\n    recs = []\n    for _ in range(repeats):\n        rec = freefield.play_and_record_headphones(\n            speaker=\"both\",\n            sound=signal,\n            compensate_delay=True,\n            distance=0,\n            equalize=False,\n            recording_samplerate=fs, #* 2,\n        )\n        freefield.wait_to_finish_playing()\n        recs.append(rec)\n    return slab.Sound(data=numpy.mean(recs, axis=0))\n\n\n# -------------------------------------------------------------------------\n# EQUALIZATION FILTER\n# -------------------------------------------------------------------------\n\ndef compute_headphone_equalization(recording, excitation, beta, n_samp_out=1024, show=False):\n    \"\"\"\n    Compute a regularized, minimum-phase inverse filter for headphone equalization.\n\n    Parameters\n    ----------\n    recording : slab.Sound\n        Binaural recording of the played chirp.\n    excitation : slab.Sound\n        The original test chirp.\n    show : bool\n        Plot intermediate results (TF, inverse, equalized response).\n\n    Returns\n    -------\n    eq_filter : pyfar.Signal\n        Two-channel equalization filter.\n    \"\"\"\n\n    # ------------------------------------------------------------------\n    # Convert to pyfar.Signal\n    # ------------------------------------------------------------------\n    hp_raw = pyfar.Signal(recording.data.T, recording.samplerate)\n    sig = pyfar.Signal(excitation.data.T, excitation.samplerate)\n\n    # ------------------------------------------------------------------\n    # Compute headphone transfer function: HpTF = recording / signal\n    # ------------------------------------------------------------------\n    signal_inv = pyfar.dsp.regularized_spectrum_inversion(\n        sig, frequency_range=(60, HIGH_CUTOFF)\n    )\n    hp_ir = hp_raw * signal_inv\n\n    # Normalize peak to 1\n    hp_ir.time *= 1 / numpy.max(hp_ir.time)\n\n    # Align IR to 10 ms\n    onset = pyfar.dsp.find_impulse_response_start(hp_ir, threshold=20)\n    shift_s = 0.01 - onset / hp_ir.sampling_rate\n    hp_ir = pyfar.dsp.time_shift(hp_ir, shift_s, unit=\"s\")\n\n    if show:\n        plt.figure()\n        plt.title(\"Raw HpTF / IR\")\n        pyfar.plot.time_freq(hp_ir)\n\n    # ------------------------------------------------------------------\n    # Regularization\n    # ------------------------------------------------------------------\n    reg = pyfar.dsp.filter.low_shelf(\n        pyfar.signals.impulse(hp_ir.n_samples), 60, 20, 2\n    )\n    reg = pyfar.dsp.filter.high_shelf(reg, 6000, 20, 2) * 0.1\n\n    hp_inv_reg = pyfar.dsp.regularized_spectrum_inversion(\n        hp_ir, (0, 20e3), regu_final=reg.freq * beta\n    )\n\n    # if show:\n    #     plt.figure()\n    #     plt.title(\"Regularized inverse\")\n    #     pyfar.plot.freq(hp_inv_reg)\n\n    # ------------------------------------------------------------------\n    # Minimum-phase + time windowing\n    # ------------------------------------------------------------------\n    hp_inv_reg = pyfar.dsp.minimum_phase(hp_inv_reg, truncate=False)\n\n    # window\n    hp_windowed = pyfar.dsp.time_window(\n        hp_inv_reg,\n        [0, n_samp_out - 1],\n        shape=\"right\",\n        window='boxcar',\n        crop='window'\n    )\n    # ------------------------------------------------------------------\n    # Final diagnostic plot\n    # ------------------------------------------------------------------\n    if show:\n        ears = ['left', 'right']\n        fig, axes = plt.subplots(1,2, figsize=(12,4))\n        for i, (ax, ear) in enumerate(zip(axes, ears)):\n            ax.set_title(f'{ear} ear')\n            pyfar.plot.freq(reg, linestyle=\"--\", label=\"Regularization\", ax=ax)\n            pyfar.plot.freq(hp_ir[i], label=\"HpTF\", ax=ax)\n            pyfar.plot.freq(hp_windowed[i], label=\"Inverse (regularized)\", ax=ax)\n            pyfar.plot.freq(pyfar.dsp.convolve(hp_ir[i], hp_windowed[i]), label=\"Equalized HpTF\", ax=ax)\n            ax.set_ylim(-25, 20)\n        plt.legend()\n        plt.show()\n\n    return hp_windowed\n\n\n# -------------------------------------------------------------------------\n# SAVE / LOAD CALIBRATION\n# -------------------------------------------------------------------------\n\ndef save_hp_filter(eq_filter: pyfar.Signal, path: Path):\n    \"\"\"Save a pyfar headphone equalization filter as .npz.\n\n    Stores ``filter`` with shape (n_channels, n_samples) and ``samplerate``.\n\n    Parameters\n    ----------\n    eq_filter : pyfar.Signal\n        Two-channel equalization filter.\n    path : Path\n        Output file path (should end in .npz).\n    \"\"\"\n    path = Path(path)\n    path.parent.mkdir(parents=True, exist_ok=True)\n    numpy.savez(\n        path,\n        filter=eq_filter.time.astype(\"float32\"),   # (n_channels, n_samples)\n        samplerate=numpy.array(eq_filter.sampling_rate),\n    )\n    logging.info(f\"Saved HP equalization filter to: {path}\")\n\n\ndef load_hp_filter(path: Path, output='pyfar') -> Filter | Signal:\n    \"\"\"Load a headphone equalization filter from .npz (or .wav as fallback).\n\n    Parameters\n    ----------\n    path : Path\n        Path to a ``.npz`` file written by :func:`save_hp_filter`.\n        If the file does not exist but a ``.wav`` with the same stem does,\n        that is loaded instead for backward compatibility.\n\n    Returns\n    -------\n    pyfar.Signal or slab.Filter\n        Two-channel equalization filter.\n    \"\"\"\n    path = Path(path)\n    if path.exists():\n        npz = numpy.load(path, allow_pickle=False)\n        if output == 'pyfar':\n            return pyfar.Signal(npz[\"filter\"], int(npz[\"samplerate\"]))\n        elif output == 'slab':\n            return slab.Filter(data=npz[\"filter\"], samplerate=int(npz[\"samplerate\"]), fir='FIR')\n    # backward-compat: try .wav with the same stem\n    wav_path = path.with_suffix(\".wav\")\n    if wav_path.exists():\n        logging.warning(f\"No .npz found at {path} – loading legacy .wav: {wav_path}\")\n        # return pyfar.io.read_audio(wav_path)\n        return slab.Filter(data=slab.Sound(wav_path).data, samplerate=48842, fir='FIR')\n    raise FileNotFoundError(f\"HP filter not found: tried {path} and {wav_path}\")\n\n\ndef pyfar2wav(eq_filter: pyfar.Signal, path: Path):\n    \"\"\"Save a pyfar filter as WAV (legacy, kept for backward compatibility).\"\"\"\n    path = Path(path)\n    path.parent.mkdir(parents=True, exist_ok=True)\n    sf.write(path, eq_filter.time.T.astype(\"float32\"), eq_filter.sampling_rate, subtype=\"FLOAT\")\n    logging.info(f\"Saved HP equalization to: {path}\")\n\ndef ff_equalization(eq_filter, hp_id, save_freefield=True):\n    \"\"\"\n    Save equalization filter to a pickle file.\n\n    Parameters\n    ----------\n    eq_filter : pyfar.Signal\n        Equalization filter.\n    path : Path\n        Output file path.\n    \"\"\"\n    # convert to slab filter\n    filter = slab.Filter(\n        data=eq_filter.time,\n        samplerate=fs,\n        fir=\"IR\",\n    )\n    speakers = freefield.pick_speakers([0, 1])\n    equalization = dict()\n    equalization.update({f\"{speakers[0].index}\": {\"level\": 0, \"filter\": filter.channel(0)}})\n    equalization.update({f\"{speakers[1].index}\": {\"level\": 0, \"filter\": filter.channel(1)}})\n\n    if save_freefield:\n        with open(freefield.DIR / 'data' / f'calibration_{hp_id}.pkl', 'wb') as f:  # save the newly recorded calibration\n            pickle.dump(equalization, f, pickle.HIGHEST_PROTOCOL)\n        print(f\"Writing calibration to {freefield.DIR / 'data' / f'calibration_{hp_id}.pkl'}\")\n    return filter\n\n# -------------------------------------------------------------------------\n# MAIN PIPELINE\n# -------------------------------------------------------------------------\n\ndef calibrate_headphones(subject_id=SUB_ID, hp_id=HP_ID, n_rec=N_REC, show=True, save_freefield=False):\n    save_path = ROOT / \"data\" / \"hrtf\" / \"rec\" / subject_id / f\"{hp_id}_equalization.npz\"\n\n    try:\n        # alternatively load from disk\n        hp_filter = load_hp_filter(save_path,'slab')\n        print(f'Loading hp filter from disk: {hp_id}_equalization.npz')\n        return hp_filter\n\n    except FileNotFoundError:\n        # Initialize freefield for headphone playback\n        if not freefield.PROCESSORS.mode == 'bi_play_rec':\n            freefield.initialize(\"headphones\", default=\"bi_play_rec\")\n\n        # Generate chirp\n        excitation = generate_chirp()\n\n        # Load or measure HpIR\n        recordings = []\n        for i in range(n_rec):\n            input('Press Enter to record...')\n            recordings.append(measure_hp_raw(excitation, repeats=1))\n        recording = slab.Sound(data=numpy.mean(recordings, axis=0))\n\n        # Compute equalization\n        eq_filter = compute_headphone_equalization(recording, excitation, beta=0.01, show=False)\n        # adjust beta parameter if necessary\n\n        # Save to npz\n        save_hp_filter(eq_filter, save_path)\n\n        # test and alternatively save to freefield\n        hp_filter = ff_equalization(eq_filter, hp_id, save_freefield)\n        if show:\n            raw = freefield.play_and_record_headphones(speaker='both', sound=excitation, equalize=False)\n            filtered = hp_filter.apply(excitation)\n            equalized = freefield.play_and_record_headphones(speaker='both', sound=filtered, equalize=False)\n            fig ,axes = plt.subplots(2,1)\n            raw.spectrum(axis=axes[0])\n            axes[0].set_title('Raw HpTF')\n            equalized.spectrum(axis=axes[1])\n            axes[1].set_title('Equalized HpTF')\n            fig.suptitle(f'{hp_id} equalization')\n\n        return hp_filter\n\n# if __name__ == \"__main__\":\n#     main()\n
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/hrtf_relearning/hrtf/record/calibration/calibrate_headphones.py b/hrtf_relearning/hrtf/record/calibration/calibrate_headphones.py
+--- a/hrtf_relearning/hrtf/record/calibration/calibrate_headphones.py	(revision 858412ba58ac647e8ff6913dace076d18e5bd4bd)
++++ b/hrtf_relearning/hrtf/record/calibration/calibrate_headphones.py	(date 1782214206537)
+@@ -319,51 +319,61 @@
+ # MAIN PIPELINE
+ # -------------------------------------------------------------------------
+ 
+-def calibrate_headphones(subject_id=SUB_ID, hp_id=HP_ID, n_rec=N_REC, show=True, save_freefield=False):
++def calibrate_headphones(subject_id=SUB_ID, hp_id=HP_ID, n_rec=N_REC, show=True,
++                         save_freefield=False, overwrite=False):
++    """Measure (or load) the headphone equalization filter for a subject.
++
++    If a saved filter exists it is loaded from disk, unless ``overwrite=True``,
++    in which case the filter is always re-measured and the existing file is
++    replaced.
++    """
+     save_path = ROOT / "data" / "hrtf" / "rec" / subject_id / f"{hp_id}_equalization.npz"
+ 
+-    try:
+-        # alternatively load from disk
+-        hp_filter = load_hp_filter(save_path,'slab')
+-        print(f'Loading hp filter from disk: {hp_id}_equalization.npz')
+-        return hp_filter
+-
+-    except FileNotFoundError:
+-        # Initialize freefield for headphone playback
+-        if not freefield.PROCESSORS.mode == 'bi_play_rec':
+-            freefield.initialize("headphones", default="bi_play_rec")
++    if not overwrite:
++        try:
++            # load existing calibration from disk
++            hp_filter = load_hp_filter(save_path, 'slab')
++            print(f'Loading hp filter from disk: {hp_id}_equalization.npz')
++            return hp_filter
++        except FileNotFoundError:
++            pass  # fall through to measurement
++
++    # measure a fresh calibration (no file on disk, or overwrite requested)
++    # Initialize freefield for headphone playback
++    if not freefield.PROCESSORS.mode == 'bi_play_rec':
++        freefield.initialize("headphones", default="bi_play_rec")
+ 
+-        # Generate chirp
+-        excitation = generate_chirp()
++    # Generate chirp
++    excitation = generate_chirp()
+ 
+-        # Load or measure HpIR
+-        recordings = []
+-        for i in range(n_rec):
+-            input('Press Enter to record...')
+-            recordings.append(measure_hp_raw(excitation, repeats=1))
+-        recording = slab.Sound(data=numpy.mean(recordings, axis=0))
++    # Load or measure HpIR
++    recordings = []
++    for i in range(n_rec):
++        input('Press Enter to record...')
++        recordings.append(measure_hp_raw(excitation, repeats=1))
++    recording = slab.Sound(data=numpy.mean(recordings, axis=0))
+ 
+-        # Compute equalization
+-        eq_filter = compute_headphone_equalization(recording, excitation, beta=0.01, show=False)
+-        # adjust beta parameter if necessary
++    # Compute equalization
++    eq_filter = compute_headphone_equalization(recording, excitation, beta=0.01, show=False)
++    # adjust beta parameter if necessary
+ 
+-        # Save to npz
+-        save_hp_filter(eq_filter, save_path)
++    # Save to npz
++    save_hp_filter(eq_filter, save_path)
+ 
+-        # test and alternatively save to freefield
+-        hp_filter = ff_equalization(eq_filter, hp_id, save_freefield)
+-        if show:
+-            raw = freefield.play_and_record_headphones(speaker='both', sound=excitation, equalize=False)
+-            filtered = hp_filter.apply(excitation)
+-            equalized = freefield.play_and_record_headphones(speaker='both', sound=filtered, equalize=False)
+-            fig ,axes = plt.subplots(2,1)
+-            raw.spectrum(axis=axes[0])
+-            axes[0].set_title('Raw HpTF')
+-            equalized.spectrum(axis=axes[1])
+-            axes[1].set_title('Equalized HpTF')
+-            fig.suptitle(f'{hp_id} equalization')
++    # test and alternatively save to freefield
++    hp_filter = ff_equalization(eq_filter, hp_id, save_freefield)
++    if show:
++        raw = freefield.play_and_record_headphones(speaker='both', sound=excitation, equalize=False)
++        filtered = hp_filter.apply(excitation)
++        equalized = freefield.play_and_record_headphones(speaker='both', sound=filtered, equalize=False)
++        fig ,axes = plt.subplots(2,1)
++        raw.spectrum(axis=axes[0])
++        axes[0].set_title('Raw HpTF')
++        equalized.spectrum(axis=axes[1])
++        axes[1].set_title('Equalized HpTF')
++        fig.suptitle(f'{hp_id} equalization')
+ 
+-        return hp_filter
++    return hp_filter
+ 
+ # if __name__ == "__main__":
+ #     main()
+Index: hrtf_relearning/hrtf/processing/modify.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>\"\"\"\nmodify_replace.py — HRTF modification with spectral *replacement* rather than multiplicative gain.\n\nDifference from modify.py\n-------------------------\nmodify.py treats the Gaussian as a **dB gain** applied on top of the existing spectrum:\n\n    gain_db(f) = -depth_db * exp(-0.5 * ((f-mu)/sigma)^2)\n    mag_out(f) = mag_in(f) * 10^(gain_db(f)/20)\n\nThis compounds multiplicatively with whatever spectral shape is already present at\nthose frequencies.\n\nThis script treats the Gaussian as a **blending weight** that crossfades the original\nmagnitude toward a target level:\n\n    w(f)       = exp(-0.5 * ((f-mu)/sigma)^2)          # 0 at edges, 1 at centre\n    target(f)  = mag_ref(f) * 10^(-depth_db/20)         # >0 depth -> notch, <0 -> peak\n    mag_out(f) = (1 - w(f)) * mag_in(f) + w(f) * target(f)\n\nwhere mag_ref is the smoothed (trend) version of the spectrum, used so that the target\nrepresents a clean level independent of fine spectral structure at those bins.\n\nAt the Gaussian centre (w = 1):   mag_out = target   (original is fully replaced)\nAt the Gaussian tails (w → 0):    mag_out = mag_in   (original is fully preserved)\nIn between:                        linear crossfade between the two\n\nThe two approaches agree at both extremes (w = 0 and w = 1) but differ in between:\nthe replacement/blend is linear in the magnitude domain, whereas the gain approach is\nlinear in dB (i.e. exponential in magnitude).  The blend approach results in a\n\"softer\" notch shape in the transition zone and replaces the actual spectral power in\nthose bins with the feature's target power rather than attenuating whatever happens\nto be there.\n\"\"\"\n\nimport copy\nimport numpy\nimport matplotlib\nimport matplotlib.ticker\nmatplotlib.use('tkagg')\nfrom matplotlib import pyplot as plt\nfrom sklearn.linear_model import LinearRegression\nfrom hrtf_relearning import PATH\nhrtf_dir = PATH / 'data' / 'hrtf' / 'sofa'\nimport slab\nfrom hrtf_relearning.hrtf.analysis.vsi import (vsi as _vsi, vsi_dissimilarity as _vsi_dissimilarity)\n\nsub_id = 'JS'\n\nSMOOTH = True\nN_KEEP = 4\nPLOT = 'image'\n# fname = 'shift'   # output SOFA suffix: <sub_id>_<fname>.sofa\n\n# ---------------------------------------------------------------------------\n# Modification mode\n# ---------------------------------------------------------------------------\n# 'synth' : cepstral smoothing + synthetic spectral features (FEATURES below).\n#           This is the original behaviour.\n# 'shift' : cepstral envelope/detail split + frequency-shift of the subject's\n#           OWN fine cues inside a band (SHIFT_* params below).  Ignores\n#           SMOOTH / N_KEEP / FEATURES.\nMODE = 'shift'\nfname = MODE\n\n# --- 'shift' mode parameters (only used when MODE == 'shift') --------------\nSHIFT_CENTER    = 10000   # band centre frequency [Hz]\nSHIFT_OCTAVES   = 1.5    # band width in octaves (fraction for octave_band)\nSHIFT_FACTOR    = 0.9   # >1 shifts cues up, <1 down, 1.0 = rebuild no-op  # todo desdcribe better, optionally plot waterfall\nSHIFT_ENV_NKEEP = 3      # cepstral coeffs kept for the envelope (lower = more detail shifted)\nSHIFT_SKIRT     = 0.25   # cosine taper outside the band [octaves]\n\n# ---------------------------------------------------------------------------\n# Spectral feature list\n# ---------------------------------------------------------------------------\n# Each entry is one spectral feature (notch or peak) added to the HRTF.\n# Parameters are linearly interpolated between two spatial anchor points\n# X1 and X2 (azimuth, elevation) in degrees.\n#\n# Keys per feature\n# ----------------\n# freqs : (f_at_X1, f_at_X2)   centre frequency [Hz]\n# width : (w_at_X1, w_at_X2)   Gaussian σ / bandwidth [Hz]\n# depth : (d_at_X1, d_at_X2)   magnitude in dB\n#     > 0  →  notch  (spectral attenuation below reference level)\n#     < 0  →  peak   (spectral boost above reference level)\n# X1, X2 : (azimuth, elevation) spatial anchor directions\n# ---------------------------------------------------------------------------\nFEATURES = [\n    {\n        'freqs': (8000, 9000),  # centre freq at X1 and X2 [Hz]\n        'width': (300,   300),   # Gaussian σ at X1 and X2 [Hz]\n        'depth': (12.0,  12.0), # >0 = notch, <0 = peak [dB]\n        'X1':    (0, 0),         # anchor 1 (az, az)\n        'X2':    (-40, 40),      # anchor 2 (el, el)\n    },\n    # Add further features here, e.g.:\n    {\n        'freqs': (11000, 10000),\n        'width': (300, 300),\n        'depth': (12, 12),   # negative → peak\n        'X1': (0, 0),\n        'X2': (-40, 40),\n    },\n    # {\n    #     'freqs': (15500, 16000),\n    #     'width': (300, 300),\n    #     'depth': (12, 12),  # negative → peak\n    #     'X1': (0, 0),\n    #     'X2': (-40, 40),\n    # },\n]\n\n# FEATURES = []  # no features\n\n\n# ---------------------------------------------------------------------------\n# Shared helpers (same as modify.py)\n# ---------------------------------------------------------------------------\n\ndef _smooth(mag, n_keep):\n    \"\"\"\n    Smooth a one-sided magnitude spectrum via truncated cosine-series\n    reconstruction of log-magnitude (Kulkarni & Colburn 1998).\n    \"\"\"\n    mag = numpy.asarray(mag, dtype=float)\n    if mag.ndim != 2:\n        raise ValueError(\"mag must have shape (n_bins, n_channels)\")\n    n_bins, n_channels = mag.shape\n    n_samples = 2 * (n_bins - 1)\n    n_keep = int(n_keep)\n    if n_keep < 1 or n_keep > n_bins:\n        raise ValueError(f\"n_keep must be between 1 and {n_bins}, got {n_keep}\")\n\n    log_mag = numpy.log(numpy.maximum(mag, numpy.finfo(float).tiny))\n    k = numpy.arange(n_bins, dtype=float)[:, None]\n    n = numpy.arange(n_bins, dtype=float)[None, :]\n    basis = numpy.cos(2.0 * numpy.pi * k * n / float(n_samples))\n\n    log_mag_smooth = numpy.empty_like(log_mag)\n    for ch in range(n_channels):\n        coeffs, _, _, _ = numpy.linalg.lstsq(basis, log_mag[:, ch], rcond=None)\n        coeffs[n_keep:] = 0.0\n        log_mag_smooth[:, ch] = basis @ coeffs\n\n    return numpy.exp(log_mag_smooth)\n\n\ndef minimum_phase_from_magnitude(mag):\n    \"\"\"Real-cepstrum minimum-phase reconstruction from a one-sided magnitude spectrum.\"\"\"\n    mag = numpy.asarray(mag, dtype=float)\n    n_bins, n_channels = mag.shape\n    n_samples = 2 * (n_bins - 1)\n    tiny = numpy.finfo(float).tiny\n    spec_min = numpy.empty((n_bins, n_channels), dtype=complex)\n\n    for ch in range(n_channels):\n        mag_ch = numpy.maximum(mag[:, ch], tiny)\n        log_mag_half = numpy.log(mag_ch)\n        log_mag_full = numpy.concatenate((log_mag_half, log_mag_half[-2:0:-1]))\n        cep = numpy.fft.ifft(log_mag_full).real\n        cep_min = numpy.zeros_like(cep)\n        cep_min[0] = cep[0]\n        cep_min[1:n_samples // 2] = 2.0 * cep[1:n_samples // 2]\n        cep_min[n_samples // 2] = cep[n_samples // 2]\n        spec_min[:, ch] = numpy.exp(numpy.fft.fft(cep_min))[:n_bins]\n\n    return spec_min\n\n\ndef find_ir_onsets(ir, threshold_db=15.0):\n    ir = numpy.asarray(ir, dtype=float)\n    n_samples, n_channels = ir.shape\n    onsets = numpy.zeros(n_channels, dtype=int)\n    for ch in range(n_channels):\n        x = numpy.abs(ir[:, ch])\n        peak_idx = int(numpy.argmax(x))\n        peak_val = float(x[peak_idx])\n        if peak_val <= 0:\n            continue\n        threshold = peak_val / (10.0 ** (float(threshold_db) / 20.0))\n        above = numpy.where(x[:peak_idx + 1] >= threshold)[0]\n        onsets[ch] = int(above[0]) if len(above) else 0\n    return onsets\n\n\ndef restore_itd_from_onsets(ir_original, ir_processed, threshold_db=15.0):\n    ir_original  = numpy.asarray(ir_original,  dtype=float)\n    ir_processed = numpy.asarray(ir_processed, dtype=float)\n    n_samples, n_channels = ir_original.shape\n    out = numpy.zeros_like(ir_processed)\n    on_orig = find_ir_onsets(ir_original,  threshold_db=threshold_db)\n    on_proc = find_ir_onsets(ir_processed, threshold_db=threshold_db)\n    for ch in range(n_channels):\n        delta = int(on_orig[ch] - on_proc[ch])\n        if delta > 0:\n            out[:, ch] = numpy.concatenate(\n                (numpy.zeros(delta), ir_processed[:-delta, ch]))\n        elif delta < 0:\n            d = -delta\n            out[:, ch] = numpy.concatenate(\n                (ir_processed[d:, ch], numpy.zeros(d)))\n        else:\n            out[:, ch] = ir_processed[:, ch]\n    return out\n\n\ndef linear_notch_position(azimuth, elevation, X1, X2, Y):\n    X = numpy.column_stack((X1, X2))\n    model = LinearRegression()\n    model.fit(X, numpy.array(Y))\n    return float(model.predict(numpy.array((azimuth, elevation)).reshape(1, -1))[0])\n\n\ndef linear_notch_width(azimuth, elevation, X1, X2, Y):\n    X = numpy.column_stack((X1, X2))\n    model = LinearRegression()\n    model.fit(X, numpy.array(Y))\n    sigma = float(model.predict(numpy.array((azimuth, elevation)).reshape(1, -1))[0])\n    return float(max(sigma, numpy.finfo(float).eps))\n\n\ndef linear_scaling_factor(azimuth, elevation, X1, X2, Y):\n    X = numpy.column_stack((X1, X2))\n    model = LinearRegression()\n    model.fit(X, numpy.array(Y))\n    return float(model.predict(numpy.array((azimuth, elevation)).reshape(1, -1))[0])\n\n\ndef _compute_feature_params(azimuth, elevation, feature):\n    \"\"\"\n    Return interpolated spectral-feature parameters for a given source direction.\n\n    Parameters\n    ----------\n    azimuth, elevation : float\n    feature : dict with keys freqs, width, depth, X1, X2\n\n    Returns\n    -------\n    dict with keys mu, sigma, depth_db (signed: >0 notch, <0 peak).\n    \"\"\"\n    X1, X2 = feature['X1'], feature['X2']\n    return {\n        \"mu\":       linear_notch_position(azimuth, elevation, X1=X1, X2=X2, Y=feature['freqs']),\n        \"sigma\":    linear_notch_width(   azimuth, elevation, X1=X1, X2=X2, Y=feature['width']),\n        \"depth_db\": linear_scaling_factor(azimuth, elevation, X1=X1, X2=X2, Y=feature['depth']),\n    }\n\n\n# ---------------------------------------------------------------------------\n# Core processing — replacement / blending approach\n# ---------------------------------------------------------------------------\n\ndef smooth_and_replace_hrtf(\n        hrtf,\n        n_keep=12,\n        smooth=True,\n        features=None,\n        ref_n_keep=4,\n        onset_threshold_db=15.0,\n):\n    \"\"\"\n    Apply spectral smoothing and direction-dependent spectral features to a\n    slab.HRTF object, using a **linear magnitude blend** rather than a\n    multiplicative dB gain.\n\n    For each feature the Gaussian serves as a crossfade weight between the\n    original (smoothed) magnitude and a *target* magnitude:\n\n        w(f)       = exp(-0.5 * ((f - mu) / sigma)^2)\n        target(f)  = mag_ref(f) * 10^(-depth_db / 20)\n        mag_out(f) = (1 - w(f)) * mag_in(f)  +  w(f) * target(f)\n\n    where mag_ref is a heavily smoothed version of the spectrum (controlled by\n    ref_n_keep).  Using the smooth reference as the target anchor means the\n    replacement defines what the spectral *trend* should be at those bins,\n    rather than compounding with any existing fine structure.\n\n    Parameters\n    ----------\n    hrtf : slab.HRTF\n    n_keep : int\n        Cosine coefficients for the main smoothing step.\n    smooth : bool\n        Apply main smoothing before feature insertion.\n    features : list of dict\n        Same format as in modify.py (freqs, width, depth, X1, X2).\n        depth > 0 → notch, depth < 0 → peak.\n        Pass [] or None to skip.\n    ref_n_keep : int, default 4\n        Cosine coefficients for the heavily-smoothed reference spectrum used\n        as the blend target anchor.  Fewer coefficients → smoother reference,\n        so the target level reflects the broad spectral trend rather than any\n        fine peaks or dips already present.\n    onset_threshold_db : float, default 15.0\n        Threshold for onset-based ITD restoration.\n\n    Returns\n    -------\n    slab.HRTF  (deep copy, processed)\n    \"\"\"\n    if features is None:\n        features = []\n\n    out = copy.deepcopy(hrtf)\n\n    for filt, source in zip(out, out.sources.vertical_polar):\n        azimuth, elevation = float(source[0]), float(source[1])\n\n        ir_original = numpy.asarray(filt.data, dtype=float)\n        if ir_original.ndim != 2 or ir_original.shape[1] != 2:\n            raise ValueError(\"Each HRIR must have shape (n_samples, 2)\")\n\n        n_samples, _ = ir_original.shape\n        fs = filt.samplerate\n        freqs = numpy.fft.rfftfreq(n_samples, d=1.0 / fs)\n\n        spec_original = numpy.fft.rfft(ir_original, axis=0)\n        mag_original  = numpy.abs(spec_original)\n\n        # 1) Optional main smoothing\n        mag_processed = _smooth(mag_original, n_keep=n_keep) if smooth else mag_original.copy()\n\n        # 2) Spectral replacement — blend mag_processed toward a clean target\n        if features:\n            # Compute a heavily-smoothed reference that captures only the\n            # broad spectral trend (used as target anchor for replacements)\n            mag_ref = _smooth(mag_processed, n_keep=ref_n_keep)\n\n            for feat in features:\n                params = _compute_feature_params(azimuth, elevation, feat)\n                mu, sigma, depth_db = params[\"mu\"], params[\"sigma\"], params[\"depth_db\"]\n\n                # Gaussian blending weight: 1 at centre, 0 in the tails\n                w = numpy.exp(-0.5 * ((freqs - mu) / sigma) ** 2)\n\n                # Target magnitude: reference level shifted by depth_db\n                # depth_db > 0 → pull below reference (notch)\n                # depth_db < 0 → push above reference (peak)\n                target = mag_ref * (10.0 ** (-depth_db / 20.0))\n\n                # Leave DC and Nyquist untouched\n                w[0]  = 0.0\n                w[-1] = 0.0\n\n                # Linear blend in the magnitude domain\n                mag_processed = (\n                    (1.0 - w[:, None]) * mag_processed\n                    + w[:, None] * target\n                )\n\n            # Clip against extreme values after all features applied\n            mag_processed = numpy.clip(\n                mag_processed,\n                10.0 ** (-80.0 / 20.0),\n                10.0 ** ( 80.0 / 20.0),\n            )\n\n        # 3) Minimum-phase reconstruction\n        spec_processed = minimum_phase_from_magnitude(mag_processed)\n\n        # 4) Back to time domain\n        ir_processed = numpy.fft.irfft(spec_processed, n=n_samples, axis=0)\n\n        # 5) Restore original ITD\n        ir_processed = restore_itd_from_onsets(\n            ir_original, ir_processed, threshold_db=onset_threshold_db,\n        )\n\n        filt.data = ir_processed\n\n    return out\n\n\n# ---------------------------------------------------------------------------\n# Band-limited frequency shift of fine spectral detail\n# ---------------------------------------------------------------------------\n# Ported from hrtf_course.manipulations.shift_band (2026-06-17).  Reuses this\n# module's native primitives (_smooth, minimum_phase_from_magnitude,\n# restore_itd_from_onsets) rather than the vendored copies in hrtf_course.\n#\n# Where smooth_and_replace_hrtf *adds synthetic* spectral features, shift_band\n# warps the subject's *own* fine spectral structure (the high-quefrency detail\n# that carries vertical-localisation cues) up or down in frequency within a\n# chosen band, leaving the broad spectral envelope in place.  Intended as a\n# fallback manipulation for the main experiment when fully synthetic cues prove\n# unlearnable: the shifted cues are spectrally realistic but remapped.\n\n\ndef octave_band(center_hz, fraction=1.0):\n    \"\"\"Return (low, high) Hz for an octave (or fractional-octave) band.\n\n    >>> octave_band(8000)            # one octave centred on 8 kHz\n    (5656.85..., 11313.70...)\n    >>> octave_band(8000, 1 / 3)     # third-octave\n    (7127.18..., 8979.69...)\n    \"\"\"\n    if center_hz <= 0:\n        raise ValueError(f\"center_hz must be positive, got {center_hz}\")\n    if fraction <= 0:\n        raise ValueError(f\"fraction must be positive, got {fraction}\")\n    factor = 2.0 ** (fraction / 2.0)\n    return float(center_hz / factor), float(center_hz * factor)\n\n\ndef erb_bandwidth(center_hz):\n    \"\"\"Glasberg & Moore (1990) equivalent rectangular bandwidth, in Hz.\n\n    Useful for choosing band widths comparable to a single auditory filter.\n    \"\"\"\n    f_kHz = center_hz / 1000.0\n    return 24.7 * (4.37 * f_kHz + 1.0)\n\n\ndef band_window(freqs, low_hz, high_hz, skirt_octaves=0.25):\n    \"\"\"Smooth in-band window on a log-frequency axis.\n\n    The window is 1 inside ``[low_hz, high_hz]`` and tapers to 0 over a skirt of\n    ``skirt_octaves`` on each side via a raised cosine in log frequency.  DC and\n    Nyquist are forced to 0 so the manipulation stays phase-coherent and cannot\n    blow up the band edges during minimum-phase reconstruction.\n    \"\"\"\n    if not (0 < low_hz < high_hz):\n        raise ValueError(f\"need 0 < low_hz < high_hz, got {low_hz}, {high_hz}\")\n    if skirt_octaves < 0:\n        raise ValueError(f\"skirt_octaves must be >= 0, got {skirt_octaves}\")\n\n    f = numpy.asarray(freqs, dtype=float)\n    w = numpy.zeros_like(f)\n\n    pos = f > 0\n    if not numpy.any(pos):\n        return w\n\n    f_pos = f[pos]\n    log_f = numpy.log2(f_pos)\n    log_lo = numpy.log2(low_hz)\n    log_hi = numpy.log2(high_hz)\n    skirt = float(skirt_octaves)\n\n    if skirt == 0:\n        w_pos = ((log_f >= log_lo) & (log_f <= log_hi)).astype(float)\n    else:\n        w_pos = numpy.zeros_like(f_pos)\n\n        ramp_up = (log_f >= log_lo - skirt) & (log_f < log_lo)\n        x = (log_f[ramp_up] - (log_lo - skirt)) / skirt\n        w_pos[ramp_up] = 0.5 * (1 - numpy.cos(numpy.pi * x))\n\n        flat = (log_f >= log_lo) & (log_f <= log_hi)\n        w_pos[flat] = 1.0\n\n        ramp_dn = (log_f > log_hi) & (log_f <= log_hi + skirt)\n        x = (log_f[ramp_dn] - log_hi) / skirt\n        w_pos[ramp_dn] = 0.5 * (1 + numpy.cos(numpy.pi * x))\n\n    w[pos] = w_pos\n    w[0] = 0.0\n    if f.size and f[-1] > 0:\n        w[-1] = 0.0\n    return w\n\n\ndef shift_band(\n        hrtf,\n        low_hz,\n        high_hz,\n        factor,\n        envelope_n_keep=3,\n        skirt_octaves=0.25,\n        onset_threshold_db=15.0,\n):\n    \"\"\"Shift only the fine spectral structure inside ``[low_hz, high_hz]`` in\n    frequency, while leaving the broad spectral envelope in place.\n\n    Cepstral split (same decomposition the synthetic-feature path uses):\n\n    1. ``envelope = _smooth(|H|, n_keep=envelope_n_keep)`` — the broad spectral\n       slope (low-quefrency).  Carries coarse / externalisation information.\n    2. ``detail   = log|H| - envelope`` — the high-quefrency residual: sharp\n       peaks and notches that carry vertical-localisation cues.\n    3. Warp only ``detail`` in log-frequency by ``factor`` (each output\n       frequency ``f`` samples ``detail`` at ``f / factor``).\n    4. ``new_log_mag = envelope + window * detail_warped`` — recombine with the\n       in-band window so the warped detail vanishes outside the band; the\n       envelope is left untouched.\n    5. Minimum-phase reconstruction; restore original onset-based ITD.\n\n    Parameters\n    ----------\n    hrtf : slab.HRTF\n        Input HRTF.  Not modified (a deep copy is returned).\n    low_hz, high_hz : float\n        Band edges in Hz.  See :func:`octave_band` / :func:`erb_bandwidth` for\n        choosing these from a single centre frequency.\n    factor : float\n        Multiplicative shift applied to the high-quefrency detail.\n        ``> 1`` shifts cues up in frequency (e.g. 1.10 ≈ +10 %, ~+1.4\n        semitones), ``< 1`` shifts them down, ``== 1`` is a rebuild no-op.\n    envelope_n_keep : int, default 3\n        Cosine coefficients retained for the envelope.  Lower → more detail\n        gets shifted; higher → only the very sharpest peaks/notches move.\n    skirt_octaves : float, default 0.25\n        Width of the cosine taper outside the band, in octaves.\n    onset_threshold_db : float, default 15.0\n        Threshold for onset-based ITD restoration.\n\n    Returns\n    -------\n    slab.HRTF  (deep copy, processed)\n    \"\"\"\n    if factor <= 0:\n        raise ValueError(f\"factor must be positive, got {factor}\")\n    if envelope_n_keep < 1:\n        raise ValueError(f\"envelope_n_keep must be >= 1, got {envelope_n_keep}\")\n\n    out = copy.deepcopy(hrtf)\n\n    for filt, source in zip(out, out.sources.vertical_polar):\n        ir_original = numpy.asarray(filt.data, dtype=float)\n        if ir_original.ndim != 2 or ir_original.shape[1] != 2:\n            raise ValueError(\"Each HRIR must have shape (n_samples, 2)\")\n\n        n_samples, _ = ir_original.shape\n        fs = filt.samplerate\n        freqs = numpy.fft.rfftfreq(n_samples, d=1.0 / fs)\n\n        spec_original = numpy.fft.rfft(ir_original, axis=0)\n        mag_in = numpy.abs(spec_original)\n\n        eps = numpy.finfo(float).tiny\n        log_mag_db = 20.0 * numpy.log10(numpy.maximum(mag_in, eps))\n\n        # 1) envelope (low-quefrency) via the shared cepstral smoother\n        envelope_mag = _smooth(mag_in, n_keep=int(envelope_n_keep))\n        envelope_db = 20.0 * numpy.log10(numpy.maximum(envelope_mag, eps))\n\n        # 2) detail (high-quefrency residual)\n        detail_db = log_mag_db - envelope_db\n\n        # 3) warp the detail in log-frequency by `factor`\n        src_freqs = freqs / factor\n        detail_warped = numpy.empty_like(detail_db)\n        for ch in range(detail_db.shape[1]):\n            detail_warped[:, ch] = numpy.interp(\n                src_freqs, freqs, detail_db[:, ch],\n                left=detail_db[0, ch], right=detail_db[-1, ch],\n            )\n\n        # 4) confine the warp to the band; envelope preserved everywhere\n        w = band_window(freqs, low_hz, high_hz, skirt_octaves=skirt_octaves)\n        new_log_mag = envelope_db + w[:, None] * detail_warped\n        new_mag = 10.0 ** (new_log_mag / 20.0)\n\n        # blend in-band only; outside the skirt w = 0 ⇒ mag_out = mag_in\n        mag_out = (1.0 - w[:, None]) * mag_in + w[:, None] * new_mag\n\n        # 5) minimum-phase reconstruction\n        spec_processed = minimum_phase_from_magnitude(mag_out)\n        ir_processed = numpy.fft.irfft(spec_processed, n=n_samples, axis=0)\n\n        # 6) restore original ITD\n        ir_processed = restore_itd_from_onsets(\n            ir_original, ir_processed, threshold_db=onset_threshold_db,\n        )\n\n        filt.data = ir_processed\n\n    return out\n\n\ndef _build_tf_image(hrtf, sourceidx, ear, n_bins, xlim, floor_db=-25):\n    \"\"\"\n    Build the image array used by plot_tf's 'image' mode, using\n    tfs_from_sources to obtain the raw dB data.\n\n    Returns\n    -------\n    freqs      : 1-D array, frequency axis trimmed to xlim[1]\n    elevations : 1-D array, elevation for each source\n    img        : 2-D array (n_freq_bins, n_sources), clipped at floor_db\n    \"\"\"\n    chan = {'left': 0, 'right': 1}[ear]\n    n_b = n_bins if n_bins is not None else hrtf[sourceidx[0]].n_taps\n    # tfs_from_sources returns (n_sources, n_bins, 1) — squeeze to (n_sources, n_bins)\n    tfs = hrtf.tfs_from_sources(sourceidx, n_bins=n_b, ear=ear)\n    img = numpy.clip(tfs.squeeze(-1).T, floor_db, None)   # (n_bins, n_sources)\n    freqs, _ = hrtf[sourceidx[0]].tf(channels=chan, n_bins=n_bins, show=False)\n    elevations = hrtf.sources.vertical_polar[sourceidx, 1]\n    mask = freqs <= xlim[1]\n    return freqs[mask], elevations, img[mask, :]\n\n\ndef plot(hrtf, hrtf_modified, kind='image', ear='left', n_bins=None, xlim=(1000, 18000),\n         vsi_orig=None, vsi_mod=None, vsi_dis=None, vsi_bw=None):\n    sources = hrtf.cone_sources(0)\n    fig, axes = plt.subplots(1, 2, figsize=(13, 5))\n\n    if kind == 'image':\n        # Build raw dB image data for both HRTFs via tfs_from_sources\n        freqs, elevations, img_orig = _build_tf_image(hrtf,         sources, ear, n_bins, xlim)\n        _,     _,          img_mod  = _build_tf_image(hrtf_modified, sources, ear, n_bins, xlim)\n\n        # Joint colorbar limits across both images\n        vmin   = float(min(img_orig.min(), img_mod.min()))\n        vmax   = float(max(img_orig.max(), img_mod.max()))\n        levels = numpy.linspace(vmin, vmax, 21)\n\n        ct = None\n        for ax, img, title, vsi_val in zip(\n                axes,\n                [img_orig, img_mod],\n                ['original', 'modified'],\n                [vsi_orig,  vsi_mod]):\n            ct = ax.contourf(freqs, elevations, img.T, cmap='hot', levels=levels)\n            ax.set_title(title)\n            # VSI value as a second line below the x-axis label\n            xlabel = 'Frequency [kHz]'\n            if vsi_val is not None:\n                xlabel += f'\\nVSI = {vsi_val:.3f}'\n            ax.set(xlabel=xlabel, ylabel='Elevation [°]', xlim=xlim)\n            ax.xaxis.set_major_formatter(\n                matplotlib.ticker.FuncFormatter(lambda x, pos: str(int(x / 1000))))\n            ax.autoscale(tight=True)\n            ax.tick_params('both', length=2, pad=2)\n\n        # Single shared colorbar to the right of both subplots\n        # fig.colorbar(ct, ax=list(axes), location='right', shrink=1, pad=0.02)\n\n        cbar_ticks = numpy.arange(vmin, vmax, 6)\n        cax_pos = list(axes[-1].get_position().bounds)  # (x0, y0, width, height)\n        cax_pos[2] = cax_pos[2] * 0.06  # cbar width in fractions of axis width\n        cax_pos[0] = 0.92\n        cbar_axis = fig.add_axes(cax_pos)\n        cbar = fig.colorbar(ct, cbar_axis, orientation='vertical', ticks=cbar_ticks)\n\n        # VSI dissimilarity as a footer below both plots\n        if vsi_dis is not None:\n            bw_str = (f'{vsi_bw[0]/1000:.1f}–{vsi_bw[1]/1000:.1f} kHz'\n                      if vsi_bw is not None else '')\n            fig.text(0.5, 0.0,\n                     f'VSI dissimilarity = {vsi_dis:.3f}   ({bw_str}, Trapeau et al. 2016)',\n                     ha='center', va='bottom', fontsize=9)\n            # plt.tight_layout(rect=[0, 0.07, 1, 1])\n        else:\n            plt.tight_layout()\n\n    else:\n        # waterfall / surface: fall back to plot_tf (no shared scale needed)\n        hrtf.plot_tf(         sources, kind=kind, axis=axes[0], ear=ear, xlim=xlim, show=False)\n        hrtf_modified.plot_tf(sources, kind=kind, axis=axes[1], ear=ear, xlim=xlim, show=False)\n        axes[0].set_title('original')\n        axes[1].set_title('modified')\n        plt.tight_layout()\n\n    plt.show(block=False)\n    plt.pause(0.1)\n    return fig\n\n\nif __name__ == '__main__':\n    if MODE not in ('synth', 'shift'):\n        raise ValueError(f\"MODE must be 'synth' or 'shift', got {MODE!r}\")\n\n    hrtf = slab.HRTF(hrtf_dir / sub_id / str(sub_id + '.sofa'))\n\n    if MODE == 'shift':\n        low_hz, high_hz = octave_band(SHIFT_CENTER, fraction=SHIFT_OCTAVES)\n        print(f\"shift_band: {low_hz:.0f}-{high_hz:.0f} Hz, factor={SHIFT_FACTOR}\")\n        hrtf_modified = shift_band(\n            hrtf,\n            low_hz,\n            high_hz,\n            factor=SHIFT_FACTOR,\n            envelope_n_keep=SHIFT_ENV_NKEEP,\n            skirt_octaves=SHIFT_SKIRT,\n            onset_threshold_db=15.0,\n        )\n    else:  # 'synth'\n        hrtf_modified = smooth_and_replace_hrtf(\n            hrtf,\n            n_keep=N_KEEP,\n            smooth=SMOOTH,\n            features=FEATURES,\n            ref_n_keep=4,\n            onset_threshold_db=15.0,\n        )\n\n    # VSI metrics in the 5.7–11.3 kHz band (peak VSI band, Trapeau et al. 2016)\n    VSI_BW = (5700, 11300)\n    vsi_orig = _vsi(hrtf,          bandwidth=VSI_BW)\n    vsi_mod  = _vsi(hrtf_modified, bandwidth=VSI_BW)\n    vsi_dis  = _vsi_dissimilarity(hrtf, hrtf_modified, bandwidth=VSI_BW)\n\n    fig = plot(hrtf, hrtf_modified, PLOT, ear='right',\n               vsi_orig=vsi_orig, vsi_mod=vsi_mod, vsi_dis=vsi_dis, vsi_bw=VSI_BW)\n    input('press enter to save')\n    fig.savefig(PATH / 'data' / 'results' / 'plot' / sub_id / str(sub_id + f'_{fname}.png'),\n                bbox_inches='tight')\n    (hrtf_dir / sub_id).mkdir(parents=True, exist_ok=True)\n    hrtf_modified.write_sofa(hrtf_dir / sub_id / str(sub_id + f'_{fname}.sofa'))\n
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/hrtf_relearning/hrtf/processing/modify.py b/hrtf_relearning/hrtf/processing/modify.py
+--- a/hrtf_relearning/hrtf/processing/modify.py	(revision 858412ba58ac647e8ff6913dace076d18e5bd4bd)
++++ b/hrtf_relearning/hrtf/processing/modify.py	(date 1782220619085)
+@@ -49,7 +49,7 @@
+ 
+ SMOOTH = True
+ N_KEEP = 4
+-PLOT = 'image'
++PLOT = 'image'   # 'image' (contour heatmap) | 'waterfall' | 'surface' (via plot_tf)
+ # fname = 'shift'   # output SOFA suffix: <sub_id>_<fname>.sofa
+ 
+ # ---------------------------------------------------------------------------
+@@ -66,7 +66,15 @@
+ # --- 'shift' mode parameters (only used when MODE == 'shift') --------------
+ SHIFT_CENTER    = 10000   # band centre frequency [Hz]
+ SHIFT_OCTAVES   = 1.5    # band width in octaves (fraction for octave_band)
+-SHIFT_FACTOR    = 0.9   # >1 shifts cues up, <1 down, 1.0 = rebuild no-op  # todo desdcribe better, optionally plot waterfall
++# SHIFT_FACTOR multiplies the frequency axis of the subject's own fine spectral
++# detail inside the band (see shift_band): each output bin f samples the detail
++# at f / SHIFT_FACTOR, so the peaks/notches move while the broad envelope stays.
++#   > 1  shifts cues UP   in frequency (e.g. 1.10 ≈ +10 %, ~+1.4 semitones)
++#   < 1  shifts cues DOWN in frequency (e.g. 0.90 ≈ -10 %)
++#   = 1  is a rebuild no-op (analysis + minimum-phase resynthesis, cues unmoved)
++# Set PLOT = 'waterfall' below to see the per-elevation spectra stacked, which
++# makes the shift of the detail relative to the fixed envelope easy to inspect.
++SHIFT_FACTOR    = 0.9
+ SHIFT_ENV_NKEEP = 3      # cepstral coeffs kept for the envelope (lower = more detail shifted)
+ SHIFT_SKIRT     = 0.25   # cosine taper outside the band [octaves]
+ 
+Index: hrtf_relearning/experiment/HRIR_Recording.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>\"\"\"\nFirst-session pipeline\n----------------------\n1. Record (or load) HRIR\n2. Calibrate headphones  (mics still in)\n3. Acoustic sanity check (dome speaker vs HRIR rendering, spectrum comparison)\n4. Dome localization     (real speakers, vertical midline)\n5. Virtual localization  (pybinsim, same locations, independent randomisation)\n6. Comparison plots      (dome vs virtual, side by side)\n\"\"\"\nimport matplotlib\nmatplotlib.use('TkAgg')\nfrom matplotlib import pyplot as plt\nimport numpy\nimport copy\nimport logging\nimport freefield\nimport slab\nfrom hrtf_relearning.experiment.Localization.Localization_AR import Localization\nfrom hrtf_relearning import PATH as ROOT\nfrom hrtf_relearning.experiment.Subject import Subject\nfrom hrtf_relearning.hrtf.record.record_hrir import record_hrir\nfrom hrtf_relearning.hrtf.record.calibration.calibrate_headphones import calibrate_headphones, load_hp_filter\nfrom hrtf_relearning.experiment.Localization.Localization_dome import LocalizationDome\nfrom hrtf_relearning.experiment.analysis.localization.localization_analysis import (\n    localization_accuracy, plot_localization, plot_elevation_response,\n)\n\nsubject_id   = 'JS'  # 17\nhead_radius = 0.085  #\nreference_id = 'ref_03.04'\nn_directions = 3  # directions for the hrir recording\nn_recordings = 10  #\nfs           = 48828\nhp_freq      = 120\nn_rec_hp     = 3\nshow = True\nslab.set_default_samplerate(fs)\nfreefield.set_logger('info')\nsubject  = Subject(subject_id)\n\ndef main(subject_id, reference_id, head_radius, hrir_settings,\n         n_directions, n_recordings, n_rec_hp=3, show=True):\n\n    # 1. Record / load HRIR\n    logging.info('--- Step 1: HRIR recording ---')\n    hrir = record_hrir(\n        subject_id   = subject_id,\n        reference_id = reference_id,\n        n_directions = n_directions,\n        n_recordings = n_recordings,\n        fs           = fs,\n        hp_freq      = hp_freq,\n        head_radius = head_radius,\n        show         = show,\n        overwrite_rec = True,\n        overwrite_hrir = True,\n    )\n\n    logging.info('--- Step 2: HP calibration ---')\n    # hp_filter = calibrate_headphones(subject_id, 'MYSPHERE', n_rec_hp, show, True)\n    hp_filter = calibrate_headphones(subject_id, 'DT990', n_rec_hp, show, False) # todo add overwrite parameter\n\n    # logging.info('--- Step 3: Acoustic test ---')\n    # acoustic_test(hrir, hp_filter, subject_id=subject_id, hp_id='MYSPHERE', show=show)\n\n    logging.info('--- Step 4: Dome localization ---')  # todo repeat until satisfied\n    dome_loc = LocalizationDome(subject, {'targets_per_speaker': 3, 'min_distance': 15})\n    dome_loc.run()\n\n    logging.info('--- Step 5: HP localization ---')\n    ar_loc_settings = {'kind': 'standard', 'azimuth_range': (-1, 1), 'elevation_range': (-35, 35),\n        'targets_per_speaker': 2, 'min_distance': 15, 'gain': .2, 'stim': 'noise'}\n\n    # mysphere localization\n    # hrir_settings = dict(name=subject_id, subject_id=subject_id, ear=None, mirror=False, reverb=True,\n    #     drr=20, hp_filter=True, hp='MYSPHERE', convolution='cpu', storage='cpu')\n    # ar_loc = Localization(subject, hrir_settings, ar_loc_settings)\n    # ar_loc.run()\n\n    # dt990 localization\n    hrir_settings = dict(name=subject_id, subject_id=subject_id, ear=None, mirror=False, reverb=True,\n        drr=20, hp_filter=True, hp='DT990', convolution='cpu', storage='cpu')\n    ar_loc = Localization(subject, hrir_settings, ar_loc_settings)\n    ar_loc.run()\n\n\n# ---------------------------------------------------------------------\n# Acoustic test\n# ---------------------------------------------------------------------\n\ndef acoustic_test(hrir, hp_filter, subject_id, hp_id, show=True):\n    \"\"\"\n    Compare real loudspeaker recordings against HRIR headphone renderings.\n\n    Plays a log-chirp from every third vertical-midline speaker and records\n    binaurally via the in-ear mics — once from the dome (remove headphones)\n    and once via HP+HRIR (put headphones on). Overlays spectra per source.\n    \"\"\"\n    fs = hrir.samplerate\n    signal = slab.Sound.chirp(\n        duration=1.0, level=70, samplerate=fs,\n        kind='logarithmic', from_frequency=200, to_frequency=18000,\n    )\n    signal = signal.ramp(when='both', duration=0.01)\n\n    src_idx = hrir.cone_sources(0)[::3]\n    src_idx.sort()\n\n    # --- headphones ---\n    if freefield.PROCESSORS.mode != 'bi_play_rec':\n        freefield.initialize('headphones', default='bi_play_rec')\n\n    hp_signal = hp_filter.apply(signal)\n    input('Put on headphones and press Enter to continue...')\n    hp_recordings = {}\n    for src in hrir.sources.vertical_polar[src_idx]:\n        idx = hrir.get_source_idx(src[0], src[1])[0]\n        filtered = hrir.apply(idx, hp_signal)\n        filtered.level = 65\n        hp_recordings[str(src)] = freefield.play_and_record_headphones(\n            speaker='both', sound=filtered, compensate_delay=True, distance=0,\n            compensate_attenuation=False, equalize=False, recording_samplerate=fs,\n        )\n\n    # --- dome speakers ---\n    freefield.initialize('dome', default='play_birec')\n    spk_signal = copy.deepcopy(signal)\n    spk_signal.level = 85\n    input('Remove headphones and press Enter to continue...')\n    dome_recordings = {}\n    for src in hrir.sources.vertical_polar[src_idx]:\n        speaker = freefield.pick_speakers((src[0], src[1]))\n        dome_recordings[str(src)] = freefield.play_and_record(\n            speaker, spk_signal, compensate_delay=True,\n            compensate_attenuation=False, equalize=True, recording_samplerate=fs,\n        )\n\n    if show:\n        fmin, fmax = 2e3, 18.2e3\n        ticks = 2 ** numpy.arange(numpy.log2(fmin), numpy.log2(fmax), 1)\n        fig, axes = plt.subplots(\n            nrows=len(src_idx), ncols=2, figsize=(12, 3 * len(src_idx)), layout='tight'\n        )\n        fig.suptitle(f'{subject_id} — acoustic test ({hp_id})')\n        for row, (dome_item, hp_item) in enumerate(\n            zip(dome_recordings.items(), hp_recordings.items())\n        ):\n            for col in range(2):\n                ax = axes[row, col]\n                dome_item[1].channel(col).spectrum(axis=ax)\n                hp_item[1].channel(col).spectrum(axis=ax)\n                ax.set_title(f'{dome_item[0]}° — {\"L\" if col == 0 else \"R\"}')\n                ax.set_xlim(fmin, fmax)\n                ax.set_xticks(ticks)\n                ax.set_xticklabels(\n                    [f\"{int(t/1000)}k\" if t >= 1000 else str(int(t)) for t in ticks]\n                )\n                ax.legend(['Dome', 'HP+HRIR'])\n\n        save_dir = ROOT / 'data' / 'results' / 'plot' / subject_id\n        save_dir.mkdir(parents=True, exist_ok=True)\n        fig.savefig(save_dir / f'acoustic_test_{hp_id}.svg')\n        plt.show()
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/hrtf_relearning/experiment/HRIR_Recording.py b/hrtf_relearning/experiment/HRIR_Recording.py
+--- a/hrtf_relearning/experiment/HRIR_Recording.py	(revision 858412ba58ac647e8ff6913dace076d18e5bd4bd)
++++ b/hrtf_relearning/experiment/HRIR_Recording.py	(date 1782214226126)
+@@ -59,14 +59,20 @@
+ 
+     logging.info('--- Step 2: HP calibration ---')
+     # hp_filter = calibrate_headphones(subject_id, 'MYSPHERE', n_rec_hp, show, True)
+-    hp_filter = calibrate_headphones(subject_id, 'DT990', n_rec_hp, show, False) # todo add overwrite parameter
++    hp_filter = calibrate_headphones(subject_id, 'DT990', n_rec_hp, show, False, overwrite=False)
+ 
+     # logging.info('--- Step 3: Acoustic test ---')
+     # acoustic_test(hrir, hp_filter, subject_id=subject_id, hp_id='MYSPHERE', show=show)
+ 
+-    logging.info('--- Step 4: Dome localization ---')  # todo repeat until satisfied
+-    dome_loc = LocalizationDome(subject, {'targets_per_speaker': 3, 'min_distance': 15})
+-    dome_loc.run()
++    logging.info('--- Step 4: Dome localization ---')
++    # Repeat until the experimenter is satisfied. Each run gets a fresh
++    # timestamped filename (see LocalizationDome.__init__), so repeats are
++    # stored as separate sequences rather than overwriting one another.
++    while True:
++        dome_loc = LocalizationDome(subject, {'targets_per_speaker': 3, 'min_distance': 15})
++        dome_loc.run()
++        if input('Repeat dome localization? [y/N]: ').strip().lower() not in ('y', 'yes'):
++            break
+ 
+     logging.info('--- Step 5: HP localization ---')
+     ar_loc_settings = {'kind': 'standard', 'azimuth_range': (-1, 1), 'elevation_range': (-35, 35),
+Index: hrtf_relearning/hrtf/processing/tf2ir.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>import slab\nimport numpy\nimport copy\nimport scipy\nimport logging\n\ndef hrtf2hrir(hrtf):\n    \"\"\"\n    takes a slab.HRTF of type TF and converts it to IR\n    \"\"\"\n    hrir = copy.deepcopy(hrtf)\n    if hrtf.datatype == 'FIR':\n        logging.info(f'Datatype already {hrtf.datatype}. Returning HRIR.')\n        return hrir\n    for src_idx, filt in enumerate(hrir.data):\n        ir = []\n        for ch_idx in range(filt.n_channels):\n            # frequency sampling function\n            # magnitude = filt.channel(ch_idx).data  # get raw power spectrum\n            ir.append(fsamp(magnitude = filt.channel(ch_idx).data))\n            # slab filter method\n            # frequency, gain = filt.tf(channels=ch_idx, show=False)  # get magnitude in dB?\n            # ir.append(slab.Filter.band(kind='hp', frequency=frequency.tolist(), gain=gain[:, 0].tolist(),\n            #                            samplerate=filt.samplerate, length=filt.n_samples, fir='IR'))\n        hrir[src_idx] = slab.Filter(data=ir, samplerate=hrtf.samplerate, fir='IR')\n        # shift to make causal\n        # (path differences between the origin and the ear are usually\n        # smaller than 30 cm but numerical HRIRs show stringer pre-ringing)\n        # hrir = np.roll(hrir, n_shift, axis=-1)\n    hrir.datatype = 'FIR'\n    return hrir\n\ndef fsamp(magnitude):\n    \"\"\"\n    Use the frequency sampling method to design an FIR filter to match the frequency\n    response of a given magnitude spectrum;\n    The desired response is sampled on a frequency grid { H(w) = abs[H(w)] * exp[i * phi(w)] }\n    This discretized response is then transformed to the time domain by inverse Fourier transform (IFFT).\n    The resulting impulse response is windowed to smooth out the resulting response and to reduce the impulse response\n     to the desired filter length \uD835\uDC41.\n\n    Arguments:\n        magnitude (numpy.array): The magnitude spectrum to fit an FIR Filter to\n    Returns:\n        h (numpy.array): The impulse response filter.\n    \"\"\"\n    magnitude = magnitude.flatten()\n    M = len(magnitude)\n    if magnitude.min() < 0:    # shift filter to avoid negative gain\n        magnitude -= magnitude.min()\n    if (M % 2) == 0:\n        n = 2*(M-1)  # FFT length\n        w = numpy.arange(0, M) / (M-1) * numpy.pi  # frequency grid\n        D = magnitude * numpy.exp(-1j * w * (n-1) / 2)  # desired complex frequency response\n        D = numpy.concatenate((D, numpy.conj(D[:0:-1])))  # extend to 2 * Nyquist by adding negative frequencies\n    else:\n        n = 2*M-1\n        w = numpy.arange(0, M) * 2*numpy.pi / (2 * M-1)\n        D = magnitude * numpy.exp(-1j * w * (n-1) / 2)\n        D = numpy.concatenate((D, numpy.conj(D[:0:-1])))\n\n    h = numpy.real(numpy.fft.ifft(D))   # impulse response via IFFT\n    # h = numpy.fft.irfft(D)  # go without adding negative frequencies. similar result\n\n    # windowing (Hamming)\n    I = int((n-M) / 2 + 1)\n    ww = scipy.signal.windows.hamming(M)\n    h = h[I:I+M] * ww\n    return h\n\ndef tf2ir(tf):\n    \"\"\"\n    Takes a slab.Filter of type TF as input and converts it to FIR\n    \"\"\"\n    #todo\n    for src_idx, filt in enumerate(tf.data):\n        ir = []\n        for ch_idx in range(tf.n_channels):\n            # frequency sampling function\n            # magnitude = filt.channel(ch_idx).data  # get raw power spectrum\n            ir.append(fsamp(magnitude = tf.channel(ch_idx).data))\n            # slab filter method\n            # frequency, gain = filt.tf(channels=ch_idx, show=False)  # get magnitude in dB?\n            # ir.append(slab.Filter.band(kind='hp', frequency=frequency.tolist(), gain=gain[:, 0].tolist(),\n            #                            samplerate=filt.samplerate, length=filt.n_samples, fir='IR'))\n        slab.Filter(data=ir, samplerate=tf.samplerate, fir='IR')\n        # shift to make causal\n        # (path differences between the origin and the ear are usually\n        # smaller than 30 cm but numerical HRIRs show stringer pre-ringing)\n        # hrir = np.roll(hrir, n_shift, axis=-1)\n    ir.datatype = 'FIR'\n    return ir\n\n\n\n\n\"\"\"\n    # workaround for when only an amplitude spectrum is provided (no complex valued fourier coefs available):\n    # maybe see Kramers-Kronig or Bode\n\n    # try: multiply flat frequency spectrum with the amplitude spectrum of the TF\n        # try: create flat spectrum from scratch\n    # zero_hz_bin = numpy.ones(1)\n    # frequency_spectrum = numpy.ones(hrtf[0].n_taps-1) * 7.854726969857107e-16 - 1j\n    # frequency_spectrum = numpy.hstack((zero_hz_bin, frequency_spectrum))\n        # try: create flat spectrum from time domain signal constituted of sine waves\n    fs = hrtf[0].samplerate\n    nyquist = int(fs / 2)\n    freqs = numpy.arange(0, nyquist)\n    t = numpy.linspace(0, 1, fs)  # time axis\n    sine_waves = []\n    for freq in freqs:\n        sine_waves.append(numpy.sin(2 * numpy.pi * freq * t))\n    sig = numpy.sum(sine_waves, axis=0)\n\n    # try:\n\n\n    # try: obtain complex transfer function by dividing filtered signal by input signal in the frequency domain)\n    fs = hrtf.samplerate\n    freqs = hrtf[0].frequencies\n    sig = scipy.signal.chirp(t=numpy.linspace(0, 1, fs), f0=0, t1=1, f1=hrtf.samplerate/2, method='quadratic')\n\n\n    # compute fft of signal (flat frequency spectrum)\n    fft = numpy.fft.rfft(sig)\n    fft = fft / len(fft)  # rescale by signal length (do not multiply by 2, since this is already taken care of by irfft)\n    sig_freqs = numpy.fft.rfftfreq(len(sig), d=1/fs)\n\n    # interpolate and filter\n    fft_interp = numpy.interp(freqs, sig_freqs, fft)\n    filtered = fft_interp * hrtf[0].data[:, 0]\n\n    # get complex tf by dividing filtered signal by input signal in the frequency domain\n    tf = filtered / fft_interp  # of course this returns the original hrtf filter\n\n\n    # plots\n    data = tf\n    plt.figure()\n    plt.plots(freqs, numpy.imag(data))\n    plt.plots(freqs, numpy.real(data))\n    plt.plots(freqs, numpy.abs(data))\n\n    # try: reconstruct phase- from powerspectrum\n    ir = hrtf[0].data[:, 0]\n    fs = hrtf[0].samplerate\n    frequencies = numpy.fft.rfftfreq(n=len(ir), d=1/fs)\n    frequency_spectrum = numpy.fft.rfft(ir)\n    power_spectrum = numpy.abs(frequency_spectrum)\n    phase_spectrum = numpy.imag(frequency_spectrum)\n    amplitude_spectrum = numpy.real(frequency_spectrum)\n\n    # ln H(w) = ln abs(H(w)) + i*phi(w)\n    numpy.log(frequency_spectrum) == numpy.log(power_spectrum) + 1j * phase_spectrum\n\n    # h(t) = F-1(abs(Hw)**(i*phi(w))\n    ifft = numpy.fft.irfft(power_spectrum * numpy.e ** (1j * phase_spectrum))\n    ifft = numpy.fft.irfft(frequency_spectrum)\n\n\n\n    data = frequency_spectrum\n    fig = plt.figure()\n    ax = plt.axes(projection='3d')\n    ax.plots(frequencies, numpy.log(power_spectrum), phase_spectrum)\n\n\n    freqs = numpy.arange(1, hrtf.samplerate/2, 1)\n    time = numpy.linspace(0, len(signal) / fs, len(signal))  # start, stop, number of steps\n    nyquist = hrtf.samplerate/2\n    N = hrtf[0].n_taps\n    fourier = numpy.zeros(N, dtype=complex)\n    for fi in range(freqs):\n        sine_wave = numpy.exp(-1j * (2 * numpy.pi * fi * time))  # complex sine wave\n        fourier[fi] = numpy.sum(sine_wave * x)\n    fourier = fourier / N  # rescale by signal length\n\n\n    fs = 44000\n    freqs = numpy.arange(1, 10, 1)\n    y = numpy.arange(0, 1, 1 / fs)\n    A = 1  # amplitude\n    sine_waves = []\n    for freq in freqs:\n        x = numpy.sin(2 * numpy.pi * freq * y)\n        sine_waves.append(x)\n    x = numpy.sum(sine_waves, axis=0)\n    # x = x / len(sine_waves)\n    plt.figure()\n    plt.plots(y, x)\n\n    fc = numpy.fft.rfft(x, axis=0)\n\n    fc = fc /len(y) * 2\n    plt.figure()\n    plt.plots(numpy.real(fc))\n    plt.plots(numpy.imag(fc))\n    plt.plots(numpy.abs(fc))\n\n\n    # step 2: obtain complex transfer function (divide filtered signal by input signal in the frequency domain)\n\n\n\n\n\n    # todo add option for complex valued TFs\n    input = copy.deepcopy(hrtf)\n    tf_data = numpy.zeros((hrtf.n_sources, hrtf[0].n_samples, 2))\n    for src_idx, tf in enumerate(input.data):\n        tf_data[src_idx] = tf.data\n\n    # ifft (take complex conjugate because sign conventions differ)\n    ir_data = numpy.fft.irfft(numpy.conj(tf_data), axis=1)\n\n    # shift to make causal\n    # (path differences between the origin and the ear are usually\n    # smaller than 30 cm but numerical HRIRs show stringer pre-ringing)\n    # hrir = np.roll(hrir, n_shift, axis=-1)\n\n    for src_idx, ir_data in enumerate(hrir):\n        input[src_idx] = slab.Filter(data=ir_data, samplerate=hrtf.samplerate, fir='IR')\n    input.datatype = 'IR'\n\"\"\"
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/hrtf_relearning/hrtf/processing/tf2ir.py b/hrtf_relearning/hrtf/processing/tf2ir.py
+--- a/hrtf_relearning/hrtf/processing/tf2ir.py	(revision 858412ba58ac647e8ff6913dace076d18e5bd4bd)
++++ b/hrtf_relearning/hrtf/processing/tf2ir.py	(date 1782214171125)
+@@ -70,26 +70,25 @@
+ 
+ def tf2ir(tf):
+     """
+-    Takes a slab.Filter of type TF as input and converts it to FIR
++    Takes a single slab.Filter of type TF and converts it to a FIR slab.Filter.
++
++    Mirrors the per-filter conversion used in :func:`hrtf2hrir`: each channel's
++    magnitude spectrum is turned into an impulse response via the frequency
++    sampling method (:func:`fsamp`), then the channels are stacked back into one
++    FIR filter.
++
++    Arguments:
++        tf (slab.Filter): a transfer-function (fir='TF') filter, one or more channels.
++    Returns:
++        slab.Filter: the equivalent FIR (fir='IR') filter.
+     """
+-    #todo
+-    for src_idx, filt in enumerate(tf.data):
+-        ir = []
+-        for ch_idx in range(tf.n_channels):
+-            # frequency sampling function
+-            # magnitude = filt.channel(ch_idx).data  # get raw power spectrum
+-            ir.append(fsamp(magnitude = tf.channel(ch_idx).data))
+-            # slab filter method
+-            # frequency, gain = filt.tf(channels=ch_idx, show=False)  # get magnitude in dB?
+-            # ir.append(slab.Filter.band(kind='hp', frequency=frequency.tolist(), gain=gain[:, 0].tolist(),
+-            #                            samplerate=filt.samplerate, length=filt.n_samples, fir='IR'))
+-        slab.Filter(data=ir, samplerate=tf.samplerate, fir='IR')
+-        # shift to make causal
+-        # (path differences between the origin and the ear are usually
+-        # smaller than 30 cm but numerical HRIRs show stringer pre-ringing)
+-        # hrir = np.roll(hrir, n_shift, axis=-1)
+-    ir.datatype = 'FIR'
+-    return ir
++    ir = []
++    for ch_idx in range(tf.n_channels):
++        # frequency sampling: build an IR matching this channel's magnitude spectrum
++        ir.append(fsamp(magnitude=tf.channel(ch_idx).data))
++    # NB: slab.Filter has no .datatype attribute (that lives on slab.HRTF); the
++    # fir='IR' flag is what marks this as an impulse response.
++    return slab.Filter(data=ir, samplerate=tf.samplerate, fir='IR')
+ 
+ 
+ 
+Index: hrtf_relearning/experiment/misc/localization_helpers/make_sequence.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>import matplotlib\n# matplotlib.use(\"TkAgg\")\nfrom matplotlib import pyplot as plt\nimport slab\nimport numpy\nimport random\nimport logging\n\ndef make_sequence(settings, hrir_sources):\n    if settings['kind'] == 'standard':\n        return std_targets(settings, hrir_sources)  # play 3 times from each source in the sequence\n    elif settings['kind'] == 'sectors':\n        return sector_targets(settings, hrir_sources)\n\ndef az_el_distance(p, q):\n    \"\"\"Euclidean distance in az/el with circular azimuth.\"\"\"\n    daz = (p[0] - q[0] + 180) % 360 - 180\n    del_ = p[1] - q[1]\n    return numpy.hypot(daz, del_)\n\ndef sector_targets(settings, hrir_sources):\n    \"\"\"\n    Generate a localization trial sequence by sampling targets from spatial\n    sectors and enforcing a minimum distance between consecutive targets.\n\n    The azimuth–elevation space is divided into rectangular sectors. A fixed\n    number of HRIR source positions is sampled from each sector, after which\n    all sampled targets are globally reordered such that the angular distance\n    between successive targets is at least `min_distance`.\n\n    The minimum-distance constraint is applied at the level of the *actual\n    target positions*, not at the sector level.\n\n    Parameters\n    ----------\n    settings : dict\n        Required keys:\n        - 'azimuth_range' : (min_az, max_az) in degrees\n        - 'elevation_range' : (min_el, max_el) in degrees\n        - 'sector_size' : (az_size, el_size) in degrees\n        - 'targets_per_sector' : int\n        - 'min_distance' : float, minimum allowed distance between consecutive targets\n        - 'replace' : bool, sample HRIR positions with or without replacement\n\n        Additional keys are stored but not interpreted by this function.\n\n    hrir_sources : array-like, shape (N, 2)\n        Available HRIR source positions as (azimuth, elevation) in degrees.\n        Azimuth is treated circularly, elevation linearly.\n\n    Returns\n    -------\n    slab.Trialsequence\n        Trial sequence containing ordered (azimuth, elevation) targets with a\n        fixed order preserving the minimum-distance constraint. All parameters\n        used to generate the sequence are stored in `sequence.settings`.\n\n    Notes\n    -----\n    - Distances are computed as Euclidean distance in azimuth–elevation space\n      with circular azimuth wrapping.\n    - Randomness depends on NumPy's RNG; set `numpy.random.seed(...)` for\n      reproducibility.\n    - An error is raised if the constraints cannot be satisfied.\n    \"\"\"\n\n    az_range = settings['azimuth_range']\n    el_range = settings['elevation_range']\n    az_size, el_size = settings['sector_size']\n    n_per_sector = settings['targets_per_sector']\n    min_dist = settings['min_distance']\n    replace = settings['replace']\n\n    src_az = numpy.asarray(hrir_sources[:, 0], float)\n    src_el = numpy.asarray(hrir_sources[:, 1], float)\n\n    # --- build sector centers ---\n    az_centers = numpy.arange(\n        az_range[0] + az_size / 2, az_range[1], az_size\n    )\n    el_centers = (\n        [0] if el_range == (0, 0)\n        else numpy.arange(el_range[0] + el_size / 2, el_range[1], el_size)\n    )\n    sector_centers = [(az, el) for az in az_centers for el in el_centers]\n\n    # --- candidate sources per sector ---\n    def sources_in_sector(caz, cel):\n        daz = numpy.abs((src_az - caz + 180) % 360 - 180)\n        az_ok = daz <= az_size / 2\n        el_ok = (src_el >= cel - el_size / 2) & (src_el <= cel + el_size / 2)\n        return numpy.where(az_ok & el_ok)[0]\n\n    sector_samples = []\n    used = set()\n\n    for caz, cel in sector_centers:\n        idx = sources_in_sector(caz, cel)\n        if len(idx) < n_per_sector and not replace:\n            raise ValueError(f\"Not enough sources in sector ({caz},{cel})\")\n\n        picks = []\n        for _ in range(n_per_sector):\n            cand = idx if replace else [i for i in idx if i not in used]\n            if not cand:\n                raise ValueError(\"Global uniqueness violated\")\n            p = int(numpy.random.choice(cand))\n            picks.append(p)\n            used.add(p)\n        sector_samples.extend(picks)\n\n    # --- build point list ---\n    points = numpy.column_stack([src_az[sector_samples], src_el[sector_samples]])\n\n    # --- constrained ordering (greedy with restart) ---\n    def order_with_min_distance(points, max_tries=int(10e3)):\n        N = len(points)\n        for _ in range(max_tries):\n            remaining = list(range(N))\n            order = [remaining.pop(numpy.random.randint(len(remaining)))]\n            while remaining:\n                last = order[-1]\n                valid = [\n                    i for i in remaining\n                    if az_el_distance(points[last], points[i]) >= min_dist\n                ]\n                if not valid:\n                    break\n                nxt = numpy.random.choice(valid)\n                order.append(nxt)\n                remaining.remove(nxt)\n            if len(order) == N:\n                return order\n        raise RuntimeError(\"Could not satisfy min_distance constraint\")\n\n    order = order_with_min_distance(points)\n    points = points[order]\n\n    # --- formatting ---\n    points = numpy.round(points, 2)\n    points[:, 0] = (points[:, 0] + 180) % 360 - 180\n    seq = slab.Trialsequence(points)\n    seq.trials = numpy.arange(1, len(points) + 1)\n    seq.settings = settings\n    seq.settings['sector_centers'] = sector_centers\n    return seq\n\ndef std_targets(settings, hrir_sources, max_tries=1000):\n    \"\"\"\n    Default sequence:\n    - use every HRIR source `n_reps` times\n    - random order\n    - enforce min_distance between successive targets\n    - supports azimuth_range and elevation_range\n    - fills missing settings like azimuth_range, elevation_range, sector_size, sector_centers\n    \"\"\"\n\n    repeats = settings['targets_per_speaker']\n    min_distance = settings['min_distance']\n\n    az_range = settings.get('azimuth_range', None)\n    el_range = settings.get('elevation_range', None)\n\n    if hrir_sources is None:\n        raise ValueError(\"hrir_sources must be provided.\")\n\n    src = numpy.asarray(hrir_sources, dtype=float)\n    if src.ndim != 2 or src.shape[1] < 2:\n        raise ValueError(\"hrir_sources must be of shape (N, 2) -> [az, el].\")\n\n    # initial extraction\n    src_az = src[:, 0].astype(float)\n    src_az = (src_az + 180) % 360 - 180  # wrap around (-180, 180)\n    src_el = src[:, 1].astype(float)\n\n    # -------------------------------------------\n    # Apply azimuth/elevation limits\n    # -------------------------------------------\n    mask = numpy.ones(len(src), dtype=bool)\n\n    if az_range is not None:\n        mask &= (src_az >= az_range[0]) & (src_az <= az_range[1])\n\n    if el_range is not None:\n        mask &= (src_el >= el_range[0]) & (src_el <= el_range[1])\n\n    src_az = src_az[mask]\n    src_el = src_el[mask]\n\n    if len(src_az) == 0:\n        raise ValueError(\n            \"No HRIR sources match the specified azimuth/elevation ranges \"\n            f\"(az_range={az_range}, el_range={el_range}).\"\n        )\n\n    # If ranges were not given, infer them from the filtered sources\n    if az_range is None:\n        az_range = (float(src_az.min()), float(src_az.max()))\n    if el_range is None:\n        el_range = (float(src_el.min()), float(src_el.max()))\n\n    n_sources = len(src_az)\n\n    def _wrap_diff(a, b):\n        d = (a - b + 180.0) % 360.0 - 180.0\n        return d\n\n    # distance matrix\n    az1 = src_az[:, None]\n    az2 = src_az[None, :]\n    d_az = _wrap_diff(az1, az2)\n    d_el = src_el[:, None] - src_el[None, :]\n    dist = numpy.sqrt(d_az ** 2 + d_el ** 2)\n\n    total_len = n_sources * repeats\n\n    for attempt in range(max_tries):\n        remaining = numpy.full(n_sources, repeats, dtype=int)\n        seq_indices = []\n\n        first = numpy.random.randint(0, n_sources)\n        seq_indices.append(first)\n        remaining[first] -= 1\n\n        success = True\n        for _ in range(1, total_len):\n            last = seq_indices[-1]\n            candidates = numpy.where(\n                (remaining > 0) & (dist[last] >= min_distance)\n            )[0]\n\n            if candidates.size == 0:\n                success = False\n                break\n\n            nxt = numpy.random.choice(candidates)\n            seq_indices.append(nxt)\n            remaining[nxt] -= 1\n\n        if success:\n            seq_indices = numpy.asarray(seq_indices, dtype=int)\n            points = numpy.column_stack([src_az[seq_indices], src_el[seq_indices]])\n            points[:, 0] = (points[:, 0] + 180) % 360 - 180\n            points = numpy.round(points, 2)\n\n            # --------------------------------------------------\n            # Infer a \"sector_size\" from the HRIR grid spacing\n            # --------------------------------------------------\n            sector_size_setting = settings.get(\"sector_size\", None)\n\n            if sector_size_setting is not None:\n                az_step, el_step = sector_size_setting\n            else:\n                unique_az = numpy.unique(numpy.round(src_az, 4))\n                unique_el = numpy.unique(numpy.round(src_el, 4))\n\n                if unique_az.size > 1:\n                    az_diffs = numpy.diff(numpy.sort(unique_az))\n                    az_step = float(numpy.min(az_diffs))\n                else:\n                    az_step = float(az_range[1] - az_range[0]) or 10.0  # fallback\n\n                if unique_el.size > 1:\n                    el_diffs = numpy.diff(numpy.sort(unique_el))\n                    el_step = float(numpy.min(el_diffs))\n                else:\n                    el_step = float(el_range[1] - el_range[0]) or 10.0  # fallback\n\n            sector_size = (az_step, el_step)\n\n            # --------------------------------------------------\n            # Build a virtual sector grid (centers)\n            # --------------------------------------------------\n            az_span = az_range[1] - az_range[0]\n            el_span = el_range[1] - el_range[0]\n            num_az = max(1, int(round(az_span / az_step)))\n            num_el = max(1, int(round(el_span / el_step)))\n            sector_centers = [\n                (\n                    az_range[0] + (i + 0.5) * az_step,\n                    el_range[0] + (j + 0.5) * el_step,\n                )\n                for i in range(num_az)\n                for j in range(num_el)\n            ]\n\n            sequence = slab.Trialsequence(points)\n            sequence.trials = numpy.arange(1, len(points) + 1)\n            # Start from existing settings, then fill/overwrite what we know\n            settings_out = dict(settings)\n            settings_out.update({\n                \"kind\": \"standard\",\n                \"mode\": \"all_sources_repeated\",\n                \"repeats\": repeats,\n                \"min_distance\": min_distance,\n                \"azimuth_range\": az_range,\n                \"elevation_range\": el_range,\n                \"sector_size\": sector_size,\n                \"sector_centers\": sector_centers,\n            })\n            sequence.settings = settings_out\n            return sequence\n\n    raise RuntimeError(\n        f\"Could not construct sequence with min_distance={min_distance}° \"\n        f\"after {max_tries} attempts.\"\n    )\n\ndef plot_sequence_targets(sequence, title=\"Recorded targets over sectors\"):\n    \"\"\"\n    Plot target coordinates from sequence over the sector grid (if available).\n\n    - For settings['kind'] == 'sectors':\n        draws sector rectangles + targets.\n    - For settings['kind'] == 'standard':\n        just plots the targets, using az/el ranges and (optional) sector_size\n        for ticks/grid.\n    \"\"\"\n    if not hasattr(sequence, \"settings\"):\n        raise AttributeError(\"sequence must have a 'settings' attribute (dict).\")\n\n    settings = sequence.settings\n    kind = settings.get(\"kind\", \"sectors\")\n\n    az_range = settings.get(\"azimuth_range\", None)\n    el_range = settings.get(\"elevation_range\", None)\n    sector_size = settings.get(\"sector_size\", None)\n\n    # Extract target coordinates\n    points = numpy.asarray(sequence.conditions, dtype=float)\n    points[:, 0] = (points[:, 0] + 180) % 360 - 180  # wrap azimuth\n\n    # Infer ranges if missing\n    if az_range is None:\n        az_range = (float(points[:, 0].min()), float(points[:, 0].max()))\n    if el_range is None:\n        el_range = (float(points[:, 1].min()), float(points[:, 1].max()))\n\n    fig, ax = plt.subplots(figsize=(8, 6))\n    ax.set_xlim(az_range)\n    ax.set_ylim(el_range)\n    ax.set_xlabel(\"Azimuth (°)\")\n    ax.set_ylabel(\"Elevation (°)\")\n    ax.set_title(title)\n\n    # Draw sector rectangles if we actually have sector_centers\n    if kind == \"sectors\" and hasattr(sequence, \"sector_centers\") and sequence.sector_centers is not None:\n        az_size, el_size = sector_size\n        sector_centers = list(sequence.sector_centers)\n\n        for (caz, cel) in sector_centers:\n            rect = matplotlib.patches.Rectangle(\n                (caz - az_size / 2.0, cel - el_size / 2.0),\n                az_size, el_size,\n                fill=False, linestyle=\"--\", linewidth=1.0\n            )\n            ax.add_patch(rect)\n\n        az_ticks = numpy.arange(az_range[0], az_range[1] + az_size, az_size)\n        el_ticks = numpy.arange(el_range[0], el_range[1] + el_size, el_size)\n    else:\n        # standard mode or no sector_centers: simpler grid\n        if sector_size is not None:\n            az_step, el_step = sector_size\n        else:\n            az_step, el_step = 10.0, 10.0\n        az_ticks = numpy.arange(az_range[0], az_range[1] + az_step, az_step)\n        el_ticks = numpy.arange(el_range[0], el_range[1] + el_step, el_step)\n\n    ax.set_xticks(az_ticks)\n    ax.set_yticks(el_ticks)\n    ax.grid(True, linestyle=\"--\", linewidth=0.5)\n\n    ax.scatter(points[:, 0], points[:, 1], s=25, color=\"red\", label=\"Targets\")\n    ax.legend(loc=\"best\")\n    plt.tight_layout()\n    plt.show()\n\n\n\n\n\n\n# Example usage\n# azimuth_range = (-50, 50)\n# elevation_range = (-40, 40)\n# sector_size = (10, 10)  # (azimuth_size, elevation_size)\n# min_distance = 30\n# targets_per_sector = 3\n#\n# _, points, selected_sectors = make_sequence(\n#     azimuth_range, elevation_range, sector_size, min_distance, targets_per_sector\n# )\n# plot_random_points(points, selected_sectors, azimuth_range, elevation_range, sector_size)\n\n# import matplotlib\n# matplotlib.use(\"Qt5Agg\")\n# # matplotlib.use(\"TkAgg\")
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/hrtf_relearning/experiment/misc/localization_helpers/make_sequence.py b/hrtf_relearning/experiment/misc/localization_helpers/make_sequence.py
+--- a/hrtf_relearning/experiment/misc/localization_helpers/make_sequence.py	(revision 858412ba58ac647e8ff6913dace076d18e5bd4bd)
++++ b/hrtf_relearning/experiment/misc/localization_helpers/make_sequence.py	(date 1782296299669)
+@@ -70,10 +70,21 @@
+     n_per_sector = settings['targets_per_sector']
+     min_dist = settings['min_distance']
+     replace = settings['replace']
++    # Drop sources on the vertical midline (az ~= 0). The midline column is
++    # shared by the (-az,0) and (0,az) sectors and is a fixed point of mirroring,
++    # so it can't distinguish hemifield/ear conditions in the transfer 2x2.
++    exclude_midline = settings.get('exclude_midline', False)
++    midline_tol = settings.get('midline_tol', 1.0)
+ 
+     src_az = numpy.asarray(hrir_sources[:, 0], float)
+     src_el = numpy.asarray(hrir_sources[:, 1], float)
+ 
++    # boolean kept-mask over ALL sources (keeps global indexing intact for `used`)
++    keep = numpy.ones(len(src_az), dtype=bool)
++    if exclude_midline:
++        signed_az = (src_az + 180.0) % 360.0 - 180.0   # -> [-180, 180)
++        keep = numpy.abs(signed_az) > midline_tol
++
+     # --- build sector centers ---
+     az_centers = numpy.arange(
+         az_range[0] + az_size / 2, az_range[1], az_size
+@@ -89,7 +100,7 @@
+         daz = numpy.abs((src_az - caz + 180) % 360 - 180)
+         az_ok = daz <= az_size / 2
+         el_ok = (src_el >= cel - el_size / 2) & (src_el <= cel + el_size / 2)
+-        return numpy.where(az_ok & el_ok)[0]
++        return numpy.where(az_ok & el_ok & keep)[0]
+ 
+     sector_samples = []
+     used = set()
+@@ -184,6 +195,11 @@
+     if el_range is not None:
+         mask &= (src_el >= el_range[0]) & (src_el <= el_range[1])
+ 
++    # drop vertical-midline sources (az ~= 0) if requested; src_az is already
++    # wrapped to (-180, 180) above
++    if settings.get('exclude_midline', False):
++        mask &= numpy.abs(src_az) > settings.get('midline_tol', 1.0)
++
+     src_az = src_az[mask]
+     src_el = src_el[mask]
+ 
+Index: hrtf_relearning/hrtf/analysis/plot_etc.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>\nimport numpy\nimport matplotlib.pyplot as plt\nfrom scipy.signal import hilbert, find_peaks\n\n# todo plot across elevations\ndef inspect_energy_time_curve_pyfar(\n    ir,\n    channel=\"both\",\n    use_energy=True,\n    normalize_to_peak=True,\n    direct_threshold_db=20.0,\n    min_peak_distance_ms=0.2,\n    search_window_ms=(0.0, 20.0),\n    show=True,\n):\n    \"\"\"\n    Inspect the energy-time curve (ETC) of a pyfar impulse response and detect\n    candidate early reflections.\n\n    Parameters\n    ----------\n    ir : pyfar.Signal\n        Time-domain impulse response signal.\n    channel : {\"left\", \"right\", \"both\"}\n        Which channel to inspect. For mono signals, this is ignored.\n    use_energy : bool\n        If True, compute ETC as 10*log10(envelope^2), otherwise as\n        20*log10(envelope). Both have the same shape in dB.\n    normalize_to_peak : bool\n        If True, normalize ETC so its maximum is 0 dB.\n    direct_threshold_db : float\n        Threshold below the peak for estimating the direct sound onset.\n    min_peak_distance_ms : float\n        Minimum spacing between detected peaks.\n    search_window_ms : tuple[float, float]\n        Time window for peak search in milliseconds.\n    show : bool\n        If True, plot the ETC.\n\n    Returns\n    -------\n    result : dict\n        Contains ETC data, direct sound index, and detected reflection peaks.\n    \"\"\"\n    data = numpy.asarray(ir.time)\n    samplerate = ir.sampling_rate\n\n    # pyfar usually stores channels first: (n_channels, n_samples)\n    if data.ndim == 1:\n        data_to_use = data\n        channel_label = \"mono\"\n    elif data.ndim == 2:\n        if data.shape[0] == 1:\n            data_to_use = data[0]\n            channel_label = \"mono\"\n        elif data.shape[0] >= 2:\n            if channel == \"left\":\n                data_to_use = data[0]\n                channel_label = \"left\"\n            elif channel == \"right\":\n                data_to_use = data[1]\n                channel_label = \"right\"\n            elif channel == \"both\":\n                envelope_left = numpy.abs(hilbert(data[0]))\n                envelope_right = numpy.abs(hilbert(data[1]))\n                envelope = 0.5 * (envelope_left + envelope_right)\n\n                if use_energy:\n                    etc_linear = envelope**2\n                    etc_db = 10.0 * numpy.log10(numpy.maximum(etc_linear, 1e-30))\n                else:\n                    etc_db = 20.0 * numpy.log10(numpy.maximum(envelope, 1e-15))\n\n                if normalize_to_peak:\n                    etc_db -= numpy.max(etc_db)\n\n                times_s = numpy.arange(len(etc_db)) / samplerate\n                channel_label = \"both\"\n            else:\n                raise ValueError(\"channel must be 'left', 'right', or 'both'\")\n        else:\n            raise ValueError(\"Signal has invalid shape.\")\n    else:\n        raise ValueError(\"Only 1D or 2D pyfar signals are supported.\")\n\n    if data.ndim == 1 or (data.ndim == 2 and channel != \"both\"):\n        envelope = numpy.abs(hilbert(data_to_use))\n        if use_energy:\n            etc_linear = envelope**2\n            etc_db = 10.0 * numpy.log10(numpy.maximum(etc_linear, 1e-30))\n        else:\n            etc_db = 20.0 * numpy.log10(numpy.maximum(envelope, 1e-15))\n\n        if normalize_to_peak:\n            etc_db -= numpy.max(etc_db)\n\n        times_s = numpy.arange(len(etc_db)) / samplerate\n\n    # Direct sound onset: first sample above threshold relative to peak\n    above = numpy.where(etc_db >= -abs(direct_threshold_db))[0]\n    if len(above) == 0:\n        direct_index = int(numpy.argmax(etc_db))\n    else:\n        direct_index = int(above[0])\n\n    # Search for peaks in requested window\n    start_idx = max(0, int(search_window_ms[0] * 1e-3 * samplerate))\n    stop_idx = min(len(etc_db), int(search_window_ms[1] * 1e-3 * samplerate))\n    distance_samples = max(1, int(min_peak_distance_ms * 1e-3 * samplerate))\n\n    peaks, properties = find_peaks(\n        etc_db[start_idx:stop_idx],\n        distance=distance_samples,\n    )\n    peaks = peaks + start_idx\n\n    # Keep only peaks after the direct sound onset\n    reflection_indices = peaks[peaks > direct_index]\n    reflection_times_s = times_s[reflection_indices]\n    reflection_levels_db = etc_db[reflection_indices]\n    reflection_delays_ms = (reflection_indices - direct_index) / samplerate * 1e3\n\n    result = {\n        \"times_s\": times_s,\n        \"etc_db\": etc_db,\n        \"direct_index\": direct_index,\n        \"direct_time_ms\": times_s[direct_index] * 1e3,\n        \"reflection_indices\": reflection_indices,\n        \"reflection_times_s\": reflection_times_s,\n        \"reflection_times_ms\": reflection_times_s * 1e3,\n        \"reflection_delays_ms\": reflection_delays_ms,\n        \"reflection_levels_db\": reflection_levels_db,\n        \"channel\": channel_label,\n    }\n\n    if show:\n        plt.figure(figsize=(10, 5))\n        plt.plot(times_s * 1e3, etc_db, linewidth=1.2, label=f\"ETC ({channel_label})\")\n        plt.axvline(times_s[direct_index] * 1e3, linestyle=\"--\", label=\"direct sound\")\n\n        if len(reflection_indices) > 0:\n            plt.plot(\n                reflection_times_s * 1e3,\n                reflection_levels_db,\n                \"x\",\n                label=\"candidate reflections\",\n            )\n\n        plt.xlabel(\"Time (ms)\")\n        plt.ylabel(\"Level (dB re peak)\")\n        plt.title(\"Energy-Time Curve\")\n        plt.xlim(search_window_ms)\n        plt.grid(True)\n        plt.legend()\n        plt.tight_layout()\n        plt.show()\n\n    return result\n\n\"\"\"\nresult = inspect_energy_time_curve_pyfar(\n    ir=ir,\n    channel=\"both\",\n    direct_threshold_db=10.0,\n    min_peak_distance_ms=0.15,\n    search_window_ms=(0.0, 15.0),\n    show=True,\n)\n\ninspect_energy_time_curve_pyfar(ir, channel=\"left\")\ninspect_energy_time_curve_pyfar(ir, channel=\"right\")\ninspect_energy_time_curve_pyfar(ir, channel=\"both\")\n\"\"\"
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/hrtf_relearning/hrtf/analysis/plot_etc.py b/hrtf_relearning/hrtf/analysis/plot_etc.py
+--- a/hrtf_relearning/hrtf/analysis/plot_etc.py	(revision 858412ba58ac647e8ff6913dace076d18e5bd4bd)
++++ b/hrtf_relearning/hrtf/analysis/plot_etc.py	(date 1782214292834)
+@@ -3,7 +3,116 @@
+ import matplotlib.pyplot as plt
+ from scipy.signal import hilbert, find_peaks
+ 
+-# todo plot across elevations
++
++def plot_etc_across_elevations(
++    hrtf,
++    ear="left",
++    azimuth=0.0,
++    use_energy=True,
++    normalize="global",
++    time_window_ms=(0.0, 5.0),
++    floor_db=-60.0,
++    ax=None,
++    show=True,
++):
++    """Plot energy-time curves across elevation as a 2-D image.
++
++    For a fixed cone of confusion (constant azimuth) the vertical-midline
++    sources are selected, the Hilbert-envelope ETC is computed per elevation,
++    and the result is rendered as an image: time on the x-axis, elevation on the
++    y-axis, level (dB) as colour. Makes it easy to see how the direct sound and
++    early reflections shift with source elevation.
++
++    Parameters
++    ----------
++    hrtf : slab.HRTF
++        Impulse-response HRTF (datatype 'FIR'). Each filter's ``data`` has shape
++        (n_taps, n_channels) at ``hrtf[idx].samplerate``.
++    ear : {"left", "right"}
++        Which channel to inspect (left = 0, right = 1).
++    azimuth : float
++        Azimuth of the cone of sources to plot (``hrtf.cone_sources(azimuth)``).
++    use_energy : bool
++        If True, ETC = 10*log10(envelope**2), else 20*log10(envelope).
++    normalize : {"global", "per_elevation", None}
++        Normalisation of the dB scale: peak across the whole image, peak per
++        elevation row, or none.
++    time_window_ms : tuple[float, float]
++        Time range shown on the x-axis, in milliseconds.
++    floor_db : float
++        Lower clip applied to the dB image (also the colour-scale minimum).
++    ax : matplotlib.axes.Axes, optional
++        Axis to draw into. A new figure/axis is created if omitted.
++    show : bool
++        If True, call plt.show().
++
++    Returns
++    -------
++    result : dict
++        Contains ``times_ms``, ``elevations``, the 2-D ``etc_db`` image
++        (n_elevations, n_times), the matplotlib ``ax`` and the colorbar mesh.
++    """
++    chan = {"left": 0, "right": 1}[ear]
++
++    # vertical-midline sources for this cone of confusion, sorted by elevation
++    src_idx = numpy.asarray(hrtf.cone_sources(azimuth))
++    elevations = hrtf.sources.vertical_polar[src_idx, 1]
++    order = numpy.argsort(elevations)
++    src_idx = src_idx[order]
++    elevations = elevations[order]
++
++    samplerate = hrtf[int(src_idx[0])].samplerate
++
++    # one ETC row per elevation
++    etc_rows = []
++    for idx in src_idx:
++        data = numpy.asarray(hrtf[int(idx)].data)
++        ir = data[:, chan]
++        envelope = numpy.abs(hilbert(ir))
++        if use_energy:
++            etc_db = 10.0 * numpy.log10(numpy.maximum(envelope ** 2, 1e-30))
++        else:
++            etc_db = 20.0 * numpy.log10(numpy.maximum(envelope, 1e-15))
++        if normalize == "per_elevation":
++            etc_db -= numpy.max(etc_db)
++        etc_rows.append(etc_db)
++
++    etc_db = numpy.asarray(etc_rows)                     # (n_elevations, n_samples)
++    if normalize == "global":
++        etc_db -= numpy.max(etc_db)
++    etc_db = numpy.clip(etc_db, floor_db, None)
++
++    times_ms = numpy.arange(etc_db.shape[1]) / samplerate * 1e3
++
++    # restrict to requested time window
++    t_mask = (times_ms >= time_window_ms[0]) & (times_ms <= time_window_ms[1])
++    times_ms = times_ms[t_mask]
++    etc_db = etc_db[:, t_mask]
++
++    if ax is None:
++        _, ax = plt.subplots(figsize=(10, 5))
++    mesh = ax.pcolormesh(times_ms, elevations, etc_db, cmap="hot", shading="auto")
++    ax.set_xlabel("Time (ms)")
++    ax.set_ylabel("Elevation (°)")
++    ax.set_title(f"Energy-time curve across elevation ({ear}, az={azimuth:g}°)")
++    cbar = ax.figure.colorbar(mesh, ax=ax)
++    cbar.set_label("Level (dB re peak)" if normalize else "Level (dB)")
++
++    if show:
++        plt.tight_layout()
++        plt.show()
++
++    return {
++        "times_ms": times_ms,
++        "elevations": elevations,
++        "etc_db": etc_db,
++        "ax": ax,
++        "mesh": mesh,
++    }
++
++
++# Single-IR ETC inspector (pyfar). See plot_etc_across_elevations for the
++# elevation-resolved view across a whole cone of sources.
+ def inspect_energy_time_curve_pyfar(
+     ir,
+     channel="both",

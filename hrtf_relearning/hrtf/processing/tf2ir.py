@@ -70,26 +70,25 @@ def fsamp(magnitude):
 
 def tf2ir(tf):
     """
-    Takes a slab.Filter of type TF as input and converts it to FIR
+    Takes a single slab.Filter of type TF and converts it to a FIR slab.Filter.
+
+    Mirrors the per-filter conversion used in :func:`hrtf2hrir`: each channel's
+    magnitude spectrum is turned into an impulse response via the frequency
+    sampling method (:func:`fsamp`), then the channels are stacked back into one
+    FIR filter.
+
+    Arguments:
+        tf (slab.Filter): a transfer-function (fir='TF') filter, one or more channels.
+    Returns:
+        slab.Filter: the equivalent FIR (fir='IR') filter.
     """
-    #todo
-    for src_idx, filt in enumerate(tf.data):
-        ir = []
-        for ch_idx in range(tf.n_channels):
-            # frequency sampling function
-            # magnitude = filt.channel(ch_idx).data  # get raw power spectrum
-            ir.append(fsamp(magnitude = tf.channel(ch_idx).data))
-            # slab filter method
-            # frequency, gain = filt.tf(channels=ch_idx, show=False)  # get magnitude in dB?
-            # ir.append(slab.Filter.band(kind='hp', frequency=frequency.tolist(), gain=gain[:, 0].tolist(),
-            #                            samplerate=filt.samplerate, length=filt.n_samples, fir='IR'))
-        slab.Filter(data=ir, samplerate=tf.samplerate, fir='IR')
-        # shift to make causal
-        # (path differences between the origin and the ear are usually
-        # smaller than 30 cm but numerical HRIRs show stringer pre-ringing)
-        # hrir = np.roll(hrir, n_shift, axis=-1)
-    ir.datatype = 'FIR'
-    return ir
+    ir = []
+    for ch_idx in range(tf.n_channels):
+        # frequency sampling: build an IR matching this channel's magnitude spectrum
+        ir.append(fsamp(magnitude=tf.channel(ch_idx).data))
+    # NB: slab.Filter has no .datatype attribute (that lives on slab.HRTF); the
+    # fir='IR' flag is what marks this as an impulse response.
+    return slab.Filter(data=ir, samplerate=tf.samplerate, fir='IR')
 
 
 

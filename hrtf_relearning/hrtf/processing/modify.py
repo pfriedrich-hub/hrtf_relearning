@@ -49,7 +49,7 @@ sub_id = 'JS'
 
 SMOOTH = True
 N_KEEP = 4
-PLOT = 'image'
+PLOT = 'image'   # 'image' (contour heatmap) | 'waterfall' | 'surface' (via plot_tf)
 # fname = 'shift'   # output SOFA suffix: <sub_id>_<fname>.sofa
 
 # ---------------------------------------------------------------------------
@@ -66,7 +66,15 @@ fname = MODE
 # --- 'shift' mode parameters (only used when MODE == 'shift') --------------
 SHIFT_CENTER    = 10000   # band centre frequency [Hz]
 SHIFT_OCTAVES   = 1.5    # band width in octaves (fraction for octave_band)
-SHIFT_FACTOR    = 0.9   # >1 shifts cues up, <1 down, 1.0 = rebuild no-op  # todo desdcribe better, optionally plot waterfall
+# SHIFT_FACTOR multiplies the frequency axis of the subject's own fine spectral
+# detail inside the band (see shift_band): each output bin f samples the detail
+# at f / SHIFT_FACTOR, so the peaks/notches move while the broad envelope stays.
+#   > 1  shifts cues UP   in frequency (e.g. 1.10 ≈ +10 %, ~+1.4 semitones)
+#   < 1  shifts cues DOWN in frequency (e.g. 0.90 ≈ -10 %)
+#   = 1  is a rebuild no-op (analysis + minimum-phase resynthesis, cues unmoved)
+# Set PLOT = 'waterfall' below to see the per-elevation spectra stacked, which
+# makes the shift of the detail relative to the fixed envelope easy to inspect.
+SHIFT_FACTOR    = 0.9
 SHIFT_ENV_NKEEP = 3      # cepstral coeffs kept for the envelope (lower = more detail shifted)
 SHIFT_SKIRT     = 0.25   # cosine taper outside the band [octaves]
 

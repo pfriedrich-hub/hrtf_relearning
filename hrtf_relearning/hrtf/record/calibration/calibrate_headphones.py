@@ -319,51 +319,61 @@ def ff_equalization(eq_filter, hp_id, save_freefield=True):
 # MAIN PIPELINE
 # -------------------------------------------------------------------------
 
-def calibrate_headphones(subject_id=SUB_ID, hp_id=HP_ID, n_rec=N_REC, show=True, save_freefield=False):
+def calibrate_headphones(subject_id=SUB_ID, hp_id=HP_ID, n_rec=N_REC, show=True,
+                         save_freefield=False, overwrite=False):
+    """Measure (or load) the headphone equalization filter for a subject.
+
+    If a saved filter exists it is loaded from disk, unless ``overwrite=True``,
+    in which case the filter is always re-measured and the existing file is
+    replaced.
+    """
     save_path = ROOT / "data" / "hrtf" / "rec" / subject_id / f"{hp_id}_equalization.npz"
 
-    try:
-        # alternatively load from disk
-        hp_filter = load_hp_filter(save_path,'slab')
-        print(f'Loading hp filter from disk: {hp_id}_equalization.npz')
-        return hp_filter
+    if not overwrite:
+        try:
+            # load existing calibration from disk
+            hp_filter = load_hp_filter(save_path, 'slab')
+            print(f'Loading hp filter from disk: {hp_id}_equalization.npz')
+            return hp_filter
+        except FileNotFoundError:
+            pass  # fall through to measurement
 
-    except FileNotFoundError:
-        # Initialize freefield for headphone playback
-        if not freefield.PROCESSORS.mode == 'bi_play_rec':
-            freefield.initialize("headphones", default="bi_play_rec")
+    # measure a fresh calibration (no file on disk, or overwrite requested)
+    # Initialize freefield for headphone playback
+    if not freefield.PROCESSORS.mode == 'bi_play_rec':
+        freefield.initialize("headphones", default="bi_play_rec")
 
-        # Generate chirp
-        excitation = generate_chirp()
+    # Generate chirp
+    excitation = generate_chirp()
 
-        # Load or measure HpIR
-        recordings = []
-        for i in range(n_rec):
-            input('Press Enter to record...')
-            recordings.append(measure_hp_raw(excitation, repeats=1))
-        recording = slab.Sound(data=numpy.mean(recordings, axis=0))
+    # Load or measure HpIR
+    recordings = []
+    for i in range(n_rec):
+        input('Press Enter to record...')
+        recordings.append(measure_hp_raw(excitation, repeats=1))
+    recording = slab.Sound(data=numpy.mean(recordings, axis=0))
 
-        # Compute equalization
-        eq_filter = compute_headphone_equalization(recording, excitation, beta=0.01, show=False)
-        # adjust beta parameter if necessary
+    # Compute equalization
+    eq_filter = compute_headphone_equalization(recording, excitation, beta=0.01, show=False)
+    # adjust beta parameter if necessary
 
-        # Save to npz
-        save_hp_filter(eq_filter, save_path)
+    # Save to npz
+    save_hp_filter(eq_filter, save_path)
 
-        # test and alternatively save to freefield
-        hp_filter = ff_equalization(eq_filter, hp_id, save_freefield)
-        if show:
-            raw = freefield.play_and_record_headphones(speaker='both', sound=excitation, equalize=False)
-            filtered = hp_filter.apply(excitation)
-            equalized = freefield.play_and_record_headphones(speaker='both', sound=filtered, equalize=False)
-            fig ,axes = plt.subplots(2,1)
-            raw.spectrum(axis=axes[0])
-            axes[0].set_title('Raw HpTF')
-            equalized.spectrum(axis=axes[1])
-            axes[1].set_title('Equalized HpTF')
-            fig.suptitle(f'{hp_id} equalization')
+    # test and alternatively save to freefield
+    hp_filter = ff_equalization(eq_filter, hp_id, save_freefield)
+    if show:
+        raw = freefield.play_and_record_headphones(speaker='both', sound=excitation, equalize=False)
+        filtered = hp_filter.apply(excitation)
+        equalized = freefield.play_and_record_headphones(speaker='both', sound=filtered, equalize=False)
+        fig ,axes = plt.subplots(2,1)
+        raw.spectrum(axis=axes[0])
+        axes[0].set_title('Raw HpTF')
+        equalized.spectrum(axis=axes[1])
+        axes[1].set_title('Equalized HpTF')
+        fig.suptitle(f'{hp_id} equalization')
 
-        return hp_filter
+    return hp_filter
 
 # if __name__ == "__main__":
 #     main()

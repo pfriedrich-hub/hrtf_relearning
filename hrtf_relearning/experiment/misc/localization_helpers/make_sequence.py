@@ -70,9 +70,20 @@ def sector_targets(settings, hrir_sources):
     n_per_sector = settings['targets_per_sector']
     min_dist = settings['min_distance']
     replace = settings['replace']
+    # Drop sources on the vertical midline (az ~= 0). The midline column is
+    # shared by the (-az,0) and (0,az) sectors and is a fixed point of mirroring,
+    # so it can't distinguish hemifield/ear conditions in the transfer 2x2.
+    exclude_midline = settings.get('exclude_midline', False)
+    midline_tol = settings.get('midline_tol', 1.0)
 
     src_az = numpy.asarray(hrir_sources[:, 0], float)
     src_el = numpy.asarray(hrir_sources[:, 1], float)
+
+    # boolean kept-mask over ALL sources (keeps global indexing intact for `used`)
+    keep = numpy.ones(len(src_az), dtype=bool)
+    if exclude_midline:
+        signed_az = (src_az + 180.0) % 360.0 - 180.0   # -> [-180, 180)
+        keep = numpy.abs(signed_az) > midline_tol
 
     # --- build sector centers ---
     az_centers = numpy.arange(
@@ -89,7 +100,7 @@ def sector_targets(settings, hrir_sources):
         daz = numpy.abs((src_az - caz + 180) % 360 - 180)
         az_ok = daz <= az_size / 2
         el_ok = (src_el >= cel - el_size / 2) & (src_el <= cel + el_size / 2)
-        return numpy.where(az_ok & el_ok)[0]
+        return numpy.where(az_ok & el_ok & keep)[0]
 
     sector_samples = []
     used = set()
@@ -183,6 +194,11 @@ def std_targets(settings, hrir_sources, max_tries=1000):
 
     if el_range is not None:
         mask &= (src_el >= el_range[0]) & (src_el <= el_range[1])
+
+    # drop vertical-midline sources (az ~= 0) if requested; src_az is already
+    # wrapped to (-180, 180) above
+    if settings.get('exclude_midline', False):
+        mask &= numpy.abs(src_az) > settings.get('midline_tol', 1.0)
 
     src_az = src_az[mask]
     src_el = src_el[mask]

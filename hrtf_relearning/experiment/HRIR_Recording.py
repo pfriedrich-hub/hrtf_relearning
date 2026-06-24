@@ -59,14 +59,20 @@ def main(subject_id, reference_id, head_radius, hrir_settings,
 
     logging.info('--- Step 2: HP calibration ---')
     # hp_filter = calibrate_headphones(subject_id, 'MYSPHERE', n_rec_hp, show, True)
-    hp_filter = calibrate_headphones(subject_id, 'DT990', n_rec_hp, show, False) # todo add overwrite parameter
+    hp_filter = calibrate_headphones(subject_id, 'DT990', n_rec_hp, show, False, overwrite=False)
 
     # logging.info('--- Step 3: Acoustic test ---')
     # acoustic_test(hrir, hp_filter, subject_id=subject_id, hp_id='MYSPHERE', show=show)
 
-    logging.info('--- Step 4: Dome localization ---')  # todo repeat until satisfied
-    dome_loc = LocalizationDome(subject, {'targets_per_speaker': 3, 'min_distance': 15})
-    dome_loc.run()
+    logging.info('--- Step 4: Dome localization ---')
+    # Repeat until the experimenter is satisfied. Each run gets a fresh
+    # timestamped filename (see LocalizationDome.__init__), so repeats are
+    # stored as separate sequences rather than overwriting one another.
+    while True:
+        dome_loc = LocalizationDome(subject, {'targets_per_speaker': 3, 'min_distance': 15})
+        dome_loc.run()
+        if input('Repeat dome localization? [y/N]: ').strip().lower() not in ('y', 'yes'):
+            break
 
     logging.info('--- Step 5: HP localization ---')
     ar_loc_settings = {'kind': 'standard', 'azimuth_range': (-1, 1), 'elevation_range': (-35, 35),

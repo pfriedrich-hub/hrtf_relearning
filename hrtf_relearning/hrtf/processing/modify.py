@@ -60,7 +60,7 @@ PLOT = 'image'
 # 'shift' : cepstral envelope/detail split + frequency-shift of the subject's
 #           OWN fine cues inside a band (SHIFT_* params below).  Ignores
 #           SMOOTH / N_KEEP / FEATURES.
-MODE = 'shift'
+MODE = 'synth'
 fname = MODE
 
 # --- 'shift' mode parameters (only used when MODE == 'shift') --------------
@@ -102,13 +102,13 @@ FEATURES = [
         'X1': (0, 0),
         'X2': (-40, 40),
     },
-    # {
-    #     'freqs': (15500, 16000),
-    #     'width': (300, 300),
-    #     'depth': (12, 12),  # negative → peak
-    #     'X1': (0, 0),
-    #     'X2': (-40, 40),
-    # },
+    {
+        'freqs': (15500, 16000),
+        'width': (300, 300),
+        'depth': (12, 12),  # negative → peak
+        'X1': (0, 0),
+        'X2': (-40, 40),
+    },
 ]
 
 # FEATURES = []  # no features

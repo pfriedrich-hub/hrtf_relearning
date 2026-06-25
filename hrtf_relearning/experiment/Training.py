@@ -19,13 +19,13 @@ matplotlib.rcParams['figure.raise_window'] = False
 logging.getLogger().setLevel('INFO')
 
 # -------------------- Config --------------------
-SUBJECT_ID = "CA"
-HRIR_NAME = "CA_shift"  # 'KU100', 'kemar', etc.
-EAR = 'right'
+SUBJECT_ID = "JS"
+HRIR_NAME = "JS_synth"  # 'KU100', 'kemar', etc.
+EAR = 'left'
 HP = 'DT990'
 
 STIM = 'noise'  # 'noise' or 'uso'
-AZ_RANGE = (0, 35)
+AZ_RANGE = (-35, 0)
 
 # Sound
 SOUND_FILE = None         # None -> pink noise pulses; or 'uso_225ms_9_.wav', etc.

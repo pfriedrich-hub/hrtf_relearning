@@ -33,7 +33,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import hrtf_relearning as hr
-from Localization_AR import Localization
+from hrtf_relearning.experiment.Localization import Localization_AR as Localization
 
 # =============================================================================
 # CONFIG  --  edit per participant
@@ -42,7 +42,7 @@ from Localization_AR import Localization
 # final-day block order) is loaded from the counterbalance sheet below, keyed by
 # this id. On day 1, just write each subject's id into the 'subject' column of:
 #   data/documentation/exp1_transfer_block_order.csv   (replace an '(assign)' cell)
-SUBJECT_ID = "JS"
+SUBJECT_ID = "CA"
 
 CSV_PATH = hr.PATH / "data" / "documentation" / "exp1_transfer_block_order.csv"
 

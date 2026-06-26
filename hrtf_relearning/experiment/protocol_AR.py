@@ -4,26 +4,36 @@ Adaptation-transfer experiment protocol runner.
 Guides you through the localization tests of the experiment so you never have to
 hand-edit parameters in Localization_AR.py between runs:
 
-    Day 1            native     binaural, native SOFA, full field      (native reference)
-                     baseline   binaural, MODIFIED SOFA, full field    (transfer baseline)
-    Adaptation days  daily      monaural trained ear, MODIFIED, trained hemifield
+    Day 1            native      binaural, native SOFA, full field   (familiarization/reference)
+                     baseline_A  monaural trained ear, MODIFIED, trained field    (naive ref for A)
+                     baseline_D  monaural untrained ear via MIRROR, MODIFIED,
+                                 mirrored field                                   (naive ref for D)
+    Adaptation days  daily       monaural trained ear, MODIFIED, trained hemifield
                      (training game runs separately -- see Training.py)
-    Final day        final_A    trained ear,   same loc (= trained hemifield)   [baseline retest]
-                     final_B    trained ear,   mirrored loc
-                     final_C    untrained ear, same loc
-                     final_D    untrained ear, mirrored loc                      [MAIN transfer]
+    Final day        A           trained ear,   same loc (= trained hemifield)   [baseline retest]
+                     B           trained ear,   mirrored loc
+                     C           untrained ear, same loc
+                     D           untrained ear, mirrored loc                      [MAIN transfer]
 
-All tests share the matched sampling grid agreed for valid baseline-vs-final
-comparison: sector_size=(7,14), elevation_range=(-35,35), targets_per_sector=3.
-The one-sided final/daily tests are exact subsets of the full-field baseline grid.
+The day-1 baselines use the SAME configs as final A and D (same ear/mirror/field/
+filter) but pre-training, so pre-vs-post isolates learning. baseline_D delivers the
+mirrored to-be-trained-ear filter to the untrained ear (matching D), NOT the
+untrained ear's own DTF. All one-sided tests share the matched sampling grid
+sector_size=(7,14), elevation_range=(-35,35), targets_per_sector=3, az~=0 excluded.
 
 Pick the test from the menu; the script builds the right HRIR/binsim files and
 localization settings, shows you what it will do, and runs it after you confirm.
 
 ------------------------------------------------------------------------------
 EDIT THE CONFIG BLOCK BELOW PER PARTICIPANT, THEN: python protocol_AR.py
+
 ------------------------------------------------------------------------------
 """
+
+#todo test run
+# day 1: run baseline loc test with modified dtfs separately for each hemifield,
+# each with monaural input to match final day condition:
+# left ear, left field / right ear, right field
 
 import csv
 import sys
@@ -33,7 +43,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import hrtf_relearning as hr
-from hrtf_relearning.experiment.Localization import Localization_AR as Localization
+from hrtf_relearning.experiment.Localization.Localization_AR import Localization
 
 # =============================================================================
 # CONFIG  --  edit per participant
@@ -45,7 +55,6 @@ from hrtf_relearning.experiment.Localization import Localization_AR as Localizat
 SUBJECT_ID = "CA"
 
 CSV_PATH = hr.PATH / "data" / "documentation" / "exp1_transfer_block_order.csv"
-
 
 def _load_subject_params(subject_id, csv_path=CSV_PATH):
     """Look up cue_type, trained_ear and final block order for this subject."""
@@ -145,8 +154,9 @@ def loc_settings(azimuth_range, exclude_midline=False):
 # =============================================================================
 # each phase: key -> (label, when, sofa, ear, mirror, azimuth_range, description)
 PHASES = {
-    "native":   ("Native reference",      "Day 1",           NATIVE_SOFA,   None,          False, FULL_FIELD,    "binaural, native HRTF, full field"),
-    "baseline": ("Transfer baseline",     "Day 1",           MODIFIED_SOFA, None,          False, FULL_FIELD,    "binaural, MODIFIED HRTF, full field"),
+    "native":     ("Native reference",        "Day 1", NATIVE_SOFA,   None,        False, FULL_FIELD,    "binaural, native HRTF, full field"),
+    "baseline_A": ("Baseline A: trained/same", "Day 1", MODIFIED_SOFA, TRAINED_EAR, False, TRAINED_HEMI,  "naive trained ear, trained filter (matches final A)"),
+    "baseline_D": ("Baseline D: untrnd/mirr",  "Day 1", MODIFIED_SOFA, TRAINED_EAR, True,  MIRRORED_HEMI, "naive untrained ear, MIRRORED trained filter (matches final D)"),
     "daily":    ("Daily training test",   "Adaptation days", MODIFIED_SOFA, TRAINED_EAR,   False, TRAINED_HEMI,  "monaural trained ear, trained hemifield"),
     "A":        ("Final A: trained/same", "Final day",       MODIFIED_SOFA, TRAINED_EAR,   False, TRAINED_HEMI,  "trained ear, same locations (baseline retest)"),
     "B":        ("Final B: trained/mirr", "Final day",       MODIFIED_SOFA, TRAINED_EAR,   False, MIRRORED_HEMI, "trained ear, mirrored locations"),

@@ -196,16 +196,14 @@ class Localization:
 if __name__ == "__main__":
 
     # --- SETTINGS ---
-    _SUBJECT_ID = "CA"
-    _HRIR_NAME = "CA_shift"  # 'KU100', 'kemar', etc.
+    _SUBJECT_ID = "JS"
+    _HRIR_NAME = "JS_synth"  # 'KU100', 'kemar', etc.
     _HP = 'DT990'
-    _EAR = 'right'  # None (binaural), 'left', or 'right'
+    _EAR = 'left'  # None (binaural), 'left', or 'right'
     _MIRROR = True  # True to swap left/right spectral cues
     _AZ_RANGE = (-35, 0)
     _SECTOR_SIZE = (7, 14)
     _STIM = 'noise'
-
-
 
     # --- localization / sequence settings ---
     _loc_settings = {

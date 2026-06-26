@@ -30,11 +30,6 @@ EDIT THE CONFIG BLOCK BELOW PER PARTICIPANT, THEN: python protocol_AR.py
 ------------------------------------------------------------------------------
 """
 
-#todo test run
-# day 1: run baseline loc test with modified dtfs separately for each hemifield,
-# each with monaural input to match final day condition:
-# left ear, left field / right ear, right field
-
 import csv
 import sys
 from pathlib import Path

@@ -1,13 +1,23 @@
 """
-First-session pipeline
-----------------------
-1. Record (or load) HRIR
-2. Calibrate headphones  (mics still in)
-3. Acoustic sanity check (dome speaker vs HRIR rendering, spectrum comparison)
-4. Dome localization     (real speakers, vertical midline)
-5. Virtual localization  (pybinsim, same locations, independent randomisation)
-6. Comparison plots      (dome vs virtual, side by side)
+HRIR_Recording.py
+
+First-session pipeline: record an individual HRIR, calibrate headphones, then
+localization-test dome vs. virtual (pybinsim) rendering.
+
+Run cell by cell (# %%) in an IDE/console -- do NOT run this top-to-bottom as
+a plain script. Nothing here loops or blocks on input; rerun any cell as
+needed (e.g. redo the dome localization, rerun VR localization on a
+different headphone profile).
+
+Steps:
+    1. Record (or load) HRIR
+    2. Calibrate headphones       (mics still in)
+    3. Acoustic sanity check      (dome speaker vs HRIR rendering, spectrum comparison)  [optional]
+    4. Dome localization          (real speakers, vertical midline)
+    5. Virtual localization       (pybinsim, same locations, independent randomisation)
 """
+
+# %% imports and config ------------------------------------------------------
 import matplotlib
 matplotlib.use('TkAgg')
 from matplotlib import pyplot as plt
@@ -16,88 +26,36 @@ import copy
 import logging
 import freefield
 import slab
+
+import hrtf_relearning as hr
 from hrtf_relearning.experiment.localization.Localization_AR import Localization
-from hrtf_relearning import PATH as ROOT
-from hrtf_relearning.experiment.misc.Subject import Subject
+from hrtf_relearning.experiment.localization.Localization_dome import LocalizationDome
 from hrtf_relearning.hrtf.record.record_hrir import record_hrir
 from hrtf_relearning.hrtf.record.calibration.calibrate_headphones import calibrate_headphones
-from hrtf_relearning.experiment.localization.Localization_dome import LocalizationDome
 
-subject_id   = 'JS'  # 17
-head_radius = 0.085  #
-reference_id = 'ref_03.04'
-n_directions = 3  # directions for the hrir recording
-n_recordings = 10  #
-fs           = 48828
-hp_freq      = 120
-n_rec_hp     = 3
-show = True
-slab.set_default_samplerate(fs)
+SUBJECT_ID   = 'JS'          # edit per participant
+HEAD_RADIUS  = 0.085
+REFERENCE_ID = 'ref_03.04'
+N_DIRECTIONS = 3              # directions for the HRIR recording
+N_RECORDINGS = 10
+FS           = 48828
+HP_FREQ      = 120
+N_REC_HP     = 3
+SHOW         = True
+
+ROOT = hr.PATH
+slab.set_default_samplerate(FS)
 freefield.set_logger('info')
-subject  = Subject(subject_id)
-
-def main(subject_id, reference_id, head_radius, hrir_settings,
-         n_directions, n_recordings, n_rec_hp=3, show=True):
-
-    # 1. Record / load HRIR
-    logging.info('--- Step 1: HRIR recording ---')
-    hrir = record_hrir(
-        subject_id   = subject_id,
-        reference_id = reference_id,
-        n_directions = n_directions,
-        n_recordings = n_recordings,
-        fs           = fs,
-        hp_freq      = hp_freq,
-        head_radius = head_radius,
-        show         = show,
-        overwrite_rec = True,
-        overwrite_hrir = True,
-    )
-
-    logging.info('--- Step 2: HP calibration ---')
-    # hp_filter = calibrate_headphones(subject_id, 'MYSPHERE', n_rec_hp, show, True)
-    hp_filter = calibrate_headphones(subject_id, 'DT990', n_rec_hp, show, False, overwrite=False)
-
-    # logging.info('--- Step 3: Acoustic test ---')
-    # acoustic_test(hrir, hp_filter, subject_id=subject_id, hp_id='MYSPHERE', show=show)
-
-    logging.info('--- Step 4: Dome localization ---')
-    # Repeat until the experimenter is satisfied. Each run gets a fresh
-    # timestamped filename (see LocalizationDome.__init__), so repeats are
-    # stored as separate sequences rather than overwriting one another.
-    while True:
-        dome_loc = LocalizationDome(subject, {'targets_per_speaker': 3, 'min_distance': 15})
-        dome_loc.run()
-        if input('Repeat dome localization? [y/N]: ').strip().lower() not in ('y', 'yes'):
-            break
-
-    logging.info('--- Step 5: HP localization ---')
-    ar_loc_settings = {'kind': 'standard', 'azimuth_range': (-1, 1), 'elevation_range': (-35, 35),
-        'targets_per_speaker': 2, 'min_distance': 15, 'gain': .2, 'stim': 'noise'}
-
-    # mysphere localization
-    # hrir_settings = dict(name=subject_id, subject_id=subject_id, ear=None, mirror=False, reverb=True,
-    #     drr=20, hp_filter=True, hp='MYSPHERE', convolution='cpu', storage='cpu')
-    # ar_loc = Localization(subject, hrir_settings, ar_loc_settings)
-    # ar_loc.run()
-
-    # dt990 localization
-    hrir_settings = dict(name=subject_id, subject_id=subject_id, ear=None, mirror=False, reverb=True,
-        drr=20, hp_filter=True, hp='DT990', convolution='cpu', storage='cpu')
-    ar_loc = Localization(subject, hrir_settings, ar_loc_settings)
-    ar_loc.run()
+subject = hr.Subject(SUBJECT_ID)
 
 
-# ---------------------------------------------------------------------
-# Acoustic test
-# ---------------------------------------------------------------------
-
+# %% helper: acoustic_test (define before running the Step 3 cell) -----------
 def acoustic_test(hrir, hp_filter, subject_id, hp_id, show=True):
     """
     Compare real loudspeaker recordings against HRIR headphone renderings.
 
     Plays a log-chirp from every third vertical-midline speaker and records
-    binaurally via the in-ear mics — once from the dome (remove headphones)
+    binaurally via the in-ear mics -- once from the dome (remove headphones)
     and once via HP+HRIR (put headphones on). Overlays spectra per source.
     """
     fs = hrir.samplerate
@@ -165,3 +123,54 @@ def acoustic_test(hrir, hp_filter, subject_id, hp_id, show=True):
         save_dir.mkdir(parents=True, exist_ok=True)
         fig.savefig(save_dir / f'acoustic_test_{hp_id}.svg')
         plt.show()
+
+
+# %% step 1: record / load HRIR ------------------------------------------------
+logging.info('--- Step 1: HRIR recording ---')
+hrir = record_hrir(
+    subject_id     = SUBJECT_ID,
+    reference_id   = REFERENCE_ID,
+    n_directions   = N_DIRECTIONS,
+    n_recordings   = N_RECORDINGS,
+    fs             = FS,
+    hp_freq        = HP_FREQ,
+    head_radius    = HEAD_RADIUS,
+    show           = SHOW,
+    overwrite_rec  = True,
+    overwrite_hrir = True,
+)
+
+# %% step 2: headphone calibration ---------------------------------------------
+logging.info('--- Step 2: HP calibration ---')
+# hp_filter = calibrate_headphones(SUBJECT_ID, 'MYSPHERE', N_REC_HP, SHOW, True)
+hp_filter = calibrate_headphones(SUBJECT_ID, 'DT990', N_REC_HP, SHOW, False, overwrite=False)
+
+# %% step 3: acoustic sanity check (optional) -----------------------------------
+logging.info('--- Step 3: Acoustic test ---')
+acoustic_test(hrir, hp_filter, subject_id=SUBJECT_ID, hp_id='DT990', show=SHOW)
+
+# %% step 4: dome localization ---------------------------------------------------
+# Real speakers, vertical midline. Each run gets a fresh timestamped filename
+# (see LocalizationDome.__init__), so repeats are stored as separate sequences
+# rather than overwriting one another -- rerun this cell to redo it.
+logging.info('--- Step 4: Dome localization ---')
+dome_loc = LocalizationDome(subject, {'targets_per_speaker': 3, 'min_distance': 15})
+dome_loc.run()
+
+# %% step 5a: virtual localization -- MYSPHERE (optional) ------------------------
+logging.info('--- Step 5: HP localization (MYSPHERE) ---')
+ar_loc_settings = {'kind': 'standard', 'azimuth_range': (-1, 1), 'elevation_range': (-35, 35),
+    'targets_per_speaker': 2, 'min_distance': 15, 'gain': .2, 'stim': 'noise'}
+mysphere_hrir_settings = dict(name=SUBJECT_ID, subject_id=SUBJECT_ID, ear=None, mirror=False,
+    reverb=True, drr=20, hp_filter=True, hp='MYSPHERE', convolution='cpu', storage='cpu')
+ar_loc = Localization(subject, mysphere_hrir_settings, ar_loc_settings)
+ar_loc.run()
+
+# %% step 5b: virtual localization -- DT990 ---------------------------------------
+logging.info('--- Step 5: HP localization (DT990) ---')
+ar_loc_settings = {'kind': 'standard', 'azimuth_range': (-1, 1), 'elevation_range': (-35, 35),
+    'targets_per_speaker': 2, 'min_distance': 15, 'gain': .2, 'stim': 'noise'}
+dt990_hrir_settings = dict(name=SUBJECT_ID, subject_id=SUBJECT_ID, ear=None, mirror=False,
+    reverb=True, drr=20, hp_filter=True, hp='DT990', convolution='cpu', storage='cpu')
+ar_loc = Localization(subject, dt990_hrir_settings, ar_loc_settings)
+ar_loc.run()

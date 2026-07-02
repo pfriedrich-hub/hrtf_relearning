@@ -56,7 +56,7 @@ def learning_plot(
     for key, seq in items:
         if not getattr(seq, "finished", False):
             continue
-        day = key.split("_")[1][-5:]
+        day = extract_day(key)
         by_day.setdefault(day, []).append((key, seq))
 
     data_by_day = []
@@ -183,14 +183,16 @@ def learning_plot(
             if hrir_name and hrir_name not in hrir_names:
                 hrir_names.append(hrir_name)
 
+    hrir_label = hrir_names[1] if len(hrir_names) > 1 else (hrir_names[0] if hrir_names else None)
+
     if hrir_names:
-        fig.suptitle(f"Subject {subject_id} | HRIR: {hrir_names[1]}")
+        fig.suptitle(f"Subject {subject_id} | HRIR: {hrir_label}")
     else:
         fig.suptitle(f"Subject {subject_id}")
 
     plt.tight_layout(pad=1.08, h_pad=0.5)
     plt.show()
-    return hrir_names[1], fig, axes
+    return hrir_label, fig, axes
 
 
 def parse_loc_key(key):
@@ -210,6 +212,25 @@ def parse_loc_key(key):
         return datetime.datetime(year, int(month), int(day), int(hour), int(minute))
 
     return datetime.datetime.max
+
+
+def extract_day(key):
+    """Return the DD.MM date substring from a localization key.
+
+    Keys are inconsistently formatted across subjects/sessions — some are
+    'SID_DD.MM_HH-MM_...', others 'SIDDD.MM_HH:MM' (no separating
+    underscore), others have extra tokens before the date
+    (e.g. 'AvS_KU100_loc_DD.MM_HH.MM'). A plain key.split('_')[1][-5:]
+    picks up the wrong token (often a time, not a date) for the latter
+    formats, which silently mis-groups sessions by day. Search for the
+    DD.MM pattern directly instead, since it's the one token whose shape
+    (two digits, a literal dot, two digits) is unambiguous regardless of
+    surrounding formatting.
+    """
+    match = re.search(r"\d{2}\.\d{2}", key)
+    if match:
+        return match.group(0)
+    return key.split("_")[1][-5:]
 
 
 def key_time_str(key):

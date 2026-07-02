@@ -1,5 +1,6 @@
 {
   "id": "CA",
+  "highscore": 30,
   "localization": {
     "CA_23.06_09-48_dome": {
       "__class__": "slab.psychoacoustics.Trialsequence",

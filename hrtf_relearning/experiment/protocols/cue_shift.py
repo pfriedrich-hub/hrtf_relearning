@@ -23,11 +23,11 @@ import slab
 
 import hrtf_relearning as hr
 from hrtf_relearning.hrtf.processing.edge_shift import (
-    save_condition_sofa, verify_condition, compare_tf,
+    save_condition_sofa, verify_condition, compare_tf, print_notch_summary,
 )
 from hrtf_relearning.experiment.localization.Localization_VR import run as run_localization
 
-SUBJECT_ID = "AS"                            # edit per participant
+SUBJECT_ID = "JS"                            # edit per participant
 DELTA_ERB = 1.5                              # shift magnitude (ERB), shared by whole/rising/falling
 CONDITIONS = ("whole", "rising", "falling")  # baseline needs no manipulation
 
@@ -47,8 +47,8 @@ for condition in CONDITIONS:
     hrtf_new, reports = save_condition_sofa(base_hrtf, condition, DELTA_ERB, path)
     condition_hrtfs[condition] = hrtf_new
     condition_sofa_paths[condition] = path
-    n_missing = sum(1 for r in reports if r['status'] != 'ok')
-    print(f"{condition:8s} -> {path.name}   ({n_missing}/{len(reports)} IRs with no notch found)")
+    print(f"{condition:8s} -> {path.name}")
+    print_notch_summary(reports, label="  notches found")
 
 # %% verify one condition against the model before testing it ----------------
 # change `condition` and rerun this cell to check a different one

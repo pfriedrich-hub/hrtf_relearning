@@ -1,5 +1,6 @@
 {
   "id": "JS",
+  "highscore": 21,
   "localization": {
     "JS_23.06_11-30_dome": {
       "__class__": "slab.psychoacoustics.Trialsequence",

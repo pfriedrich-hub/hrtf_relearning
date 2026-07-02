@@ -1,4 +1,6 @@
 """
+learning_transfer.py
+
 Adaptation-transfer experiment protocol runner.
 
 Guides you through the localization tests of the experiment so you never have to
@@ -21,28 +23,21 @@ mirrored to-be-trained-ear filter to the untrained ear (matching D), NOT the
 untrained ear's own DTF. All one-sided tests share the matched sampling grid
 sector_size=(7,14), elevation_range=(-35,35), targets_per_sector=3, az~=0 excluded.
 
-Pick the test from the menu; the script builds the right HRIR/binsim files and
-localization settings, shows you what it will do, and runs it after you confirm.
+Run cell by cell (# %%) in an IDE/console -- do NOT run this top-to-bottom as a
+plain script. Nothing here loops or blocks on input; rerun any cell as needed
+(e.g. redo a single final-day condition).
 
 ------------------------------------------------------------------------------
-EDIT THE CONFIG BLOCK BELOW PER PARTICIPANT, THEN: python learning_transfer.py
-
+EDIT THE CONFIG BLOCK BELOW PER PARTICIPANT.
 ------------------------------------------------------------------------------
 """
 
+# %% imports and config ------------------------------------------------------
 import csv
-import sys
-from pathlib import Path
-
-# make this script runnable directly, like Localization_AR.py
-sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import hrtf_relearning as hr
 from hrtf_relearning.experiment.localization.Localization_AR import Localization
 
-# =============================================================================
-# CONFIG  --  edit per participant
-# =============================================================================
 # The ONLY thing you set per session. Everything else (cue type, trained ear,
 # final-day block order) is loaded from the counterbalance sheet below, keyed by
 # this id. On day 1, just write each subject's id into the 'subject' column of:
@@ -50,6 +45,7 @@ from hrtf_relearning.experiment.localization.Localization_AR import Localization
 SUBJECT_ID = "JS"
 
 CSV_PATH = hr.PATH / "data" / "documentation" / "exp1_transfer_block_order.csv"
+
 
 def _load_subject_params(subject_id, csv_path=CSV_PATH):
     """Look up cue_type, trained_ear and final block order for this subject."""
@@ -86,9 +82,7 @@ MIDLINE_TOL        = 1.0   # one-sided tests drop sources with |az| <= this (deg
 
 FULL_FIELD = (-35, 35)
 
-# =============================================================================
-# Derived geometry  (do not edit)
-# =============================================================================
+# --- derived geometry (do not edit) ---
 if TRAINED_EAR == "left":
     UNTRAINED_EAR = "right"
     TRAINED_HEMI  = (-35, 0)
@@ -144,9 +138,6 @@ def loc_settings(azimuth_range, exclude_midline=False):
     }
 
 
-# =============================================================================
-# Protocol phases
-# =============================================================================
 # each phase: key -> (label, when, sofa, ear, mirror, azimuth_range, description)
 PHASES = {
     "native":     ("Native reference",        "Day 1", NATIVE_SOFA,   None,        False, FULL_FIELD,    "binaural, native HRTF, full field"),
@@ -185,11 +176,8 @@ def _describe(key):
 def run_phase(key, subject):
     label, when, sofa, ear, mirror, az, desc = PHASES[key]
     print("\n" + "=" * 70)
-    print(f"ABOUT TO RUN:  {_describe(key)}")
+    print(f"RUNNING:  {_describe(key)}")
     print("=" * 70)
-    if input("Proceed? [y/N] ").strip().lower() != "y":
-        print("Skipped.")
-        return
     one_sided = tuple(az) != tuple(FULL_FIELD)   # drop az~=0 only in one-sided tests
     test = Localization(subject, hrir_settings(sofa, ear=ear, mirror=mirror),
                         loc_settings=loc_settings(az, exclude_midline=one_sided))
@@ -214,39 +202,40 @@ def show_status(subject):
     print("-" * 70)
 
 
-def menu():
-    subject = hr.Subject(SUBJECT_ID)
-    keys = list(PHASES.keys())
-    while True:
-        show_status(subject)
-        print("\nSelect a test to run:")
-        for i, k in enumerate(keys, 1):
-            label = PHASES[k][0]
-            when  = PHASES[k][1]
-            print(f"  {i}. [{k}]  {label}  ({when})")
-        print(f"  F. Run ALL final tests in order {FINAL_ORDER}")
-        print("  r. Refresh status")
-        print("  q. Quit")
-        choice = input("\n> ").strip()
+# %% status check (rerun anytime) --------------------------------------------
+subject = hr.Subject(SUBJECT_ID)
+show_status(subject)
 
-        if choice.lower() == "q":
-            print("Bye.")
-            return
-        if choice.lower() == "r":
-            subject = hr.Subject(SUBJECT_ID)   # reload from disk
-            continue
-        if choice.lower() == "f":
-            print(f"\nRunning final tests in order: {FINAL_ORDER}")
-            for k in FINAL_ORDER:
-                run_phase(k, subject)
-                subject = hr.Subject(SUBJECT_ID)  # reload after each write
-            continue
-        if choice.isdigit() and 1 <= int(choice) <= len(keys):
-            run_phase(keys[int(choice) - 1], subject)
-            subject = hr.Subject(SUBJECT_ID)      # reload after each write
-            continue
-        print("Invalid choice.")
+# %% day 1: native reference ---------------------------------------------------
+run_phase("native", subject)
 
+# %% day 1: baseline A -- trained ear, same loc (matches final A) --------------
+run_phase("baseline_A", subject)
 
-if __name__ == "__main__":
-    menu()
+# %% day 1: baseline D -- untrained ear, mirrored loc (matches final D) --------
+run_phase("baseline_D", subject)
+
+# %% adaptation days: daily training test ---------------------------------------
+# Rerun this cell once per adaptation day (the training game itself runs
+# separately -- see Training.py).
+run_phase("daily", subject)
+
+# %% final day: all 4 conditions in this subject's counterbalanced order --------
+# Order is loaded per-subject from data/documentation/exp1_transfer_block_order.csv
+# (FINAL_ORDER). To redo a single condition instead, use one of the cells below.
+print(f"Running final tests in order: {FINAL_ORDER}")
+for _key in FINAL_ORDER:
+    run_phase(_key, subject)
+    subject = hr.Subject(SUBJECT_ID)   # reload after each write
+
+# %% final day: A -- trained ear, same locations (redo individually) -----------
+run_phase("A", subject)
+
+# %% final day: B -- trained ear, mirrored locations (redo individually) -------
+run_phase("B", subject)
+
+# %% final day: C -- untrained ear, same locations (redo individually) ---------
+run_phase("C", subject)
+
+# %% final day: D -- untrained ear, mirrored locations [MAIN] (redo individually)
+run_phase("D", subject)

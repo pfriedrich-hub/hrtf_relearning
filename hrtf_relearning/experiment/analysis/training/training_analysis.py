@@ -879,7 +879,7 @@ def plot_day_metric_grid(subjects, labels=None, metrics=None,
 
 def plot_group(subject_ids=("AH", "JS"), target_radius_deg=4.0, show=True, **kw):
     """Convenience: load several subjects and draw the day × metric grid."""
-    from hrtf_relearning.experiment.Subject import Subject
+    from hrtf_relearning.experiment.misc.Subject import Subject
     subjects = [Subject(sid) for sid in subject_ids]
     return plot_day_metric_grid(subjects, labels=list(subject_ids),
                                 target_radius_deg=target_radius_deg, show=show, **kw)
@@ -894,7 +894,7 @@ def main(subject_id="JS", target_radius_deg=4.0, block_gap_s=BLOCK_GAP_S,
     """Load a subject, run both analyses, plot, and export CSVs."""
     import matplotlib
     matplotlib.use("tkagg")
-    from hrtf_relearning.experiment.Subject import Subject
+    from hrtf_relearning.experiment.misc.Subject import Subject
 
     subject = Subject(subject_id)
     print(f"Loaded subject '{subject_id}' with {len(subject.trials)} trial slots")

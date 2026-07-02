@@ -1,15 +1,13 @@
 import matplotlib
 matplotlib.use('TkAgg')
-from matplotlib import pyplot as plt
 import slab
 from hrtf_relearning import PATH
 hrtf_dir = PATH / 'data' / 'hrtf' / 'sofa'
 from hrtf_relearning.hrtf.analysis.vsi import vsi as _vsi, vsi_dissimilarity as _vsi_dissimilarity
 from hrtf_relearning.experiment.analysis.localization.localization_analysis import (
-    localization_accuracy, plot_localization, plot_elevation_response,
+    plot_elevation_response,
 )
 import hrtf_relearning
-from hrtf_relearning.experiment.Subject import Subject
 from hrtf_relearning.hrtf.processing.modify import plot
 
 idx = 14.05

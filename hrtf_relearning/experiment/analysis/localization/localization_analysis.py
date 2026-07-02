@@ -264,7 +264,7 @@ def plot_localization(sequence, report_stats=['elevation', 'azimuth'], axis=None
             filepath.mkdir(parents=True, exist_ok=True)
         plt.savefig(filepath / f'{sequence.name}.png')
 
-def plot_elevation_response(sequence, axis=None, add_fit=True, filepath=None):
+def plot_elevation_response(sequence, axis=None, add_fit=True, filepath=None, tick_step=5):
     """
     Plot elevation responses against elevation targets.
 
@@ -286,6 +286,9 @@ def plot_elevation_response(sequence, axis=None, add_fit=True, filepath=None):
         Draw the EG (elevation gain) regression line.
     filepath : Path or None
         Directory to save the figure.
+    tick_step : float
+        Spacing (deg) of the equally spaced axis ticks. Ticks are snapped to
+        multiples of this step and span the sequence elevation range.
 
     Returns
     -------
@@ -336,9 +339,20 @@ def plot_elevation_response(sequence, axis=None, add_fit=True, filepath=None):
         axis.plot(x_line, intercept + slope * x_line,
                   c='0', linewidth=lw, linestyle='--', zorder=4)
 
-    # Ticks aligned to target positions
-    axis.set_xticks(el_targets)
-    axis.set_yticks(el_targets)
+    # Equally spaced ticks (every `tick_step`°) matched to the sequence
+    # elevation range, snapped to multiples of the step. Fall back to the
+    # observed target range if the range is missing from settings.
+    el_range = getattr(sequence, 'settings', {}).get('elevation_range', None)
+    if el_range is None:
+        el_range = (float(targ_el.min()), float(targ_el.max()))
+    lo = numpy.floor(min(el_range) / tick_step) * tick_step
+    hi = numpy.ceil(max(el_range) / tick_step) * tick_step
+    ticks = numpy.arange(lo, hi + tick_step, tick_step)
+
+    axis.set_xticks(ticks)
+    axis.set_yticks(ticks)
+    axis.set_xlim(lo, hi)
+    axis.set_ylim(lo, hi)
     try:
         axis.get_xticklabels()[0].set_horizontalalignment('left')
         axis.get_xticklabels()[-1].set_horizontalalignment('right')

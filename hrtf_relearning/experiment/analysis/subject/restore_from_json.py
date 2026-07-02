@@ -166,7 +166,8 @@ def main():
     backup_dir.mkdir(exist_ok=True)
     json_out = backup_dir / args.target_pkl.with_suffix(".json").name
     try:
-        payload = {"id": target["id"], "localization": _to_jsonable(target["localization"])}
+        payload = {"id": target["id"], "highscore": int(target.get("highscore") or 0),
+                   "localization": _to_jsonable(target["localization"])}
         tmp = json_out.with_suffix(".json.tmp")
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(payload, f, indent=2, ensure_ascii=False)

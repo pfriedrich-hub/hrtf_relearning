@@ -8,14 +8,16 @@ import matplotlib.pyplot as plt
 from scipy.interpolate import make_interp_spline # this is for the spline interpolation of step 7
 from scipy.special import i0 # This is the von Mises PDF also for step 7
 
-sofa_path_target = Path.cwd() / 'data' / 'hrtf' / 'sofa' / 'hrtf_double_notch.sofa'
-sofa_path_template = sofa_path_target
+subject_id = 'CA'
+
+sofa_path_target = '/Users/paulfriedrich/projects/hrtf_relearning/hrtf_relearning/data/hrtf/sofa/CA/CA.sofa'
+sofa_path_template = '/Users/paulfriedrich/projects/hrtf_relearning/hrtf_relearning/data/hrtf/sofa/CA/CA.sofa'
 # sofa_path_template = Path.cwd() / 'data' / 'hrtf' / 'sofa' / 'kemar.sofa'
 
-sig_path = Path.cwd() / 'data' / 'sounds' / '1s_pinknoise_44100.wav'
-fig_savepath = Path.cwd() / 'data' / 'plots'
+sig_path = '/Users/paulfriedrich/projects/hrtf_relearning/hrtf_relearning/data/hrtf/binsim/CA_shift_right/sounds/localization.wav'
+fig_savepath = '/Users/paulfriedrich/projects/hrtf_relearning/hrtf_relearning/data/documentation/baumgartner_2014'
 
-shutup = False
+shutup = True
 do_dtf = False
 is_save = True
 
@@ -117,7 +119,7 @@ def baumgartner2014(sofa_path_target, sofa_path_template, sig_path, shutup, do_d
     # step 8 - normalization to probabilities
     pdf = eq_8(ri)
     if is_save:
-        plot_pdf_matrix(pdf, rang, coardinate_median_plane, sofa_path_target.stem, fig_savepath, shutup)
+        plot_pdf_matrix(pdf, rang, coardinate_median_plane, subject_id, fig_savepath, shutup)
     # Create a dictionary with the variables
     output_dict = {
         "pdf": pdf,
@@ -126,6 +128,54 @@ def baumgartner2014(sofa_path_target, sofa_path_template, sig_path, shutup, do_d
         "coardinate_median_plane": coardinate_median_plane
     }
     return output_dict
+
+def predict_polar(sofa_path_target, sofa_path_template=None, sig_path=None,
+                  do_dtf=False, shutup=True, is_save=False, fig_savepath=None):
+    """Callable entry point for the Baumgartner (2014) model: run it on one
+    target HRTF and return summary polar-localization statistics, instead of
+    the module-level script in __main__.
+
+    sofa_path_template defaults to sofa_path_target (self-template), matching
+    the individual-HRTF-baseline logic in elevation_spectral_cue_models.md
+    sec. 3: each listener's own baseline DTFs are the template, so a
+    manipulated condition SOFA is scored against that listener's un-manipulated
+    ears, not a generic/KEMAR template.
+
+    Parameters
+    ----------
+    sofa_path_target : str or Path
+        SOFA to predict localization for (e.g. a manipulated condition).
+    sofa_path_template : str or Path, optional
+        SOFA used as the internal template. Defaults to sofa_path_target.
+    sig_path : str or Path, optional
+        Stimulus wav for eq_1 convolution. None skips convolution.
+    do_dtf, shutup, is_save : see baumgartner2014().
+    fig_savepath : str or Path, optional
+        Required (and coerced to Path) only if is_save=True.
+
+    Returns
+    -------
+    dict with keys: pdf, rang, tang, coardinate_median_plane (raw model
+    output) plus local_pe, local_qe, circ_mean, circ_var, circ_std (per
+    target-angle stats from circular_stats_from_pdf) and the scalar summaries
+    mean_pe (deg), mean_qe (%).
+    """
+    if sofa_path_template is None:
+        sofa_path_template = sofa_path_target
+    if is_save:
+        if fig_savepath is None:
+            raise ValueError("fig_savepath is required when is_save=True")
+        fig_savepath = Path(fig_savepath)
+
+    out = baumgartner2014(str(sofa_path_target), str(sofa_path_template), sig_path,
+                          shutup, do_dtf, fig_savepath, is_save)
+    local_pe, local_qe, circ_mean, circ_var, circ_std = circular_stats_from_pdf(
+        out['pdf'], out['rang'], out['tang'], shutup)
+    out.update(local_pe=local_pe, local_qe=local_qe, circ_mean=circ_mean,
+              circ_var=circ_var, circ_std=circ_std,
+              mean_pe=float(numpy.mean(local_pe)), mean_qe=float(numpy.mean(local_qe)))
+    return out
+
 
 def eq_1(target,stim,shutup):
 # Step 1: DTF filtering Eq.(1)
@@ -548,7 +598,6 @@ def calc_color_err(sofa_path_target, sofa_path_template, shutup):
     plt.show()
 
 if __name__ == "__main__":
-    out = baumgartner2014(sofa_path_target,sofa_path_template,sig_path,shutup,do_dtf,fig_savepath,is_save)
-    local_pe, local_qe, circ_mean, circ_var, circ_std = circular_stats_from_pdf(out['pdf'], out['rang'], out['tang'],shutup)
-    local_qe = numpy.mean(local_qe)
-    local_pe = numpy.mean(local_pe)
+    out = predict_polar(sofa_path_target, sofa_path_template, sig_path,
+                        do_dtf, shutup, is_save, fig_savepath)
+    print(f"QE = {out['mean_qe']:.1f}%   PE = {out['mean_pe']:.1f} deg")

@@ -17,7 +17,7 @@ import logging
 from pynput import keyboard
 
 import hrtf_relearning
-from hrtf_relearning.experiment.localization.localization_helpers import make_sequence
+from hrtf_relearning.experiment.localization.localization_helpers.make_sequence import make_sequence
 from hrtf_relearning.experiment.misc import meta_motion
 from hrtf_relearning.experiment.analysis.localization.localization_analysis import (
     plot_localization, plot_elevation_response,

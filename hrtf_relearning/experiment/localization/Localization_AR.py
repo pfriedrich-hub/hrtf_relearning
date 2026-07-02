@@ -3,7 +3,8 @@ import hrtf_relearning as hr
 import datetime
 import time
 from hrtf_relearning.experiment.analysis.localization.localization_analysis import *
-from hrtf_relearning.experiment.localization.localization_helpers import generate_uso
+from hrtf_relearning.experiment.localization.localization_helpers.uso_generation import generate_uso
+from hrtf_relearning.experiment.localization.localization_helpers.make_sequence import make_sequence
 from pythonosc import udp_client
 from hrtf_relearning.experiment.misc import meta_motion
 from hrtf_relearning.hrtf.binsim.hrtf2binsim import hrtf2binsim

@@ -13,9 +13,9 @@ date = datetime.datetime.now()
 import hrtf_relearning
 ROOT = hrtf_relearning.PATH
 
-from hrtf_relearning.experiment.misc import game_ui
+from hrtf_relearning.experiment.training.training_helpers import game_ui
 from hrtf_relearning.experiment.misc.Subject import Subject
-from hrtf_relearning.experiment.misc.training_targets import set_target_probabilistic
+from hrtf_relearning.experiment.training.training_helpers.training_targets import set_target_probabilistic
 from hrtf_relearning.hrtf.binsim.hrtf2binsim import *
 matplotlib.rcParams['figure.raise_window'] = False
 logging.getLogger().setLevel('INFO')

@@ -2,6 +2,7 @@ import multiprocessing as mp
 import hrtf_relearning as hr
 import datetime
 import time
+import slab
 from hrtf_relearning.experiment.analysis.localization.localization_analysis import *
 from hrtf_relearning.experiment.localization.localization_helpers.uso_generation import generate_uso
 from hrtf_relearning.experiment.localization.localization_helpers.make_sequence import make_sequence

@@ -34,6 +34,10 @@ different stimuli by ear is inherently fuzzy. Set MATCH_STIM = 'native' to hear
 each test's real stim (ecologically valid), or 'dome' to play the identical
 dome-style burst train through BOTH paths for a cleaner apples-to-apples match.
 """
+
+#todo implement this with kemar using bi rec rcx
+# also check stimulus generation across conditions
+
 # %% SETUP -------------------------------------------------------------------
 import multiprocessing as mp
 import time

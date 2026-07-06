@@ -40,7 +40,7 @@ from hrtf_relearning.experiment.localization.Localization_AR import Localization
 from hrtf_relearning.experiment.localization.Localization_dome import LocalizationDome
 from hrtf_relearning.experiment.localization.localization_helpers.os_volume import ensure_windows_volume
 
-SUBJECT_ID = "LS"   # edit per participant
+SUBJECT_ID = "AS"   # edit per participant
 
 CSV_PATH = hr.PATH / "experiment" / "protocols" / "documentation" / "expectation_transfer_block_order.csv"
 
@@ -106,8 +106,8 @@ def hrir_settings():
         "drr": 20,
         "hp_filter": True,
         "hp": HP,
-        "convolution": "cuda",
-        "storage": "cuda",
+        "convolution": "cpu",
+        "storage": "cpu",
     }
 
 

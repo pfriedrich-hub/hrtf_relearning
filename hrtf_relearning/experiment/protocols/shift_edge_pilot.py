@@ -33,12 +33,12 @@ from hrtf_relearning.hrtf.processing.edge_shift import (
 )
 from hrtf_relearning.experiment.localization.Localization_AR import Localization
 
-SUBJECT_ID = "JS"                        # edit per participant
+SUBJECT_ID = "AS"                        # edit per participant
 HP = "DT990"
 NOTCH_BAND = (4000., 15000.)             # manipulate all valid notches here
 FEATURE_KW = dict(band=NOTCH_BAND)
 WHOLE_DELTAS = (0.25, 0.5, 1.0, 1.5)     # dose staircase (ERB), quick succession
-CHOSEN_DELTA = 0.5                       # set to the threshold from phase 2, then run phases 3-4
+CHOSEN_DELTA = 1                       # set to the threshold from phase 2, then run phases 3-4
 
 TARGETS_PER_SPEAKER = 3
 MIN_DISTANCE = 15
@@ -72,7 +72,7 @@ def hrir_settings(label):
         "ear": None, "mirror": False,
         "reverb": True, "drr": 20,
         "hp_filter": True, "hp": HP,
-        "convolution": "cuda", "storage": "cuda",
+        "convolution": "cpu", "storage": "cpu",
     }
 
 
@@ -99,6 +99,7 @@ for i in med[::max(1, len(med) // 12)]:
     pairs = ["{:.1f}->{:.1f}kHz".format(f["f_hz"] / 1000, (f.get("f_edge_rise_hz") or 0) / 1000)
              for f in feats]
     print("el={:+6.1f}  notch->edge: {}".format(vp[i, 1], pairs))
+# todo plot!!
 
 # %% PHASE 1 -- transfer baseline: run experiment/protocols/expectation_transfer.py
 # (AR_pre -> Dome -> AR_post). Nothing to do here; kept as a pointer.
@@ -112,12 +113,13 @@ for delta in WHOLE_DELTAS:
     whole_labels[delta] = label
     print(f"whole delta={delta:>4} -> {SUBJECT_ID}_{label}.sofa")
     print_notch_summary(reports, label="  notches shifted")
+# todo plot sofa for confirmation!!
 
 # %% PHASE 2b -- run one whole-notch dose block (quick succession) ------------
 # set DELTA_TO_RUN to each WHOLE_DELTAS value in turn (ascending), rerun this
 # cell, until localized elevation clearly follows the shift -> put it in
 # CHOSEN_DELTA above.
-DELTA_TO_RUN = 0.5
+DELTA_TO_RUN = 1
 run_ar(subject, whole_labels[DELTA_TO_RUN])
 
 # %% PHASE 3a -- build edge-shift SOFA at the chosen delta --------------------

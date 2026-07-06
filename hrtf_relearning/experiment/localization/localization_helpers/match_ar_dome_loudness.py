@@ -42,6 +42,9 @@ import slab
 import freefield
 
 import hrtf_relearning as hr
+from hrtf_relearning.experiment.localization.localization_helpers.os_volume import (
+    OS_VOLUME, ensure_windows_volume,
+)
 from hrtf_relearning.experiment.localization.Localization_AR import Localization
 from hrtf_relearning.experiment.localization.Localization_dome import LocalizationDome
 
@@ -58,6 +61,8 @@ _hrir_settings = dict(name=HRIR_NAME, subject_id=SUBJECT_ID, ear=None, mirror=Fa
 _loc_settings = {'kind': 'sectors', 'azimuth_range': (-1, 1), 'elevation_range': (-35, 35),
                  'targets_per_sector': 3, 'min_distance': 15, 'gain': 0.2,
                  'sector_size': (7, 14), 'replace': False, 'stim': 'noise'}
+
+ensure_windows_volume()   # pin OS volume (OS_VOLUME); keep identical in the real tests
 
 subject = hr.Subject(SUBJECT_ID)
 
@@ -99,38 +104,66 @@ def _make_dome_stim():
     return LocalizationDome.make_stim(level=85)
 
 
+def play_dome():
+    """Play the dome reference stim from REF_SOURCE (headphones off)."""
+    dome_stim = _make_dome_stim()
+    spk = freefield.pick_speakers(REF_SOURCE)[0]
+    freefield.set_signal_and_speaker(signal=dome_stim, speaker=spk.index, equalize=True)
+    freefield.play()
+    freefield.wait_to_finish_playing()
+    print(f"  DOME     (level {numpy.mean(dome_stim.level):.0f}, equalized) from {REF_SOURCE}")
+
+
+def play_binsim(gain):
+    """Play the pybinsim path at `gain` from the frontal filter (headphones on)."""
+    stim = _make_pybinsim_stim()
+    osc_filter.send_message('/pyBinSim_ds_Filter',
+                            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                             float(loc.hrir_sources[FILTER_IDX][0]),
+                             float(loc.hrir_sources[FILTER_IDX][1]), 0, 0, 0, 0])
+    time.sleep(0.1)
+    osc_play.send_message('/pyBinSimLoudness', gain)
+    osc_play.send_message('/pyBinSimFile', str(loc.sound_path / 'localization.wav'))
+    time.sleep(float(stim.duration) + 0.2)
+    osc_play.send_message('/pyBinSimLoudness', 0)
+    print(f"  PYBINSIM @ gain = {gain}")
+
+
 print("Setup done. MATCH_STIM =", MATCH_STIM)
 
 
-# %% DOME reference -- remove headphones, rerun to repeat ---------------------
-dome_stim = _make_dome_stim()
-_spk = freefield.pick_speakers(REF_SOURCE)[0]
-freefield.set_signal_and_speaker(signal=dome_stim, speaker=_spk.index, equalize=True)
-freefield.play()
-freefield.wait_to_finish_playing()
-print(f"DOME played (level {numpy.mean(dome_stim.level):.0f}, equalized) from {REF_SOURCE}")
+# %% MATCH LOOP -- interactively enter gains until the two sound equally loud --
+# Commands at the prompt:
+#   <number>  set gain and play pybinsim   (e.g. 0.25)
+#   d         (re)play the dome reference
+#   b         (re)play pybinsim at current gain
+#   <Enter>   A/B: play dome then pybinsim
+#   q         quit the loop (keeps current gain)
+GAIN = 0.20   # starting gain
 
+play_dome()
+play_binsim(GAIN)
+while True:
+    cmd = input(f"[gain={GAIN}] number / d / b / Enter=A-B / q > ").strip().lower()
+    if cmd == 'q':
+        break
+    elif cmd == 'd':
+        play_dome()
+    elif cmd == 'b':
+        play_binsim(GAIN)
+    elif cmd == '':
+        play_dome()
+        play_binsim(GAIN)
+    else:
+        try:
+            GAIN = float(cmd)
+        except ValueError:
+            print("  ? enter a number, or d / b / Enter / q")
+            continue
+        play_binsim(GAIN)
 
-# %% PYBINSIM -- headphones on, edit GAIN and rerun until it matches the dome -
-GAIN = 0.20     # <-- the knob. edit and rerun this cell.
-
-stim = _make_pybinsim_stim()
-# point pybinsim at the frontal filter
-osc_filter.send_message('/pyBinSim_ds_Filter',
-                        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                         float(loc.hrir_sources[FILTER_IDX][0]),
-                         float(loc.hrir_sources[FILTER_IDX][1]), 0, 0, 0, 0])
-time.sleep(0.1)
-osc_play.send_message('/pyBinSimLoudness', GAIN)
-osc_play.send_message('/pyBinSimFile', str(loc.sound_path / 'localization.wav'))
-time.sleep(float(stim.duration) + 0.2)
-osc_play.send_message('/pyBinSimLoudness', 0)
-print(f"PYBINSIM played @ GAIN = {GAIN}")
-
-
-# %% RESULT -- when the two sound equally loud, use this gain ------------------
 print(f"\nMatched gain for AR/VR:  loc_settings['gain'] = {GAIN}\n"
-      f"(subject={SUBJECT_ID}, hrir={HRIR_NAME}, hp={HP}, stim={MATCH_STIM})")
+      f"(subject={SUBJECT_ID}, hrir={HRIR_NAME}, hp={HP}, stim={MATCH_STIM}, os_volume={OS_VOLUME})")
 
 
 # %% TEARDOWN ----------------------------------------------------------------

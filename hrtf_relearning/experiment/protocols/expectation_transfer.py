@@ -20,6 +20,12 @@ data/documentation/expectation_transfer_block_order.csv, assigned by
 recruitment order (alternating). Assumes the subject already has a recorded
 individual HRIR + calibrated headphone filter (HRIR_Recording.py).
 
+Every run this script produces is tagged '_expT-<stage>' on both filename and
+sequence.name (stage in AR_pre / dome / AR_filler / AR_post), so later runs in
+subject.localization from OTHER experiments on the same participant don't get
+mixed up with these -- filter subject.localization keys on '_expT-' to pull
+just this protocol's data.
+
 Run cell by cell (# %%) in an IDE/console -- do NOT run this top-to-bottom as
 a plain script. Only the two block-2 cells matching this subject's assigned
 group should be run; the other is guarded to raise instead of silently
@@ -32,10 +38,11 @@ import csv
 import hrtf_relearning as hr
 from hrtf_relearning.experiment.localization.Localization_AR import Localization
 from hrtf_relearning.experiment.localization.Localization_dome import LocalizationDome
+from hrtf_relearning.experiment.localization.localization_helpers.os_volume import ensure_windows_volume
 
-SUBJECT_ID = "JS"   # edit per participant
+SUBJECT_ID = "LS"   # edit per participant
 
-CSV_PATH = hr.PATH / "data" / "documentation" / "expectation_transfer_block_order.csv"
+CSV_PATH = hr.PATH / "experiment" / "protocols" / "documentation" / "expectation_transfer_block_order.csv"
 
 
 def _load_group(subject_id, csv_path=CSV_PATH):
@@ -58,9 +65,17 @@ GROUP = _load_group(SUBJECT_ID)
 HRIR_NAME = SUBJECT_ID   # individual measured HRIR (native, unmodified)
 HP = "DT990"             # headphone EQ profile
 
+# Short protocol code appended to every run's filename/sequence.name, e.g.
+# "LS_03.07_14-22_LS_expT-AR_pre". Lets you pick these runs out of a subject's
+# localization dict later even after other experiments have added their own.
+PROTOCOL_TAG = "expT"
+
 TARGETS_PER_SPEAKER = 3  # -> 21 trials/block on the 7 vertical-midline positions,
 MIN_DISTANCE = 15        # shared by all four block types (AR_pre/AR_post/dome/AR_filler)
-GAIN = 0.2
+# pybinsim gain matched by ear to the dome loudspeakers (DT990, MATCH_STIM='native')
+# at Windows master volume 50%. Only valid at that OS volume -- ensure_windows_volume()
+# below pins it. See localization_helpers/match_ar_dome_loudness.py.
+GAIN = 0.07
 
 # Vertical-midline AR settings -- matches the dome speaker layout (see
 # Localization_dome.LocalizationDome and HRIR_Recording.py step 5), so AR
@@ -96,6 +111,20 @@ def hrir_settings():
     }
 
 
+# %% helper: tag a run with protocol + stage -----------------------------------
+def _tag(loc_test, stage):
+    """
+    Append '_<PROTOCOL_TAG>-<stage>' to a run's filename and sequence.name,
+    e.g. stage='AR_pre' -> '..._expT-AR_pre'. Must be called right after
+    construction, before .run() -- write() (called during/after the loop)
+    uses self.filename as the key into subject.localization, so the tag has
+    to be in place before any data is written.
+    """
+    loc_test.filename = f"{loc_test.filename}_{PROTOCOL_TAG}-{stage}"
+    loc_test.sequence.name = loc_test.filename
+    return loc_test
+
+
 # %% helper: post-block externalization rating --------------------------------
 def collect_externalization_rating(loc_test):
     """
@@ -121,18 +150,23 @@ def collect_externalization_rating(loc_test):
 
 
 # %% status check (rerun anytime) ----------------------------------------------
+ensure_windows_volume()   # pin OS volume to the level the GAIN=0.07 match was made at
 subject = hr.Subject(SUBJECT_ID)
 print(f"SUBJECT: {SUBJECT_ID}    GROUP: {GROUP}    (loaded from {CSV_PATH.name})")
 done = list(getattr(subject, "localization", {}).keys())
-if done:
-    print(f"Localization runs already on file ({len(done)}):")
-    for k in done:
+own = [k for k in done if f"_{PROTOCOL_TAG}-" in k]
+other = [k for k in done if k not in own]
+if own:
+    print(f"expectation_transfer runs already on file ({len(own)}):")
+    for k in own:
         print(f"   - {k}")
 else:
-    print("No localization runs on file yet.")
+    print("No expectation_transfer runs on file yet.")
+if other:
+    print(f"({len(other)} other localization run(s) on file from other protocols, not shown)")
 
 # %% block 1: AR_pre -- naive virtual localization ------------------------------
-ar_pre = Localization(subject, hrir_settings(), AR_MIDLINE_SETTINGS)
+ar_pre = _tag(Localization(subject, hrir_settings(), AR_MIDLINE_SETTINGS), "AR_pre")
 ar_pre.run()
 collect_externalization_rating(ar_pre)
 
@@ -141,7 +175,7 @@ if GROUP != "dome":
     raise RuntimeError(f"Subject {SUBJECT_ID} is in the '{GROUP}' group -- "
                        f"use the AR_filler cell below instead, not this one.")
 subject = hr.Subject(SUBJECT_ID)  # reload after block 1 write
-dome = LocalizationDome(subject, DOME_SETTINGS)
+dome = _tag(LocalizationDome(subject, DOME_SETTINGS), "dome")
 dome.run()
 
 # %% block 2: exposure -- AR_filler, virtual  [only if GROUP == 'control'] ------
@@ -149,11 +183,11 @@ if GROUP != "control":
     raise RuntimeError(f"Subject {SUBJECT_ID} is in the '{GROUP}' group -- "
                        f"use the DOME cell above instead, not this one.")
 subject = hr.Subject(SUBJECT_ID)  # reload after block 1 write
-ar_filler = Localization(subject, hrir_settings(), AR_MIDLINE_SETTINGS)
+ar_filler = _tag(Localization(subject, hrir_settings(), AR_MIDLINE_SETTINGS), "AR_filler")
 ar_filler.run()
 
 # %% block 3: AR_post -- repeat of AR_pre ---------------------------------------
 subject = hr.Subject(SUBJECT_ID)  # reload after block 2 write
-ar_post = Localization(subject, hrir_settings(), AR_MIDLINE_SETTINGS)
+ar_post = _tag(Localization(subject, hrir_settings(), AR_MIDLINE_SETTINGS), "AR_post")
 ar_post.run()
 collect_externalization_rating(ar_post)

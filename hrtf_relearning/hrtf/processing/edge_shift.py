@@ -1083,6 +1083,61 @@ def compare_tf(base_hrtf, manip_hrtf, sourceidx=None, ear='left', kind='image',
     return fig
 
 
+def compare_waterfall(base_hrtf, manip_hrtf, ear='left', xlim=(3000.0, 16000.0),
+                      linesep=40.0, smoothing='raw', axis=None, show=True,
+                      labels=('original', 'modified')):
+    """Overlay original (grey) vs manipulated (red) median-plane DTFs stacked by
+    elevation -- one pair of curves per elevation, the same view as the QC
+    montage (dev/waterfall_edge_qc.py). Companion to compare_tf (side-by-side
+    images). Use this to eyeball any manipulated condition against baseline.
+
+    smoothing : 'raw' (default -- the actual presented DTF, fine structure kept),
+        'gaussian' (Iida de-ripple, for readability), or an int n_keep (cepstral).
+    Returns the figure."""
+    import matplotlib.pyplot as plt
+    from matplotlib.lines import Line2D
+    ear_i = 0 if ear == 'left' else 1
+    arr0, fs = hrtf_to_array(base_hrtf)
+    arr1, _ = hrtf_to_array(manip_hrtf)
+    vp = base_hrtf.sources.vertical_polar
+    az = (vp[:, 0] + 180) % 360 - 180
+    idx = sorted([i for i in range(len(vp)) if abs(az[i]) <= 2.0], key=lambda i: vp[i, 1])
+    if axis is None:
+        fig, axis = plt.subplots(figsize=(7, 8))
+    else:
+        fig = axis.figure
+    nfft = int(2 ** np.ceil(np.log2(arr0.shape[1])) * 4)
+    freqs = np.fft.rfftfreq(nfft, 1.0 / fs)
+    band = (freqs >= xlim[0]) & (freqs <= xlim[1])
+
+    def curve(x):
+        mag = np.abs(np.fft.rfft(x, nfft))
+        if smoothing == 'gaussian':
+            return _gaussian_smooth_db(mag, freqs)
+        if isinstance(smoothing, (int, np.integer)):
+            return _cepstral_smooth_db(mag, int(smoothing))
+        return 20.0 * np.log10(np.maximum(mag, EPS))
+
+    off = 0.0
+    for i in idx:
+        L0 = curve(arr0[i, :, ear_i]); L1 = curve(arr1[i, :, ear_i])
+        axis.plot(freqs[band], L0[band] + off, color='0.6', lw=1.0)
+        axis.plot(freqs[band], L1[band] + off, color='#D62728', lw=1.1)
+        axis.text(xlim[1] * 1.01, L0[band][-1] + off, f"{vp[i, 1]:+.0f}", fontsize=7, va='center')
+        off += linesep
+    axis.set_xscale('log'); axis.set_xlim(*xlim)
+    axis.set_xticks([3000, 5000, 8000, 12000, 16000])
+    axis.get_xaxis().set_major_formatter(plt.matplotlib.ticker.ScalarFormatter())
+    axis.set_xlabel('frequency (Hz)'); axis.set_yticks([])
+    axis.set_ylabel('magnitude (dB, offset by elevation)')
+    axis.legend(handles=[Line2D([], [], color='0.6', lw=1, label=labels[0]),
+                         Line2D([], [], color='#D62728', lw=1, label=labels[1])],
+                fontsize=8, loc='upper left')
+    if show:
+        plt.show()
+    return fig
+
+
 if __name__ == "__main__":
     fs = 48000
     n = 256

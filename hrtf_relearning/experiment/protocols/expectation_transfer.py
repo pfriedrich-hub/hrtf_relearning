@@ -38,7 +38,7 @@ import csv
 import hrtf_relearning as hr
 from hrtf_relearning.experiment.localization.Localization_AR import Localization
 from hrtf_relearning.experiment.localization.Localization_dome import LocalizationDome
-from hrtf_relearning.experiment.localization.localization_helpers.os_volume import ensure_windows_volume
+from hrtf_relearning.experiment.misc.system_volume import set_windows_volume
 
 SUBJECT_ID = "SZ"   # edit per participant
 
@@ -74,8 +74,11 @@ PROTOCOL_TAG = "expT"
 TARGETS_PER_SPEAKER = 3  # -> 21 trials/block on the 7 vertical-midline positions,
 MIN_DISTANCE = 15        # shared by all four block types (AR_pre/AR_post/dome/AR_filler)
 # pybinsim gain matched by ear to the dome loudspeakers (DT990, MATCH_STIM='native')
-# at Windows master volume 50%. Only valid at that OS volume -- ensure_windows_volume()
-# below pins it. See localization_helpers/match_ar_dome_loudness.py.
+# at Windows master volume 50%. Only valid at that OS volume -- set_windows_volume(50)
+# below pins it. Dome and AR stimuli now share one synthesis
+# (localization_helpers/stimulus.make_gapped_pinknoise); dome loudness was preserved
+# so this match still holds until re-calibrated with KEMAR recordings.
+# See localization_helpers/match_ar_dome_loudness.py.
 GAIN = 0.07
 
 # Vertical-midline AR settings -- matches the dome speaker layout (see
@@ -151,7 +154,7 @@ def collect_externalization_rating(loc_test):
 
 
 # %% status check (rerun anytime) ----------------------------------------------
-ensure_windows_volume()   # pin OS volume to the level the GAIN=0.07 match was made at
+set_windows_volume(50)   # pin OS volume to the level the GAIN=0.07 match was made at
 subject = hr.Subject(SUBJECT_ID)
 print(f"SUBJECT: {SUBJECT_ID}    GROUP: {GROUP}    (loaded from {CSV_PATH.name})")
 done = list(getattr(subject, "localization", {}).keys())

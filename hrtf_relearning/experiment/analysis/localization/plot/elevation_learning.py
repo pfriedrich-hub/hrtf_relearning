@@ -8,7 +8,7 @@ from matplotlib import pyplot as plt
 import hrtf_relearning as hr
 
 
-subject_id = "RK"
+subject_id = "CA"
 
 
 def learning_plot(

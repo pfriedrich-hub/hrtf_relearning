@@ -83,6 +83,60 @@ def run_ar(subject, label):
     return subject.localization[loc.filename]
 
 
+# --- QC plotting -------------------------------------------------------------
+def plot_median_features(hrtf, med, ear=0, band=(3000., 16000.), feature_kw=None,
+                         title=None, show=True):
+    """Median-plane QC: DTF magnitude (elevation x frequency) with each notch
+    center (o) and its half-height rising edge (^) overlaid, so the cue the
+    edge-shift manipulation acts on is visible before any SOFA is built.
+
+    `med` is the elevation-sorted median-plane index list. Returns the figure."""
+    import numpy as np
+    import matplotlib.pyplot as plt
+
+    arr, fs = hrtf_to_array(hrtf)
+    vp = hrtf.sources.vertical_polar
+    els = np.array([vp[i, 1] for i in med])
+
+    # magnitude image on the shared rfft grid (parametric_summary's 4x-nextpow2)
+    n = arr.shape[-1]
+    nfft = int(2 ** np.ceil(np.log2(n)) * 4)
+    freqs = np.fft.rfftfreq(nfft, 1.0 / fs)
+    fsel = (freqs >= band[0]) & (freqs <= band[1])
+    fb = freqs[fsel]
+    img = np.empty((len(med), fb.size))
+    notch_pts, edge_pts = [], []  # (freq_khz, elevation)
+    for row, i in enumerate(med):
+        mag = np.abs(np.fft.rfft(arr[i, :, ear], nfft))
+        img[row] = 20.0 * np.log10(np.maximum(mag[fsel], 1e-9))
+        feats = parametric_summary(arr[i, :, ear], fs, feature_kw=feature_kw)["features"]
+        for f in feats:
+            if f.get("f_hz"):
+                notch_pts.append((f["f_hz"] / 1000, vp[i, 1]))
+            if f.get("f_edge_rise_hz"):
+                edge_pts.append((f["f_edge_rise_hz"] / 1000, vp[i, 1]))
+
+    fig, ax = plt.subplots(figsize=(9, 6))
+    mesh = ax.pcolormesh(fb / 1000, els, img, cmap="viridis", shading="nearest")
+    fig.colorbar(mesh, ax=ax, label="magnitude (dB)")
+    if notch_pts:
+        nx, ny = zip(*notch_pts)
+        ax.scatter(nx, ny, marker="o", s=45, facecolors="none",
+                   edgecolors="w", linewidths=1.4, label="notch center")
+    if edge_pts:
+        ex, ey = zip(*edge_pts)
+        ax.scatter(ex, ey, marker="^", s=45, c="#D85A30",
+                   edgecolors="k", linewidths=0.5, label="rising edge (half-height)")
+    ax.set_xlabel("frequency (kHz)")
+    ax.set_ylabel("elevation (deg)")
+    ax.set_title(title or f"{getattr(hrtf, 'name', '')} median-plane notch/edge (ear {ear})")
+    ax.legend(loc="upper right", fontsize=9, framealpha=0.85)
+    fig.tight_layout()
+    if show:
+        plt.show()
+    return fig
+
+
 # %% load baseline HRTF -------------------------------------------------------
 subject = hr.Subject(SUBJECT_ID)
 base_hrtf = slab.HRTF(str(BASE_SOFA_PATH))
@@ -99,7 +153,8 @@ for i in med[::max(1, len(med) // 12)]:
     pairs = ["{:.1f}->{:.1f}kHz".format(f["f_hz"] / 1000, (f.get("f_edge_rise_hz") or 0) / 1000)
              for f in feats]
     print("el={:+6.1f}  notch->edge: {}".format(vp[i, 1], pairs))
-# todo plot!!
+plot_median_features(base_hrtf, med, feature_kw=FEATURE_KW,
+                     title=f"{SUBJECT_ID} baseline - median-plane notch/edge")
 
 # %% PHASE 1 -- transfer baseline: run experiment/protocols/expectation_transfer.py
 # (AR_pre -> Dome -> AR_post). Nothing to do here; kept as a pointer.
@@ -108,12 +163,17 @@ for i in med[::max(1, len(med) // 12)]:
 whole_labels = {}
 for delta in WHOLE_DELTAS:
     label = _label("whole", delta)
-    _, reports = save_condition_sofa(base_hrtf, "whole", delta,
+    manip_hrtf, reports = save_condition_sofa(base_hrtf, "whole", delta,
                                      SOFA_DIR / f"{SUBJECT_ID}_{label}.sofa", feature_kw=FEATURE_KW)
     whole_labels[delta] = label
     print(f"whole delta={delta:>4} -> {SUBJECT_ID}_{label}.sofa")
     print_notch_summary(reports, label="  notches shifted")
-# todo plot sofa for confirmation!!
+    # confirm the written SOFA: baseline vs manipulated across the median arc,
+    # plus the shifted notch/edge overlay for this dose.
+    fig = compare_tf(base_hrtf, manip_hrtf, show=False)
+    fig.suptitle(f"{SUBJECT_ID} whole delta={delta:g} ERB", y=1.02)
+    plot_median_features(manip_hrtf, med, feature_kw=FEATURE_KW,
+                         title=f"{SUBJECT_ID} whole delta={delta:g} ERB - notch/edge")
 
 # %% PHASE 2b -- run one whole-notch dose block (quick succession) ------------
 # set DELTA_TO_RUN to each WHOLE_DELTAS value in turn (ascending), rerun this

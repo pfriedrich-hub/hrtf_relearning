@@ -46,11 +46,11 @@ import slab
 import freefield
 
 import hrtf_relearning as hr
-from hrtf_relearning.experiment.localization.localization_helpers.os_volume import (
-    OS_VOLUME, ensure_windows_volume,
-)
+from hrtf_relearning.experiment.misc.system_volume import set_windows_volume
 from hrtf_relearning.experiment.localization.Localization_AR import Localization
 from hrtf_relearning.experiment.localization.Localization_dome import LocalizationDome
+
+OS_VOLUME = 50   # Windows master volume (%) the loudness match is made at
 
 # --- what to compare against what ---
 SUBJECT_ID = 'JS'
@@ -66,7 +66,7 @@ _loc_settings = {'kind': 'sectors', 'azimuth_range': (-1, 1), 'elevation_range':
                  'targets_per_sector': 3, 'min_distance': 15, 'gain': 0.2,
                  'sector_size': (7, 14), 'replace': False, 'stim': 'noise'}
 
-ensure_windows_volume()   # pin OS volume (OS_VOLUME); keep identical in the real tests
+set_windows_volume(OS_VOLUME)   # pin OS volume; keep identical in the real tests
 
 subject = hr.Subject(SUBJECT_ID)
 
@@ -92,11 +92,12 @@ if freefield.PROCESSORS is None or freefield.PROCESSORS.mode != 'play_rec':
 
 
 def _make_pybinsim_stim():
-    """The stim that the pybinsim path will play, written to localization.wav."""
-    # Keep the WAV at the AR test's own level (80) either way, so the GAIN you
-    # derive here is directly valid in the real AR/VR test. Only GAIN varies.
+    """The stim that the pybinsim path will play, written to localization.wav.
+    Dome and AR now share one synthesis (make_gapped_pinknoise), so 'native' and
+    'dome' produce the same stimulus; kept only so the WAV stays at the AR test's
+    own level (80) and the derived GAIN transfers straight into the real test."""
     if MATCH_STIM == 'dome':
-        stim = LocalizationDome.make_stim(level=80)   # same *kind* as dome -> cleaner acoustic cross-check
+        stim = LocalizationDome.make_stim(level=80)
     else:
         stim = loc.make_stim()                        # AR test's real 225 ms gapped noise @ level 80
     stim.write(loc.sound_path / 'localization.wav')
@@ -104,8 +105,9 @@ def _make_pybinsim_stim():
 
 
 def _make_dome_stim():
-    """The stim played from the real loudspeakers (always the dome burst train)."""
-    return LocalizationDome.make_stim(level=85)
+    """The stim played from the real loudspeakers -- default (level=None)
+    preserves the dome's loudness so this match matches the real dome test."""
+    return LocalizationDome.make_stim()
 
 
 def play_dome():

@@ -40,9 +40,10 @@ from hrtf_relearning.experiment.localization.Localization_AR import Localization
 from hrtf_relearning.experiment.localization.Localization_dome import LocalizationDome
 from hrtf_relearning.experiment.localization.localization_helpers.os_volume import ensure_windows_volume
 
-SUBJECT_ID = "AS"   # edit per participant
+SUBJECT_ID = "SZ"   # edit per participant
 
 CSV_PATH = hr.PATH / "experiment" / "protocols" / "documentation" / "expectation_transfer_block_order.csv"
+
 
 
 def _load_group(subject_id, csv_path=CSV_PATH):

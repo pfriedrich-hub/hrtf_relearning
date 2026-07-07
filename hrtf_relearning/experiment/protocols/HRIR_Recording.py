@@ -33,8 +33,8 @@ from hrtf_relearning.experiment.localization.Localization_dome import Localizati
 from hrtf_relearning.hrtf.record.record_hrir import record_hrir
 from hrtf_relearning.hrtf.record.calibration.calibrate_headphones import calibrate_headphones
 
-SUBJECT_ID   = 'AS'          # edit per participant
-HEAD_RADIUS  = 0.085
+SUBJECT_ID   = 'GS'          # edit per participant
+HEAD_RADIUS  = 0.073
 REFERENCE_ID = 'ref_03.04'
 N_DIRECTIONS = 3              # directions for the HRIR recording
 N_RECORDINGS = 10
@@ -136,14 +136,14 @@ hrir = record_hrir(
     hp_freq        = HP_FREQ,
     head_radius    = HEAD_RADIUS,
     show           = SHOW,
-    overwrite_rec  = True,
-    overwrite_hrir = True,
+    overwrite_rec  = False,
+    overwrite_hrir = False,
 )
 
 # %% step 2: headphone calibration ---------------------------------------------
 logging.info('--- Step 2: HP calibration ---')
-# hp_filter = calibrate_headphones(SUBJECT_ID, 'MYSPHERE', N_REC_HP, SHOW, True)
-hp_filter = calibrate_headphones(SUBJECT_ID, 'DT990', N_REC_HP, SHOW, False, overwrite=True)
+hp_filter = calibrate_headphones(SUBJECT_ID, 'MYSPHERE', N_REC_HP, SHOW, True)
+# hp_filter = calibrate_headphones(SUBJECT_ID, 'DT990', N_REC_HP, SHOW, False, overwrite=True)
 
 # %% step 3: acoustic sanity check (optional) -----------------------------------
 logging.info('--- Step 3: Acoustic test ---')
@@ -160,7 +160,7 @@ dome_loc.run()
 # %% step 5a: virtual localization -- MYSPHERE (optional) ------------------------
 logging.info('--- Step 5: HP localization (MYSPHERE) ---')
 ar_loc_settings = {'kind': 'standard', 'azimuth_range': (-1, 1), 'elevation_range': (-35, 35),
-    'targets_per_speaker': 2, 'min_distance': 15, 'gain': .2, 'stim': 'noise'}
+    'targets_per_speaker': 2, 'min_distance': 15, 'gain': .07, 'stim': 'noise'}
 mysphere_hrir_settings = dict(name=SUBJECT_ID, subject_id=SUBJECT_ID, ear=None, mirror=False,
     reverb=True, drr=20, hp_filter=True, hp='MYSPHERE', convolution='cpu', storage='cpu')
 ar_loc = Localization(subject, mysphere_hrir_settings, ar_loc_settings)

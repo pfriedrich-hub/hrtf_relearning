@@ -33,12 +33,12 @@ from hrtf_relearning.hrtf.processing.edge_shift import (
 )
 from hrtf_relearning.experiment.localization.Localization_AR import Localization
 
-SUBJECT_ID = "AS"                        # edit per participant
+SUBJECT_ID = "GS"                        # edit per participant
 HP = "DT990"
 NOTCH_BAND = (4000., 15000.)             # manipulate all valid notches here
 FEATURE_KW = dict(band=NOTCH_BAND)
 WHOLE_DELTAS = (0.25, 0.5, 1.0, 1.5)     # dose staircase (ERB), quick succession
-CHOSEN_DELTA = 1                       # set to the threshold from phase 2, then run phases 3-4
+CHOSEN_DELTA = 1.5                       # set to the threshold from phase 2, then run phases 3-4
 
 TARGETS_PER_SPEAKER = 3
 MIN_DISTANCE = 15
@@ -119,8 +119,9 @@ for delta in WHOLE_DELTAS:
 # set DELTA_TO_RUN to each WHOLE_DELTAS value in turn (ascending), rerun this
 # cell, until localized elevation clearly follows the shift -> put it in
 # CHOSEN_DELTA above.
-DELTA_TO_RUN = 1
+DELTA_TO_RUN = 1.5
 run_ar(subject, whole_labels[DELTA_TO_RUN])
+
 
 # %% PHASE 3a -- build edge-shift SOFA at the chosen delta --------------------
 edge_label = _label("edge", CHOSEN_DELTA)

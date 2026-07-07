@@ -1,6 +1,6 @@
 participant_id,subject,group
 1,AS,dome
-2,(assign),control
+2,SZ,control
 3,(assign),dome
 4,(assign),control
 5,(assign),dome

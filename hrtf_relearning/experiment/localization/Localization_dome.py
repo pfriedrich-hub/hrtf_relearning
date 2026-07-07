@@ -18,6 +18,7 @@ from pynput import keyboard
 
 import hrtf_relearning
 from hrtf_relearning.experiment.localization.localization_helpers.make_sequence import make_sequence
+from hrtf_relearning.experiment.localization.localization_helpers.stimulus import make_gapped_pinknoise
 from hrtf_relearning.experiment.misc import meta_motion
 from hrtf_relearning.experiment.analysis.localization.localization_analysis import (
     plot_localization, plot_elevation_response,
@@ -109,12 +110,27 @@ class LocalizationDome:
         self.write()
 
     @staticmethod
-    def make_stim(level=85):
+    def _legacy_burst_train_level(level=85):
+        """Overall RMS of the pre-unification dome burst-train (5x25 ms bursts
+        each ramped 10 ms, 4x25 ms gaps). Used only to preserve the dome's
+        loudness after switching to the AR synthesis, so the current AR<->dome
+        by-ear match (gain 0.07) stays valid until re-calibrated with KEMAR."""
         noise = slab.Sound.pinknoise(duration=0.025, level=level).ramp(when='both', duration=0.01)
         silence = slab.Sound.silence(duration=0.025)
         stim = slab.Sound.sequence(noise, silence, noise, silence, noise,
                                    silence, noise, silence, noise)
-        return stim.ramp(when='both', duration=0.01)
+        return float(numpy.mean(stim.ramp(when='both', duration=0.01).level))
+
+    @staticmethod
+    def make_stim(level=None):
+        """225 ms gapped pinknoise, synthesis IDENTICAL to the AR/VR condition
+        (localization_helpers.stimulus.make_gapped_pinknoise). Only the overall
+        loudness is dome-specific: `level=None` (default) preserves the loudness
+        of the old dome burst-train so the existing gain match holds; pass an
+        explicit dB value once you re-calibrate with KEMAR recordings."""
+        stim = make_gapped_pinknoise()
+        stim.level = LocalizationDome._legacy_burst_train_level() if level is None else level
+        return stim
 
     @staticmethod
     def _init_sensor():

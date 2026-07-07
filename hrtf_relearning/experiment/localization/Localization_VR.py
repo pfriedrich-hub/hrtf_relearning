@@ -5,6 +5,7 @@ import time
 import slab
 from hrtf_relearning.experiment.analysis.localization.localization_analysis import *
 from hrtf_relearning.experiment.localization.localization_helpers.uso_generation import generate_uso
+from hrtf_relearning.experiment.localization.localization_helpers.stimulus import make_gapped_pinknoise
 from hrtf_relearning.experiment.localization.localization_helpers.make_sequence import make_sequence
 from hrtf_relearning.experiment.misc import meta_motion
 from hrtf_relearning.experiment.misc.system_volume import set_windows_volume
@@ -183,27 +184,7 @@ class Localization:
 
     def make_stim(self):
         if self.stim_kind == 'noise':
-            stim = slab.Sound.pinknoise(duration=0.225, level=80).ramp(when='both', duration=0.01)
-            n_silent = (numpy.arange(25,221,25).reshape(4,2) * stim.samplerate / 1000).astype(int)
-            ramp_len = int(.005 * stim.samplerate)
-            half_len = int(ramp_len / 2)
-            for start, end in n_silent:
-                ramp_up = 0.5 * (1 - numpy.cos(numpy.linspace(0, numpy.pi, ramp_len)))
-                ramp_down = 0.5 * (1 - numpy.cos(numpy.linspace(numpy.pi, 0, ramp_len)))
-                ramp_up = ramp_up[:, numpy.newaxis]
-                ramp_down = ramp_down[:, numpy.newaxis]
-                # Apply ramps at the edges of the silent region
-                stim.data[start - half_len: start + half_len] *= (1 - ramp_up)
-                stim.data[end - half_len: end + half_len] *= (1 - ramp_down)
-                # Silence the center
-                stim.data[start + half_len: end - half_len] = 0
-            # stim = slab.Sound.pinknoise(duration=0.5, level=90).ramp(when='both', duration=0.01)
-            # noise = slab.Sound.pinknoise(duration=0.025, level=90)
-            # noise = noise.ramp(when='both', duration=0.01)
-            # silence = slab.Sound.silence(duration=0.025)
-            # stim = slab.Sound.sequence(noise, silence, noise, silence, noise,
-            #                            silence, noise, silence, noise)
-            # stim.ramp('both', 0.01)
+            stim = make_gapped_pinknoise(level=80)
         elif self.stim_kind == 'uso':
             stim = generate_uso(samplerate=self.hrir.samplerate)
         else: raise ValueError('stim must be "noise" or "uso".')

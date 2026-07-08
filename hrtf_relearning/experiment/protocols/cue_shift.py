@@ -28,7 +28,7 @@ from hrtf_relearning.hrtf.processing.edge_shift import (
 from hrtf_relearning.experiment.localization.Localization_VR import run as run_localization
 from hrtf_relearning.utils import paths
 
-SUBJECT_ID = "JS"                            # edit per participant
+SUBJECT_ID = "SZ"                            # edit per participant
 DELTA_ERB = 1.5                              # shift magnitude (ERB), shared by whole/rising/falling
 CONDITIONS = ("whole", "rising", "falling")  # baseline needs no manipulation
 

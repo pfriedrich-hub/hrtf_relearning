@@ -186,13 +186,13 @@ class Localization:
 if __name__ == "__main__":
 
     # --- SETTINGS ---
-    _SUBJECT_ID = "JS"
-    _HRIR_NAME = "JS_synth"  # 'KU100', 'kemar', etc.
+    _SUBJECT_ID = "AS"
+    _HRIR_NAME = "AS_shift"  # 'KU100', 'kemar', etc.
     _HP = 'DT990'
-    _EAR = 'left'  # None (binaural), 'left', or 'right'
-    _MIRROR = True  # True to swap left/right spectral cues
-    _AZ_RANGE = (-35, 0)
-    _SECTOR_SIZE = (7, 14)
+    _EAR = None  # None (binaural), 'left', or 'right'
+    _MIRROR = False  # True to swap left/right spectral cues
+    _AZ_RANGE = (-35, 35)
+    _SECTOR_SIZE = (14, 14)
     _STIM = 'noise'
 
     # --- localization / sequence settings ---
@@ -219,8 +219,8 @@ if __name__ == "__main__":
         'drr': 20,
         'hp_filter': True,
         'hp': _HP,
-        'convolution': 'cuda',
-        'storage': 'cuda',
+        'convolution': 'cpu',
+        'storage': 'cpu',
     }
 
     _subject = hr.Subject(_SUBJECT_ID)

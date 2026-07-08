@@ -46,7 +46,7 @@ hrtf_dir = paths.SOFA_DIR
 import slab
 from hrtf_relearning.hrtf.analysis.vsi import (vsi as _vsi, vsi_dissimilarity as _vsi_dissimilarity)
 
-sub_id = 'JS'
+sub_id = 'AS'
 
 SMOOTH = True
 N_KEEP = 4
@@ -61,7 +61,7 @@ PLOT = 'image'   # 'image' (contour heatmap) | 'waterfall' | 'surface' (via plot
 # 'shift' : cepstral envelope/detail split + frequency-shift of the subject's
 #           OWN fine cues inside a band (SHIFT_* params below).  Ignores
 #           SMOOTH / N_KEEP / FEATURES.
-MODE = 'synth'
+MODE = 'shift'
 fname = MODE
 
 # --- 'shift' mode parameters (only used when MODE == 'shift') --------------
@@ -75,8 +75,8 @@ SHIFT_OCTAVES   = 1.5    # band width in octaves (fraction for octave_band)
 #   = 1  is a rebuild no-op (analysis + minimum-phase resynthesis, cues unmoved)
 # Set PLOT = 'waterfall' below to see the per-elevation spectra stacked, which
 # makes the shift of the detail relative to the fixed envelope easy to inspect.
-SHIFT_FACTOR    = 0.9
-SHIFT_ENV_NKEEP = 3      # cepstral coeffs kept for the envelope (lower = more detail shifted)
+SHIFT_FACTOR    = 1.4
+SHIFT_ENV_NKEEP = 4      # cepstral coeffs kept for the envelope (lower = more detail shifted)
 SHIFT_SKIRT     = 0.25   # cosine taper outside the band [octaves]
 
 # ---------------------------------------------------------------------------
@@ -96,28 +96,28 @@ SHIFT_SKIRT     = 0.25   # cosine taper outside the band [octaves]
 # X1, X2 : (azimuth, elevation) spatial anchor directions
 # ---------------------------------------------------------------------------
 FEATURES = [
-    {
-        'freqs': (8000, 9000),  # centre freq at X1 and X2 [Hz]
-        'width': (300,   300),   # Gaussian σ at X1 and X2 [Hz]
-        'depth': (12.0,  12.0), # >0 = notch, <0 = peak [dB]
-        'X1':    (0, 0),         # anchor 1 (az, az)
-        'X2':    (-40, 40),      # anchor 2 (el, el)
-    },
-    # Add further features here, e.g.:
-    {
-        'freqs': (11000, 10000),
-        'width': (300, 300),
-        'depth': (12, 12),   # negative → peak
-        'X1': (0, 0),
-        'X2': (-40, 40),
-    },
-    {
-        'freqs': (15500, 16000),
-        'width': (300, 300),
-        'depth': (12, 12),  # negative → peak
-        'X1': (0, 0),
-        'X2': (-40, 40),
-    },
+    # {
+    #     'freqs': (8000, 9000),  # centre freq at X1 and X2 [Hz]
+    #     'width': (300,   300),   # Gaussian σ at X1 and X2 [Hz]
+    #     'depth': (12.0,  12.0), # >0 = notch, <0 = peak [dB]
+    #     'X1':    (0, 0),         # anchor 1 (az, az)
+    #     'X2':    (-40, 40),      # anchor 2 (el, el)
+    # },
+    # # Add further features here, e.g.:
+    # {
+    #     'freqs': (11000, 10000),
+    #     'width': (300, 300),
+    #     'depth': (12, 12),   # negative → peak
+    #     'X1': (0, 0),
+    #     'X2': (-40, 40),
+    # },
+    # {
+    #     'freqs': (15500, 16000),
+    #     'width': (300, 300),
+    #     'depth': (12, 12),  # negative → peak
+    #     'X1': (0, 0),
+    #     'X2': (-40, 40),
+    # },
 ]
 
 # FEATURES = []  # no features

@@ -34,8 +34,8 @@ from hrtf_relearning.hrtf.record.record_hrir import record_hrir
 from hrtf_relearning.hrtf.record.calibration.calibrate_headphones import calibrate_headphones
 from hrtf_relearning.utils import paths
 
-SUBJECT_ID   = 'GS'          # edit per participant
-HEAD_RADIUS  = 0.073
+SUBJECT_ID   = 'SZ'          # edit per participant
+HEAD_RADIUS  = 0.074
 REFERENCE_ID = 'ref_03.04'
 N_DIRECTIONS = 3              # directions for the HRIR recording
 N_RECORDINGS = 10
@@ -137,14 +137,14 @@ hrir = record_hrir(
     hp_freq        = HP_FREQ,
     head_radius    = HEAD_RADIUS,
     show           = SHOW,
-    overwrite_rec  = False,
-    overwrite_hrir = False,
+    overwrite_rec  = True,
+    overwrite_hrir = True,
 )
 
 # %% step 2: headphone calibration ---------------------------------------------
 logging.info('--- Step 2: HP calibration ---')
-hp_filter = calibrate_headphones(SUBJECT_ID, 'MYSPHERE', N_REC_HP, SHOW, True)
-# hp_filter = calibrate_headphones(SUBJECT_ID, 'DT990', N_REC_HP, SHOW, False, overwrite=True)
+# hp_filter = calibrate_headphones(SUBJECT_ID, 'MYSPHERE', N_REC_HP, SHOW, True)
+hp_filter = calibrate_headphones(SUBJECT_ID, 'DT990', N_REC_HP, SHOW, False, overwrite=True)
 
 # %% step 3: acoustic sanity check (optional) -----------------------------------
 logging.info('--- Step 3: Acoustic test ---')

@@ -1,9 +1,9 @@
 participant_id,subject,group
 1,AS,dome
-2,SZ,control
-3,(assign),dome
+2,"",control
+3,GS,dome
 4,(assign),control
-5,(assign),dome
+5,SZ,dome
 6,(assign),control
 7,(assign),dome
 8,(assign),control

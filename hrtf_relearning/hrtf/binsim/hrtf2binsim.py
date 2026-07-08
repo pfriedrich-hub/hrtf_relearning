@@ -17,10 +17,11 @@ from hrtf_relearning.hrtf.binsim.hrir2mat import (
     write_filters,
     write_filter_list,
 )
+from hrtf_relearning.utils import paths
 
 logger = logging.getLogger(__name__)
 
-data_dir = hrtf_relearning.PATH / "data" / "hrtf"
+data_dir = paths.HRTF_DIR
 wav_path = data_dir / "binsim"
 
 # ---------------------------------------------------------------------

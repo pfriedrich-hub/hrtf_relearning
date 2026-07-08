@@ -34,12 +34,13 @@ for _p in Path(__file__).resolve().parents:
         sys.path.insert(0, str(_p))
         break
 import hrtf_relearning as hr
+from hrtf_relearning.utils import paths
 
 # ---------------------------------------------------------------- config
 SUBJECT_ID        = "JS"
 GIT_PREMERGE_REV  = "a4b9360"           # 19.06 commit: old participant only
 REPO_ROOT         = hr.PATH.parent      # parent of the hrtf_relearning package
-RESULTS_DIR       = hr.PATH / "data" / "results"
+RESULTS_DIR       = paths.RESULTS_DIR
 CURRENT_PKL       = RESULTS_DIR / f"{SUBJECT_ID}.pkl"
 OLD_DEST          = RESULTS_DIR / "pilot" / f"{SUBJECT_ID}.pkl"   # archive old participant here
 REL_PKL           = CURRENT_PKL.relative_to(REPO_ROOT).as_posix()  # path git knows

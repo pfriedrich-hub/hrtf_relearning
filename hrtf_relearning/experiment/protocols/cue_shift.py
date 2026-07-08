@@ -23,16 +23,17 @@ import slab
 
 import hrtf_relearning as hr
 from hrtf_relearning.hrtf.processing.edge_shift import (
-    save_condition_sofa, verify_condition, compare_tf, print_notch_summary,
+    save_condition_sofa, verify_condition, compare_waterfall, print_notch_summary,
 )
 from hrtf_relearning.experiment.localization.Localization_VR import run as run_localization
+from hrtf_relearning.utils import paths
 
 SUBJECT_ID = "JS"                            # edit per participant
 DELTA_ERB = 1.5                              # shift magnitude (ERB), shared by whole/rising/falling
 CONDITIONS = ("whole", "rising", "falling")  # baseline needs no manipulation
 
 ROOT = hr.PATH
-SOFA_DIR = ROOT / "data" / "hrtf" / "sofa" / SUBJECT_ID
+SOFA_DIR = paths.SOFA_DIR / SUBJECT_ID
 BASE_SOFA_PATH = SOFA_DIR / f"{SUBJECT_ID}.sofa"  # individual measured HRTF (already recorded)
 
 # %% load baseline HRTF -------------------------------------------------------
@@ -49,6 +50,8 @@ for condition in CONDITIONS:
     condition_sofa_paths[condition] = path
     print(f"{condition:8s} -> {path.name}")
     print_notch_summary(reports, label="  notches found")
+    # a baseline-vs-condition waterfall QC is auto-saved by save_condition_sofa
+    # to PLOT_DIR/<subject>/hrtf/<name>_waterfall.png
 
 # %% verify one condition against the model before testing it ----------------
 # change `condition` and rerun this cell to check a different one
@@ -60,8 +63,9 @@ print(f"{condition}: model-predicted polar error "
      f"(delta {report['delta_pe']:+.1f})  |  "
      f"quadrant error delta {report['delta_qe']:+.1f}%")
 
-# %% visual sanity check: median-plane TFs, baseline vs condition ------------
-compare_tf(base_hrtf, condition_hrtfs[condition])
+# %% visual sanity check: median-plane waterfall, baseline vs condition ------
+compare_waterfall(base_hrtf, condition_hrtfs[condition],
+                  labels=('baseline', condition))
 
 # %% run baseline localization block ------------------------------------------
 run_localization(SUBJECT_ID, "baseline", 0)

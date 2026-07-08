@@ -3,7 +3,8 @@ import logging
 from pathlib import Path
 import pickle
 import hrtf_relearning
-results_dir = Path(hrtf_relearning.__file__).resolve().parent / "data" / "results"
+from hrtf_relearning.utils import paths
+results_dir = paths.RESULTS_DIR
 backup_dir = results_dir / "backup"
 results_dir.mkdir(parents=True, exist_ok=True)
 backup_dir.mkdir(parents=True, exist_ok=True)

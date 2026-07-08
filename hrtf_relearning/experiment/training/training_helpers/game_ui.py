@@ -21,6 +21,7 @@ ROOT = hrtf_relearning.PATH
 # imports), so it's safe to import in this UI subprocess even though the
 # rest of the training stack (slab, pybinsim, ...) may not be loaded here.
 from hrtf_relearning.experiment.misc.Subject import backup_dir as SUBJECT_BACKUP_DIR
+from hrtf_relearning.utils import paths
 
 # ────────────────────────────────────────────────────────────────
 # Shared structure for multiprocessing.Values
@@ -45,10 +46,10 @@ def fmt_time(seconds: float) -> str:
 
 def find_coin_path() -> Optional[Path]:
     for p in (
-        ROOT / "data" / "documentation" / "ui" / "mario-coin.svg",  # actual current location
-        ROOT / "data" / "img" / "ui" / "mario-coin.svg",
-        ROOT / "data" / "ui" / "mario-coin.svg",
-        ROOT / "data" / "ui" / "mario-coin.png",
+        paths.DOCUMENTATION_DIR / "ui" / "mario-coin.svg",  # actual current location
+        paths.IMG_DIR / "ui" / "mario-coin.svg",
+        paths.UI_DIR / "mario-coin.svg",
+        paths.UI_DIR / "mario-coin.png",
     ):
         if p.exists():
             return p
@@ -129,7 +130,7 @@ def _ensure_pixel_font_loaded() -> Optional[str]:
     _PIXEL_FONT_FAMILY = ""
     choice = os.environ.get("HRTF_PIXEL_FONT", _DEFAULT_PIXEL_FONT_CHOICE).strip().lower()
     filename = _PIXEL_FONT_CHOICES.get(choice, _PIXEL_FONT_CHOICES[_DEFAULT_PIXEL_FONT_CHOICE])
-    path = ROOT / "data" / "ui" / "fonts" / filename
+    path = paths.UI_DIR / "fonts" / filename
     if path.exists():
         try:
             font_id = QtGui.QFontDatabase.addApplicationFont(str(path))

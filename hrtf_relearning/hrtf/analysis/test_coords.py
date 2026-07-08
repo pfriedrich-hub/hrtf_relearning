@@ -3,7 +3,8 @@ import slab
 import numpy
 from pathlib import Path
 from hrtf_relearning import PATH
-hrtf_dir = PATH / 'data' /'hrtf'/'sofa'
+from hrtf_relearning.utils import paths
+hrtf_dir = paths.SOFA_DIR
 
 # hrir = slab.HRTF(sofa_path / 'KU100.sofa')
 # hrir = slab.HRTF(sofa_path / 'kemar.sofa')
@@ -73,9 +74,9 @@ from pathlib import Path
 import slab
 sofa_name = Path('KU100.sofa')
 sofa_name = Path('single_notch.sofa')
-hrtf_path = Path.cwd() / 'data' / 'hrtf'
+hrtf_path = paths.HRTF_DIR
 hrir = slab.HRTF(hrtf_path / 'sofa' / sofa_name)
-wav_path = Path.cwd() / 'data' / 'hrtf' / 'wav' / sofa_name.stem / 'IR_data'
+wav_path = paths.HRTF_DIR / 'wav' / sofa_name.stem / 'IR_data'
 sound = slab.Sound.pinknoise(duration=0.5, samplerate=hrir.samplerate)
 src_idx = hrir.cone_sources(0, True, 'elevation', .01)
 for idx in src_idx:
@@ -137,7 +138,7 @@ sofa_name ='KU100_HRIR_L2702'
 # sofa_name ='kemar'
 
 # hrir = slab.HRTF.kemar()
-hrir = slab.HRTF(Path.cwd() / 'data' / 'hrtf' / 'sofa' / str(sofa_name + '.sofa'))
+hrir = slab.HRTF(paths.SOFA_DIR / str(sofa_name + '.sofa'))
 azimuth = 15
 elevation = 0
 
@@ -157,7 +158,7 @@ ild = - noise_filt.ild()
 
 #compare
 sofa_name2 ='MRT01'
-hrir2 = slab.HRTF(Path.cwd() / 'data' / 'hrtf' / 'sofa' / str(sofa_name2 + '.sofa'))
+hrir2 = slab.HRTF(paths.SOFA_DIR / str(sofa_name2 + '.sofa'))
 src_idx2 = hrir2.get_source_idx(azimuth, elevation, tolerance=0.05)
 plt.figure()
 hrir2.plot_sources(src_idx2)

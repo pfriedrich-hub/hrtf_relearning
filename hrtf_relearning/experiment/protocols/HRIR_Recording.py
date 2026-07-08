@@ -32,6 +32,7 @@ from hrtf_relearning.experiment.localization.Localization_AR import Localization
 from hrtf_relearning.experiment.localization.Localization_dome import LocalizationDome
 from hrtf_relearning.hrtf.record.record_hrir import record_hrir
 from hrtf_relearning.hrtf.record.calibration.calibrate_headphones import calibrate_headphones
+from hrtf_relearning.utils import paths
 
 SUBJECT_ID   = 'GS'          # edit per participant
 HEAD_RADIUS  = 0.073
@@ -119,7 +120,7 @@ def acoustic_test(hrir, hp_filter, subject_id, hp_id, show=True):
                 )
                 ax.legend(['Dome', 'HP+HRIR'])
 
-        save_dir = ROOT / 'data' / 'results' / 'plot' / subject_id
+        save_dir = paths.PLOT_DIR / subject_id
         save_dir.mkdir(parents=True, exist_ok=True)
         fig.savefig(save_dir / f'acoustic_test_{hp_id}.svg')
         plt.show()

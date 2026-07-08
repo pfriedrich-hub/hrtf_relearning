@@ -7,11 +7,12 @@ import pyfar
 from pathlib import Path
 import hrtf_relearning
 from hrtf_relearning.hrtf.record.calibration.calibrate_headphones import load_hp_filter
+from hrtf_relearning.utils import paths
 ROOT = Path(hrtf_relearning.__file__).resolve().parent
-wav_path = ROOT / 'data' / 'hrtf' / 'binsim'
-sofa_path = ROOT / 'data' / 'hrtf' / 'sofa'
-sound_path = ROOT / 'data' / 'sounds'
-rec_path = ROOT / 'data' / 'hrtf' / 'rec'
+wav_path = paths.BINSIM_DIR
+sofa_path = paths.SOFA_DIR
+sound_path = paths.SOUNDS_DIR
+rec_path = paths.REC_DIR
 
 def resample_sounds(target_samplerate, target_directory):
     logging.info('Resampling sound files.')

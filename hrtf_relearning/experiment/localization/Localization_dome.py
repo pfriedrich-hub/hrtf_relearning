@@ -23,6 +23,7 @@ from hrtf_relearning.experiment.misc import meta_motion
 from hrtf_relearning.experiment.analysis.localization.localization_analysis import (
     plot_localization, plot_elevation_response,
 )
+from hrtf_relearning.utils import paths
 
 ROOT = hrtf_relearning.PATH
 
@@ -90,7 +91,7 @@ class LocalizationDome:
             self.subject.last_sequence = self.sequence
             self.write()
             logging.info('Dome localization complete.')
-            plot_dir = ROOT / 'data' / 'results' / 'plot' / self.subject.id
+            plot_dir = paths.PLOT_DIR / self.subject.id
             plot_elevation_response(self.sequence, filepath=plot_dir)
             plot_localization(self.sequence, report_stats=['elevation'], filepath=plot_dir)
         finally:

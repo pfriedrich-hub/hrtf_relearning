@@ -37,6 +37,7 @@ import csv
 
 import hrtf_relearning as hr
 from hrtf_relearning.experiment.localization.Localization_AR import Localization
+from hrtf_relearning.utils import paths
 
 # The ONLY thing you set per session. Everything else (cue type, trained ear,
 # final-day block order) is loaded from the counterbalance sheet below, keyed by
@@ -44,7 +45,7 @@ from hrtf_relearning.experiment.localization.Localization_AR import Localization
 #   data/documentation/exp1_transfer_block_order.csv   (replace an '(assign)' cell)
 SUBJECT_ID = "JS"
 
-CSV_PATH = hr.PATH / "data" / "documentation" / "exp1_transfer_block_order.csv"
+CSV_PATH = paths.DOCUMENTATION_DIR / "exp1_transfer_block_order.csv"
 
 
 def _load_subject_params(subject_id, csv_path=CSV_PATH):

@@ -47,8 +47,9 @@ from hrtf_relearning.hrtf.record.processing import (
     lowfreq_extrapolate,
     expand_azimuths_with_binaural_cues,
 )
+from hrtf_relearning.utils import paths
 
-base_dir = hrtf_relearning.PATH / "data" / "hrtf"
+base_dir = paths.HRTF_DIR
 
 # ---------------------------------------------------------------------------
 # Default parameters — adjust before each session
@@ -171,7 +172,7 @@ def record_hrir_mesm(
     # Paths
     # -----------------------------------------------------------------
     if base_dir is None:
-        base_dir = hrtf_relearning.PATH / "data" / "hrtf"
+        base_dir = paths.HRTF_DIR
     else:
         base_dir = Path(base_dir)
 

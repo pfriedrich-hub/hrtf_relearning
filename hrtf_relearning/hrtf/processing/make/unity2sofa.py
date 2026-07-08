@@ -7,7 +7,8 @@ import pyfar
 import hrtf_relearning
 import re
 
-base = hrtf_relearning.PATH / 'data' / 'hrtf'
+from hrtf_relearning.utils import paths
+base = paths.HRTF_DIR
 pattern = re.compile(r"hrir_az(?P<az>[+-]?\d+\.\d)_el(?P<el>[+-]?\d+\.\d)\.wav")
 wav_files = sorted((base / 'rec' / 'universal').glob("hrir_az*_el*.wav"))
 
@@ -41,7 +42,7 @@ Write sources txt for use in unity from numpy array
 
 import slab
 import hrtf_relearning
-hrtf_dir = hrtf_relearning.PATH / 'data' / 'hrtf' / 'sofa'
+hrtf_dir = paths.SOFA_DIR
 from pathlib import Path
 from hrtf_relearning.hrtf.processing.make.spherical_sources import *
 

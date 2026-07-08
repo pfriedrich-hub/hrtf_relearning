@@ -5,8 +5,9 @@ import slab
 from pathlib import Path
 
 from hrtf_relearning import PATH
+from hrtf_relearning.utils import paths
 
-hrtf_dir = PATH / "data" / "hrtf" / "sofa" / "pilot"
+hrtf_dir = paths.SOFA_DIR / "pilot"
 
 # ---------------------------------------------------------------------------
 # Parameters – edit here
@@ -706,7 +707,7 @@ def hrtf_animation(
         if filename is None:
             raise ValueError("filename must be provided when write is enabled.")
 
-        out_dir = PATH / "data" / "img" / "animations"
+        out_dir = paths.IMG_DIR / "animations"
         out_dir.mkdir(parents=True, exist_ok=True)
 
         mode = "auto" if write is True else str(write).lower()

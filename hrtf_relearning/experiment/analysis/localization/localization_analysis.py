@@ -148,15 +148,37 @@ def target_p(sequence, show=False, axis=None):
     return response_errors
 
 
+def _azimuth_span(sequence):
+    """Azimuth span (deg) of a localization sequence.
+
+    Uses settings['azimuth_range'] if available, otherwise falls back to the
+    range of unique target azimuths in the data.
+    """
+    az_range = getattr(sequence, 'settings', {}).get('azimuth_range', None)
+    if az_range is not None:
+        return float(max(az_range) - min(az_range))
+    loc_data = numpy.asarray(sequence.data)
+    loc_data = loc_data.reshape(loc_data.shape[0], 2, 2)
+    target_az = loc_data[:, 1, 0]
+    return float(target_az.max() - target_az.min())
+
+
 def plot_localization(sequence, report_stats=['elevation', 'azimuth'], axis=None, filepath=None):
     """
     Plots representative mean responses by aligning targets,
     connects them in a grid, and shows reference sector center lines across the field.
     Style matches publication: all 4 spines, ticks on all sides, light grey reference
     grid (lw=0.3), black response grid (lw=0.6), small filled dots.
+
+    Skipped for (near-)midline tests: the response grid is only drawn when the
+    sequence azimuth span exceeds 2 deg (e.g. not for azimuth_range=(-1, 1)).
     """
     if sequence.this_n == -1 or sequence.n_remaining == len(sequence.data) or not sequence.data:
         return numpy.nan, numpy.nan, numpy.nan, numpy.nan, numpy.nan, numpy.nan
+    if _azimuth_span(sequence) <= 2:
+        logging.info(f'{getattr(sequence, "name", "sequence")}: azimuth span <= 2 deg '
+                     '(midline test) — skipping response grid plot.')
+        return None
 
     fs = 8
     lw = 0.5

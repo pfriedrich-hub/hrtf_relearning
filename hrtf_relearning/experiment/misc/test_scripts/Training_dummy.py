@@ -17,6 +17,7 @@ from hrtf_relearning.experiment.training.training_helpers import game_ui
 from hrtf_relearning.experiment.misc.Subject import Subject
 from hrtf_relearning.experiment.training.training_helpers.training_targets import set_target_probabilistic
 from hrtf_relearning.hrtf.binsim.hrtf2binsim import *
+from hrtf_relearning.utils import paths
 matplotlib.rcParams['figure.raise_window'] = False
 logging.getLogger().setLevel('INFO')
 
@@ -62,7 +63,7 @@ hrir_settings = dict(
 # --- load and process HRIR
 hrir = hrtf2binsim(hrir_settings)
 slab.set_default_samplerate(hrir.samplerate)
-HRIR_DIR = ROOT / "data" / "hrtf" / "binsim" / hrir.name
+HRIR_DIR = paths.BINSIM_DIR / hrir.name
 
 # -------------------- Helpers --------------------
 def make_osc_client(port, ip="127.0.0.1"):

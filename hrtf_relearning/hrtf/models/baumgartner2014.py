@@ -7,15 +7,16 @@ import sofar as sf
 import matplotlib.pyplot as plt
 from scipy.interpolate import make_interp_spline # this is for the spline interpolation of step 7
 from scipy.special import i0 # This is the von Mises PDF also for step 7
+from hrtf_relearning.utils import paths
 
 subject_id = 'CA'
 
-sofa_path_target = '/Users/paulfriedrich/projects/hrtf_relearning/hrtf_relearning/data/hrtf/sofa/CA/CA.sofa'
-sofa_path_template = '/Users/paulfriedrich/projects/hrtf_relearning/hrtf_relearning/data/hrtf/sofa/CA/CA.sofa'
-# sofa_path_template = Path.cwd() / 'data' / 'hrtf' / 'sofa' / 'kemar.sofa'
+sofa_path_target = paths.SOFA_DIR / subject_id / f'{subject_id}.sofa'
+sofa_path_template = paths.SOFA_DIR / subject_id / f'{subject_id}.sofa'
+# sofa_path_template = paths.SOFA_DIR / 'kemar.sofa'
 
-sig_path = '/Users/paulfriedrich/projects/hrtf_relearning/hrtf_relearning/data/hrtf/binsim/CA_shift_right/sounds/localization.wav'
-fig_savepath = '/Users/paulfriedrich/projects/hrtf_relearning/hrtf_relearning/data/documentation/baumgartner_2014'
+sig_path = paths.BINSIM_DIR / 'CA_shift_right' / 'sounds' / 'localization.wav'
+fig_savepath = paths.DOCUMENTATION_DIR / 'baumgartner_2014'
 
 shutup = True
 do_dtf = False

@@ -41,6 +41,7 @@ import logging
 warnings.filterwarnings("ignore", category=pyfar._utils.PyfarDeprecationWarning)
 freefield.set_logger("info")
 import hrtf_relearning
+from hrtf_relearning.utils import paths
 ROOT = hrtf_relearning.PATH
 
 # -------------------------------------------------------------------------
@@ -327,7 +328,7 @@ def calibrate_headphones(subject_id=SUB_ID, hp_id=HP_ID, n_rec=N_REC, show=True,
     in which case the filter is always re-measured and the existing file is
     replaced.
     """
-    save_path = ROOT / "data" / "hrtf" / "rec" / subject_id / f"{hp_id}_equalization.npz"
+    save_path = paths.REC_DIR / subject_id / f"{hp_id}_equalization.npz"
 
     if not overwrite:
         try:

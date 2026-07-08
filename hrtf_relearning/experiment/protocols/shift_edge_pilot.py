@@ -28,10 +28,11 @@ import slab
 
 import hrtf_relearning as hr
 from hrtf_relearning.hrtf.processing.edge_shift import (
-    save_condition_sofa, compare_tf, print_notch_summary, parametric_summary,
+    save_condition_sofa, compare_waterfall, print_notch_summary, parametric_summary,
     hrtf_to_array,
 )
 from hrtf_relearning.experiment.localization.Localization_AR import Localization
+from hrtf_relearning.utils import paths
 
 SUBJECT_ID = "GS"                        # edit per participant
 HP = "DT990"
@@ -45,7 +46,7 @@ MIN_DISTANCE = 15
 GAIN = 0.2
 
 ROOT = hr.PATH
-SOFA_DIR = ROOT / "data" / "hrtf" / "sofa" / SUBJECT_ID
+SOFA_DIR = paths.SOFA_DIR / SUBJECT_ID
 BASE_SOFA_PATH = SOFA_DIR / f"{SUBJECT_ID}.sofa"
 
 # Vertical-midline AR settings (match the dome layout / expectation_transfer.py)
@@ -168,10 +169,8 @@ for delta in WHOLE_DELTAS:
     whole_labels[delta] = label
     print(f"whole delta={delta:>4} -> {SUBJECT_ID}_{label}.sofa")
     print_notch_summary(reports, label="  notches shifted")
-    # confirm the written SOFA: baseline vs manipulated across the median arc,
-    # plus the shifted notch/edge overlay for this dose.
-    fig = compare_tf(base_hrtf, manip_hrtf, show=False)
-    fig.suptitle(f"{SUBJECT_ID} whole delta={delta:g} ERB", y=1.02)
+    # baseline-vs-manipulated waterfall is auto-saved by save_condition_sofa to
+    # PLOT_DIR/<subj>/hrtf/. Also show the shifted notch/edge overlay for this dose.
     plot_median_features(manip_hrtf, med, feature_kw=FEATURE_KW,
                          title=f"{SUBJECT_ID} whole delta={delta:g} ERB - notch/edge")
 
@@ -205,4 +204,5 @@ run_ar(subject, "edge_only")
 
 # %% visual sanity: baseline vs a condition (edit `label`) -------------------
 label = edge_label
-compare_tf(base_hrtf, slab.HRTF(str(SOFA_DIR / f"{SUBJECT_ID}_{label}.sofa")))
+compare_waterfall(base_hrtf, slab.HRTF(str(SOFA_DIR / f"{SUBJECT_ID}_{label}.sofa")),
+                  labels=('baseline', label))

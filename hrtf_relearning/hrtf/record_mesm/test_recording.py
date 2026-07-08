@@ -34,6 +34,7 @@ import hrtf_relearning
 from hrtf_relearning.hrtf.record_mesm.recordings import initialize, record_mesm, get_recording_delay
 from hrtf_relearning.hrtf.record_mesm.sweep import compute_mesm_params, build_speaker_buffers
 from hrtf_relearning.hrtf.record_mesm.processing import deconvolve, extract_hrirs
+from hrtf_relearning.utils import paths
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s | %(message)s")
 
@@ -59,7 +60,7 @@ L1_S  = 0.050   # seconds
 L2_S  = 0.010   # seconds (informational only)
 K     = 5
 
-SAVE_DIR     = hrtf_relearning.PATH / "data" / "hrtf" / "rec_mesm" / "test"
+SAVE_DIR     = paths.REC_MESM_DIR / "test"
 N_REPS       = 1        # increase for SNR check once basic recording works
 
 

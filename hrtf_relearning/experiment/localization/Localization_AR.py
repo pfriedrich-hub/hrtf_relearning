@@ -11,6 +11,7 @@ from pythonosc import udp_client
 from hrtf_relearning.experiment.misc import meta_motion
 from hrtf_relearning.hrtf.binsim.hrtf2binsim import hrtf2binsim
 from pynput import keyboard
+from hrtf_relearning.utils import paths
 
 logging.getLogger().setLevel('INFO')
 ROOT = hr.PATH
@@ -37,7 +38,7 @@ class Localization:
         self.hrir_sources = hrir.sources.vertical_polar
         self.hrir_name = hrir.name
         self.samplerate = hrir.samplerate
-        self.sound_path = ROOT / 'data' / 'hrtf' / 'binsim' / hrir.name / 'sounds'
+        self.sound_path = paths.BINSIM_DIR / hrir.name / 'sounds'
         self.target = None
 
         if loc_settings is None:
@@ -86,7 +87,7 @@ class Localization:
             self.sequence.response_errors = target_p(self.sequence, show=False)
             self.write()
             logging.info('Finished.')
-            plot_dir = ROOT / 'data' / 'results' / 'plot' / self.subject.id
+            plot_dir = paths.PLOT_DIR / self.subject.id
             plot_elevation_response(self.sequence, filepath=plot_dir)
             plot_localization(self.sequence, report_stats=['elevation', 'azimuth'], filepath=plot_dir)
         finally:
@@ -153,7 +154,7 @@ class Localization:
     def _binsim_stream(hrir_name):
         import pybinsim
         pybinsim.logger.setLevel(logging.ERROR)
-        binsim = pybinsim.BinSim(ROOT / 'data'  / 'hrtf' / 'binsim' / hrir_name / f'{hrir_name}_test_settings.txt')
+        binsim = pybinsim.BinSim(paths.BINSIM_DIR / hrir_name / f'{hrir_name}_test_settings.txt')
         binsim.stream_start()  # run binsim loop
 
     @staticmethod
@@ -227,7 +228,7 @@ if __name__ == "__main__":
     loc_test = Localization(_subject, _hrir_settings, loc_settings=_loc_settings)
     loc_test.run()
     sequence = _subject.localization[loc_test.filename]
-    plot_dir = ROOT / 'data' / 'results' / 'plot' / _subject.id
+    plot_dir = paths.PLOT_DIR / _subject.id
     plot_localization(sequence, report_stats=['azimuth', 'elevation'], filepath=plot_dir)
     plot_elevation_response(sequence, filepath=plot_dir)
     plt.show()

@@ -45,9 +45,10 @@ for _p in Path(__file__).resolve().parents:
         sys.path.insert(0, str(_p))
         break
 import hrtf_relearning as hr
+from hrtf_relearning.utils import paths
 
-LOG_DIR     = hr.PATH / "data" / "documentation" / "cue_tuning"
-ARCHIVE_DIR = hr.PATH / "data" / "results" / "archive"
+LOG_DIR     = paths.DOCUMENTATION_DIR / "cue_tuning"
+ARCHIVE_DIR = paths.ARCHIVE_DIR
 
 # target starting-performance window the modification is tuned to hit
 EG_TARGET   = (0.2, 0.4)
@@ -157,7 +158,7 @@ def finalize(subject_id, final_loc_filename, apply=False):
 
     # back up subject pickle
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    src = hr.PATH / "data" / "results" / f"{subject_id}.pkl"
+    src = paths.RESULTS_DIR / f"{subject_id}.pkl"
     shutil.copy2(src, src.with_name(f"{subject_id}_preFinalize_{ts}.pkl"))
 
     # load/append archive

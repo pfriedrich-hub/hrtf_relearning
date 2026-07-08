@@ -2,9 +2,10 @@ import slab
 import numpy
 from pathlib import Path
 import copy
+from hrtf_relearning.utils import paths
 
 def get_hrtf_list(database_name='aachen_database'):
-    database_path = Path.cwd() / 'data' / 'hrtf' / 'sofa' / database_name
+    database_path = paths.SOFA_DIR / database_name
     return [slab.HRTF(sofa_path) for sofa_path in list(database_path.glob('*.sofa'))]
 #
 # def make_avg_hrtf():
@@ -103,7 +104,7 @@ def slope_on_logfreq(logmag, freqs_hz, smooth_len=7, axis=-2):
 
 # ---------- I/O ----------
 def get_hrtf_list(database_name='aachen_database'):
-    database_path = Path.cwd() / 'data' / 'hrtf' / 'sofa' / database_name
+    database_path = paths.SOFA_DIR / database_name
     sofa_files = sorted(database_path.glob('*.sofa'))
     return [slab.HRTF(sofa_path) for sofa_path in sofa_files]
 

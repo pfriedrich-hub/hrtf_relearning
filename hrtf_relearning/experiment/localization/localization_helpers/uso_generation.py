@@ -4,8 +4,9 @@ import slab
 from pathlib import Path
 import random
 import hrtf_relearning
+from hrtf_relearning.utils import paths
 ROOT = Path(hrtf_relearning.__file__).resolve().parent
-input_folder = ROOT / 'data' / 'sounds' / 'mitsu_sounds'
+input_folder = paths.SOUNDS_DIR / 'mitsu_sounds'
 
 def generate_uso(samplerate, duration=0.225, base=numpy.random.randint(0, 6), n_sounds=5):
     bases = ['dryer', 'particl2', 'spray', 'shaver', 'tear', 'crumple', 'coffmill']

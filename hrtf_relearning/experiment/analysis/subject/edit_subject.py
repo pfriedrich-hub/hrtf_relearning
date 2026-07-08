@@ -12,11 +12,12 @@ import pickle
 import shutil
 import sys
 from pathlib import Path
+from hrtf_relearning.utils import paths
 
 # script lives at hrtf_relearning/experiment/analysis/subject/edit_subject.py
 # so package root is 4 levels up
 _pkg_root = Path(__file__).resolve().parents[3]
-results_dir = _pkg_root / "data" / "results"
+results_dir = paths.RESULTS_DIR
 backup_dir = results_dir / "backup"
 
 

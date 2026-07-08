@@ -7,7 +7,8 @@ matplotlib.use('TkAgg')
 from hrtf_relearning.hrtf.record.recordings import *
 from hrtf_relearning.hrtf.record.processing import *
 import hrtf_relearning
-base_dir = hrtf_relearning.PATH / "data" / "hrtf"
+from hrtf_relearning.utils import paths
+base_dir = paths.HRTF_DIR
 import logging
 
 subject_id = 'kemar_pir'
@@ -70,7 +71,7 @@ def record_hrir(
     # Paths
     # -----------------------------------------------------------------
     if base_dir is None:
-        base_dir = hrtf_relearning.PATH / "data" / "hrtf"
+        base_dir = paths.HRTF_DIR
     else:
         base_dir = Path(base_dir)
 

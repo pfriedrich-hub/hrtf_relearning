@@ -626,29 +626,53 @@ def edge_shift_ir(ir, fs, shift_erb, mode='rising', f_lo=3000.0, f_hi=17500.0,
                         rms_delta_db=round(rms_d, 2), notches=per_notch)
 
 
-# --- edge-only (smooth baseline + rising-edge overlay) ----
-def edge_only_ir(ir, fs, n_keep_baseline=8, f_lo=3000.0, f_hi=17500.0,
+# --- edge-only (coarse baseline + relevant-cue rising edges) ----
+def edge_only_ir(ir, fs, n_keep_baseline=4, f_lo=3000.0, f_hi=17500.0,
                  sigma_hz=SIGMA_HZ_DEFAULT, prominence_db=3.0, feature_kw=None,
-                 edge_window_oct=0.30, match_power=True, rms_band=(3000.0, 16000.0),
-                 nfft=None, return_report=False):
-    """Isolate the rising-edge cue on an externalisation-preserving baseline.
+                 tilt_db_per_oct=0.0, edge_skirt_oct=0.30, match_power=True,
+                 rms_band=(3000.0, 16000.0), nfft=None, return_report=False,
+                 **_legacy):
+    """Coarse externalisation baseline + the rising edge(s) of the RELEVANT
+    elevation cue(s), each reproduced at its measured shape.
 
-    Rather than flatten the DTF from scratch, start from a cepstrally-smoothed
-    BASELINE (modify._smooth-style truncated cosine series, n_keep_baseline ~ 8
-    per Iida) that keeps the broad concha envelope needed for externalisation
-    but discards the fine spectral structure, then OVERLAY only the rising edges
-    of the perceptually valid notches back on top. Each notch's rising edge is
-    reintroduced by a Gaussian log-frequency crossfade (width edge_window_oct,
-    centred on its half-height edge frequency) from the baseline toward the
-    Iida-Gaussian-smoothed original -- so near an edge the real low->high
-    attenuation contrast shows through, and everywhere else the smooth baseline
-    remains. The crossfade weight goes to zero away from edges, so the result is
-    continuous (no from-scratch-staircase artefact). Original PHASE kept (ITD
-    unchanged).
+    Rationale (modify.py shift paradigm + the n_keep perceptual-scale notes): a
+    low-n_keep cepstral baseline (n_keep_baseline ~ 4) keeps the broad concha
+    envelope that drives EXTERNALISATION -- so the stimulus still sounds real and
+    out-of-head -- but discards the fine spectral structure that carries
+    ELEVATION, so on its own it externalises WITHOUT localising (the low-n_keep
+    coarse-landscape condition). On top of that landscape we add back ONLY the
+    RISING edge of each perceptually relevant notch, keeping the edge's shape and
+    discarding the falling flank (the descent INTO the notch) -- so the notch
+    itself never reappears, only its low->high recovery contrast.
 
-    n_keep_baseline : cosine coeffs kept for the baseline (fewer = smoother /
-        less residual fine structure; ~8 keeps the concha resonances).
-    edge_window_oct : half-width (octaves) of each edge's crossfade window."""
+    Which cues, and where each edge is, are defined EXACTLY as in the edge-shift
+    paradigm (detect_notches + select_features), not by a raw positive-slope mask:
+
+        base_db  = _cepstral_smooth_db(|H|, n_keep_baseline)   # coarse landscape
+        ref_db   = _gaussian_smooth_db(|H|, sigma_hz)          # de-rippled original
+        notches  = detect_notches(...)          # minima, saddles, edge_rise spans
+        feats    = select_features(notches, **feature_kw)  # the RELEVANT cue(s)
+        for each feat (frequency-sorted), take its edge_rise span
+        [near_min .. near_saddle] and copy the de-rippled original's rise over
+        that span verbatim as a step (shape conserved), holding a flat PLATEAU
+        above the shoulder so no falling edge is introduced. Successive edges
+        stack into a cascade.
+        L_new    = base_db + overlay
+
+    Because the overlay is built only inside each cue's own edge_rise span and is
+    flat everywhere else, the manipulated DTF is the smooth landscape plus one (or
+    a few) genuine rising edges at their true frequencies and shapes -- nothing is
+    reintroduced away from a relevant cue.
+
+    feature_kw : passed to select_features (band, min_depth_db, min_width_oct,
+        sep_min_oct) to choose which notch(es) count as relevant cues. Defaults
+        gate to the elevation-notch band with the Iida/Moore depth/width criteria.
+    tilt_db_per_oct : log-frequency attenuation subtracted from the overlay,
+        -tilt_db_per_oct * log2(f / f_lo) dB -- offsets the cascade's upward step
+        accumulation and mimics the natural HF roll-off. 0 leaves the raw edges.
+    edge_skirt_oct : octaves over which the overlay tapers back to the baseline at
+        f_hi (continuity). Original PHASE is kept (ITD unchanged); match_power
+        rescales to the original in-band RMS."""
     ir = np.asarray(ir, float)
     n = len(ir)
     nfft = nfft or int(2 ** np.ceil(np.log2(n)) * 4)
@@ -658,29 +682,54 @@ def edge_only_ir(ir, fs, n_keep_baseline=8, f_lo=3000.0, f_hi=17500.0,
     L = 20.0 * np.log10(np.maximum(mag, EPS))
     phase = np.angle(H)
 
-    baseline_db = _cepstral_smooth_db(mag, n_keep_baseline)   # broad envelope (externalisation)
-    edge_ref_db = _gaussian_smooth_db(mag, freqs, sigma_hz)   # de-rippled original (real edges)
+    base_db = _cepstral_smooth_db(mag, n_keep_baseline)      # externalisation landscape
+    ref_db = _gaussian_smooth_db(mag, freqs, sigma_hz)       # de-rippled original (edge shape)
 
-    # detect valid notches -> their half-height rising-edge frequencies
-    e, _Le, _b, _fb = _to_erb_grid(L, freqs, f_lo, f_hi)
+    # ERB grid (same mapping detect_notches indexes into) for baseline, edge ref
+    e, _Le, band, fb = _to_erb_grid(L, freqs, f_lo, f_hi)
+    ehz = erb_to_hz(e)
+    Le_base = np.interp(ehz, freqs, base_db)
+    Le_ref = np.interp(ehz, freqs, ref_db)
+
     notches = detect_notches(e, freqs, mag, f_lo=f_lo, f_hi=f_hi, sigma_hz=sigma_hz,
                              prominence_db=prominence_db)
-    valid = select_features(notches, **{**(feature_kw or {}), 'sep_min_oct': 0.0})
+    feats = select_features(notches, **(feature_kw or {}))
 
-    # crossfade weight: sum of Gaussian windows centred on each edge (log-freq),
-    # confined to the analysis band, capped at 1.
-    logf = np.log2(np.maximum(freqs, 1.0))
-    w = np.zeros_like(freqs)
-    for d in valid:
-        fe = d.get('f_edge_rise_hz')
-        if fe:
-            w = np.maximum(w, np.exp(-0.5 * ((logf - np.log2(fe)) / edge_window_oct) ** 2))
-    w[(freqs < f_lo) | (freqs > f_hi)] = 0.0
+    overlay = np.zeros_like(e)
+    running = 0.0
+    edges = []
+    for d in feats:                                  # frequency-sorted (select_features)
+        er = d.get('edge_rise')
+        if er is None:
+            continue
+        a, b = int(er[0]), int(er[1])                # (near_min, near_saddle) ERB indices
+        if b <= a:
+            continue
+        seg = Le_ref[a:b + 1] - Le_ref[a]            # verbatim rising-edge shape, 0 at onset
+        overlay[a:b + 1] = running + seg
+        overlay[b + 1:] = running + seg[-1]          # hold plateau above the shoulder
+        running += float(seg[-1])
+        edges.append(dict(f_hz=d.get('f_hz'), f_edge_rise_hz=d.get('f_edge_rise_hz'),
+                          rise_db=round(float(seg[-1]), 1), label=d.get('label')))
 
-    L_new = (1.0 - w) * baseline_db + w * edge_ref_db
+    # log-frequency detilt + top-edge taper, then rejoin the baseline
+    if tilt_db_per_oct and overlay.any():
+        overlay = np.maximum(overlay - tilt_db_per_oct * np.log2(ehz / f_lo), 0.0)
+    if edge_skirt_oct > 0 and overlay.any():
+        top = np.log2(ehz[-1])
+        k = np.log2(ehz) > (top - edge_skirt_oct)
+        taper = np.ones_like(ehz)
+        taper[k] = 0.5 * (1 + np.cos(np.pi * (np.log2(ehz[k]) - (top - edge_skirt_oct)) / edge_skirt_oct))
+        overlay = overlay * taper
+
+    Le_new = Le_base + overlay
+    L_new = L.copy()
+    L_new[band] = np.interp(fb, ehz, Le_new)         # in-band replace; keep original outside
+    # outside the analysis band, fall back to the smooth landscape too
+    L_new[~band] = base_db[~band]
+
     if match_power:
-        f = freqs
-        m = (f >= rms_band[0]) & (f <= rms_band[1])
+        m = (freqs >= rms_band[0]) & (freqs <= rms_band[1])
         p0 = np.mean((10.0 ** (L[m] / 20.0)) ** 2)
         p1 = np.mean((10.0 ** (L_new[m] / 20.0)) ** 2)
         L_new = L_new + 10.0 * np.log10(p0 / max(p1, EPS))
@@ -688,8 +737,9 @@ def edge_only_ir(ir, fs, n_keep_baseline=8, f_lo=3000.0, f_hi=17500.0,
     ir_new = np.fft.irfft(10.0 ** (L_new / 20.0) * np.exp(1j * phase), nfft)[:n]
     if not return_report:
         return ir_new
-    return ir_new, dict(status='ok', mode='edge_only', n_edges=len(valid),
-                        edges_hz=[d['f_edge_rise_hz'] for d in valid])
+    return ir_new, dict(status='ok' if edges else 'no_relevant_cue', mode='edge_only',
+                        n_keep_baseline=n_keep_baseline, n_edges=len(edges),
+                        total_rise_db=round(running, 1), edges=edges)
 
 
 # --- Iida-style parametric description + perceptual gates ----
@@ -1008,11 +1058,28 @@ def manipulate_hrtf(base_hrtf, condition, shift_erb, **kw):
     return array_to_hrtf(out, base_hrtf), reports
 
 
-def save_condition_sofa(base_hrtf, condition, shift_erb, path, **kw):
+def save_condition_sofa(base_hrtf, condition, shift_erb, path, plot=True,
+                        plot_dir=None, plot_ears=('left', 'right'),
+                        plot_smoothing='raw', **kw):
     """Write one manipulated condition to a SOFA file (metadata cloned from base,
-    only the IR data replaced). Returns (manipulated slab.HRTF, reports)."""
+    only the IR data replaced). Returns (manipulated slab.HRTF, reports).
+
+    plot : if True (default), also save a baseline-vs-manipulated WATERFALL QC
+        figure (one column per ear) via save_waterfall_qc -- the overlay view
+        for eyeballing an edge/notch shift, produced automatically whenever a
+        shifted copy is generated. Plotting is wrapped so a failure never blocks
+        the SOFA write. Pass plot=False to skip.
+    plot_dir : override output directory (default PLOT_DIR/<subject>/hrtf/).
+    plot_ears, plot_smoothing : forwarded to save_waterfall_qc."""
     hrtf_new, reports = manipulate_hrtf(base_hrtf, condition, shift_erb, **kw)
     hrtf_new.write_sofa(str(path))
+    if plot:
+        try:
+            fig_path = save_waterfall_qc(base_hrtf, hrtf_new, path, plot_dir=plot_dir,
+                                         ears=plot_ears, smoothing=plot_smoothing)
+            print(f"  waterfall QC -> {fig_path}")
+        except Exception as exc:  # never let a plot failure block the experiment
+            print(f"  [warn] waterfall QC plot skipped: {exc}")
     return hrtf_new, reports
 
 
@@ -1136,6 +1203,45 @@ def compare_waterfall(base_hrtf, manip_hrtf, ear='left', xlim=(3000.0, 16000.0),
     if show:
         plt.show()
     return fig
+
+
+def save_waterfall_qc(base_hrtf, manip_hrtf, sofa_path, plot_dir=None,
+                      ears=('left', 'right'), smoothing='raw',
+                      xlim=(3000.0, 16000.0), linesep=40.0):
+    """Save a baseline-vs-manipulated WATERFALL figure (one column per ear) as
+    QC for a written condition SOFA. This is the plot called automatically by
+    save_condition_sofa(plot=True) whenever a shifted copy is generated.
+
+    Output: <plot_dir>/<sofa_stem>_waterfall.png, where plot_dir defaults to
+    PLOT_DIR/<subject>/hrtf/ (subject = base_hrtf.name or the SOFA's parent
+    folder name). Uses a non-interactive backend, so it is safe on the rig.
+    Returns the saved Path."""
+    from pathlib import Path
+    import matplotlib
+    matplotlib.use('Agg')  # file output only; never pops a window on the rig
+    import matplotlib.pyplot as plt
+    from hrtf_relearning.utils import paths
+
+    sofa_path = Path(sofa_path)
+    label = sofa_path.stem
+    subject_id = getattr(base_hrtf, 'name', None) or sofa_path.parent.name
+    if plot_dir is None:
+        plot_dir = paths.PLOT_DIR / subject_id / 'hrtf'
+    plot_dir = Path(plot_dir)
+    plot_dir.mkdir(parents=True, exist_ok=True)
+
+    fig, axes = plt.subplots(1, len(ears), figsize=(7 * len(ears), 8), squeeze=False)
+    for ax, ear in zip(axes[0], ears):
+        compare_waterfall(base_hrtf, manip_hrtf, ear=ear, xlim=xlim, linesep=linesep,
+                          smoothing=smoothing, axis=ax, show=False,
+                          labels=('baseline', label))
+        ax.set_title(f'{ear} ear')
+    fig.suptitle(label)
+    fig.tight_layout()
+    out = plot_dir / f'{label}_waterfall.png'
+    fig.savefig(out, dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    return out
 
 
 if __name__ == "__main__":

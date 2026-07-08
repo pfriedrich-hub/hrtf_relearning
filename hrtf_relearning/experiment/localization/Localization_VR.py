@@ -11,6 +11,7 @@ from hrtf_relearning.experiment.misc import meta_motion
 from hrtf_relearning.experiment.misc.system_volume import set_windows_volume
 from hrtf_relearning.hrtf.binsim.hrtf2binsim import hrtf2binsim
 from pynput import keyboard
+from hrtf_relearning.utils import paths
 logging.getLogger().setLevel('INFO')
 ROOT = hr.PATH
 
@@ -44,7 +45,7 @@ class Localization:
         # metadata
         slab.set_default_samplerate(hrir.samplerate)
         self.hrir_sources = hrir.sources.vertical_polar
-        self.sound_path = ROOT / 'data' / 'hrtf' / 'binsim' / hrir.name / 'sounds'
+        self.sound_path = paths.BINSIM_DIR / hrir.name / 'sounds'
         self.target = None
 
         # make sequence
@@ -172,7 +173,7 @@ class Localization:
     def _binsim_stream(hrir_name):
         import pybinsim
         pybinsim.logger.setLevel(logging.ERROR)
-        binsim = pybinsim.BinSim(ROOT / 'data'  / 'hrtf' / 'binsim' / hrir_name / f'{hrir_name}_test_settings.txt')
+        binsim = pybinsim.BinSim(paths.BINSIM_DIR / hrir_name / f'{hrir_name}_test_settings.txt')
         binsim.stream_start()  # run binsim loop
 
     @staticmethod
@@ -269,7 +270,7 @@ def run(subject_id, condition, delta, ear=None, hp='DT990', stim='noise',
     loc_test.run()
 
     sequence = subject.localization[loc_test.filename]
-    plot_dir = ROOT / 'data' / 'results' / 'plot' / subject.id
+    plot_dir = paths.PLOT_DIR / subject.id
     plot_localization(sequence, report_stats=['azimuth', 'elevation'], filepath=plot_dir)
     plot_elevation_response(sequence, filepath=plot_dir)
     plt.show()

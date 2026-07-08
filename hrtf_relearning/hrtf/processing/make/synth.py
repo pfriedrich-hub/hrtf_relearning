@@ -4,8 +4,9 @@ from pathlib import Path
 from sklearn.linear_model import LinearRegression
 from hrtf_relearning.hrtf.processing.tf2ir import *
 from hrtf_relearning.hrtf.processing.make.add_interaural import *
+from hrtf_relearning.utils import paths
 filename = 'single_notch'
-sofa_path = Path.cwd() / 'data' / 'hrtf' / 'sofa'
+sofa_path = paths.SOFA_DIR
 
 show=False
 write=True

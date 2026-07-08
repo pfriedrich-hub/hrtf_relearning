@@ -3,7 +3,8 @@ import matplotlib.pyplot as plt
 from scipy.signal import hilbert
 import slab
 import hrtf_relearning
-hrir_folder = hrtf_relearning.PATH / 'data' / 'hrtf' / 'sofa'
+from hrtf_relearning.utils import paths
+hrir_folder = paths.SOFA_DIR
 
 hrir_name = 'SW'
 

@@ -15,6 +15,7 @@ from hrtf_relearning.experiment.misc import meta_motion
 
 logging.getLogger().setLevel('INFO')
 import hrtf_relearning
+from hrtf_relearning.utils import paths
 
 # ------------------------ CONFIG ------------------------
 
@@ -40,7 +41,7 @@ show = 'IR'
 
 hrir = hrtf2binsim(sofa_name, ear, overwrite=False)
 slab.set_default_samplerate(hrir.samplerate)
-hrir_dir = hrtf_relearning.PATH / 'data' / 'hrtf' / 'binsim' / hrir.name
+hrir_dir = paths.BINSIM_DIR / hrir.name
 
 
 # ------------------------ MAIN LOOP ------------------------

@@ -6,6 +6,7 @@ import numpy
 from matplotlib import pyplot as plt
 
 import hrtf_relearning as hr
+from hrtf_relearning.utils import paths
 
 
 subject_id = "CA"
@@ -304,9 +305,9 @@ def flags_for_meta(meta):
 
 if __name__ == "__main__":
     hrir_name, fig, axes = learning_plot(subject_id, annotate_times=True)
-    plt.savefig(hr.PATH / 'data' / 'results' / 'plot' / subject_id / f'learning_plot.svg')
+    plt.savefig(paths.PLOT_DIR / subject_id / f'learning_plot.svg')
     import slab
-    h = slab.HRTF(hr.PATH / 'data' / 'hrtf' / 'sofa' / subject_id / str(subject_id+'_notch.sofa'))
+    h = slab.HRTF(paths.SOFA_DIR / subject_id / str(subject_id+'_notch.sofa'))
     h.plot_tf(h.cone_sources(0), ear='left')
     plt.title(f"{hrir_name}")
-    # plt.savefig(hr.PATH / 'data' / 'results' / 'plot' / subject_id / f"{hrir_name}")
+    # plt.savefig(paths.PLOT_DIR / subject_id / f"{hrir_name}")

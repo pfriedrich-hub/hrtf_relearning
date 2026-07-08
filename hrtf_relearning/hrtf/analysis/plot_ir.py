@@ -2,7 +2,8 @@ from matplotlib import pyplot as plt
 import numpy
 from pathlib import Path
 import pyfar
-wav_path = Path.cwd() / 'data' / 'hrtf' / 'binsim'
+from hrtf_relearning.utils import paths
+wav_path = paths.BINSIM_DIR
 
 def plot(hrir, title):
     try:

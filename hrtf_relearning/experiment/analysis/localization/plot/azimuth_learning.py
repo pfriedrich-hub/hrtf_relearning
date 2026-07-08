@@ -6,6 +6,7 @@ import numpy
 from matplotlib import pyplot as plt
 
 import hrtf_relearning as hr
+from hrtf_relearning.utils import paths
 
 
 subject_id = "JP"
@@ -286,6 +287,6 @@ if __name__ == "__main__":
     hrir_name, fig, axes = learning_plot(subject_id, annotate_times=True)
 
     import slab
-    h = slab.HRTF(hr.PATH / 'data' / 'hrtf' / 'sofa' / subject_id / str(subject_id+'_notch.sofa'))
+    h = slab.HRTF(paths.SOFA_DIR / subject_id / str(subject_id+'_notch.sofa'))
     h.plot_tf(h.cone_sources(0), ear='left')
     plt.title(f"{hrir_name}")

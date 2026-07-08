@@ -5,10 +5,11 @@ from hrtf_relearning.experiment.misc import meta_motion
 from analysis.localization import *
 from hrtf_relearning.hrtf.binsim.hrtf2binsim import hrtf2binsim
 from hrtf_relearning.experiment.misc.Subject import Subject
+from hrtf_relearning.utils import paths
 date = datetime.datetime.now()
 date = f'{date.strftime("%d")}.{date.strftime("%m")}_{date.strftime("%H")}.{date.strftime("%M")}'
 logging.getLogger().setLevel('INFO')
-data_dir = Path.cwd() / 'data'
+data_dir = paths.DATA_DIR
 
 """
 A test version of the localization using slab instead of pybinsim.
@@ -31,7 +32,7 @@ ear = None
 # --- load and process HRIR
 hrir = hrtf2binsim(sofa_name, ear, overwrite=False)
 slab.set_default_samplerate(hrir.samplerate)
-hrir_dir = Path.cwd() / 'data' / 'hrtf' / 'binsim' / hrir.name
+hrir_dir = paths.BINSIM_DIR / hrir.name
 
 class Localization:
     """

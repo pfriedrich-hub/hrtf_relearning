@@ -40,7 +40,7 @@ DUMMIES = {"KU100", "FABIAN", "MRT01", "kemar", "kemar_pir", "universal", "test"
 
 def paths():
     out = [("JS", SOFA / "JS/JS.sofa"), ("CA", SOFA / "CA/CA.sofa")]
-    for p in sorted((SOFA / "pilot").glob("*.sofa")):
+    for p in sorted((SOFA / "pilot").rglob("*.sofa")):
         stem = p.stem
         if any(x in stem for x in ("_notch", "_shift", "_synth", "_rising", "_falling",
                                    "_whole", "_test", "_full", "_molds", "_0", "_4", "_s_")):

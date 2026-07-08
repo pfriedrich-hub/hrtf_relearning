@@ -14,9 +14,10 @@ import pickle
 import re
 import sys
 from pathlib import Path
+from hrtf_relearning.utils import paths
 
 _pkg_root = Path(__file__).resolve().parents[3]
-DEFAULT_RESULTS = _pkg_root / "data" / "results"
+DEFAULT_RESULTS = paths.RESULTS_DIR
 
 KEY_RE = re.compile(r"^.+?_\d{2}\.\d{2}_\d{2}[:\-]\d{2}_(.+)$")
 

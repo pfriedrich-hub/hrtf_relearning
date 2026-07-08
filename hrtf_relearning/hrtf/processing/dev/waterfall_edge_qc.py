@@ -93,7 +93,7 @@ def waterfall(ax, sofa, delta, mini=False):
 
 def subject_list():
     subs = [("JS", SOFA / "JS/JS.sofa"), ("CA", SOFA / "CA/CA.sofa")]
-    for p in sorted((SOFA / "pilot").glob("*.sofa")):
+    for p in sorted((SOFA / "pilot").rglob("*.sofa")):
         if any(v in p.stem for v in VARIANTS):
             continue
         subs.append((p.stem, p))

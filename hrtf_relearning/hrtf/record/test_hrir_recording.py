@@ -11,6 +11,7 @@ fs=48828
 slab.set_default_samplerate(fs)
 from hrtf_relearning import PATH as root
 import copy
+from hrtf_relearning.utils import paths
 
 subject_id='PC'
 reference_id = 'ref_03.04'
@@ -28,7 +29,7 @@ def main():
 
     # or load hp filter from disk
     # hp_filter = slab.Filter(data=slab.Sound(
-    # root / "data" / "hrtf" / "rec" / subject_id / f"{hp_id}_equalization.wav").data,
+    # paths.REC_DIR / subject_id / f"{hp_id}_equalization.wav").data,
     # samplerate=fs, fir="IR")
 
     # --- run behavioral test or localization test without removing headphones, but removing mics
@@ -92,7 +93,7 @@ def acoustic_test(hrir, hp_filter):
                     return f"{int(x / 1000)}k"
                 return str(int(x))
             axes[idx, col].set_xticklabels([format_khz(t) for t in ticks])
-    save_dir = root / 'data' / 'results' / 'plot' / subject_id
+    save_dir = paths.PLOT_DIR / subject_id
     save_dir.mkdir(parents=True, exist_ok=True)
     plt.savefig(save_dir / f'hrir_test_{hp_id}.svg')
 

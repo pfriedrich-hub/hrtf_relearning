@@ -151,6 +151,26 @@ def _to_erb_grid(L_db, freqs, f_lo, f_hi, step=0.05):
 
 
 # --- cepstral smoothing (Kulkarni & Colburn 1998) ----
+_COS_BASIS_CACHE = {}
+
+
+def _cos_basis(n_bins):
+    """Cache the square cosine basis and its inverse for a given bin count. The
+    basis depends only on n_bins, so building/factorising it once and reusing it
+    turns each _cepstral_smooth_db call into two matrix-vector products instead of
+    an O(n^3) lstsq -- essential when smoothing a whole HRIR set (hundreds of
+    directions x ears)."""
+    hit = _COS_BASIS_CACHE.get(n_bins)
+    if hit is None:
+        n_samples = 2 * (n_bins - 1)
+        k = np.arange(n_bins, dtype=float)[:, None]
+        n_ = np.arange(n_bins, dtype=float)[None, :]
+        basis = np.cos(2.0 * np.pi * k * n_ / float(n_samples))
+        hit = (basis, np.linalg.inv(basis))
+        _COS_BASIS_CACHE[n_bins] = hit
+    return hit
+
+
 def _cepstral_smooth_db(mag, n_keep):
     """Truncated cosine-series reconstruction of a one-sided magnitude
     spectrum: expand log|H| in a cosine series over frequency-bin index and
@@ -158,16 +178,17 @@ def _cepstral_smooth_db(mag, n_keep):
     `_smooth` (used there for the shift_band envelope/detail split);
     reimplemented locally so this module stays numpy-only and doesn't pull
     in modify.py's heavier slab/sklearn/matplotlib import chain just for one
-    shared helper. Returns smoothed log-magnitude (dB)."""
+    shared helper. Returns smoothed log-magnitude (dB).
+
+    The cosine basis is square and full-rank, so the exact cosine coefficients
+    are basis^{-1} @ log_mag (identical to the old lstsq solution); both the
+    basis and its inverse are cached per bin count (see _cos_basis)."""
     mag = np.asarray(mag, float)
     n_bins = len(mag)
-    n_samples = 2 * (n_bins - 1)
     n_keep = int(np.clip(n_keep, 1, n_bins))
     log_mag = np.log(np.maximum(mag, np.finfo(float).tiny))
-    k = np.arange(n_bins, dtype=float)[:, None]
-    n_ = np.arange(n_bins, dtype=float)[None, :]
-    basis = np.cos(2.0 * np.pi * k * n_ / float(n_samples))
-    coeffs, _, _, _ = np.linalg.lstsq(basis, log_mag, rcond=None)
+    basis, basis_inv = _cos_basis(n_bins)
+    coeffs = basis_inv @ log_mag
     coeffs[n_keep:] = 0.0
     log_mag_smooth = basis @ coeffs
     return 20.0 * np.log10(np.maximum(np.exp(log_mag_smooth), EPS))
@@ -629,9 +650,9 @@ def edge_shift_ir(ir, fs, shift_erb, mode='rising', f_lo=3000.0, f_hi=17500.0,
 # --- edge-only (coarse baseline + relevant-cue rising edges) ----
 def edge_only_ir(ir, fs, n_keep_baseline=4, f_lo=3000.0, f_hi=17500.0,
                  sigma_hz=SIGMA_HZ_DEFAULT, prominence_db=3.0, feature_kw=None,
-                 tilt_db_per_oct=0.0, edge_skirt_oct=0.30, match_power=True,
-                 rms_band=(3000.0, 16000.0), nfft=None, return_report=False,
-                 **_legacy):
+                 n_cues=None, tilt_db_per_oct=0.0, edge_skirt_oct=0.30,
+                 match_power=True, rms_band=(3000.0, 16000.0), nfft=None,
+                 return_report=False, **_legacy):
     """Coarse externalisation baseline + the rising edge(s) of the RELEVANT
     elevation cue(s), each reproduced at its measured shape.
 
@@ -667,6 +688,9 @@ def edge_only_ir(ir, fs, n_keep_baseline=4, f_lo=3000.0, f_hi=17500.0,
     feature_kw : passed to select_features (band, min_depth_db, min_width_oct,
         sep_min_oct) to choose which notch(es) count as relevant cues. Defaults
         gate to the elevation-notch band with the Iida/Moore depth/width criteria.
+        Pass sep_min_oct=0.0 to keep separately-resolvable notches distinct.
+    n_cues : if set, keep only the n_cues most prominent (deepest) relevant cues
+        per direction; fewer are kept when fewer are detected.
     tilt_db_per_oct : log-frequency attenuation subtracted from the overlay,
         -tilt_db_per_oct * log2(f / f_lo) dB -- offsets the cascade's upward step
         accumulation and mimics the natural HF roll-off. 0 leaves the raw edges.
@@ -694,6 +718,11 @@ def edge_only_ir(ir, fs, n_keep_baseline=4, f_lo=3000.0, f_hi=17500.0,
     notches = detect_notches(e, freqs, mag, f_lo=f_lo, f_hi=f_hi, sigma_hz=sigma_hz,
                              prominence_db=prominence_db)
     feats = select_features(notches, **(feature_kw or {}))
+    # keep only the n_cues most prominent (deepest) relevant cues, then restore
+    # frequency order so the edges still stack low->high.
+    if n_cues is not None and len(feats) > n_cues:
+        feats = sorted(feats, key=lambda d: (d.get('depth_db') or 0.0), reverse=True)[:n_cues]
+        feats.sort(key=lambda d: d['f_hz'])
 
     overlay = np.zeros_like(e)
     running = 0.0
@@ -1069,7 +1098,7 @@ def save_condition_sofa(base_hrtf, condition, shift_erb, path, plot=True,
         for eyeballing an edge/notch shift, produced automatically whenever a
         shifted copy is generated. Plotting is wrapped so a failure never blocks
         the SOFA write. Pass plot=False to skip.
-    plot_dir : override output directory (default PLOT_DIR/<subject>/hrtf/).
+    plot_dir : override output directory (default subject_plot_dir(<subject>)/hrtf/).
     plot_ears, plot_smoothing : forwarded to save_waterfall_qc."""
     hrtf_new, reports = manipulate_hrtf(base_hrtf, condition, shift_erb, **kw)
     hrtf_new.write_sofa(str(path))
@@ -1150,7 +1179,7 @@ def compare_tf(base_hrtf, manip_hrtf, sourceidx=None, ear='left', kind='image',
     return fig
 
 
-def compare_waterfall(base_hrtf, manip_hrtf, ear='left', xlim=(3000.0, 16000.0),
+def compare_waterfall(base_hrtf, manip_hrtf=None, ear='left', xlim=(3000.0, 16000.0),
                       linesep=40.0, smoothing='raw', axis=None, show=True,
                       labels=('original', 'modified')):
     """Overlay original (grey) vs manipulated (red) median-plane DTFs stacked by
@@ -1158,6 +1187,8 @@ def compare_waterfall(base_hrtf, manip_hrtf, ear='left', xlim=(3000.0, 16000.0),
     montage (dev/waterfall_edge_qc.py). Companion to compare_tf (side-by-side
     images). Use this to eyeball any manipulated condition against baseline.
 
+    manip_hrtf=None plots the baseline alone (single-HRTF waterfall, e.g. for a
+    recorded HRTF).
     smoothing : 'raw' (default -- the actual presented DTF, fine structure kept),
         'gaussian' (Iida de-ripple, for readability), or an int n_keep (cepstral).
     Returns the figure."""
@@ -1165,7 +1196,7 @@ def compare_waterfall(base_hrtf, manip_hrtf, ear='left', xlim=(3000.0, 16000.0),
     from matplotlib.lines import Line2D
     ear_i = 0 if ear == 'left' else 1
     arr0, fs = hrtf_to_array(base_hrtf)
-    arr1, _ = hrtf_to_array(manip_hrtf)
+    arr1 = None if manip_hrtf is None else hrtf_to_array(manip_hrtf)[0]
     vp = base_hrtf.sources.vertical_polar
     az = (vp[:, 0] + 180) % 360 - 180
     idx = sorted([i for i in range(len(vp)) if abs(az[i]) <= 2.0], key=lambda i: vp[i, 1])
@@ -1187,9 +1218,11 @@ def compare_waterfall(base_hrtf, manip_hrtf, ear='left', xlim=(3000.0, 16000.0),
 
     off = 0.0
     for i in idx:
-        L0 = curve(arr0[i, :, ear_i]); L1 = curve(arr1[i, :, ear_i])
+        L0 = curve(arr0[i, :, ear_i])
         axis.plot(freqs[band], L0[band] + off, color='0.6', lw=1.0)
-        axis.plot(freqs[band], L1[band] + off, color='#D62728', lw=1.1)
+        if arr1 is not None:
+            L1 = curve(arr1[i, :, ear_i])
+            axis.plot(freqs[band], L1[band] + off, color='#D62728', lw=1.1)
         axis.text(xlim[1] * 1.01, L0[band][-1] + off, f"{vp[i, 1]:+.0f}", fontsize=7, va='center')
         off += linesep
     axis.set_xscale('log'); axis.set_xlim(*xlim)
@@ -1197,12 +1230,25 @@ def compare_waterfall(base_hrtf, manip_hrtf, ear='left', xlim=(3000.0, 16000.0),
     axis.get_xaxis().set_major_formatter(plt.matplotlib.ticker.ScalarFormatter())
     axis.set_xlabel('frequency (Hz)'); axis.set_yticks([])
     axis.set_ylabel('magnitude (dB, offset by elevation)')
-    axis.legend(handles=[Line2D([], [], color='0.6', lw=1, label=labels[0]),
-                         Line2D([], [], color='#D62728', lw=1, label=labels[1])],
-                fontsize=8, loc='upper left')
+    handles = [Line2D([], [], color='0.6', lw=1, label=labels[0])]
+    if arr1 is not None:
+        handles.append(Line2D([], [], color='#D62728', lw=1, label=labels[1]))
+    axis.legend(handles=handles, fontsize=8, loc='upper left')
     if show:
         plt.show()
     return fig
+
+
+def _agg_figure(ncols, figsize):
+    """A standalone Agg-backed Figure (+ axes row) for file output that does
+    NOT touch the global matplotlib backend -- so saving a QC figure never
+    disturbs an interactive session (e.g. the run_ar HRIR preview on the rig)."""
+    from matplotlib.figure import Figure
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+    fig = Figure(figsize=figsize)
+    FigureCanvasAgg(fig)
+    axes = fig.subplots(1, ncols, squeeze=False)[0]
+    return fig, axes
 
 
 def save_waterfall_qc(base_hrtf, manip_hrtf, sofa_path, plot_dir=None,
@@ -1213,25 +1259,22 @@ def save_waterfall_qc(base_hrtf, manip_hrtf, sofa_path, plot_dir=None,
     save_condition_sofa(plot=True) whenever a shifted copy is generated.
 
     Output: <plot_dir>/<sofa_stem>_waterfall.png, where plot_dir defaults to
-    PLOT_DIR/<subject>/hrtf/ (subject = base_hrtf.name or the SOFA's parent
-    folder name). Uses a non-interactive backend, so it is safe on the rig.
-    Returns the saved Path."""
+    subject_plot_dir(<subject>)/hrtf/ (subject = base_hrtf.name or the SOFA's parent
+    folder name). Renders on an isolated Agg canvas (file only, no window, and
+    the interactive backend is left untouched). Returns the saved Path."""
     from pathlib import Path
-    import matplotlib
-    matplotlib.use('Agg')  # file output only; never pops a window on the rig
-    import matplotlib.pyplot as plt
     from hrtf_relearning.utils import paths
 
     sofa_path = Path(sofa_path)
     label = sofa_path.stem
     subject_id = getattr(base_hrtf, 'name', None) or sofa_path.parent.name
     if plot_dir is None:
-        plot_dir = paths.PLOT_DIR / subject_id / 'hrtf'
+        plot_dir = paths.subject_plot_dir(subject_id) / 'hrtf'
     plot_dir = Path(plot_dir)
     plot_dir.mkdir(parents=True, exist_ok=True)
 
-    fig, axes = plt.subplots(1, len(ears), figsize=(7 * len(ears), 8), squeeze=False)
-    for ax, ear in zip(axes[0], ears):
+    fig, axes = _agg_figure(len(ears), (7 * len(ears), 8))
+    for ax, ear in zip(axes, ears):
         compare_waterfall(base_hrtf, manip_hrtf, ear=ear, xlim=xlim, linesep=linesep,
                           smoothing=smoothing, axis=ax, show=False,
                           labels=('baseline', label))
@@ -1240,7 +1283,37 @@ def save_waterfall_qc(base_hrtf, manip_hrtf, sofa_path, plot_dir=None,
     fig.tight_layout()
     out = plot_dir / f'{label}_waterfall.png'
     fig.savefig(out, dpi=150, bbox_inches='tight')
-    plt.close(fig)
+    return out
+
+
+def save_recorded_hrtf_waterfall(hrtf, subject_id=None, plot_dir=None,
+                                 ears=('left', 'right'), smoothing='raw',
+                                 xlim=(3000.0, 16000.0), linesep=40.0):
+    """Save a single-HRTF median-plane WATERFALL (one column per ear) for a
+    recorded HRTF -- the QC image for an existing individual HRIR.
+
+    Output: <plot_dir>/<name>_recorded_waterfall.png, plot_dir defaults to
+    subject_plot_dir(<name>)/hrtf/ (name = subject_id or hrtf.name). Renders on
+    an isolated Agg canvas. Returns the saved Path."""
+    from pathlib import Path
+    from hrtf_relearning.utils import paths
+
+    name = subject_id or getattr(hrtf, 'name', None) or 'hrtf'
+    if plot_dir is None:
+        plot_dir = paths.subject_plot_dir(name) / 'hrtf'
+    plot_dir = Path(plot_dir)
+    plot_dir.mkdir(parents=True, exist_ok=True)
+
+    fig, axes = _agg_figure(len(ears), (7 * len(ears), 8))
+    for ax, ear in zip(axes, ears):
+        compare_waterfall(hrtf, None, ear=ear, xlim=xlim, linesep=linesep,
+                          smoothing=smoothing, axis=ax, show=False,
+                          labels=(f'{name} (recorded)', None))
+        ax.set_title(f'{ear} ear')
+    fig.suptitle(f'{name} — recorded HRTF')
+    fig.tight_layout()
+    out = plot_dir / f'{name}_recorded_waterfall.png'
+    fig.savefig(out, dpi=150, bbox_inches='tight')
     return out
 
 

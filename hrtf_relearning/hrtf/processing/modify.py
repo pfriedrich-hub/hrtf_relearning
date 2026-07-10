@@ -705,7 +705,7 @@ if __name__ == '__main__':
     fig = plot(hrtf, hrtf_modified, PLOT, ear='right',
                vsi_orig=vsi_orig, vsi_mod=vsi_mod, vsi_dis=vsi_dis, vsi_bw=VSI_BW)
     input('press enter to save')
-    fig.savefig(paths.PLOT_DIR / sub_id / str(sub_id + f'_{fname}.png'),
+    fig.savefig(paths.subject_plot_dir(sub_id) / str(sub_id + f'_{fname}.png'),
                 bbox_inches='tight')
     (hrtf_dir / sub_id).mkdir(parents=True, exist_ok=True)
     hrtf_modified.write_sofa(hrtf_dir / sub_id / str(sub_id + f'_{fname}.sofa'))

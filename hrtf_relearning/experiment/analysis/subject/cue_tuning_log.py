@@ -158,7 +158,7 @@ def finalize(subject_id, final_loc_filename, apply=False):
 
     # back up subject pickle
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    src = paths.RESULTS_DIR / f"{subject_id}.pkl"
+    src = paths.subject_pkl(subject_id)
     shutil.copy2(src, src.with_name(f"{subject_id}_preFinalize_{ts}.pkl"))
 
     # load/append archive

@@ -5,15 +5,15 @@ import pickle
 import hrtf_relearning
 from hrtf_relearning.utils import paths
 results_dir = paths.RESULTS_DIR
-backup_dir = results_dir / "backup"
 results_dir.mkdir(parents=True, exist_ok=True)
-backup_dir.mkdir(parents=True, exist_ok=True)
 
 
 class Subject:
     def __init__(self, id: str):
-        self.file_path = results_dir / f"{id}.pkl"
-        self.backup_path = backup_dir / f"{id}.json"
+        # Everything for one subject lives under RESULTS_DIR/<id>/
+        self.subject_dir = paths.subject_dir(id)
+        self.file_path = paths.subject_pkl(id)
+        self.backup_path = paths.subject_backup(id)
         self.id = id
         if self.file_path.exists():
             self._load()
@@ -36,6 +36,7 @@ class Subject:
 
     def write(self):
         logging.debug("Writing subject data.")
+        self.subject_dir.mkdir(parents=True, exist_ok=True)
         data = {
             "id": self.id,
             "localization": self.localization,
@@ -56,7 +57,7 @@ class Subject:
         unpickle other subjects' full data. Use a separate restore script
         if the pickle ever gets corrupted. Failures here are logged but
         never raised, so a backup problem can't prevent the authoritative
-        pickle write from succeeding.
+        pickle write from succeeding. Lives at RESULTS_DIR/<id>/<id>.json.
         """
         try:
             payload = {

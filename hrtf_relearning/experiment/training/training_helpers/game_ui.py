@@ -20,7 +20,7 @@ ROOT = hrtf_relearning.PATH
 # Subject.py is a lightweight, dependency-free module (no slab/pybinsim
 # imports), so it's safe to import in this UI subprocess even though the
 # rest of the training stack (slab, pybinsim, ...) may not be loaded here.
-from hrtf_relearning.experiment.misc.Subject import backup_dir as SUBJECT_BACKUP_DIR
+from hrtf_relearning.utils.paths import RESULTS_DIR as SUBJECT_RESULTS_DIR
 from hrtf_relearning.utils import paths
 
 # ────────────────────────────────────────────────────────────────
@@ -56,22 +56,27 @@ def find_coin_path() -> Optional[Path]:
     return None
 
 
-def read_scoreboard(backup_dir: Path) -> List[Tuple[str, int]]:
+def read_scoreboard(results_dir: Path) -> List[Tuple[str, int]]:
     """Read (subject_id, highscore) pairs across participants.
 
     Sources from the small per-subject JSON backups Subject.write() already
-    maintains (data/results/backup/<ID>.json), rather than the .pkl files
+    maintains (data/results/<ID>/<ID>.json), rather than the .pkl files
     directly — the pickles can hold slab objects (e.g. last_sequence) that
     aren't safely unpicklable from this dependency-light UI process, while
     the JSON backups are plain, cheap, and rewritten on every trial.
 
+    Scans each subject folder for its <ID>/<ID>.json, so non-subject folders
+    (e.g. the pilot archive, which has no <folder>/<folder>.json) are ignored.
     Unreadable/malformed files are skipped rather than raised, since these
     are written independently by other subjects' sessions.
     """
     rows: dict[str, int] = {}
-    if not backup_dir.exists():
+    if not results_dir.exists():
         return []
-    for p in sorted(backup_dir.glob("*.json")):
+    for sub in sorted(results_dir.iterdir()):
+        p = sub / f"{sub.name}.json"
+        if not sub.is_dir() or not p.exists():
+            continue
         try:
             data = json.loads(p.read_text(encoding="utf-8"))
         except Exception:
@@ -449,7 +454,8 @@ class GameWindow(QtWidgets.QMainWindow):
         super().__init__()
         self.shared = shared
         self.subject_id = subject_id
-        self.backup_dir = backup_dir or SUBJECT_BACKUP_DIR
+        # dir scanned for per-subject <id>/<id>.json backups (RESULTS_DIR)
+        self.backup_dir = backup_dir or SUBJECT_RESULTS_DIR
         self._session_over_since: Optional[float] = None
         self._reveal_ready = False       # past the SCORE_REVEAL_DELAY_S gate (button becomes available)
         self._show_scoreboard = False    # reveal happened AND the player is actually listed on it

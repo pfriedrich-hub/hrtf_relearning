@@ -21,7 +21,7 @@ subject = hrtf_relearning.Subject(sub_id)
 sequence = 'NKa_15.04_10-50_NKa'
 loc = subject.localization[sequence]
 fig = plot_elevation_response(loc)
-fig.savefig(paths.PLOT_DIR / sub_id / f'{sequence}.png', bbox_inches='tight')
+fig.savefig(paths.subject_plot_dir(sub_id) / f'{sequence}.png', bbox_inches='tight')
 
 # --- plot hrtf
 # load original
@@ -37,6 +37,6 @@ vsi_dis = _vsi_dissimilarity(hrtf_original, hrtf_modified, bandwidth=VSI_BW)
 
 fig_h = plot(hrtf_original, hrtf_modified, 'image', ear='right',
            vsi_orig=vsi_orig, vsi_mod=vsi_mod, vsi_dis=vsi_dis, vsi_bw=VSI_BW)
-fig_h.savefig(paths.PLOT_DIR / sub_id / str(sub_id + f'_modified_{idx}.png'),
+fig_h.savefig(paths.subject_plot_dir(sub_id) / str(sub_id + f'_modified_{idx}.png'),
             bbox_inches='tight')
 

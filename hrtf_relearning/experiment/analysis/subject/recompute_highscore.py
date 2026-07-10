@@ -28,6 +28,7 @@ import argparse
 from collections import defaultdict
 
 from hrtf_relearning.experiment.misc.Subject import Subject, results_dir
+from hrtf_relearning.utils import paths
 
 
 def true_best_game(trials):
@@ -51,7 +52,7 @@ def main():
     parser.add_argument("--apply", action="store_true", help="Write corrected highscores (default: report only)")
     args = parser.parse_args()
 
-    pkls = sorted(results_dir.glob("*.pkl"))
+    pkls = paths.subject_pkls()
     if not pkls:
         print(f"No subject .pkl files found in {results_dir}")
         return

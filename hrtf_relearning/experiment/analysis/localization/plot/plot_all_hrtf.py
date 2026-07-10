@@ -1,17 +1,19 @@
-# %% backfill baseline-vs-modified WATERFALL QC plots for existing HRTFs
-# For each top-level subject folder in data/hrtf/sofa/ this overlays the
-# recorded (base) <ID>.sofa against every modified <ID>_*.sofa as a
-# median-plane waterfall (baseline grey vs modified red, stacked by elevation)
-# -- the same QC figure save_condition_sofa now auto-produces when a shifted
-# copy is generated. Figures are saved to data/results/plot/<ID>/hrtf/.
+# %% backfill WATERFALL plots for existing HRTFs
+# For each top-level subject folder in data/hrtf/sofa/ this saves:
+#   <ID>_recorded_waterfall.png  -- the recorded (base) <ID>.sofa alone
+#   <ID>_<mod>_waterfall.png     -- baseline vs each modified <ID>_*.sofa
+# as median-plane waterfalls (stacked by elevation, both ears) -- the same QC
+# figures save_condition_sofa auto-produces when a shifted copy is generated.
+# Figures are saved to data/results/<ID>/plots/hrtf/.
 #
-# This is the waterfall view (for edge/notch shifts), NOT the image overlay.
 # Run cell by cell (# %%); re-run any cell as needed. Existing PNGs are skipped
 # unless OVERWRITE=True.
 import logging
 import slab
 from hrtf_relearning.utils import paths
-from hrtf_relearning.hrtf.processing.edge_shift import save_waterfall_qc
+from hrtf_relearning.hrtf.processing.edge_shift import (
+    save_waterfall_qc, save_recorded_hrtf_waterfall,
+)
 
 logging.basicConfig(level=logging.INFO)
 
@@ -32,10 +34,19 @@ def subject_dirs():
 # %% plotting
 def plot_subject_waterfalls(subject_id, sofa_dir, ears=EARS,
                             smoothing=SMOOTHING, overwrite=OVERWRITE):
-    """Waterfall QC of recorded vs each modified HRTF for one subject."""
-    out_dir = paths.PLOT_DIR / subject_id / 'hrtf'
+    """Waterfall QC for one subject: the recorded HRTF, plus recorded-vs-each
+    modified HRTF."""
+    out_dir = paths.subject_plot_dir(subject_id) / 'hrtf'
     base = slab.HRTF(str(sofa_dir / f'{subject_id}.sofa'))
     base.name = subject_id
+    # recorded HRTF (single-HRTF waterfall) — always produced, even with no mods
+    rec_png = out_dir / f'{subject_id}_recorded_waterfall.png'
+    if overwrite or not rec_png.exists():
+        save_recorded_hrtf_waterfall(base, subject_id=subject_id,
+                                     ears=ears, smoothing=smoothing)
+        logging.info(f'{subject_id}: wrote {rec_png.relative_to(paths.RESULTS_DIR)}')
+    else:
+        logging.info(f'{subject_id}: {rec_png.name} exists — skipping.')
     modified = sorted(p for p in sofa_dir.glob(f'{subject_id}_*.sofa'))
     if not modified:
         logging.info(f'{subject_id}: no modified HRTFs.')
@@ -46,7 +57,7 @@ def plot_subject_waterfalls(subject_id, sofa_dir, ears=EARS,
             continue
         manip = slab.HRTF(str(mod_path))
         save_waterfall_qc(base, manip, mod_path, ears=ears, smoothing=smoothing)
-        logging.info(f'{subject_id}: wrote {out_png.relative_to(paths.PLOT_DIR)}')
+        logging.info(f'{subject_id}: wrote {out_png.relative_to(paths.RESULTS_DIR)}')
 
 
 # %% run for all top-level subjects

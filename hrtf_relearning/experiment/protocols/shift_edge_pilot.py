@@ -77,8 +77,28 @@ def hrir_settings(label):
     }
 
 
+def preview_hrir(label, block=False):
+    """Open a (non-blocking) window with the baseline-vs-<label> median-plane
+    waterfall, both ears, so you can see which HRIR is loaded for the
+    participant before/while the block runs. Uses the interactive backend;
+    does nothing visible in a headless session."""
+    import matplotlib.pyplot as plt
+    manip = slab.HRTF(str(SOFA_DIR / f"{SUBJECT_ID}_{label}.sofa"))
+    fig, axes = plt.subplots(1, 2, figsize=(14, 8))
+    for ax, ear in zip(axes, ("left", "right")):
+        compare_waterfall(base_hrtf, manip, ear=ear, axis=ax, show=False,
+                          labels=("baseline", label))
+        ax.set_title(f"{ear} ear")
+    fig.suptitle(f"{SUBJECT_ID} — running: {label}")
+    fig.tight_layout()
+    plt.show(block=block)
+    return fig
+
+
 def run_ar(subject, label):
-    """Build the binsim files for <subj>_<label>.sofa and run one AR midline block."""
+    """Build the binsim files for <subj>_<label>.sofa and run one AR midline block.
+    Opens a waterfall preview of the HRIR being run (baseline vs <label>)."""
+    preview_hrir(label)
     loc = Localization(subject, hrir_settings(label), AR_MIDLINE_SETTINGS)
     loc.run()
     return subject.localization[loc.filename]
@@ -154,8 +174,8 @@ for i in med[::max(1, len(med) // 12)]:
     pairs = ["{:.1f}->{:.1f}kHz".format(f["f_hz"] / 1000, (f.get("f_edge_rise_hz") or 0) / 1000)
              for f in feats]
     print("el={:+6.1f}  notch->edge: {}".format(vp[i, 1], pairs))
-plot_median_features(base_hrtf, med, feature_kw=FEATURE_KW,
-                     title=f"{SUBJECT_ID} baseline - median-plane notch/edge")
+# (optional) inspect the baseline notch/edge overlay on demand:
+#   plot_median_features(base_hrtf, med, feature_kw=FEATURE_KW)
 
 # %% PHASE 1 -- transfer baseline: run experiment/protocols/expectation_transfer.py
 # (AR_pre -> Dome -> AR_post). Nothing to do here; kept as a pointer.
@@ -169,10 +189,8 @@ for delta in WHOLE_DELTAS:
     whole_labels[delta] = label
     print(f"whole delta={delta:>4} -> {SUBJECT_ID}_{label}.sofa")
     print_notch_summary(reports, label="  notches shifted")
-    # baseline-vs-manipulated waterfall is auto-saved by save_condition_sofa to
-    # PLOT_DIR/<subj>/hrtf/. Also show the shifted notch/edge overlay for this dose.
-    plot_median_features(manip_hrtf, med, feature_kw=FEATURE_KW,
-                         title=f"{SUBJECT_ID} whole delta={delta:g} ERB - notch/edge")
+    # baseline-vs-manipulated waterfall is auto-saved (save-only, no window) by
+    # save_condition_sofa to <subj>/plots/hrtf/<name>_waterfall.png
 
 # %% PHASE 2b -- run one whole-notch dose block (quick succession) ------------
 # set DELTA_TO_RUN to each WHOLE_DELTAS value in turn (ascending), rerun this
@@ -202,7 +220,8 @@ print(f"edge_only -> {SUBJECT_ID}_edge_only.sofa")
 # %% PHASE 4b -- run edge-only block -----------------------------------------
 run_ar(subject, "edge_only")
 
-# %% visual sanity: baseline vs a condition (edit `label`) -------------------
+# %% visual sanity: preview baseline vs a condition on demand (edit `label`) --
+# every condition's waterfall is already saved under <subj>/plots/hrtf/; this
+# just opens one on demand.
 label = edge_label
-compare_waterfall(base_hrtf, slab.HRTF(str(SOFA_DIR / f"{SUBJECT_ID}_{label}.sofa")),
-                  labels=('baseline', label))
+preview_hrir(label, block=True)

@@ -91,7 +91,7 @@ class LocalizationDome:
             self.subject.last_sequence = self.sequence
             self.write()
             logging.info('Dome localization complete.')
-            plot_dir = paths.PLOT_DIR / self.subject.id
+            plot_dir = paths.subject_plot_dir(self.subject.id)
             plot_elevation_response(self.sequence, filepath=plot_dir)
             plot_localization(self.sequence, report_stats=['elevation'], filepath=plot_dir)
         finally:

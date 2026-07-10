@@ -74,10 +74,9 @@ def backfill(pkl_path: Path, dry_run: bool = False) -> int:
         with open(tmp, "wb") as f:
             pickle.dump(data, f)
         tmp.replace(pkl_path)
-        # update json backup in backup subfolder
-        backup_dir = pkl_path.parent / "backup"
-        backup_dir.mkdir(exist_ok=True)
-        json_path = backup_dir / pkl_path.with_suffix(".json").name
+        # update json backup alongside the pickle: RESULTS_DIR/<id>/<id>.json
+        json_path = pkl_path.with_suffix(".json")
+        json_path.parent.mkdir(parents=True, exist_ok=True)
         try:
             payload = {"id": data["id"], "localization": _to_jsonable(loc)}
             tmp_j = json_path.with_suffix(".json.tmp")
@@ -97,7 +96,9 @@ def main():
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
-    pkls = sorted(args.results_dir.glob("*.pkl"))
+    # per-subject layout: RESULTS_DIR/<id>/<id>.pkl (pilot archive excluded)
+    pkls = sorted(d / f"{d.name}.pkl" for d in args.results_dir.iterdir()
+                  if d.is_dir() and (d / f"{d.name}.pkl").exists())
     if not pkls:
         sys.exit(f"No pkl files found in {args.results_dir}")
 

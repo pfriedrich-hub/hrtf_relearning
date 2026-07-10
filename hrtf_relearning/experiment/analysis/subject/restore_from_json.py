@@ -161,10 +161,9 @@ def main():
     save_pkl(args.target_pkl, target)
     print(f"Saved → {args.target_pkl}")
 
-    # Regenerate JSON backup in the backup subfolder
-    backup_dir = args.target_pkl.parent / "backup"
-    backup_dir.mkdir(exist_ok=True)
-    json_out = backup_dir / args.target_pkl.with_suffix(".json").name
+    # Regenerate JSON backup alongside the pickle: RESULTS_DIR/<id>/<id>.json
+    json_out = args.target_pkl.with_suffix(".json")
+    json_out.parent.mkdir(parents=True, exist_ok=True)
     try:
         payload = {"id": target["id"], "highscore": int(target.get("highscore") or 0),
                    "localization": _to_jsonable(target["localization"])}

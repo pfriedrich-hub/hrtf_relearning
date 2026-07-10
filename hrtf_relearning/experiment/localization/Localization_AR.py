@@ -87,7 +87,7 @@ class Localization:
             self.sequence.response_errors = target_p(self.sequence, show=False)
             self.write()
             logging.info('Finished.')
-            plot_dir = paths.PLOT_DIR / self.subject.id
+            plot_dir = paths.subject_plot_dir(self.subject.id)
             plot_elevation_response(self.sequence, filepath=plot_dir)
             plot_localization(self.sequence, report_stats=['elevation', 'azimuth'], filepath=plot_dir)
         finally:
@@ -228,7 +228,7 @@ if __name__ == "__main__":
     loc_test = Localization(_subject, _hrir_settings, loc_settings=_loc_settings)
     loc_test.run()
     sequence = _subject.localization[loc_test.filename]
-    plot_dir = paths.PLOT_DIR / _subject.id
+    plot_dir = paths.subject_plot_dir(_subject.id)
     plot_localization(sequence, report_stats=['azimuth', 'elevation'], filepath=plot_dir)
     plot_elevation_response(sequence, filepath=plot_dir)
     plt.show()

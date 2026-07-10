@@ -145,10 +145,9 @@ def main():
     save(output_path, merged)
     print(f"Saved → {output_path}")
 
-    # Regenerate JSON backup in the backup subfolder
-    backup_dir = output_path.parent / "backup"
-    backup_dir.mkdir(exist_ok=True)
-    json_path = backup_dir / output_path.with_suffix(".json").name
+    # Regenerate JSON backup alongside the pickle: RESULTS_DIR/<id>/<id>.json
+    json_path = output_path.with_suffix(".json")
+    json_path.parent.mkdir(parents=True, exist_ok=True)
     try:
         payload = {"id": merged["id"], "localization": _to_jsonable(merged["localization"])}
         tmp_json = json_path.with_suffix(".json.tmp")

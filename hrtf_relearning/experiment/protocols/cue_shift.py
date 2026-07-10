@@ -51,7 +51,7 @@ for condition in CONDITIONS:
     print(f"{condition:8s} -> {path.name}")
     print_notch_summary(reports, label="  notches found")
     # a baseline-vs-condition waterfall QC is auto-saved by save_condition_sofa
-    # to PLOT_DIR/<subject>/hrtf/<name>_waterfall.png
+    # to <id>/plots/hrtf/<name>_waterfall.png
 
 # %% verify one condition against the model before testing it ----------------
 # change `condition` and rerun this cell to check a different one

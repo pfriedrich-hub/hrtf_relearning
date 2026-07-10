@@ -270,7 +270,7 @@ def run(subject_id, condition, delta, ear=None, hp='DT990', stim='noise',
     loc_test.run()
 
     sequence = subject.localization[loc_test.filename]
-    plot_dir = paths.PLOT_DIR / subject.id
+    plot_dir = paths.subject_plot_dir(subject.id)
     plot_localization(sequence, report_stats=['azimuth', 'elevation'], filepath=plot_dir)
     plot_elevation_response(sequence, filepath=plot_dir)
     plt.show()

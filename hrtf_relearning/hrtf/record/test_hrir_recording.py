@@ -93,7 +93,7 @@ def acoustic_test(hrir, hp_filter):
                     return f"{int(x / 1000)}k"
                 return str(int(x))
             axes[idx, col].set_xticklabels([format_khz(t) for t in ticks])
-    save_dir = paths.PLOT_DIR / subject_id
+    save_dir = paths.subject_plot_dir(subject_id)
     save_dir.mkdir(parents=True, exist_ok=True)
     plt.savefig(save_dir / f'hrir_test_{hp_id}.svg')
 

@@ -123,5 +123,5 @@ if __name__ == "__main__":
     loc_test.run()
     sequence = subject.localization[loc_test.filename]
     plot_localization(sequence, report_stats=['elevation', 'azimuth'],
-                      filepath=data_dir / 'results' / 'plot' / subject.id)
+                      filepath=paths.subject_plot_dir(subject.id))
 

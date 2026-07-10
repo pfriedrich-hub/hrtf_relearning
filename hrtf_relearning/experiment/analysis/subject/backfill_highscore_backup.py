@@ -1,5 +1,5 @@
 """
-One-off migration: refresh data/results/backup/<ID>.json for every existing
+One-off migration: refresh data/results/<ID>/<ID>.json for every existing
 subject so it includes the 'highscore' field.
 
 Subject._write_backup() only started writing 'highscore' recently (added so
@@ -18,15 +18,16 @@ since Subject.last_sequence can be a slab.Trialsequence object):
     python -m hrtf_relearning.experiment.analysis.subject.backfill_highscore_backup
 """
 from hrtf_relearning.experiment.misc.Subject import Subject, results_dir
+from hrtf_relearning.utils import paths
 
 
 def main():
-    pkls = sorted(p for p in results_dir.glob("*.pkl"))
+    pkls = paths.subject_pkls()
     if not pkls:
         print(f"No subject .pkl files found in {results_dir}")
         return
 
-    print(f"Refreshing {len(pkls)} subject backup(s) in {results_dir}/backup ...")
+    print(f"Refreshing {len(pkls)} subject backup(s) in {results_dir} ...")
     for p in pkls:
         subject_id = p.stem
         try:

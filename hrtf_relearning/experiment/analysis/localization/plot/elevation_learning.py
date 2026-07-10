@@ -305,9 +305,9 @@ def flags_for_meta(meta):
 
 if __name__ == "__main__":
     hrir_name, fig, axes = learning_plot(subject_id, annotate_times=True)
-    plt.savefig(paths.PLOT_DIR / subject_id / f'learning_plot.svg')
+    plt.savefig(paths.subject_plot_dir(subject_id) / f'learning_plot.svg')
     import slab
     h = slab.HRTF(paths.SOFA_DIR / subject_id / str(subject_id+'_notch.sofa'))
     h.plot_tf(h.cone_sources(0), ear='left')
     plt.title(f"{hrir_name}")
-    # plt.savefig(paths.PLOT_DIR / subject_id / f"{hrir_name}")
+    # plt.savefig(paths.subject_plot_dir(subject_id) / f"{hrir_name}")

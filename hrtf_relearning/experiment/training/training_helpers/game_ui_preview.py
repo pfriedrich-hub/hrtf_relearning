@@ -12,7 +12,7 @@ Space or click the button same as in a real session.
 
 By default the scoreboard is populated with fake demo rows in an isolated
 temp directory, so this never touches real participant data in
-data/results/backup/. Pass --live to instead read the actual current
+data/results/<id>/<id>.json. Pass --live to read the actual current
 scoreboard.
 
 The scoreboard only appears once the current subject_id has an entry in the
@@ -52,8 +52,8 @@ FAKE_TRIAL_TIME = 1.6    # seconds between fake scoring events
 
 def _make_fake_backup_dir(subject_id: str, include_current_player: bool = True) -> Path:
     """Populate an isolated temp dir with fake per-participant JSON backups,
-    mirroring Subject._write_backup()'s format, so the scoreboard has
-    something to show without touching real data/results/backup/.
+    mirroring the real RESULTS_DIR/<id>/<id>.json layout, so the scoreboard has
+    something to show without touching real data/results/.
 
     Deliberately uses IDs that can't collide with real subject codes (2-3
     real-looking letters like "JS"/"CA") so fake demo numbers are never
@@ -77,7 +77,9 @@ def _make_fake_backup_dir(subject_id: str, include_current_player: bool = True) 
         fake_rows[subject_id] = max(fake_rows.values()) + random.randint(10, 50)
     for sid, score in fake_rows.items():
         payload = {"id": sid, "highscore": score, "localization": {}}
-        (tmp / f"{sid}.json").write_text(json.dumps(payload), encoding="utf-8")
+        sub = tmp / sid
+        sub.mkdir(parents=True, exist_ok=True)
+        (sub / f"{sid}.json").write_text(json.dumps(payload), encoding="utf-8")
     return tmp
 
 
@@ -153,7 +155,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("subject_id", nargs="?", default="PREVIEW", help="Subject id to preview as (default: PREVIEW)")
     parser.add_argument("--live", action="store_true",
-                        help="Read the real data/results/backup scoreboard instead of fake demo data")
+                        help="Read the real data/results scoreboard instead of fake demo data")
     parser.add_argument("--new-player", action="store_true",
                         help="Preview the day-1 path: subject_id has no entry yet, so no scoreboard is shown")
     args = parser.parse_args()

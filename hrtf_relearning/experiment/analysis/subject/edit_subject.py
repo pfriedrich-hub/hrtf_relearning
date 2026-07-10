@@ -18,7 +18,6 @@ from hrtf_relearning.utils import paths
 # so package root is 4 levels up
 _pkg_root = Path(__file__).resolve().parents[3]
 results_dir = paths.RESULTS_DIR
-backup_dir = results_dir / "backup"
 
 
 def _to_jsonable(obj):
@@ -58,8 +57,9 @@ def save(path: Path, data: dict) -> None:
 
 
 def write_json_backup(data: dict, pkl_path: Path) -> None:
-    backup_dir.mkdir(exist_ok=True)
-    json_path = backup_dir / pkl_path.with_suffix(".json").name
+    # backup lives alongside the pickle: RESULTS_DIR/<id>/<id>.json
+    json_path = pkl_path.with_suffix(".json")
+    json_path.parent.mkdir(parents=True, exist_ok=True)
     payload = {"id": data["id"], "localization": _to_jsonable(data["localization"])}
     tmp = json_path.with_suffix(".json.tmp")
     with open(tmp, "w", encoding="utf-8") as f:
@@ -83,7 +83,7 @@ def main():
         sys.exit("Usage: edit_subject.py SUBJECT_ID")
 
     subject_id = sys.argv[1]
-    pkl_path = results_dir / f"{subject_id}.pkl"
+    pkl_path = paths.subject_pkl(subject_id)
 
     if not pkl_path.exists():
         sys.exit(f"No file found: {pkl_path}")

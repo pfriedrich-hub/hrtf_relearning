@@ -129,7 +129,8 @@ def measure_hp_raw(signal, repeats=1):
 # EQUALIZATION FILTER
 # -------------------------------------------------------------------------
 
-def compute_headphone_equalization(recording, excitation, beta, n_samp_out=1024, show=False):
+def compute_headphone_equalization(recording, excitation, beta, n_samp_out=1024,
+                                   show=False, save_path=None):
     """
     Compute a regularized, minimum-phase inverse filter for headphone equalization.
 
@@ -208,9 +209,14 @@ def compute_headphone_equalization(recording, excitation, beta, n_samp_out=1024,
     # ------------------------------------------------------------------
     # Final diagnostic plot
     # ------------------------------------------------------------------
-    if show:
+    if show or save_path is not None:
         ears = ['left', 'right']
-        fig, axes = plt.subplots(1,2, figsize=(12,4))
+        if save_path is not None and not show:
+            # isolated Agg canvas: save-only, never touches the interactive backend
+            from hrtf_relearning.hrtf.processing.edge_shift import _agg_figure
+            fig, axes = _agg_figure(2, (12, 4))
+        else:
+            fig, axes = plt.subplots(1, 2, figsize=(12, 4))
         for i, (ax, ear) in enumerate(zip(axes, ears)):
             ax.set_title(f'{ear} ear')
             pyfar.plot.freq(reg, linestyle="--", label="Regularization", ax=ax)
@@ -218,8 +224,15 @@ def compute_headphone_equalization(recording, excitation, beta, n_samp_out=1024,
             pyfar.plot.freq(hp_windowed[i], label="Inverse (regularized)", ax=ax)
             pyfar.plot.freq(pyfar.dsp.convolve(hp_ir[i], hp_windowed[i]), label="Equalized HpTF", ax=ax)
             ax.set_ylim(-25, 20)
-        plt.legend()
-        plt.show()
+            ax.legend(fontsize=8)
+        fig.suptitle('HP equalization — raw HpTF vs regularized inverse vs equalized')
+        if save_path is not None:
+            save_path = Path(save_path)
+            save_path.parent.mkdir(parents=True, exist_ok=True)
+            fig.savefig(str(save_path), dpi=150, bbox_inches='tight')
+            logging.info(f"Saved HP calibration figure to: {save_path}")
+        if show:
+            plt.show()
 
     return hp_windowed
 
@@ -279,6 +292,74 @@ def load_hp_filter(path: Path, output='pyfar') -> Filter | Signal:
         # return pyfar.io.read_audio(wav_path)
         return slab.Filter(data=slab.Sound(wav_path).data, samplerate=48842, fir='FIR')
     raise FileNotFoundError(f"HP filter not found: tried {path} and {wav_path}")
+
+
+def save_hp_repeats(recordings, subject_id, hp_id, samplerate=fs):
+    """Persist the raw repeated HP recordings so the repeatability plot can be
+    regenerated later, at REC_DIR/<id>/<hp>_hp_repeats.npz (stores ``repeats``
+    with shape (n_rep, n_samples, n_channels) and ``samplerate``)."""
+    data = numpy.stack([numpy.asarray(r.data) for r in recordings], axis=0)
+    out = paths.REC_DIR / subject_id / f"{hp_id}_hp_repeats.npz"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    numpy.savez(out, repeats=data.astype("float32"), samplerate=numpy.array(samplerate))
+    logging.info(f"Saved {data.shape[0]} raw HP repeats to: {out}")
+    return out
+
+
+def save_hp_repeats_deviation(recordings, subject_id, hp_id, plot_dir=None,
+                              samplerate=fs, xlim=(2000, 18000), num_fractions=6):
+    """Save a repeatability QC figure to judge whether HP calibration worked.
+
+    Overlays the (1/``num_fractions``-octave smoothed) magnitude spectra of the
+    individual repeated HP recordings with their mean +/- 1 SD, per ear
+    (per-repeat level offset removed so only spectral-shape scatter shows).
+    Fractional-octave smoothing strips the measurement fine-structure so the SD
+    reflects genuine placement/seal drift rather than bin noise. A large SD --
+    especially in the 2-16 kHz pinna-cue band -- means the earphone moved
+    between repeats, so the averaged calibration is unreliable and should be
+    redone. Rendered on an isolated Agg canvas (save-only). Returns Path."""
+    from hrtf_relearning.hrtf.processing.edge_shift import _agg_figure
+    data = numpy.stack([numpy.asarray(r.data) for r in recordings], axis=0)  # (n_rep, n_samp, n_ch)
+    n_rep, n_samp, n_ch = data.shape
+
+    # 1/n-octave smoothed magnitude per repeat, per channel (pyfar)
+    smoothed = []
+    for r in range(n_rep):
+        sig = pyfar.Signal(data[r].T, samplerate)                 # (n_ch, n_samp)
+        sm = pyfar.dsp.smooth_fractional_octave(sig, num_fractions)[0]
+        smoothed.append(20.0 * numpy.log10(numpy.maximum(numpy.abs(sm.freq), 1e-9)))
+    freqs = sm.frequencies
+    mags = numpy.stack(smoothed, axis=0)                          # (n_rep, n_ch, n_bins)
+    band = (freqs >= xlim[0]) & (freqs <= xlim[1])
+
+    if plot_dir is None:
+        plot_dir = paths.subject_plot_dir(subject_id)
+    plot_dir = Path(plot_dir)
+    plot_dir.mkdir(parents=True, exist_ok=True)
+
+    fig, axes = _agg_figure(n_ch, (7 * n_ch, 5))
+    for ear, ax in enumerate(axes):
+        m = mags[:, ear, :]
+        m = m - m[:, band].mean(axis=1, keepdims=True)           # remove per-repeat level offset
+        mean = m.mean(0)
+        sd = m.std(0, ddof=1) if n_rep > 1 else numpy.zeros_like(mean)
+        for r in range(n_rep):
+            ax.semilogx(freqs[band], m[r][band], color="0.7", lw=0.8)
+        ax.semilogx(freqs[band], mean[band], color="#1f77b4", lw=1.6, label="mean")
+        ax.fill_between(freqs[band], (mean - sd)[band], (mean + sd)[band],
+                        color="#1f77b4", alpha=0.25, label="±1 SD")
+        ax.set_title(f"{'left' if ear == 0 else 'right'} ear  (max SD {float(sd[band].max()):.1f} dB)")
+        ax.set_xlabel("frequency (Hz)")
+        ax.set_ylabel("magnitude (dB, level removed)")
+        ax.set_xlim(*xlim)
+        ax.legend(fontsize=8, loc="lower center")
+    fig.suptitle(f"{subject_id} — {hp_id} HP repeatability across {n_rep} recordings "
+                 f"(1/{num_fractions}-oct)")
+    fig.tight_layout()
+    out = plot_dir / f"{hp_id}_hp_repeats_deviation.png"
+    fig.savefig(out, dpi=150, bbox_inches="tight")
+    logging.info(f"Saved HP repeatability figure to: {out}")
+    return out
 
 
 def pyfar2wav(eq_filter: pyfar.Signal, path: Path):
@@ -354,8 +435,18 @@ def calibrate_headphones(subject_id=SUB_ID, hp_id=HP_ID, n_rec=N_REC, show=True,
         recordings.append(measure_hp_raw(excitation, repeats=1))
     recording = slab.Sound(data=numpy.mean(recordings, axis=0))
 
-    # Compute equalization
-    eq_filter = compute_headphone_equalization(recording, excitation, beta=0.01, show=False)
+    # QC (save-only, never blocks calibration): persist the raw repeats and save
+    # the across-repeat deviation figure so HP calibration reliability is on record.
+    try:
+        save_hp_repeats(recordings, subject_id, hp_id)
+        save_hp_repeats_deviation(recordings, subject_id, hp_id)
+    except Exception as exc:
+        logging.warning(f"HP repeatability QC skipped: {exc}")
+
+    # Compute equalization (also save the calibration TF figure, save-only)
+    cal_fig_path = paths.subject_plot_dir(subject_id) / f"{hp_id}_hp_calibration.png"
+    eq_filter = compute_headphone_equalization(recording, excitation, beta=0.01,
+                                               show=False, save_path=cal_fig_path)
     # adjust beta parameter if necessary
 
     # Save to npz

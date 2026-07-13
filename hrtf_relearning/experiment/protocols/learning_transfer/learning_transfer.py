@@ -70,7 +70,7 @@ from hrtf_relearning.utils import paths
 # block order) is loaded from the counterbalance sheet next to this script, keyed
 # by this id. On day 1, write each subject's id into the 'subject' column of:
 #   learning_transfer_block_order.csv   (this folder; replace an '(assign)' cell)
-SUBJECT_ID = "AS"
+SUBJECT_ID = "SS"
 
 CSV_PATH = hr.PATH / "experiment" / "protocols" / "learning_transfer" / "learning_transfer_block_order.csv"
 
@@ -310,6 +310,7 @@ show_status(subject)
 
 # %% day 1: native reference (original HRIR, full field) ----------------------
 run_phase("native", subject)
+
 
 # %% day 1: build the modified HRTF (ERB shift) -- run ONCE per subject ---------
 # Reads <subject>.sofa, writes <subject>_shift.sofa (= MODIFIED_SOFA), and shows

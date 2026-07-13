@@ -1,4 +1,5 @@
 from matplotlib import pyplot as plt
+import os
 import numpy
 import time
 import multiprocessing as mp
@@ -20,13 +21,17 @@ matplotlib.rcParams['figure.raise_window'] = False
 logging.getLogger().setLevel('INFO')
 
 # -------------------- Config --------------------
-SUBJECT_ID = "JS"
-HRIR_NAME = "JS_synth"  # 'KU100', 'kemar', etc.
-EAR = 'left'
-HP = 'DT990'
+# Defaults below apply when run directly (python Training_AR.py). The
+# learning_transfer protocol launches this as a subprocess and sets these via
+# environment variables, so spawned multiprocessing workers (which re-import
+# this module) all see the same config.
+SUBJECT_ID = os.environ.get("TRAINING_SUBJECT_ID", "JS")
+HRIR_NAME  = os.environ.get("TRAINING_HRIR_NAME", f"{SUBJECT_ID}_shift")  # modified HRIR
+EAR        = os.environ.get("TRAINING_EAR", "left")
+HP         = os.environ.get("TRAINING_HP", "DT990")
 
-STIM = 'noise'  # 'noise' or 'uso'
-AZ_RANGE = (-35, 0)
+STIM       = os.environ.get("TRAINING_STIM", "noise")  # 'noise' or 'uso'
+AZ_RANGE   = tuple(int(x) for x in os.environ.get("TRAINING_AZ_RANGE", "-35,0").split(","))
 
 # Sound
 SOUND_FILE = None         # None -> pink noise pulses; or 'uso_225ms_9_.wav', etc.

@@ -13,8 +13,9 @@ localization tests so you never have to hand-edit Localization_AR.py between run
                      baseline_A  monaural trained ear, MODIFIED, trained field    (naive ref for A)
                      baseline_D  monaural untrained ear via MIRROR, MODIFIED,
                                  mirrored field                                   (naive ref for D)
-    Adaptation days  daily       monaural trained ear, MODIFIED, trained hemifield
-                     (training game runs separately -- see Training.py)
+    Adaptation days  train + daily  run the AR training game (trained ear +
+                     trained hemifield, modified HRIR), then the monaural
+                     trained-ear daily test
     Final day        A           trained ear,   same loc (= trained hemifield)   [baseline retest]
                      B           trained ear,   mirrored loc
                      C           untrained ear, same loc
@@ -40,6 +41,13 @@ Run cell by cell (# %%) in an IDE/console -- do NOT run this top-to-bottom as a
 plain script. Nothing here loops or blocks on input; rerun any cell as needed
 (e.g. redo a single final-day condition).
 
+Running the cells: PyCharm shows a "Run cell" gutter button next to each # %% in
+Professional (Scientific mode). In PyCharm Community, or if no gutter button
+appears, that feature isn't available -- instead select a block and run
+"Execute Selection in Python Console" (Alt+Shift+E on Windows, Cmd+Shift+E on
+macOS), or paste the block into the Python Console. Do this per block; the
+config cell must be run first each session so `subject`, TRAINED_EAR etc. exist.
+
 ------------------------------------------------------------------------------
 EDIT THE CONFIG BLOCK BELOW PER PARTICIPANT.
 ------------------------------------------------------------------------------
@@ -47,6 +55,9 @@ EDIT THE CONFIG BLOCK BELOW PER PARTICIPANT.
 
 # %% imports and config ------------------------------------------------------
 import csv
+import os
+import subprocess
+import sys
 
 import slab
 
@@ -193,6 +204,42 @@ def build_modified_sofa(overwrite=True, show_qc=True):
     return out_path
 
 
+TRAINING_SCRIPT = hr.PATH / "experiment" / "training" / "Training_AR.py"
+
+
+def run_training(hrir_name=None, ear=None, az_range=None):
+    """Launch the AR training game (Training_AR.py) in its own process with this
+    subject's modified HRIR, trained ear and trained hemifield. Training is a
+    multiprocessing/spawn script configured from module globals, so it must run
+    as a fresh process; parameters are passed via environment variables (which
+    its spawned workers inherit). Blocks until you close the game window.
+    """
+    hrir_name = MODIFIED_SOFA if hrir_name is None else hrir_name
+    ear = TRAINED_EAR if ear is None else ear
+    az_range = TRAINED_HEMI if az_range is None else az_range
+
+    # guard: the modified HRIR must exist (build_modified_sofa cell) before training
+    sofa_path = paths.SOFA_DIR / SUBJECT_ID / f"{hrir_name}.sofa"
+    if not sofa_path.exists():
+        raise FileNotFoundError(
+            f"Modified HRIR not found:\n  {sofa_path}\n"
+            f"Run the 'build the modified HRTF (ERB shift)' cell first "
+            f"(build_modified_sofa()).")
+
+    print("-" * 64)
+    print(f"TRAINING   subject={SUBJECT_ID}   ear={ear}   az_range={az_range}")
+    print(f"           HRIR={hrir_name}.sofa   HP={HP}")
+    print("-" * 64)
+
+    env = dict(os.environ,
+               TRAINING_SUBJECT_ID=SUBJECT_ID,
+               TRAINING_HRIR_NAME=hrir_name,
+               TRAINING_EAR=ear,
+               TRAINING_AZ_RANGE=f"{az_range[0]},{az_range[1]}",
+               TRAINING_HP=HP)
+    subprocess.run([sys.executable, str(TRAINING_SCRIPT)], env=env, check=False)
+
+
 # each phase: key -> (label, when, sofa, ear, mirror, azimuth_range, description)
 PHASES = {
     "native":     ("Native reference",        "Day 1", NATIVE_SOFA,   None,        False, FULL_FIELD,    "binaural, native HRTF, full field"),
@@ -278,9 +325,12 @@ run_phase("baseline_A", subject)
 # %% day 1: baseline D -- untrained ear, mirrored loc (matches final D) --------
 run_phase("baseline_D", subject)
 
-# %% adaptation days: daily training test ---------------------------------------
-# Rerun this cell once per adaptation day (the training game itself runs
-# separately -- see Training.py).
+# %% adaptation days: TRAIN, then daily test -----------------------------------
+# Rerun once per adaptation day. Training (Training_AR.py) launches in its own
+# process with the trained ear + trained hemifield on the modified HRIR; play
+# the games, close the game window, then the daily localization test runs.
+run_training()                     # trained ear + trained hemifield, modified HRIR
+subject = hr.Subject(SUBJECT_ID)   # reload after training appends trials
 run_phase("daily", subject)
 
 # %% final day: all 4 conditions in this subject's counterbalanced order --------

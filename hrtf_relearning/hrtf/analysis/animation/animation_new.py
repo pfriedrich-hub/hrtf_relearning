@@ -12,13 +12,13 @@ hrtf_dir = paths.SOFA_DIR / "pilot"
 # ---------------------------------------------------------------------------
 # Parameters – edit here
 # ---------------------------------------------------------------------------
-hrtf_id         = "universal"   # HRTF file stem (loads <hrtf_id>.sofa)
+hrtf_id         = "kemar"   # HRTF file stem (loads <hrtf_id>.sofa)
 
 azimuth_range   = (-37.5, 37.5)     # (min, max) in degrees; None = all
 elevation_range = (-40, 40)     # (min, max) in degrees; None = all
 ear             = "both"        # "left", "right", or "both"
 kind            = "image"   # "image" (contourf) or "waterfall"
-bandwidth       = (1000, 18000) # frequency range in Hz
+bandwidth       = (200, 18000) # frequency range in Hz
 sampling_mode   = "interpolate" # "measured", "nearest", or "interpolate"
 azimuth_step    = 5.0           # grid step in degrees (nearest/interpolate)
 elevation_step  = 2.0           # grid step in degrees (nearest/interpolate)

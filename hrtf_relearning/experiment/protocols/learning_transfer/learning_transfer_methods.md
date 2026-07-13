@@ -34,15 +34,14 @@ Implemented in `hrtf.processing.modify.shift_detail`. Per HRIR, per ear:
    scale**. `Δ > 0` shifts cues up, `Δ < 0` down. The envelope is held fixed, so
    every direction keeps a unique pattern — just displaced by `Δ`. This is a
    bijective remap, not a destroyed or conflicting cue.
-4. **Band selection (Trapeau peak-VSI octave), shifted without cutting short.**
-   The detail is selected in **5.7–11.3 kHz** — the peak-VSI band where the
-   elevation cue is strongest (Trapeau et al. 2016) — with a raised-cosine skirt
-   (0.25 octave). Crucially the selection window is applied to the **source**
-   detail and shifts *with* it, so the band travels intact to its new ERB
-   position and is never clipped at a fixed edge. Outside the shifted band the
-   spectrum is the smooth `M = 4` envelope (i.e. the fine structure elsewhere is
-   removed, isolating the shifted cue). `band=None` shifts the whole-spectrum
-   detail instead.
+4. **Band selection (Trapeau peak-VSI octave); pattern translates up in place.**
+   The full detail is shifted first — each output frequency `f` takes the detail
+   from `ERB(f) − Δ` — and the band window (**5.7–11.3 kHz**, the peak-VSI band
+   where the elevation cue is strongest, Trapeau et al. 2016; 0.25-octave skirt)
+   then selects it. So *inside* the band the pattern slides up and replaces the
+   higher-frequency content there — because content is sampled from below, the
+   band top is never cut off — while *outside* the band the native detail is
+   kept. `band=None` shifts the whole spectrum.
 5. **In-band energy equalisation.** The energy of the shifted detail is matched
    to the source, per direction and ear, so relocating a non-stationary residual
    does not change in-band spectral contrast — removing the overall level /

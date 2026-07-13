@@ -7,8 +7,7 @@ from queue import Empty
 from pythonosc import udp_client
 import datetime
 date = datetime.datetime.now()
-import hrtf_relearning
-ROOT = hrtf_relearning.PATH
+from hrtf_relearning.utils.paths import PATH as ROOT
 
 # from hrtf_relearning.experiment.misc.system_volume import set_windows_volume
 from hrtf_relearning.experiment.misc import meta_motion
@@ -19,14 +18,6 @@ from hrtf_relearning.hrtf.binsim.hrtf2binsim import *
 from hrtf_relearning.utils import paths
 matplotlib.rcParams['figure.raise_window'] = False
 logging.getLogger().setLevel('INFO')
-
-
-#todo after testing right side, training pulls az range parameters from that last test for the taret probabilities, resulting in targets being played only on the midline
-# also, remove pilot subjects highscores from the scoreboard, only show subjects scores that are present in the results folder (pilot excluded)
-# show scoreboard only when the player has made an entry (i think this is implemented already)
-# also, subfolder in sub id / plots: acoustic - where hp calibration and hrtf go into the acoustic folder
-# also save the plot showing the results of the calibration (after recording with and without) displayed in hp calibration, dont save the pyfar filter plot
-
 
 # -------------------- Config --------------------
 # Defaults below apply when run directly (python Training_AR.py). The

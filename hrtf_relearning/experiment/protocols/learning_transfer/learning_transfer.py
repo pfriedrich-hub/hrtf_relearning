@@ -237,7 +237,19 @@ def run_training(hrir_name=None, ear=None, az_range=None):
                TRAINING_EAR=ear,
                TRAINING_AZ_RANGE=f"{az_range[0]},{az_range[1]}",
                TRAINING_HP=HP)
-    subprocess.run([sys.executable, str(TRAINING_SCRIPT)], env=env, check=False)
+    # Launch as a package MODULE (-m), not by file path, and with cwd set to the
+    # repo root (the parent of the package dir). Training_AR uses multiprocessing
+    # 'spawn', so every worker re-imports the main module. Running it by path made
+    # the spawned workers re-resolve `import hrtf_relearning` against a sys.path
+    # where the repo-root folder (also named 'hrtf_relearning', but with no
+    # __init__.py) shadowed the real package as an implicit namespace package,
+    # giving a module with no .PATH -> "module 'hrtf_relearning' has no attribute
+    # 'PATH'". Running with -m from the repo root pins resolution to the real
+    # installed package in the parent and in every spawned worker.
+    subprocess.run(
+        [sys.executable, "-m", "hrtf_relearning.experiment.training.Training_AR"],
+        env=env, cwd=str(hr.PATH.parent), check=False,
+    )
 
 
 # each phase: key -> (label, when, sofa, ear, mirror, azimuth_range, description)
@@ -317,7 +329,7 @@ run_phase("native", subject)
 # the split-QC panel. Tune SHIFT_ERB in the config block if the pilot says so,
 # then rerun this cell (overwrite=True). baseline_A/D, daily and final all load
 # the file written here.
-build_modified_sofa(overwrite=True)
+build_modified_sofa(overwrite=False)
 subject = hr.Subject(SUBJECT_ID)   # reload after SOFA write
 
 # %% day 1: baseline A -- trained ear, same loc (matches final A) --------------

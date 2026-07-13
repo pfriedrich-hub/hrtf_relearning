@@ -1,9 +1,9 @@
-"""Apply the modify.py frequency-shift (shift_band) to pilot subjects and save a
+"""Apply the modify.py ERB shift (shift_detail) to pilot subjects and save a
 2-panel original-vs-modified median-plane DTF image (slab plot_tf, kind='image').
 
-Uses the same shift config as modify.py __main__ (SHIFT_CENTER 10 kHz, 1.5 oct,
-factor 0.9, envelope n_keep 3). Deduplicates the 0/360 midline copy so plots
-don't scramble. Idempotent: skips subjects whose PNG already exists.
+VSI-band ERB translation of the fine detail (shift_detail defaults: 5.7-11.3 kHz,
+SHIFT_ERB, envelope n_keep 4). Deduplicates the 0/360 midline copy so plots don't
+scramble. Idempotent: skips subjects whose PNG already exists.
 
 Run:  python pilot_shift.py SUB1 SUB2 ...     (or no args -> default human set)
 """
@@ -16,15 +16,15 @@ matplotlib.use = lambda *a, **k: None
 import matplotlib.pyplot as plt
 import slab
 import hrtf_relearning as hr
-from hrtf_relearning.hrtf.processing.modify import shift_band, octave_band
+from hrtf_relearning.hrtf.processing.modify import shift_detail
 
 SOFA = hr.PATH / "data" / "hrtf" / "sofa" / "pilot"
 OUT = hr.PATH / "analysis_results" / "tac_figures" / "pilot_shift"
 OUT.mkdir(parents=True, exist_ok=True)
 
-# modify.py shift config (ERB translation; factor 0.9 ≈ -2.3 ERB over this band)
-SHIFT_CENTER, SHIFT_OCTAVES, SHIFT_ERB = 8000, 1.0, -2.3
-SHIFT_ENV_NKEEP, SHIFT_SKIRT = 4, 0.25
+# modify.py shift config (full-spectrum ERB translation; factor 0.9 ≈ -2.3 ERB)
+SHIFT_ERB = -2.3
+SHIFT_ENV_NKEEP = 4
 XLIM = (2000, 16000)
 
 DEFAULT = ["AGV", "AS", "CZ", "IM", "JP", "JR", "JZ", "LS", "MB", "MD", "MS",
@@ -45,9 +45,7 @@ def one(sub):
     if png.exists():
         print("skip", sub, "(exists)"); return
     hrtf = slab.HRTF(str(SOFA / sub / f"{sub}.sofa"))
-    low, high = octave_band(SHIFT_CENTER, fraction=SHIFT_OCTAVES)
-    mod = shift_band(hrtf, low, high, shift_erb=SHIFT_ERB,
-                     envelope_n_keep=SHIFT_ENV_NKEEP, skirt_octaves=SHIFT_SKIRT)
+    mod = shift_detail(hrtf, shift_erb=SHIFT_ERB, envelope_n_keep=SHIFT_ENV_NKEEP)
     src = midline_dedup(hrtf)
     fig, ax = plt.subplots(1, 2, figsize=(11, 4.5), sharey=True)
     hrtf.plot_tf(src, ear="left", kind="image", xlim=XLIM, show=False, axis=ax[0])

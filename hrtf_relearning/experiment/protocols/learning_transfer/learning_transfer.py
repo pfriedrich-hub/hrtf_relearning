@@ -20,12 +20,13 @@ localization tests so you never have to hand-edit Localization_AR.py between run
                      C           untrained ear, same loc
                      D           untrained ear, mirrored loc                      [MAIN transfer]
 
-MODIFICATION (the cue manipulation). The modified HRTF is built here by translating
-each direction's fine spectral structure a constant distance along the ERB-number
-axis inside one octave centred on 8 kHz (5657-11314 Hz), with the coarse envelope
-held fixed -- a bijective, relearnable remap of the elevation cue rather than a
-destroyed or conflicting cue (Kulkarni & Colburn 1998 cepstral split; magnitude-only,
-original phase kept). See hrtf.processing.modify.shift_band and
+MODIFICATION (the cue manipulation). The modified HRTF is built here by selecting the
+fine spectral detail in the Trapeau peak-VSI octave (5.7-11.3 kHz) and translating it
+a constant distance along the ERB-number axis, coarse envelope held fixed. The
+selection window shifts WITH the detail so the band is not cut short (smooth envelope
+outside the shifted band) -- a bijective, relearnable remap of the elevation cue
+rather than a destroyed or conflicting cue (Kulkarni & Colburn 1998 cepstral split;
+magnitude-only, original phase kept). See hrtf.processing.modify.shift_detail and
 learning_transfer_methods.md (this folder) for the full method.
 
 The day-1 baselines use the SAME configs as final A and D (same ear/mirror/field/
@@ -45,22 +46,21 @@ EDIT THE CONFIG BLOCK BELOW PER PARTICIPANT.
 
 # %% imports and config ------------------------------------------------------
 import csv
-from pathlib import Path
 
 import slab
 
 import hrtf_relearning as hr
 from hrtf_relearning.experiment.localization.Localization_AR import Localization
-from hrtf_relearning.hrtf.processing.modify import shift_band, octave_band, plot_split_qc
+from hrtf_relearning.hrtf.processing.modify import shift_detail, plot_split_qc
 from hrtf_relearning.utils import paths
 
 # The ONLY thing you set per session. Everything else (trained ear, final-day
 # block order) is loaded from the counterbalance sheet next to this script, keyed
 # by this id. On day 1, write each subject's id into the 'subject' column of:
 #   learning_transfer_block_order.csv   (this folder; replace an '(assign)' cell)
-SUBJECT_ID = "JS"
+SUBJECT_ID = "AS"
 
-CSV_PATH = Path(__file__).resolve().parent / "learning_transfer_block_order.csv"
+CSV_PATH = hr.PATH / "experiment" / "protocols" / "learning_transfer" / "learning_transfer_block_order.csv"
 
 
 def _load_subject_params(subject_id, csv_path=CSV_PATH):
@@ -85,13 +85,12 @@ MODIFIED_SOFA = f"{SUBJECT_ID}_shift"    # ERB-shift modified set (built below; 
 
 HP = "DT990"   # headphone EQ profile
 
-# --- modification (ERB shift) -- see build_modified_sofa() and modify.shift_band ---
-SHIFT_CENTER    = 8000   # band centre [Hz]; 1 octave -> 5657-11314 Hz (= VSI band)
-SHIFT_OCTAVES   = 1.0
-SHIFT_ERB       = 2.5    # ERB displacement of the fine detail (tune per pilot; factor 1.4 ~= 3.0 ERB)
+# --- modification (ERB shift) -- see build_modified_sofa() and modify.shift_detail ---
+SHIFT_BAND      = (5700, 11300)  # Trapeau et al. 2016 peak-VSI octave (selected, then shifted)
+SHIFT_ERB       = 2.5    # ERB displacement of the fine detail (tune per pilot)
 SHIFT_ENV_NKEEP = 4      # Fourier coeffs kept for the coarse envelope (Kulkarni & Colburn 1998)
-SHIFT_SKIRT     = 0.25   # cosine taper outside the band [octaves]
-SHIFT_EQ_RMS    = True   # match in-band detail RMS per direction/ear
+SHIFT_SKIRT     = 0.25   # raised-cosine taper on the selection window [octaves]
+SHIFT_EQ_RMS    = True   # match in-band detail energy per direction/ear
 
 # --- shared localization sampling grid (do not change without re-checking the
 #     baseline-vs-final comparability; see project notes) ---
@@ -178,16 +177,15 @@ def build_modified_sofa(overwrite=True, show_qc=True):
         print(f"{out_path.name} already exists (overwrite=False) -- skipping build")
         return out_path
     native = slab.HRTF(str(sofa_dir / f"{NATIVE_SOFA}.sofa"))
-    low_hz, high_hz = octave_band(SHIFT_CENTER, fraction=SHIFT_OCTAVES)
-    print(f"shift_band: {low_hz:.0f}-{high_hz:.0f} Hz, shift={SHIFT_ERB} ERB")
-    modified = shift_band(native, low_hz, high_hz, shift_erb=SHIFT_ERB,
-                          envelope_n_keep=SHIFT_ENV_NKEEP, skirt_octaves=SHIFT_SKIRT,
-                          equalize_band_rms=SHIFT_EQ_RMS)
+    print(f"shift_detail: band={SHIFT_BAND} Hz, shift={SHIFT_ERB} ERB")
+    modified = shift_detail(native, shift_erb=SHIFT_ERB, band=SHIFT_BAND,
+                            envelope_n_keep=SHIFT_ENV_NKEEP, skirt_octaves=SHIFT_SKIRT,
+                            equalize_rms=SHIFT_EQ_RMS)
     sofa_dir.mkdir(parents=True, exist_ok=True)
     modified.write_sofa(str(out_path))
     print(f"wrote {out_path}")
     if show_qc:
-        fig = plot_split_qc(native, SHIFT_ENV_NKEEP, ear="right", band=(low_hz, high_hz))
+        fig = plot_split_qc(native, SHIFT_ENV_NKEEP, ear="right", band=SHIFT_BAND)
         plot_dir = paths.subject_plot_dir(SUBJECT_ID)
         plot_dir.mkdir(parents=True, exist_ok=True)
         fig.savefig(plot_dir / f"{MODIFIED_SOFA}_split_qc.png", bbox_inches="tight")

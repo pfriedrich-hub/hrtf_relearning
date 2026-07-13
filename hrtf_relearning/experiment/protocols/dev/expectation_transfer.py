@@ -34,7 +34,6 @@ running the wrong condition. Rerun any cell as needed (e.g. redo AR_post).
 
 # %% imports and config ------------------------------------------------------
 import csv
-from pathlib import Path
 
 import hrtf_relearning as hr
 from hrtf_relearning.experiment.localization.Localization_AR import Localization
@@ -43,7 +42,7 @@ from hrtf_relearning.experiment.misc.system_volume import set_windows_volume
 
 SUBJECT_ID = "SZ"   # edit per participant
 
-CSV_PATH = Path(__file__).resolve().parent / "expectation_transfer_block_order.csv"
+CSV_PATH = hr.PATH / "experiment" / "protocols" / "dev" / "expectation_transfer_block_order.csv"
 
 
 

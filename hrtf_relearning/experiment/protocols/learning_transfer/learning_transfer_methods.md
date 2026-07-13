@@ -18,7 +18,7 @@ down-weight.
 
 ## The modification: coherent ERB translation of the fine spectral structure
 
-Implemented in `hrtf.processing.modify.shift_band`. Per HRIR, per ear:
+Implemented in `hrtf.processing.modify.shift_detail`. Per HRIR, per ear:
 
 1. **Log-magnitude spectrum.** `L(f) = log|H(f)|` from the rFFT of the HRIR.
 2. **Coarse/fine split (Kulkarni & Colburn 1998, *Nature* 396:747).** Fit a
@@ -34,16 +34,20 @@ Implemented in `hrtf.processing.modify.shift_band`. Per HRIR, per ear:
    scale**. `Δ > 0` shifts cues up, `Δ < 0` down. The envelope is held fixed, so
    every direction keeps a unique pattern — just displaced by `Δ`. This is a
    bijective remap, not a destroyed or conflicting cue.
-4. **Band restriction.** The shift is confined to one octave centred on 8 kHz,
-   **5657–11314 Hz**, with a raised-cosine skirt (0.25 octave) in log-frequency;
-   outside the band the HRIR is unchanged. This band is the N1 excursion region
-   and coincides (to rounding) with the peak-VSI band (5.7–11.3 kHz, Trapeau et
-   al. 2016), so the manipulated band and the VSI read-out band are the same.
-5. **In-band RMS equalisation.** The in-band RMS of the (log-magnitude) detail is
-   matched to the original, per direction and ear, so translating a
-   non-stationary residual does not change in-band power — removing the overall
-   level / in-notch-power cue (cf. Zonooz et al. 2019) as a confound. Only the
-   cue *position* differs between native and modified.
+4. **Band selection (Trapeau peak-VSI octave), shifted without cutting short.**
+   The detail is selected in **5.7–11.3 kHz** — the peak-VSI band where the
+   elevation cue is strongest (Trapeau et al. 2016) — with a raised-cosine skirt
+   (0.25 octave). Crucially the selection window is applied to the **source**
+   detail and shifts *with* it, so the band travels intact to its new ERB
+   position and is never clipped at a fixed edge. Outside the shifted band the
+   spectrum is the smooth `M = 4` envelope (i.e. the fine structure elsewhere is
+   removed, isolating the shifted cue). `band=None` shifts the whole-spectrum
+   detail instead.
+5. **In-band energy equalisation.** The energy of the shifted detail is matched
+   to the source, per direction and ear, so relocating a non-stationary residual
+   does not change in-band spectral contrast — removing the overall level /
+   in-notch-power cue (cf. Zonooz et al. 2019) as a confound. Only the cue
+   *position* differs between native and modified.
 6. **Magnitude-only, original phase.** The new magnitude is recombined with the
    **original phase** (`H' = |H'|·e^{i∠H}`). No minimum-phase step, no ITD
    restoration here: interaural time/level cues are imposed upstream, when the
@@ -53,26 +57,25 @@ Implemented in `hrtf.processing.modify.shift_band`. Per HRIR, per ear:
 
 ### Δ selection
 
-`SHIFT_ERB` is set per pilot. A constant Hz factor is ≈ a constant ERB shift over
-this band, so the previously used factors map as: factor 1.3 ≈ 2.4 ERB,
-factor 1.4 ≈ 3.0 ERB. A constant ERB shift is also ≈ a constant frequency-scale
-factor (Δ = 1.5 ERB ≈ +17 %, Δ = 2 ERB ≈ +24 %), on the order of natural
-between-listener HRTF scaling — i.e. a shift the system plausibly can relearn.
-Default `SHIFT_ERB = 2.5`; tune from the pilot, then rebuild the modified SOFA.
+`SHIFT_ERB` is set per pilot. A constant ERB shift is ≈ a constant frequency-scale
+factor above ~1 kHz: factor 1.3 ≈ 2.4 ERB, factor 1.4 ≈ 3.0 ERB (Δ = 1.5 ERB ≈
++17 %, Δ = 2 ERB ≈ +24 %) — on the order of natural between-listener HRTF scaling,
+i.e. a shift the system plausibly can relearn. Default `SHIFT_ERB = 2.5`; tune from
+the pilot, then rebuild the modified SOFA.
 
 ### Configuration (in `learning_transfer.py`)
 
 | param | default | meaning |
 |---|---|---|
-| `SHIFT_CENTER` / `SHIFT_OCTAVES` | 8000 Hz / 1.0 | band = 5657–11314 Hz |
+| `SHIFT_BAND` | (5700, 11300) | peak-VSI octave selected, then shifted (`None` = whole spectrum) |
 | `SHIFT_ERB` | 2.5 | ERB displacement of the fine detail |
 | `SHIFT_ENV_NKEEP` | 4 | Fourier coeffs kept for the envelope (`M`) |
-| `SHIFT_SKIRT` | 0.25 | cosine taper outside the band [octaves] |
-| `SHIFT_EQ_RMS` | True | match in-band detail RMS per direction/ear |
+| `SHIFT_SKIRT` | 0.25 | raised-cosine taper on the selection window [octaves] |
+| `SHIFT_EQ_RMS` | True | match in-band detail energy per direction/ear |
 
-The same `Δ`, band and `M` are used for **every direction and both ears** — a
-single map to learn; a direction- or ear-dependent shift would collapse the
-design or read as a lateral cue.
+The same `SHIFT_BAND`, `Δ` and `M` are used for **every direction and both ears** —
+a single map to learn; a direction- or ear-dependent shift would collapse the design
+or read as a lateral cue.
 
 ## Quality control
 

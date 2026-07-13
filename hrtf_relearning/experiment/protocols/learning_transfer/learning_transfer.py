@@ -326,12 +326,15 @@ run_phase("baseline_A", subject)
 # %% day 1: baseline D -- untrained ear, mirrored loc (matches final D) --------
 run_phase("baseline_D", subject)
 
-# %% adaptation days: TRAIN, then daily test -----------------------------------
+# %% adaptation days: TRAIN -----------------------------------------------------
 # Rerun once per adaptation day. Training (Training_AR.py) launches in its own
 # process with the trained ear + trained hemifield on the modified HRIR; play
-# the games, close the game window, then the daily localization test runs.
+# the games, then close the game window.
 run_training()                     # trained ear + trained hemifield, modified HRIR
-subject = hr.Subject(SUBJECT_ID)   # reload after training appends trials
+
+# %% adaptation days: daily TEST -------------------------------------------------
+# Run after the training block above, once per adaptation day.
+subject = hr.Subject(SUBJECT_ID)   # reload after training appended trials
 run_phase("daily", subject)
 
 # %% final day: all 4 conditions in this subject's counterbalanced order --------

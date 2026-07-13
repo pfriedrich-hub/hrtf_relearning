@@ -671,7 +671,7 @@ def hrtf_animation(
         if filename is None:
             raise ValueError("filename must be provided when write is enabled.")
 
-        out_dir = paths.IMG_DIR / "animations"
+        out_dir = paths.ANI_DIR
         out_dir.mkdir(parents=True, exist_ok=True)
 
         mode = "auto" if write is True else str(write).lower()

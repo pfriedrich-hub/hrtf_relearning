@@ -50,6 +50,11 @@ def subject_plot_dir(subject_id):
     return RESULTS_DIR / subject_id / "plots"
 
 
+def subject_acoustic_dir(subject_id):
+    """RESULTS_DIR/<id>/plots/acoustic/ — acoustic figures (HP calibration, HRTF)."""
+    return subject_plot_dir(subject_id) / "acoustic"
+
+
 def subject_pkls():
     """Every existing RESULTS_DIR/<id>/<id>.pkl.
 
@@ -62,7 +67,8 @@ def subject_pkls():
 
 # Sounds / assets
 SOUNDS_DIR = DATA_DIR / "sounds"
-IMG_DIR = DATA_DIR / "img"
+ANI_DIR = DATA_DIR / "documentation" / "animations"
+IMG_DIR = DATA_DIR / "documentation" / "plots"
 UI_DIR = DATA_DIR / "ui"              # game UI assets (fonts, icons)
 
 # Documentation / protocol assets

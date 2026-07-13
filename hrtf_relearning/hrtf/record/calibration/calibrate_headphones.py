@@ -333,7 +333,7 @@ def save_hp_repeats_deviation(recordings, subject_id, hp_id, plot_dir=None,
     band = (freqs >= xlim[0]) & (freqs <= xlim[1])
 
     if plot_dir is None:
-        plot_dir = paths.subject_plot_dir(subject_id)
+        plot_dir = paths.subject_acoustic_dir(subject_id)
     plot_dir = Path(plot_dir)
     plot_dir.mkdir(parents=True, exist_ok=True)
 
@@ -443,10 +443,10 @@ def calibrate_headphones(subject_id=SUB_ID, hp_id=HP_ID, n_rec=N_REC, show=True,
     except Exception as exc:
         logging.warning(f"HP repeatability QC skipped: {exc}")
 
-    # Compute equalization (also save the calibration TF figure, save-only)
-    cal_fig_path = paths.subject_plot_dir(subject_id) / f"{hp_id}_hp_calibration.png"
+    # Compute equalization. Do NOT save the pyfar filter/inverse diagnostic here;
+    # the calibration RESULT figure (re-recorded before/after EQ) is saved below.
     eq_filter = compute_headphone_equalization(recording, excitation, beta=0.01,
-                                               show=False, save_path=cal_fig_path)
+                                               show=False, save_path=None)
     # adjust beta parameter if necessary
 
     # Save to npz
@@ -454,16 +454,29 @@ def calibrate_headphones(subject_id=SUB_ID, hp_id=HP_ID, n_rec=N_REC, show=True,
 
     # test and alternatively save to freefield
     hp_filter = ff_equalization(eq_filter, hp_id, save_freefield)
-    if show:
+
+    # Calibration RESULT figure: re-record the chirp without and with the EQ
+    # filter and plot the before/after spectra. Saved to plots/acoustic/ (on
+    # record), and shown if show=True. Guarded so a playback hiccup never fails
+    # the calibration itself.
+    try:
         raw = freefield.play_and_record_headphones(speaker='both', sound=excitation, equalize=False)
         filtered = hp_filter.apply(excitation)
         equalized = freefield.play_and_record_headphones(speaker='both', sound=filtered, equalize=False)
-        fig ,axes = plt.subplots(2,1)
-        raw.spectrum(axis=axes[0])
-        axes[0].set_title('Raw HpTF')
-        equalized.spectrum(axis=axes[1])
-        axes[1].set_title('Equalized HpTF')
-        fig.suptitle(f'{hp_id} equalization')
+        fig, axes = plt.subplots(2, 1, figsize=(8, 6))
+        raw.spectrum(axis=axes[0]);       axes[0].set_title('Raw HpTF')
+        equalized.spectrum(axis=axes[1]); axes[1].set_title('Equalized HpTF')
+        fig.suptitle(f'{hp_id} equalization — before vs after')
+        out_dir = paths.subject_acoustic_dir(subject_id)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        fig.savefig(out_dir / f"{hp_id}_hp_calibration.png", dpi=150, bbox_inches='tight')
+        logging.info(f"Saved HP calibration result figure to: {out_dir / f'{hp_id}_hp_calibration.png'}")
+        if show:
+            plt.show()
+        else:
+            plt.close(fig)
+    except Exception as exc:
+        logging.warning(f"HP calibration result plot skipped: {exc}")
 
     return hp_filter
 

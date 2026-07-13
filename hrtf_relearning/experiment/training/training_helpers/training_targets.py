@@ -113,6 +113,22 @@ def set_target_probabilistic(target, settings, sequence, hrir, max_sector_hops=1
     train_az = settings['az_range']
     train_el = settings['ele_range']
 
+    # Guard against a mismatched last test: if the sequence's own azimuth range
+    # covers less than half of the training range (e.g. it was a wrong-hemifield
+    # or midline-only test run just before this training session), its sector
+    # probabilities would restrict training targets to the small overlap -- the
+    # midline. Sample uniformly over the training range instead.
+    seq_az = sequence.settings.get('azimuth_range', None)
+    if seq_az is not None:
+        t_lo, t_hi = min(train_az), max(train_az)
+        s_lo, s_hi = min(seq_az), max(seq_az)
+        overlap = max(0.0, min(t_hi, s_hi) - max(t_lo, s_lo))
+        if overlap < 0.5 * max(t_hi - t_lo, 1e-6):
+            logging.warning(
+                'Last localization az range %s covers <50%% of training range %s; '
+                'sampling uniformly over the training range instead.', seq_az, train_az)
+            return set_target(target, settings, hrir)
+
     # build candidate indices per sector (filtered by training area)
     candidates_per_sector = _build_sector_candidate_indices(
         hrir, sector_centers, sector_size, train_az, train_el

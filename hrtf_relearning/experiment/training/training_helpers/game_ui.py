@@ -66,14 +66,21 @@ def read_scoreboard(results_dir: Path) -> List[Tuple[str, int]]:
     the JSON backups are plain, cheap, and rewritten on every trial.
 
     Scans each subject folder for its <ID>/<ID>.json, so non-subject folders
-    (e.g. the pilot archive, which has no <folder>/<folder>.json) are ignored.
-    Unreadable/malformed files are skipped rather than raised, since these
-    are written independently by other subjects' sessions.
+    (the pilot archive results/pilot/, shared results/plot/, results/archive/)
+    are ignored -- both by an explicit skip list and because they have no
+    <folder>/<folder>.json. Pilot participants live flat under results/pilot/
+    and are therefore never scoreboard entries. Unreadable/malformed files are
+    skipped rather than raised, since these are written independently by other
+    subjects' sessions.
     """
     rows: dict[str, int] = {}
     if not results_dir.exists():
         return []
+    # non-participant folders under RESULTS_DIR -- never scoreboard entries
+    skip_dirs = {"pilot", "plot", "archive", "__pycache__"}
     for sub in sorted(results_dir.iterdir()):
+        if sub.name in skip_dirs:
+            continue
         p = sub / f"{sub.name}.json"
         if not sub.is_dir() or not p.exists():
             continue

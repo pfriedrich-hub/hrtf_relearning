@@ -120,7 +120,7 @@ def acoustic_test(hrir, hp_filter, subject_id, hp_id, show=True):
                 )
                 ax.legend(['Dome', 'HP+HRIR'])
 
-        save_dir = paths.subject_plot_dir(subject_id)
+        save_dir = paths.subject_acoustic_dir(subject_id)
         save_dir.mkdir(parents=True, exist_ok=True)
         fig.savefig(save_dir / f'acoustic_test_{hp_id}.svg')
         plt.show()

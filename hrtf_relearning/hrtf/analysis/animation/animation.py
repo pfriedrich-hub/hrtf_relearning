@@ -3,23 +3,21 @@ import scipy.spatial
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import slab
-from pathlib import Path
-
-from hrtf_relearning import PATH
 from hrtf_relearning.utils import paths
 
-hrtf_dir = paths.SOFA_DIR / "pilot"
+hrtf_dir = paths.SOFA_DIR / "database"
 
 # ---------------------------------------------------------------------------
 # Parameters – edit here
 # ---------------------------------------------------------------------------
-hrtf_id         = "kemar"       # HRTF file stem (loads <hrtf_id>.sofa)
-
-azimuth_range   = (-50, 50)     # (min, max) in degrees; None = all
+hrtf_id         = "mit_kemar_normal_pinna"  # HRTF file stem (loads <hrtf_id>.sofa)
+                                # NB kemar.sofa / kemar_pir.sofa hold only the midline arc
+                                # (7 sources, all at azimuth 0) - nothing to animate there
+azimuth_range   = (0, 360)     # (min, max) in degrees; None = all
 elevation_range = (-40, 40)     # (min, max) in degrees; None = all
 ear             = "both"        # "left", "right", or "both"
 kind            = "image"       # "image" (contourf) or "waterfall"
-bandwidth       = (1000, 18000) # frequency range in Hz
+bandwidth       = (200, 18000) # frequency range in Hz
 sampling_mode   = "interpolate" # "measured", "nearest", or "interpolate"
 azimuth_step    = 2.5           # grid step in degrees (nearest/interpolate)
 elevation_step  = 1.0           # grid step in degrees (nearest/interpolate)
@@ -516,6 +514,16 @@ def hrtf_animation(
     if ear not in ("left", "right", "both"):
         raise ValueError("ear must be 'left', 'right', or 'both'.")
 
+    source_azimuths = numpy.unique(
+        numpy.round(_wrap_azimuth(hrtf.sources.vertical_polar[:, 0].astype(float)), 3)
+    )
+    if source_azimuths.size < 2:
+        raise ValueError(
+            f"HRTF contains only a single source azimuth ({source_azimuths[0]:g} deg) - "
+            "there is no azimuth variation to animate; every frame would be identical. "
+            "Use a recording with multiple azimuths (e.g. kemar_test.sofa, FABIAN.sofa)."
+        )
+
     frames, azimuths, elevations, frequencies = _prepare_frames(
         hrtf=hrtf,
         azimuth_range=azimuth_range,
@@ -564,8 +572,9 @@ def hrtf_animation(
             ax_left.set_ylabel("Elevation (deg)")
             ax_right.set_xlabel("Frequency (Hz)")
             ax_right.set_ylabel("Elevation (deg)")
-            ax_left.set_title(f"Left ear – azimuth {frames[0]['azimuth']:g}°")
-            ax_right.set_title(f"Right ear – azimuth {frames[0]['azimuth']:g}°")
+            ax_left.set_title(f"Left ear")
+            ax_right.set_title(f"Right ear")
+            fig.suptitle(f"azimuth {frames[0]['azimuth']:g}°")
 
             cbar = fig.colorbar(contour_left, ax=[ax_left, ax_right], shrink=0.95)
             cbar.set_label("DTF magnitude (dB)")
@@ -597,8 +606,10 @@ def hrtf_animation(
                     vmax,
                 )
 
-                ax_left.set_title(f"Left ear – azimuth {azimuth:g}°")
-                ax_right.set_title(f"Right ear – azimuth {azimuth:g}°")
+
+                ax_left.set_title(f"Left ear")
+                ax_right.set_title(f"Right ear")
+                fig.suptitle(f"azimuth {azimuth:g}°")
                 return []
 
         else:

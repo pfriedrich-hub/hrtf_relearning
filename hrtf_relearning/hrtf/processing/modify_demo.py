@@ -2,8 +2,7 @@
 modify_demo.py — run block by block (# %%) to see the ERB shift in action.
 
 Loads a subject's measured HRTF, applies modify.shift_detail, and shows:
-  - original vs modified median-plane transfer function (waterfall or image)
-  - the coarse/fine split QC (envelope vs full, stacked by elevation)
+  - original vs modified median-plane transfer function (before/after image)
   - VSI and VSI-dissimilarity in the peak-VSI band
 
 Run cell by cell (# %%) in an IDE/console -- do NOT run top-to-bottom. Nothing
@@ -18,7 +17,7 @@ lives there (shift_detail). See the learning_transfer methods note for the desig
 import slab
 
 from hrtf_relearning.utils import paths
-from hrtf_relearning.hrtf.processing.modify import shift_detail, plot, plot_split_qc
+from hrtf_relearning.hrtf.processing.modify import shift_detail, plot
 from hrtf_relearning.hrtf.analysis.vsi import (
     vsi as _vsi, vsi_dissimilarity as _vsi_dissimilarity,
 )
@@ -32,7 +31,7 @@ N_KEEP     = 4               # cosine coeffs kept for the coarse envelope (M)
 SKIRT      = 0.25            # raised-cosine taper on the selection window [octaves]
 EQ_RMS     = True            # match in-band detail energy per direction/ear
 
-PLOT_KIND  = 'waterfall'     # 'waterfall' (per-elevation spectra stacked) | 'image'
+PLOT_KIND  = 'image'         # 'image' (before/after heatmap) | 'waterfall' (spectra stacked)
 EAR        = 'right'
 VSI_BW     = (5700, 11300)
 
@@ -65,16 +64,11 @@ print(f'VSI  orig={vsi_o:.3f}  mod={vsi_m:.3f}  dissimilarity={vsi_d:.3f}')
 
 
 # %% original vs modified transfer function (median plane) -------------------
-# Look here for the shift: the notch/peak pattern should slide up (or down) by a
-# constant ERB step inside the shaded band, envelope unchanged, out-of-band smooth.
+# Look here for the shift: inside the shaded band the notch/peak pattern slides up
+# (or down) by a constant ERB step, replacing higher-freq content; native detail
+# is kept outside the band; envelope unchanged.
 fig = plot(hrtf, hrtf_shift, PLOT_KIND, ear=EAR,
            vsi_orig=vsi_o, vsi_mod=vsi_m, vsi_dis=vsi_d, vsi_bw=VSI_BW)
-
-
-# %% split QC: envelope (M) vs full, stacked by elevation --------------------
-# The red envelope must be smooth AND roughly elevation-invariant; if it still
-# tracks elevation, M is freezing a cue that carries elevation -> lower N_KEEP.
-qc = plot_split_qc(hrtf, N_KEEP, ear=EAR, band=SHIFT_BAND)
 
 
 # %% (optional) write the modified SOFA --------------------------------------

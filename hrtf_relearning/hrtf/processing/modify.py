@@ -9,9 +9,10 @@ Two modes (see MODE in __main__):
              Nature 396:747), then translate the fine detail — the pinna
              peaks/notches carrying elevation cues — inside the Trapeau
              peak-VSI octave (5.7–11.3 kHz), by a constant amount on the
-             ERB-number axis. The selection window shifts WITH the detail so the
-             band is not cut short; the coarse envelope is left in place (and is
-             the spectrum outside the shifted band), so every direction keeps a
+             ERB-number axis. The full detail is shifted up and the band window
+             selects it, so within the band the pattern translates up and
+             replaces higher-frequency content (native detail kept outside the
+             band); the coarse envelope is left in place. Every direction keeps a
              unique pattern simply displaced in ERB: a bijective, relearnable
              remap rather than a destroyed or conflicting cue. Magnitude-only
              (original phase kept); ITD/ILD are added downstream when lateral
@@ -57,11 +58,11 @@ MODE = 'shift'
 fname = MODE
 
 # --- 'shift' mode parameters (only used when MODE == 'shift') --------------
-# shift_detail selects the fine detail in SHIFT_BAND (Trapeau peak-VSI octave)
-# and translates it along the ERB-number axis by SHIFT_ERB: each output frequency
-# f samples the windowed detail at ERB(f) - SHIFT_ERB, so peaks/notches move a
-# constant ERB step while the broad envelope stays put. The selection window
-# moves with the detail, so the band is not cut short at its edges.
+# shift_detail translates the fine detail along the ERB-number axis by SHIFT_ERB
+# inside SHIFT_BAND (Trapeau peak-VSI octave): each output frequency f takes the
+# detail from ERB(f) - SHIFT_ERB, so within the band the pattern slides up and
+# replaces higher-frequency content (native detail kept outside), broad envelope
+# unchanged.
 #   > 0  shifts cues UP   in frequency
 #   < 0  shifts cues DOWN in frequency
 #   = 0  is a rebuild no-op (analysis + resynthesis, cues unmoved)
@@ -483,15 +484,16 @@ def shift_detail(
         skirt_octaves=0.25,
         equalize_rms=True,
 ):
-    """Select the fine spectral detail inside ``band`` (the Trapeau peak-VSI
-    octave by default) and translate it along the ERB-number axis by
-    ``shift_erb`` ERB, with the coarse envelope held in place.
+    """Translate the fine spectral detail along the ERB-number axis by
+    ``shift_erb`` ERB inside ``band`` (the Trapeau peak-VSI octave by default),
+    with the coarse envelope held in place.
 
-    The selection window is applied to the SOURCE detail and shifts WITH it, so
-    the band is never cut short at its (moving) edges — the whole windowed band
-    is relocated intact.  Outside the shifted band the spectrum is the smooth
-    envelope.  Pass ``band=None`` to shift the whole-spectrum detail (no
-    selection).
+    The FULL detail is shifted first — each output frequency ``f`` takes the
+    detail from ``ERB(f) - shift_erb`` — so the pattern slides up and REPLACES
+    whatever sat at ``f`` (content is sampled from lower frequencies, so the top
+    of the band is never cut off).  The band window then selects where the shift
+    applies: inside ``band`` the shifted detail is used, OUTSIDE it the native
+    detail is kept.  Pass ``band=None`` to shift the whole spectrum.
 
     Cepstral split (Kulkarni & Colburn 1998, Nature 396:747):
 
@@ -499,20 +501,18 @@ def shift_detail(
        shape (first ``envelope_n_keep`` cosine coefficients of log-magnitude).
     2. ``detail   = log|H| - envelope`` — the fine structure: the pinna peaks
        and notches that carry the vertical-localisation cue.
-    3. Select the detail in ``band`` with a raised-cosine window (skirt
-       ``skirt_octaves``), then translate it along the ERB-number axis: each
-       output frequency ``f`` samples the windowed detail at the frequency whose
-       ERB number is ``ERB(f) - shift_erb``.  Because the window is on the
-       source it moves with the detail — the band is not cut short.  ``> 0`` up,
+    3. Translate the full ``detail`` along the ERB-number axis: each output
+       frequency ``f`` takes the detail from ``ERB(f) - shift_erb``.  ``> 0`` up,
        ``< 0`` down; a constant ERB step preserves notch spacing on the auditory
-       scale.
-    4. Optionally rescale the shifted detail so its in-band energy matches the
-       source per direction/ear (keeps spectral contrast / in-notch power
+       scale.  Because content is sampled from lower frequencies, the pattern
+       slides up and replaces higher-frequency content without being cut off.
+    4. Select where the shift applies with the band window — shifted detail
+       inside ``band``, native detail outside — and equalise the in-band detail
+       energy per direction/ear (keeps spectral contrast / in-notch power
        constant).
-    5. Recombine ``new_log_mag = envelope + detail_shifted`` (smooth envelope
-       outside the shifted band).  Magnitude-only: keep the ORIGINAL phase
-       (onset / ITD structure untouched; interaural cues are imposed upstream
-       when the measured frontal arc is expanded across azimuth,
+    5. Recombine ``new_log_mag = envelope + new_detail``.  Magnitude-only: keep
+       the ORIGINAL phase (onset / ITD structure untouched; interaural cues are
+       imposed upstream when the measured frontal arc is expanded across azimuth,
        record/processing.py::expand_azimuths_with_binaural_cues).
 
     Parameters
@@ -525,17 +525,18 @@ def shift_detail(
         rebuild no-op.  A constant ERB step ≈ a constant frequency-scale factor
         above ~1 kHz: factor 1.3 ≈ 2.4 ERB, factor 1.4 ≈ 3.0 ERB.
     band : (low_hz, high_hz) or None, default (5700, 11300)
-        Band whose detail is selected and shifted (default = the Trapeau et al.
-        2016 peak-VSI octave).  ``None`` shifts the whole-spectrum detail.
+        Band inside which the shifted detail replaces the native detail (default
+        = the Trapeau et al. 2016 peak-VSI octave); native detail is kept
+        outside.  ``None`` shifts the whole spectrum.
     envelope_n_keep : int, default 4
         Cosine (Fourier) coefficients retained for the envelope (M in Kulkarni
         & Colburn 1998).  Lower → more of the spectrum counts as shiftable
         detail; higher → only the sharpest peaks/notches move.
     skirt_octaves : float, default 0.25
-        Raised-cosine taper on the selection window, in octaves (ignored when
+        Raised-cosine taper on the band window, in octaves (ignored when
         ``band`` is None).
     equalize_rms : bool, default True
-        Rescale the shifted detail so its in-band energy matches the source per
+        Rescale the shifted detail so its in-band energy matches the native per
         direction/ear (removes the overall spectral-contrast / in-notch-power
         change as a confound; cf. Zonooz et al. 2019).
 
@@ -570,35 +571,36 @@ def shift_detail(
         # 2) fine detail (high-quefrency residual)
         detail_db = log_mag_db - envelope_db
 
-        # 3) select the cue-bearing detail in `band` (window on the SOURCE), then
-        #    translate it along the ERB axis by `shift_erb`. Because the window is
-        #    applied before the shift it moves WITH the detail, so the band is not
-        #    cut short at its (moving) edges. band=None -> shift the whole detail.
-        if band is None:
-            detail_src = detail_db
-        else:
-            w = band_window(freqs, band[0], band[1], skirt_octaves=skirt_octaves)
-            detail_src = w[:, None] * detail_db
+        # 3) translate the FULL fine detail along the ERB axis: each output
+        #    frequency f takes the detail from ERB(f) - shift_erb, so the pattern
+        #    slides up and REPLACES whatever sat at f. Content is sampled from
+        #    lower frequencies, so the top of the band is never cut off.
+        #    shift_erb > 0 moves features up, < 0 down.
         src_freqs = erb_to_hz(hz_to_erb(freqs) - shift_erb)
-        detail_shifted = numpy.empty_like(detail_src)
-        for ch in range(detail_src.shape[1]):
+        detail_shifted = numpy.empty_like(detail_db)
+        for ch in range(detail_db.shape[1]):
             detail_shifted[:, ch] = numpy.interp(
-                src_freqs, freqs, detail_src[:, ch],
-                left=detail_src[0, ch], right=detail_src[-1, ch],
+                src_freqs, freqs, detail_db[:, ch],
+                left=detail_db[0, ch], right=detail_db[-1, ch],
             )
 
-        # 4) match the shifted detail's in-band energy to the source per
-        #    direction/ear (keep spectral contrast / in-notch power constant;
-        #    cf. Zonooz et al. 2019)
+        # 4) select where the shift applies with the band window: shifted detail
+        #    INSIDE the band, native detail OUTSIDE (band=None -> whole spectrum).
+        #    Equalise the in-band detail energy per direction/ear (keep spectral
+        #    contrast / in-notch power constant; cf. Zonooz et al. 2019).
+        w = (numpy.ones_like(freqs) if band is None
+             else band_window(freqs, band[0], band[1], skirt_octaves=skirt_octaves))
         if equalize_rms:
-            for ch in range(detail_src.shape[1]):
-                e_in = float(numpy.sum(detail_src[:, ch] ** 2))
-                e_out = float(numpy.sum(detail_shifted[:, ch] ** 2))
+            for ch in range(detail_db.shape[1]):
+                e_in = float(numpy.sum(w * detail_db[:, ch] ** 2))
+                e_out = float(numpy.sum(w * detail_shifted[:, ch] ** 2))
                 if e_out > 0:
                     detail_shifted[:, ch] *= numpy.sqrt(e_in / e_out)
 
-        # 5) recombine; envelope untouched (smooth outside the shifted band)
-        new_log_mag = envelope_db + detail_shifted
+        # 5) recombine: shifted detail inside the band, native detail outside;
+        #    envelope untouched.
+        new_detail = (1.0 - w[:, None]) * detail_db + w[:, None] * detail_shifted
+        new_log_mag = envelope_db + new_detail
         mag_out = 10.0 ** (new_log_mag / 20.0)
 
         # magnitude-only edit: keep the ORIGINAL phase (onset / ITD structure
@@ -656,37 +658,28 @@ def plot(hrtf, hrtf_modified, kind='image', ear='left', n_bins=None, xlim=(1000,
                 ['original', 'modified'],
                 [vsi_orig,  vsi_mod]):
             ct = ax.contourf(freqs, elevations, img.T, cmap='hot', levels=levels)
-            ax.set_title(title)
-            # VSI value as a second line below the x-axis label
-            xlabel = 'Frequency [kHz]'
-            if vsi_val is not None:
-                xlabel += f'\nVSI = {vsi_val:.3f}'
-            ax.set(xlabel=xlabel, ylabel='Elevation [°]', xlim=xlim)
+            title_full = title + (f'   (VSI = {vsi_val:.3f})' if vsi_val is not None else '')
+            ax.set_title(title_full)
+            ax.set(xlabel='Frequency [kHz]', ylabel='Elevation [°]', xlim=xlim)
             ax.xaxis.set_major_formatter(
                 matplotlib.ticker.FuncFormatter(lambda x, pos: str(int(x / 1000))))
             ax.autoscale(tight=True)
             ax.tick_params('both', length=2, pad=2)
 
-        # Single shared colorbar to the right of both subplots
-        # fig.colorbar(ct, ax=list(axes), location='right', shrink=1, pad=0.02)
-
-        cbar_ticks = numpy.arange(vmin, vmax, 6)
-        cax_pos = list(axes[-1].get_position().bounds)  # (x0, y0, width, height)
-        cax_pos[2] = cax_pos[2] * 0.06  # cbar width in fractions of axis width
-        cax_pos[0] = 0.92
-        cbar_axis = fig.add_axes(cax_pos)
-        cbar = fig.colorbar(ct, cbar_axis, orientation='vertical', ticks=cbar_ticks)
+        # Single shared colorbar to the right of both subplots, matplotlib-managed
+        # so it stays aligned to the axes height (steals space from both). Don't
+        # call tight_layout here -- it would conflict with the managed colorbar.
+        cbar_ticks = numpy.arange(numpy.ceil(vmin / 6.0) * 6.0, vmax, 6.0)
+        cbar = fig.colorbar(ct, ax=list(axes), shrink=0.9, pad=0.02, ticks=cbar_ticks)
+        cbar.set_label('Magnitude [dB]')
 
         # VSI dissimilarity as a footer below both plots
         if vsi_dis is not None:
             bw_str = (f'{vsi_bw[0]/1000:.1f}–{vsi_bw[1]/1000:.1f} kHz'
                       if vsi_bw is not None else '')
-            fig.text(0.5, 0.0,
+            fig.text(0.5, 0.01,
                      f'VSI dissimilarity = {vsi_dis:.3f}   ({bw_str}, Trapeau et al. 2016)',
                      ha='center', va='bottom', fontsize=9)
-            # plt.tight_layout(rect=[0, 0.07, 1, 1])
-        else:
-            plt.tight_layout()
 
     else:
         # waterfall / surface: fall back to plot_tf (no shared scale needed)
@@ -777,15 +770,11 @@ if __name__ == '__main__':
     vsi_mod  = _vsi(hrtf_modified, bandwidth=VSI_BW)
     vsi_dis  = _vsi_dissimilarity(hrtf, hrtf_modified, bandwidth=VSI_BW)
 
+    # before/after HRTF image (native vs modified, median plane)
     fig = plot(hrtf, hrtf_modified, PLOT, ear='right',
                vsi_orig=vsi_orig, vsi_mod=vsi_mod, vsi_dis=vsi_dis, vsi_bw=VSI_BW)
-    qc_fig = (plot_split_qc(hrtf, SHIFT_ENV_NKEEP, ear='right', band=SHIFT_BAND)
-              if MODE == 'shift' else None)
     input('press enter to save')
     fig.savefig(paths.subject_plot_dir(sub_id) / str(sub_id + f'_{fname}.png'),
                 bbox_inches='tight')
-    if qc_fig is not None:
-        qc_fig.savefig(paths.subject_plot_dir(sub_id) / str(sub_id + f'_{fname}_split_qc.png'),
-                       bbox_inches='tight')
     (hrtf_dir / sub_id).mkdir(parents=True, exist_ok=True)
     hrtf_modified.write_sofa(hrtf_dir / sub_id / str(sub_id + f'_{fname}.sofa'))

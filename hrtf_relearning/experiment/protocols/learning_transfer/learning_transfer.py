@@ -20,14 +20,15 @@ localization tests so you never have to hand-edit Localization_AR.py between run
                      C           untrained ear, same loc
                      D           untrained ear, mirrored loc                      [MAIN transfer]
 
-MODIFICATION (the cue manipulation). The modified HRTF is built here by selecting the
-fine spectral detail in the Trapeau peak-VSI octave (5.7-11.3 kHz) and translating it
-a constant distance along the ERB-number axis, coarse envelope held fixed. The
-selection window shifts WITH the detail so the band is not cut short (smooth envelope
-outside the shifted band) -- a bijective, relearnable remap of the elevation cue
-rather than a destroyed or conflicting cue (Kulkarni & Colburn 1998 cepstral split;
-magnitude-only, original phase kept). See hrtf.processing.modify.shift_detail and
-learning_transfer_methods.md (this folder) for the full method.
+MODIFICATION (the cue manipulation). The modified HRTF is built here by translating the
+fine spectral detail a constant distance along the ERB-number axis inside the Trapeau
+peak-VSI octave (5.7-11.3 kHz), coarse envelope held fixed. The full detail is shifted
+up and the band window selects it, so within the band the pattern translates up and
+replaces higher-frequency content (native detail kept outside the band) -- a bijective,
+relearnable remap of the elevation cue rather than a destroyed or conflicting cue
+(Kulkarni & Colburn 1998 cepstral split; magnitude-only, original phase kept). See
+hrtf.processing.modify.shift_detail and learning_transfer_methods.md (this folder) for
+the full method.
 
 The day-1 baselines use the SAME configs as final A and D (same ear/mirror/field/
 filter) but pre-training, so pre-vs-post isolates learning. baseline_D delivers the
@@ -51,7 +52,7 @@ import slab
 
 import hrtf_relearning as hr
 from hrtf_relearning.experiment.localization.Localization_AR import Localization
-from hrtf_relearning.hrtf.processing.modify import shift_detail, plot_split_qc
+from hrtf_relearning.hrtf.processing.modify import shift_detail, plot
 from hrtf_relearning.utils import paths
 
 # The ONLY thing you set per session. Everything else (trained ear, final-day
@@ -87,7 +88,7 @@ HP = "DT990"   # headphone EQ profile
 
 # --- modification (ERB shift) -- see build_modified_sofa() and modify.shift_detail ---
 SHIFT_BAND      = (5700, 11300)  # Trapeau et al. 2016 peak-VSI octave (selected, then shifted)
-SHIFT_ERB       = 2.5    # ERB displacement of the fine detail (tune per pilot)
+SHIFT_ERB       = 1    # ERB displacement of the fine detail (tune per pilot)
 SHIFT_ENV_NKEEP = 4      # Fourier coeffs kept for the coarse envelope (Kulkarni & Colburn 1998)
 SHIFT_SKIRT     = 0.25   # raised-cosine taper on the selection window [octaves]
 SHIFT_EQ_RMS    = True   # match in-band detail energy per direction/ear
@@ -165,11 +166,10 @@ def build_modified_sofa(overwrite=True, show_qc=True):
     it to data/hrtf/sofa/<subject>/<subject>_shift.sofa (= MODIFIED_SOFA).
 
     Translates each direction's fine spectral detail by SHIFT_ERB along the
-    ERB-number axis inside the SHIFT_CENTER +/- SHIFT_OCTAVES band, envelope held
-    fixed, magnitude-only (original phase). Run ONCE per subject once the native
-    recording exists; baseline_A/D, daily and final all load the result.
-    Saves the split-QC panel (envelope vs full log-mag across elevation) so you
-    can confirm a clean shift, not a frozen-cue conflict, before testing.
+    ERB-number axis inside SHIFT_BAND, envelope held fixed, magnitude-only
+    (original phase). Run ONCE per subject once the native recording exists;
+    baseline_A/D, daily and final all load the result. Saves a before/after HRTF
+    image (native vs modified, median plane) so you can eyeball the shift.
     """
     sofa_dir = paths.SOFA_DIR / SUBJECT_ID
     out_path = sofa_dir / f"{MODIFIED_SOFA}.sofa"
@@ -185,10 +185,11 @@ def build_modified_sofa(overwrite=True, show_qc=True):
     modified.write_sofa(str(out_path))
     print(f"wrote {out_path}")
     if show_qc:
-        fig = plot_split_qc(native, SHIFT_ENV_NKEEP, ear="right", band=SHIFT_BAND)
+        # before/after HRTF image (native vs modified, median plane)
+        fig = plot(native, modified, kind="image", ear="right")
         plot_dir = paths.subject_plot_dir(SUBJECT_ID)
         plot_dir.mkdir(parents=True, exist_ok=True)
-        fig.savefig(plot_dir / f"{MODIFIED_SOFA}_split_qc.png", bbox_inches="tight")
+        fig.savefig(plot_dir / f"{MODIFIED_SOFA}_before_after.png", bbox_inches="tight")
     return out_path
 
 

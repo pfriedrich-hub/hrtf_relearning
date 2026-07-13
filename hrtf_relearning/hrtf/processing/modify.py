@@ -1,36 +1,26 @@
 """
-modify_replace.py — HRTF modification with spectral *replacement* rather than multiplicative gain.
+modify.py — individualised-HRTF manipulations for the relearning experiment.
 
-Difference from modify.py
--------------------------
-modify.py treats the Gaussian as a **dB gain** applied on top of the existing spectrum:
+Two modes (see MODE in __main__):
 
-    gain_db(f) = -depth_db * exp(-0.5 * ((f-mu)/sigma)^2)
-    mag_out(f) = mag_in(f) * 10^(gain_db(f)/20)
+- 'shift'  : the relearning manipulation. Split each HRTF magnitude spectrum
+             into a coarse envelope and fine detail with a truncated cosine
+             (Fourier) series on log-magnitude (Kulkarni & Colburn 1998,
+             Nature 396:747), then translate the fine detail — the pinna
+             peaks/notches carrying elevation cues — by a constant amount on
+             the ERB-number axis, inside one octave centred on 8 kHz. The
+             coarse envelope is left in place, so every direction keeps a
+             unique spectral pattern that is simply displaced in ERB: a
+             bijective, relearnable remap rather than a destroyed or
+             conflicting cue. Magnitude-only (original phase kept); ITD/ILD are
+             added downstream when lateral (az != 0) sources are synthesised.
 
-This compounds multiplicatively with whatever spectral shape is already present at
-those frequencies.
+- 'synth'  : legacy path. Cosine-series smoothing plus synthetic Gaussian
+             spectral features, blended into the magnitude and resynthesised as
+             minimum phase with onset-based ITD restoration.
 
-This script treats the Gaussian as a **blending weight** that crossfades the original
-magnitude toward a target level:
-
-    w(f)       = exp(-0.5 * ((f-mu)/sigma)^2)          # 0 at edges, 1 at centre
-    target(f)  = mag_ref(f) * 10^(-depth_db/20)         # >0 depth -> notch, <0 -> peak
-    mag_out(f) = (1 - w(f)) * mag_in(f) + w(f) * target(f)
-
-where mag_ref is the smoothed (trend) version of the spectrum, used so that the target
-represents a clean level independent of fine spectral structure at those bins.
-
-At the Gaussian centre (w = 1):   mag_out = target   (original is fully replaced)
-At the Gaussian tails (w → 0):    mag_out = mag_in   (original is fully preserved)
-In between:                        linear crossfade between the two
-
-The two approaches agree at both extremes (w = 0 and w = 1) but differ in between:
-the replacement/blend is linear in the magnitude domain, whereas the gain approach is
-linear in dB (i.e. exponential in magnitude).  The blend approach results in a
-"softer" notch shape in the transition zone and replaces the actual spectral power in
-those bins with the feature's target power rather than attenuating whatever happens
-to be there.
+Shared primitives (_smooth, minimum_phase_from_magnitude, restore_itd_from_onsets)
+are used by 'synth'; 'shift' uses _smooth for the split and keeps original phase.
 """
 
 import copy
@@ -65,19 +55,21 @@ MODE = 'shift'
 fname = MODE
 
 # --- 'shift' mode parameters (only used when MODE == 'shift') --------------
-SHIFT_CENTER    = 10000   # band centre frequency [Hz]
-SHIFT_OCTAVES   = 1.5    # band width in octaves (fraction for octave_band)
-# SHIFT_FACTOR multiplies the frequency axis of the subject's own fine spectral
-# detail inside the band (see shift_band): each output bin f samples the detail
-# at f / SHIFT_FACTOR, so the peaks/notches move while the broad envelope stays.
-#   > 1  shifts cues UP   in frequency (e.g. 1.10 ≈ +10 %, ~+1.4 semitones)
-#   < 1  shifts cues DOWN in frequency (e.g. 0.90 ≈ -10 %)
-#   = 1  is a rebuild no-op (analysis + minimum-phase resynthesis, cues unmoved)
-# Set PLOT = 'waterfall' below to see the per-elevation spectra stacked, which
-# makes the shift of the detail relative to the fixed envelope easy to inspect.
-SHIFT_FACTOR    = 1.4
-SHIFT_ENV_NKEEP = 4      # cepstral coeffs kept for the envelope (lower = more detail shifted)
+SHIFT_CENTER    = 8000   # band centre frequency [Hz]
+SHIFT_OCTAVES   = 1.0    # band width in octaves → 5657–11314 Hz (≈ VSI band)
+# SHIFT_ERB translates the subject's own fine spectral detail along the
+# ERB-number axis by a constant amount inside the band (see shift_band): each
+# output frequency f samples the detail at ERB(f) - SHIFT_ERB, so peaks/notches
+# move a constant ERB step while the broad envelope stays put.
+#   > 0  shifts cues UP   in frequency
+#   < 0  shifts cues DOWN in frequency
+#   = 0  is a rebuild no-op (analysis + resynthesis, cues unmoved)
+# Equivalence over this band: factor 1.3 ≈ 2.4 ERB, factor 1.4 ≈ 3.0 ERB.
+# Set PLOT = 'waterfall' below to see the per-elevation spectra stacked.
+SHIFT_ERB       = 2.5
+SHIFT_ENV_NKEEP = 4      # Fourier coeffs kept for the envelope (M; Kulkarni & Colburn 1998)
 SHIFT_SKIRT     = 0.25   # cosine taper outside the band [octaves]
+SHIFT_EQ_RMS    = True   # match in-band detail RMS per direction/ear
 
 # ---------------------------------------------------------------------------
 # Spectral feature list
@@ -422,6 +414,16 @@ def erb_bandwidth(center_hz):
     return 24.7 * (4.37 * f_kHz + 1.0)
 
 
+def hz_to_erb(f):
+    """ERB-number (Glasberg & Moore 1990) for a frequency in Hz."""
+    return 21.4 * numpy.log10(4.37 * numpy.asarray(f, dtype=float) / 1000.0 + 1.0)
+
+
+def erb_to_hz(e):
+    """Inverse of :func:`hz_to_erb`: frequency in Hz for an ERB-number."""
+    return (10.0 ** (numpy.asarray(e, dtype=float) / 21.4) - 1.0) * 1000.0 / 4.37
+
+
 def band_window(freqs, low_hz, high_hz, skirt_octaves=0.25):
     """Smooth in-band window on a log-frequency axis.
 
@@ -475,13 +477,13 @@ def shift_band(
         hrtf,
         low_hz,
         high_hz,
-        factor,
-        envelope_n_keep=3,
+        shift_erb,
+        envelope_n_keep=4,
         skirt_octaves=0.25,
-        onset_threshold_db=15.0,
+        equalize_band_rms=True,
 ):
-    """Shift only the fine spectral structure inside ``[low_hz, high_hz]`` in
-    frequency, while leaving the broad spectral envelope in place.
+    """Translate only the fine spectral structure inside ``[low_hz, high_hz]``
+    along the ERB-number axis, while leaving the broad spectral envelope in place.
 
     Cepstral split (same decomposition the synthetic-feature path uses):
 
@@ -489,12 +491,14 @@ def shift_band(
        slope (low-quefrency).  Carries coarse / externalisation information.
     2. ``detail   = log|H| - envelope`` — the high-quefrency residual: sharp
        peaks and notches that carry vertical-localisation cues.
-    3. Warp only ``detail`` in log-frequency by ``factor`` (each output
-       frequency ``f`` samples ``detail`` at ``f / factor``).
-    4. ``new_log_mag = envelope + window * detail_warped`` — recombine with the
-       in-band window so the warped detail vanishes outside the band; the
-       envelope is left untouched.
-    5. Minimum-phase reconstruction; restore original onset-based ITD.
+    3. Translate ``detail`` along the ERB-number axis by ``shift_erb`` ERB (each
+       output frequency ``f`` samples ``detail`` at the frequency whose ERB
+       number is ``ERB(f) - shift_erb``); a constant ERB step, so notch spacing
+       is preserved on the auditory scale.
+    4. Equalise the in-band RMS of the detail per direction/ear, then recombine
+       ``new_log_mag = envelope + window * detail_warped`` with the in-band
+       window so the warped detail vanishes outside the band; envelope untouched.
+    5. Magnitude-only: keep the original phase (no min-phase, no ITD restore).
 
     Parameters
     ----------
@@ -503,24 +507,25 @@ def shift_band(
     low_hz, high_hz : float
         Band edges in Hz.  See :func:`octave_band` / :func:`erb_bandwidth` for
         choosing these from a single centre frequency.
-    factor : float
-        Multiplicative shift applied to the high-quefrency detail.
-        ``> 1`` shifts cues up in frequency (e.g. 1.10 ≈ +10 %, ~+1.4
-        semitones), ``< 1`` shifts them down, ``== 1`` is a rebuild no-op.
-    envelope_n_keep : int, default 3
-        Cosine coefficients retained for the envelope.  Lower → more detail
-        gets shifted; higher → only the very sharpest peaks/notches move.
+    shift_erb : float
+        Displacement of the detail along the ERB-number axis, in ERB.
+        ``> 0`` shifts cues up in frequency, ``< 0`` down, ``== 0`` is a
+        rebuild no-op.  Over ~5.7–11.3 kHz a constant Hz factor ≈ a constant
+        ERB shift: factor 1.3 ≈ 2.4 ERB, factor 1.4 ≈ 3.0 ERB.
+    envelope_n_keep : int, default 4
+        Cosine (Fourier) coefficients retained for the envelope (M in Kulkarni
+        & Colburn 1998).  Lower → more detail gets shifted; higher → only the
+        sharpest peaks/notches move.
     skirt_octaves : float, default 0.25
         Width of the cosine taper outside the band, in octaves.
-    onset_threshold_db : float, default 15.0
-        Threshold for onset-based ITD restoration.
+    equalize_band_rms : bool, default True
+        Match the in-band RMS of the shifted detail to the original per
+        direction/ear (removes the in-band level / in-notch-power confound).
 
     Returns
     -------
     slab.HRTF  (deep copy, processed)
     """
-    if factor <= 0:
-        raise ValueError(f"factor must be positive, got {factor}")
     if envelope_n_keep < 1:
         raise ValueError(f"envelope_n_keep must be >= 1, got {envelope_n_keep}")
 
@@ -548,8 +553,12 @@ def shift_band(
         # 2) detail (high-quefrency residual)
         detail_db = log_mag_db - envelope_db
 
-        # 3) warp the detail in log-frequency by `factor`
-        src_freqs = freqs / factor
+        # 3) translate the detail along the ERB-number axis by `shift_erb`.
+        #    Each output frequency f samples the detail at the frequency whose
+        #    ERB number is (ERB(f) - shift_erb): a constant ERB step, not a
+        #    constant Hz factor, so notch spacing is preserved on the auditory
+        #    scale.  shift_erb > 0 moves features up, < 0 down.
+        src_freqs = erb_to_hz(hz_to_erb(freqs) - shift_erb)
         detail_warped = numpy.empty_like(detail_db)
         for ch in range(detail_db.shape[1]):
             detail_warped[:, ch] = numpy.interp(
@@ -557,22 +566,37 @@ def shift_band(
                 left=detail_db[0, ch], right=detail_db[-1, ch],
             )
 
-        # 4) confine the warp to the band; envelope preserved everywhere
+        # in-band window (raised-cosine skirt in log-frequency)
         w = band_window(freqs, low_hz, high_hz, skirt_octaves=skirt_octaves)
+
+        # 4) equalise the in-band RMS of the (log-magnitude) detail per
+        #    direction and ear, so translating a non-stationary residual does
+        #    not change in-band power — removes the overall-level / in-notch
+        #    power confound (cf. Zonooz et al. 2019); only the cue *position*
+        #    differs between conditions.
+        if equalize_band_rms:
+            wsum = float(numpy.sum(w))
+            if wsum > 0:
+                for ch in range(detail_db.shape[1]):
+                    rms_in = numpy.sqrt(numpy.sum(w * detail_db[:, ch] ** 2) / wsum)
+                    rms_out = numpy.sqrt(numpy.sum(w * detail_warped[:, ch] ** 2) / wsum)
+                    if rms_out > 0:
+                        detail_warped[:, ch] *= rms_in / rms_out
+
+        # 5) confine the warp to the band; envelope preserved everywhere
         new_log_mag = envelope_db + w[:, None] * detail_warped
         new_mag = 10.0 ** (new_log_mag / 20.0)
 
         # blend in-band only; outside the skirt w = 0 ⇒ mag_out = mag_in
         mag_out = (1.0 - w[:, None]) * mag_in + w[:, None] * new_mag
 
-        # 5) minimum-phase reconstruction
-        spec_processed = minimum_phase_from_magnitude(mag_out)
+        # 6) magnitude-only edit: keep the ORIGINAL phase, so onset structure is
+        #    untouched here.  ITD/ILD are imposed downstream when the measured
+        #    frontal arc is expanded across azimuth
+        #    (record/processing.py::expand_azimuths_with_binaural_cues).
+        #    No min-phase, no ITD restore.
+        spec_processed = mag_out * numpy.exp(1j * numpy.angle(spec_original))
         ir_processed = numpy.fft.irfft(spec_processed, n=n_samples, axis=0)
-
-        # 6) restore original ITD
-        ir_processed = restore_itd_from_onsets(
-            ir_original, ir_processed, threshold_db=onset_threshold_db,
-        )
 
         filt.data = ir_processed
 
@@ -668,6 +692,50 @@ def plot(hrtf, hrtf_modified, kind='image', ear='left', n_bins=None, xlim=(1000,
     return fig
 
 
+def plot_split_qc(hrtf, envelope_n_keep, ear='right', xlim=(2000, 18000), band=None):
+    """QC for the coarse/fine split (constraint c).
+
+    For each median-plane elevation, overlay the full log-magnitude (thin grey)
+    and the truncated-cosine envelope (thick red) that shift_band holds fixed.
+    The envelope should be smooth AND roughly elevation-invariant: if the red
+    curves still track elevation, the split is freezing a cue that also carries
+    elevation information (a cue conflict), not cleanly separating macro shape
+    from the fine structure being shifted.  Curves are mean-removed and stacked.
+    """
+    chan = {'left': 0, 'right': 1}[ear]
+    sources = hrtf.cone_sources(0)
+    elevations = hrtf.sources.vertical_polar[sources, 1]
+    order = numpy.argsort(elevations)
+    sources_sorted = numpy.array(sources)[order]
+
+    fig, ax = plt.subplots(figsize=(6, 8))
+    offset = 25.0  # dB between stacked elevations
+    for row, idx in enumerate(sources_sorted):
+        ir = numpy.asarray(hrtf[idx].data, dtype=float)
+        n = ir.shape[0]
+        freqs = numpy.fft.rfftfreq(n, d=1.0 / hrtf[idx].samplerate)
+        mag = numpy.abs(numpy.fft.rfft(ir, axis=0))
+        env = _smooth(mag, n_keep=envelope_n_keep)
+        eps = numpy.finfo(float).tiny
+        full_db = 20.0 * numpy.log10(numpy.maximum(mag[:, chan], eps))
+        env_db = 20.0 * numpy.log10(numpy.maximum(env[:, chan], eps))
+        m = (freqs >= xlim[0]) & (freqs <= xlim[1])
+        y0 = row * offset
+        ax.plot(freqs[m], full_db[m] - full_db[m].mean() + y0, lw=0.6, color='0.6')
+        ax.plot(freqs[m], env_db[m] - env_db[m].mean() + y0, lw=1.8, color='C3')
+        ax.text(xlim[1], y0, f'{elevations[order][row]:.0f}°', va='center', fontsize=7)
+
+    if band is not None:
+        ax.axvspan(band[0], band[1], color='C0', alpha=0.08, lw=0)
+    ax.set(xlabel='Frequency [Hz]', ylabel='elevation (stacked, mean-removed dB)',
+           xlim=xlim, title=f'split QC: envelope (M={envelope_n_keep}) vs full — {ear} ear')
+    ax.set_yticks([])
+    plt.tight_layout()
+    plt.show(block=False)
+    plt.pause(0.1)
+    return fig
+
+
 if __name__ == '__main__':
     if MODE not in ('synth', 'shift'):
         raise ValueError(f"MODE must be 'synth' or 'shift', got {MODE!r}")
@@ -676,15 +744,15 @@ if __name__ == '__main__':
 
     if MODE == 'shift':
         low_hz, high_hz = octave_band(SHIFT_CENTER, fraction=SHIFT_OCTAVES)
-        print(f"shift_band: {low_hz:.0f}-{high_hz:.0f} Hz, factor={SHIFT_FACTOR}")
+        print(f"shift_band: {low_hz:.0f}-{high_hz:.0f} Hz, shift={SHIFT_ERB} ERB")
         hrtf_modified = shift_band(
             hrtf,
             low_hz,
             high_hz,
-            factor=SHIFT_FACTOR,
+            shift_erb=SHIFT_ERB,
             envelope_n_keep=SHIFT_ENV_NKEEP,
             skirt_octaves=SHIFT_SKIRT,
-            onset_threshold_db=15.0,
+            equalize_band_rms=SHIFT_EQ_RMS,
         )
     else:  # 'synth'
         hrtf_modified = smooth_and_replace_hrtf(
@@ -704,8 +772,13 @@ if __name__ == '__main__':
 
     fig = plot(hrtf, hrtf_modified, PLOT, ear='right',
                vsi_orig=vsi_orig, vsi_mod=vsi_mod, vsi_dis=vsi_dis, vsi_bw=VSI_BW)
+    qc_fig = (plot_split_qc(hrtf, SHIFT_ENV_NKEEP, ear='right', band=VSI_BW)
+              if MODE == 'shift' else None)
     input('press enter to save')
     fig.savefig(paths.subject_plot_dir(sub_id) / str(sub_id + f'_{fname}.png'),
                 bbox_inches='tight')
+    if qc_fig is not None:
+        qc_fig.savefig(paths.subject_plot_dir(sub_id) / str(sub_id + f'_{fname}_split_qc.png'),
+                       bbox_inches='tight')
     (hrtf_dir / sub_id).mkdir(parents=True, exist_ok=True)
     hrtf_modified.write_sofa(hrtf_dir / sub_id / str(sub_id + f'_{fname}.sofa'))

@@ -3,10 +3,13 @@ learning_transfer.py
 
 Adaptation-transfer experiment protocol runner.
 
-Guides you through the localization tests of the experiment so you never have to
-hand-edit parameters in Localization_AR.py between runs:
+Session 1 (record the individual HRIR, calibrate headphones, dome-externalization
+check and midline AR localization) runs FIRST from HRIR_Recording.py. This script
+then picks up from the full-field baseline, builds the modified HRTF, and runs all
+localization tests so you never have to hand-edit Localization_AR.py between runs:
 
-    Day 1            native      binaural, native SOFA, full field   (familiarization/reference)
+    Day 1            native      binaural, native SOFA, full field   (original-HRIR baseline)
+                     >> build the modified HRTF (ERB shift) <<
                      baseline_A  monaural trained ear, MODIFIED, trained field    (naive ref for A)
                      baseline_D  monaural untrained ear via MIRROR, MODIFIED,
                                  mirrored field                                   (naive ref for D)
@@ -16,6 +19,14 @@ hand-edit parameters in Localization_AR.py between runs:
                      B           trained ear,   mirrored loc
                      C           untrained ear, same loc
                      D           untrained ear, mirrored loc                      [MAIN transfer]
+
+MODIFICATION (the cue manipulation). The modified HRTF is built here by translating
+each direction's fine spectral structure a constant distance along the ERB-number
+axis inside one octave centred on 8 kHz (5657-11314 Hz), with the coarse envelope
+held fixed -- a bijective, relearnable remap of the elevation cue rather than a
+destroyed or conflicting cue (Kulkarni & Colburn 1998 cepstral split; magnitude-only,
+original phase kept). See hrtf.processing.modify.shift_band and
+learning_transfer_methods.md (this folder) for the full method.
 
 The day-1 baselines use the SAME configs as final A and D (same ear/mirror/field/
 filter) but pre-training, so pre-vs-post isolates learning. baseline_D delivers the
@@ -34,42 +45,53 @@ EDIT THE CONFIG BLOCK BELOW PER PARTICIPANT.
 
 # %% imports and config ------------------------------------------------------
 import csv
+from pathlib import Path
+
+import slab
 
 import hrtf_relearning as hr
 from hrtf_relearning.experiment.localization.Localization_AR import Localization
+from hrtf_relearning.hrtf.processing.modify import shift_band, octave_band, plot_split_qc
 from hrtf_relearning.utils import paths
 
-# The ONLY thing you set per session. Everything else (cue type, trained ear,
-# final-day block order) is loaded from the counterbalance sheet below, keyed by
-# this id. On day 1, just write each subject's id into the 'subject' column of:
-#   data/documentation/exp1_transfer_block_order.csv   (replace an '(assign)' cell)
+# The ONLY thing you set per session. Everything else (trained ear, final-day
+# block order) is loaded from the counterbalance sheet next to this script, keyed
+# by this id. On day 1, write each subject's id into the 'subject' column of:
+#   learning_transfer_block_order.csv   (this folder; replace an '(assign)' cell)
 SUBJECT_ID = "JS"
 
-CSV_PATH = paths.DOCUMENTATION_DIR / "exp1_transfer_block_order.csv"
+CSV_PATH = Path(__file__).resolve().parent / "learning_transfer_block_order.csv"
 
 
 def _load_subject_params(subject_id, csv_path=CSV_PATH):
-    """Look up cue_type, trained_ear and final block order for this subject."""
+    """Look up trained_ear and final block order for this subject."""
     with open(csv_path, newline="") as f:
         for row in csv.DictReader(f):
             if row.get("subject", "").strip() == subject_id:
-                cue   = row["cue_type"].strip()
                 ear   = row["trained_ear"].strip()
                 order = [c.strip() for c in row["block_order"].split("-")]
-                return cue, ear, order
+                return ear, order
     raise ValueError(
         f"Subject '{subject_id}' not found in the 'subject' column of\n  {csv_path}\n"
         f"Add its id to a row there (replacing an '(assign)' cell) before running."
     )
 
 
-CUE_SET, TRAINED_EAR, FINAL_ORDER = _load_subject_params(SUBJECT_ID)
+TRAINED_EAR, FINAL_ORDER = _load_subject_params(SUBJECT_ID)
 
 # SOFA file names (under data/hrtf/sofa/<subject_id>/<name>.sofa)
-NATIVE_SOFA   = f"{SUBJECT_ID}"              # individual measured HRTF (day-1 native test)
-MODIFIED_SOFA = f"{SUBJECT_ID}_{CUE_SET}"   # modified set (baseline + all training/testing)
+NATIVE_SOFA   = f"{SUBJECT_ID}"          # individual measured HRTF (day-1 native baseline)
+MODIFIED_SOFA = f"{SUBJECT_ID}_shift"    # ERB-shift modified set (built below; baseline + all training/testing)
 
 HP = "DT990"   # headphone EQ profile
+
+# --- modification (ERB shift) -- see build_modified_sofa() and modify.shift_band ---
+SHIFT_CENTER    = 8000   # band centre [Hz]; 1 octave -> 5657-11314 Hz (= VSI band)
+SHIFT_OCTAVES   = 1.0
+SHIFT_ERB       = 2.5    # ERB displacement of the fine detail (tune per pilot; factor 1.4 ~= 3.0 ERB)
+SHIFT_ENV_NKEEP = 4      # Fourier coeffs kept for the coarse envelope (Kulkarni & Colburn 1998)
+SHIFT_SKIRT     = 0.25   # cosine taper outside the band [octaves]
+SHIFT_EQ_RMS    = True   # match in-band detail RMS per direction/ear
 
 # --- shared localization sampling grid (do not change without re-checking the
 #     baseline-vs-final comparability; see project notes) ---
@@ -139,6 +161,39 @@ def loc_settings(azimuth_range, exclude_midline=False):
     }
 
 
+def build_modified_sofa(overwrite=True, show_qc=True):
+    """Build the ERB-shift modified HRTF from the subject's native SOFA and write
+    it to data/hrtf/sofa/<subject>/<subject>_shift.sofa (= MODIFIED_SOFA).
+
+    Translates each direction's fine spectral detail by SHIFT_ERB along the
+    ERB-number axis inside the SHIFT_CENTER +/- SHIFT_OCTAVES band, envelope held
+    fixed, magnitude-only (original phase). Run ONCE per subject once the native
+    recording exists; baseline_A/D, daily and final all load the result.
+    Saves the split-QC panel (envelope vs full log-mag across elevation) so you
+    can confirm a clean shift, not a frozen-cue conflict, before testing.
+    """
+    sofa_dir = paths.SOFA_DIR / SUBJECT_ID
+    out_path = sofa_dir / f"{MODIFIED_SOFA}.sofa"
+    if out_path.exists() and not overwrite:
+        print(f"{out_path.name} already exists (overwrite=False) -- skipping build")
+        return out_path
+    native = slab.HRTF(str(sofa_dir / f"{NATIVE_SOFA}.sofa"))
+    low_hz, high_hz = octave_band(SHIFT_CENTER, fraction=SHIFT_OCTAVES)
+    print(f"shift_band: {low_hz:.0f}-{high_hz:.0f} Hz, shift={SHIFT_ERB} ERB")
+    modified = shift_band(native, low_hz, high_hz, shift_erb=SHIFT_ERB,
+                          envelope_n_keep=SHIFT_ENV_NKEEP, skirt_octaves=SHIFT_SKIRT,
+                          equalize_band_rms=SHIFT_EQ_RMS)
+    sofa_dir.mkdir(parents=True, exist_ok=True)
+    modified.write_sofa(str(out_path))
+    print(f"wrote {out_path}")
+    if show_qc:
+        fig = plot_split_qc(native, SHIFT_ENV_NKEEP, ear="right", band=(low_hz, high_hz))
+        plot_dir = paths.subject_plot_dir(SUBJECT_ID)
+        plot_dir.mkdir(parents=True, exist_ok=True)
+        fig.savefig(plot_dir / f"{MODIFIED_SOFA}_split_qc.png", bbox_inches="tight")
+    return out_path
+
+
 # each phase: key -> (label, when, sofa, ear, mirror, azimuth_range, description)
 PHASES = {
     "native":     ("Native reference",        "Day 1", NATIVE_SOFA,   None,        False, FULL_FIELD,    "binaural, native HRTF, full field"),
@@ -188,7 +243,7 @@ def run_phase(key, subject):
 
 def show_status(subject):
     print("\n" + "-" * 70)
-    print(f"SUBJECT: {SUBJECT_ID}    CUE: {CUE_SET}    TRAINED EAR: {TRAINED_EAR}    "
+    print(f"SUBJECT: {SUBJECT_ID}    TRAINED EAR: {TRAINED_EAR}    "
           f"UNTRAINED: {UNTRAINED_EAR}")
     print(f"  (loaded from {CSV_PATH.name})")
     print(f"hemifields -> trained {TRAINED_HEMI}, mirrored {MIRRORED_HEMI}")
@@ -207,8 +262,16 @@ def show_status(subject):
 subject = hr.Subject(SUBJECT_ID)
 show_status(subject)
 
-# %% day 1: native reference ---------------------------------------------------
+# %% day 1: native reference (original HRIR, full field) ----------------------
 run_phase("native", subject)
+
+# %% day 1: build the modified HRTF (ERB shift) -- run ONCE per subject ---------
+# Reads <subject>.sofa, writes <subject>_shift.sofa (= MODIFIED_SOFA), and shows
+# the split-QC panel. Tune SHIFT_ERB in the config block if the pilot says so,
+# then rerun this cell (overwrite=True). baseline_A/D, daily and final all load
+# the file written here.
+build_modified_sofa(overwrite=True)
+subject = hr.Subject(SUBJECT_ID)   # reload after SOFA write
 
 # %% day 1: baseline A -- trained ear, same loc (matches final A) --------------
 run_phase("baseline_A", subject)

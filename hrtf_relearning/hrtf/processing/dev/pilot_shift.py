@@ -22,9 +22,9 @@ SOFA = hr.PATH / "data" / "hrtf" / "sofa" / "pilot"
 OUT = hr.PATH / "analysis_results" / "tac_figures" / "pilot_shift"
 OUT.mkdir(parents=True, exist_ok=True)
 
-# modify.py shift config
-SHIFT_CENTER, SHIFT_OCTAVES, SHIFT_FACTOR = 10000, 1.5, 0.9
-SHIFT_ENV_NKEEP, SHIFT_SKIRT = 3, 0.25
+# modify.py shift config (ERB translation; factor 0.9 ≈ -2.3 ERB over this band)
+SHIFT_CENTER, SHIFT_OCTAVES, SHIFT_ERB = 8000, 1.0, -2.3
+SHIFT_ENV_NKEEP, SHIFT_SKIRT = 4, 0.25
 XLIM = (2000, 16000)
 
 DEFAULT = ["AGV", "AS", "CZ", "IM", "JP", "JR", "JZ", "LS", "MB", "MD", "MS",
@@ -46,9 +46,8 @@ def one(sub):
         print("skip", sub, "(exists)"); return
     hrtf = slab.HRTF(str(SOFA / sub / f"{sub}.sofa"))
     low, high = octave_band(SHIFT_CENTER, fraction=SHIFT_OCTAVES)
-    mod = shift_band(hrtf, low, high, factor=SHIFT_FACTOR,
-                     envelope_n_keep=SHIFT_ENV_NKEEP, skirt_octaves=SHIFT_SKIRT,
-                     onset_threshold_db=15.0)
+    mod = shift_band(hrtf, low, high, shift_erb=SHIFT_ERB,
+                     envelope_n_keep=SHIFT_ENV_NKEEP, skirt_octaves=SHIFT_SKIRT)
     src = midline_dedup(hrtf)
     fig, ax = plt.subplots(1, 2, figsize=(11, 4.5), sharey=True)
     hrtf.plot_tf(src, ear="left", kind="image", xlim=XLIM, show=False, axis=ax[0])

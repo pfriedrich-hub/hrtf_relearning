@@ -1,11 +1,57 @@
 import matplotlib
 import matplotlib.patches
+# Request an interactive backend so figures show on screen. This module is
+# imported by the package __init__, so `import hrtf_relearning` sets the
+# interactive default for the whole package (many run-directly scripts rely on
+# this for plt.show()). NOTE: 'tkagg' can still fail *lazily* at figure-creation
+# time when these plot functions run from inside Localization.run() via
+# learning_transfer.py (after the pybinsim/multiprocessing worker, the training
+# subprocess and the pynput listener). Because savefig() runs after figure
+# creation, such a failure used to lose the PNG — _safe_subplots() below now
+# falls back to the non-interactive Agg backend so the save always happens.
 matplotlib.use('tkagg')
 from matplotlib import pyplot as plt
 from matplotlib.lines import Line2D
 import numpy
 import scipy
 import logging
+
+
+def _preferred_font(candidates=('Helvetica', 'Arial', 'DejaVu Sans')):
+    """First installed font from `candidates` (falls back to DejaVu Sans, which
+    always ships with matplotlib). Setting font.family to a font that is actually
+    present avoids matplotlib's noisy 'findfont: Font family 'Helvetica' not
+    found' warning while still using Helvetica for publication figures on any
+    machine where it is installed."""
+    import matplotlib.font_manager as fm
+    available = {f.name for f in fm.fontManager.ttflist}
+    return next((c for c in candidates if c in available), 'DejaVu Sans')
+
+
+_FONT_FAMILY = _preferred_font()
+
+
+def _safe_subplots(**kwargs):
+    """plt.subplots that never blocks a figure from being saved.
+
+    The module requests the interactive 'tkagg' backend so figures can be shown
+    when a plot function is run on its own (e.g. Localization_AR.__main__ +
+    plt.show()). But when the same plot functions are called from inside
+    Localization.run() via learning_transfer.py — i.e. after the pybinsim
+    multiprocessing worker, the training subprocess and the pynput keyboard
+    listener have run — creating a Tk figure can raise, and because the
+    savefig() call comes *after* figure creation the PNG is then never written.
+    Here we fall back to the non-interactive 'Agg' backend (which always renders
+    to file) so the figure is created and the save still happens.
+    """
+    try:
+        return plt.subplots(**kwargs)
+    except Exception as exc:
+        logging.warning("interactive matplotlib backend failed (%s); "
+                        "falling back to Agg so the figure can still be saved",
+                        type(exc).__name__)
+        matplotlib.use('Agg', force=True)
+        return plt.subplots(**kwargs)
 
 def localization_accuracy(sequence):
     if sequence.this_n == -1 or sequence.n_remaining == len(sequence.data) or not sequence.data:
@@ -183,7 +229,7 @@ def plot_localization(sequence, report_stats=['elevation', 'azimuth'], axis=None
     fs = 8
     lw = 0.5
     plt.rcParams.update({
-        'font.family': 'Helvetica',
+        'font.family': _FONT_FAMILY,
         'xtick.labelsize': fs, 'ytick.labelsize': fs, 'axes.labelsize': fs,
         'lines.linewidth': lw,
         'ytick.direction': 'in', 'xtick.direction': 'in',
@@ -225,7 +271,7 @@ def plot_localization(sequence, report_stats=['elevation', 'azimuth'], axis=None
     el_pad = el_size + 5
 
     if axis is None:
-        fig, ax = plt.subplots(figsize=(6, 6), dpi=264)
+        fig, ax = _safe_subplots(figsize=(6, 6), dpi=264)
     else:
         ax = axis
         fig = ax.get_figure()
@@ -322,7 +368,7 @@ def plot_elevation_response(sequence, axis=None, add_fit=True, filepath=None, ti
     fs = 8
     lw = 1.0
     plt.rcParams.update({
-        'font.family': 'Helvetica',
+        'font.family': _FONT_FAMILY,
         'xtick.labelsize': fs, 'ytick.labelsize': fs, 'axes.labelsize': fs,
         'lines.linewidth': lw,
         'ytick.direction': 'in', 'xtick.direction': 'in',
@@ -341,7 +387,7 @@ def plot_elevation_response(sequence, axis=None, add_fit=True, filepath=None, ti
     eg, ele_rmse, ele_sd, ag, az_rmse, az_sd = localization_accuracy(sequence)
 
     if axis is None:
-        fig, axis = plt.subplots(figsize=(6, 6), dpi=264)
+        fig, axis = _safe_subplots(figsize=(6, 6), dpi=264)
     else:
         fig = axis.get_figure()
 

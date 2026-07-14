@@ -53,6 +53,9 @@ EDIT THE CONFIG BLOCK BELOW PER PARTICIPANT.
 ------------------------------------------------------------------------------
 """
 
+
+SUBJECT_ID = "SS"
+
 # %% imports and config ------------------------------------------------------
 import csv
 import os
@@ -70,7 +73,6 @@ from hrtf_relearning.utils import paths
 # block order) is loaded from the counterbalance sheet next to this script, keyed
 # by this id. On day 1, write each subject's id into the 'subject' column of:
 #   learning_transfer_block_order.csv   (this folder; replace an '(assign)' cell)
-SUBJECT_ID = "SS"
 
 CSV_PATH = hr.PATH / "experiment" / "protocols" / "learning_transfer" / "learning_transfer_block_order.csv"
 

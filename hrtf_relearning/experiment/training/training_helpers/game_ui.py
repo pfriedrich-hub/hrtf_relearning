@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, List, Optional, Tuple
 import json
+import logging
 import math
 import os
 import time
@@ -606,10 +607,19 @@ class GameWindow(QtWidgets.QMainWindow):
         holder.setFixedHeight(140)
         root.addWidget(holder, 0, QtCore.Qt.AlignHCenter)
 
+        # In-app shortcuts: only fire when the game window is the focused
+        # application. Kept as a fallback for when the global listener below
+        # can't start (e.g. pynput missing / no OS accessibility permission).
         for key in (QtCore.Qt.Key_Return, QtCore.Qt.Key_Enter, QtCore.Qt.Key_Space):
             sc = QtWidgets.QShortcut(QtGui.QKeySequence(key), self)
             sc.setContext(QtCore.Qt.ApplicationShortcut)
             sc.activated.connect(self._on_enter_pressed)
+
+        # OS-level global listener so Enter/Space also work when another
+        # window (terminal, plot, etc.) is focused, matching Localization_AR.
+        self._hotkey_listener = None
+        self._last_hotkey_ts = 0.0
+        self._start_global_hotkeys()
 
         QtCore.QTimer.singleShot(0, self._init_overlays)
 
@@ -654,6 +664,53 @@ class GameWindow(QtWidgets.QMainWindow):
             self.shared.enter_pressed.value = 1
         elif state == 3 and self._reveal_ready:  # play-again prompt (after the reveal delay)
             self.shared.enter_pressed.value = 1
+
+    def _start_global_hotkeys(self):
+        """Start an OS-level keyboard listener (pynput) so Enter/Space are
+        caught even when the game window isn't the focused application.
+
+        The callback runs on pynput's own thread; it only reads shared
+        state and sets the enter_pressed multiprocessing.Value (both
+        thread-safe), never touching Qt widgets directly, so it's safe to
+        route straight into _on_enter_pressed. A short debounce swallows
+        OS key-repeat while a key is held. Failures (pynput not installed,
+        or macOS accessibility permission not granted) are non-fatal — the
+        in-app QShortcuts above still cover the focused-window case.
+        """
+        try:
+            from pynput import keyboard
+        except Exception:
+            logging.warning("pynput unavailable; Enter only works when the "
+                            "training window is focused.")
+            return
+
+        trigger_keys = {keyboard.Key.enter, keyboard.Key.space}
+
+        def on_press(key):
+            if key not in trigger_keys:
+                return
+            now = time.monotonic()
+            if now - self._last_hotkey_ts < 0.3:  # debounce key-repeat
+                return
+            self._last_hotkey_ts = now
+            self._on_enter_pressed()
+
+        try:
+            self._hotkey_listener = keyboard.Listener(on_press=on_press)
+            self._hotkey_listener.daemon = True
+            self._hotkey_listener.start()
+        except Exception:
+            logging.exception("Could not start global hotkey listener; Enter "
+                              "only works when the training window is focused.")
+            self._hotkey_listener = None
+
+    def closeEvent(self, ev):
+        if self._hotkey_listener is not None:
+            try:
+                self._hotkey_listener.stop()
+            except Exception:
+                pass
+        super().closeEvent(ev)
 
     def _tick(self):
         session_total = int(self.shared.session_total.value)

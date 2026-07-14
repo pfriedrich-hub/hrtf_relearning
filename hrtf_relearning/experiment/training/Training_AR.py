@@ -232,7 +232,15 @@ def head_tracker(distance, target, sensor_state, pose_queue, current_trial, plot
     logging.debug('motion sensor running')
     sensor_state.value = 1  # init flag
     while True:
-        if sensor_state.value == 2:  # to be calibrated flag
+        if sensor_state.value == 4:  # shutdown flag: disconnect BLE cleanly and exit
+            logging.info('Disconnecting motion sensor..')
+            try:
+                motion_sensor.halt()
+            except Exception:
+                logging.exception('Sensor disconnect failed')
+            sensor_state.value = 5  # ack: disconnected
+            break
+        elif sensor_state.value == 2:  # to be calibrated flag
             logging.debug('Calibrating sensor..')
             motion_sensor.calibrate()
             while not motion_sensor.is_calibrated:
@@ -392,9 +400,25 @@ def play_trial(subject, trial_idx, current_trial, target, distance, pulse_interv
     subject.write()
     return game_timer, score
 
+def _wait_for_enter(enter_pressed, quit_pressed, ui_proc, tick=None):
+    """Block on a UI prompt. Returns True on Enter, False on quit — i.e. ESC
+    at the game-over prompt (quit_pressed) or the game window being closed.
+    `tick` is an optional callable run every poll (e.g. to keep the UI timer
+    updated while waiting)."""
+    while enter_pressed.value == 0:
+        if quit_pressed.value == 1 or not ui_proc.is_alive():
+            return False
+        if tick is not None:
+            tick()
+        time.sleep(0.05)
+    enter_pressed.value = 0
+    return True
+
+
 def play_session():
     """
-    Main loop: start workers, then run until game_time.
+    Main loop: start workers, then run games until ESC is pressed at a
+    game-over prompt (or the game window is closed / Ctrl+C).
     """
     global osc_client, settings
     osc_client = make_osc_client(port=10003)
@@ -424,6 +448,7 @@ def play_session():
     last_goal_points = mp.Value("i", 0)  # 0/1/2 → UI coin animation trigger
     enter_pressed    = mp.Value("i", 0)  # UI sets to 1 when user presses Enter
     ui_state         = mp.Value("i", 0)  # 0 idle, 1 awaiting enter, 2 running, 3 over
+    quit_pressed     = mp.Value("i", 0)  # UI sets to 1 on ESC at the game-over prompt
 
     # Highscore persistence via Subject
     prev_high = int(getattr(subject, "highscore", 0))
@@ -438,7 +463,8 @@ def play_session():
         session_total=session_total,
         enter_pressed=enter_pressed,
         ui_state=ui_state,
-        highscore=highscore)
+        highscore=highscore,
+        quit_pressed=quit_pressed)
     ui_proc = mp.Process(target=game_ui.run_ui, args=(shared, SUBJECT_ID))
     ui_proc.start()
 
@@ -473,9 +499,8 @@ def play_session():
 
             # --- PRE-GAME PROMPT ---
             ui_state.value = 1  # waiting to start
-            while enter_pressed.value == 0:
-                time.sleep(0.05)
-            enter_pressed.value = 0
+            if not _wait_for_enter(enter_pressed, quit_pressed, ui_proc):
+                break  # ESC / window closed -> end session
 
             scores = []
             game_timer = 0.0
@@ -500,10 +525,13 @@ def play_session():
                 # show "Press Enter" overlay and wait for user
                 ui_state.value = 1
                 enter_pressed.value = 0
-                while enter_pressed.value == 0:
-                    # keep updating UI timer while we wait
+
+                def _update_timer():  # keep updating UI timer while we wait
                     game_time_left.value = max(0.0, float(settings["game_time"]) - game_timer)
-                    time.sleep(0.05)
+
+                if not _wait_for_enter(enter_pressed, quit_pressed, ui_proc, tick=_update_timer):
+                    game_timer = settings["game_time"]  # window closed mid-game -> end it
+                    break
                 # start trial
                 ui_state.value = 2
                 enter_pressed.value = 0
@@ -533,35 +561,45 @@ def play_session():
                 play_sound(osc_client, soundfile='buzzer.wav', duration=None, sleep=True)
             logging.info(f"Game {games_played} Over! Total Score: {int(session_total.value)}")
 
-            # Show play-again prompt (same big overlay, different text)
-            ui_state.value = 3  # session over → "Press Enter to play again"
+            # Show play-again prompt (same big overlay, different text).
+            # ENTER -> next game; ESC (or closing the window) -> quit the
+            # session cleanly (sensor disconnect + worker teardown in finally),
+            # so the protocol console can continue without a restart.
+            ui_state.value = 3  # session over → "Enter: play again / Esc: quit"
             enter_pressed.value = 0
-            # wait for Enter to start next session
-            while enter_pressed.value == 0:
-                time.sleep(0.05)
-            enter_pressed.value = 0
-            # loop continues -> new session
+            if not _wait_for_enter(enter_pressed, quit_pressed, ui_proc):
+                logging.info(f"Quit after game {games_played}. Ending session.")
+                break
+            # loop continues -> new game
 
     finally:
+        # Orderly teardown. The workers all run infinite loops, so joining
+        # them without a shutdown signal (as before) blocked forever — that
+        # is why Ctrl+C never got past "Ending" and the sensor stayed
+        # connected. Sequence: mute, ask the tracker to disconnect the BLE
+        # sensor itself (state 4 -> Sensor.halt()), then terminate the rest.
+        logging.info("Ending session -- shutting down workers.")
         try:
-            # Clean up workers
-            pulse_state.value = 0
-            logging.info("Ending")
-            binsim_worker.join()
-            pulse_worker.join()
-            tracking_worker.join()
-            ui_proc.terminate()
-            ui_proc.join()
-            binsim_worker.terminate()
-            pulse_worker.terminate()
-            tracking_worker.terminate()
+            pulse_state.value = 0  # mute
+            sensor_state.value = 4  # tracker: disconnect sensor + exit
+            tracking_worker.join(timeout=10)
+            if tracking_worker.is_alive():
+                logging.warning("Sensor did not disconnect in time -- killing tracker.")
+                tracking_worker.terminate()
+            tracking_worker.join(timeout=2)
         except Exception:
-            pass
-        try:
-            ui_proc.terminate()
-            ui_proc.join()
-        except Exception:
-            pass
+            logging.exception("Tracker shutdown failed")
+        for name, proc in (("binsim", binsim_worker), ("pulse", pulse_worker),
+                           ("ui", ui_proc)):
+            try:
+                proc.terminate()
+                proc.join(timeout=3)
+                if proc.is_alive():
+                    proc.kill()
+                    proc.join(timeout=2)
+            except Exception:
+                logging.exception(f"Could not stop {name} worker")
+        logging.info("All workers stopped.")
 
 
 

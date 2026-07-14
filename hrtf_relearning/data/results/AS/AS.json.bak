@@ -1,6 +1,6 @@
 {
   "id": "AS",
-  "highscore": 0,
+  "highscore": 4,
   "localization": {
     "AS_06.07_13-54_AS_expT-AR_pre": {
       "__class__": "slab.psychoacoustics.Trialsequence",

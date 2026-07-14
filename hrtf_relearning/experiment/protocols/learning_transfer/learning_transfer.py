@@ -53,7 +53,6 @@ EDIT THE CONFIG BLOCK BELOW PER PARTICIPANT.
 ------------------------------------------------------------------------------
 """
 
-
 SUBJECT_ID = "SS"
 
 # %% imports and config ------------------------------------------------------
@@ -75,7 +74,6 @@ from hrtf_relearning.utils import paths
 #   learning_transfer_block_order.csv   (this folder; replace an '(assign)' cell)
 
 CSV_PATH = hr.PATH / "experiment" / "protocols" / "learning_transfer" / "learning_transfer_block_order.csv"
-
 
 def _load_subject_params(subject_id, csv_path=CSV_PATH):
     """Look up trained_ear and final block order for this subject."""
@@ -214,7 +212,10 @@ def run_training(hrir_name=None, ear=None, az_range=None):
     subject's modified HRIR, trained ear and trained hemifield. Training is a
     multiprocessing/spawn script configured from module globals, so it must run
     as a fresh process; parameters are passed via environment variables (which
-    its spawned workers inherit). Blocks until you close the game window.
+    its spawned workers inherit). Blocks until you press ESC at a game-over
+    prompt (or close the game window); the training process then disconnects
+    the motion sensor and stops pybinsim before returning, so the daily test
+    cell can be run next in the same console. Do NOT Ctrl+C to stop training.
     """
     hrir_name = MODIFIED_SOFA if hrir_name is None else hrir_name
     ear = TRAINED_EAR if ear is None else ear
@@ -343,7 +344,8 @@ run_phase("baseline_D", subject)
 # %% adaptation days: TRAIN -----------------------------------------------------
 # Rerun once per adaptation day. Training (Training_AR.py) launches in its own
 # process with the trained ear + trained hemifield on the modified HRIR; play
-# the games, then close the game window.
+# the games (e.g. 15), then press ESC at the GAME OVER prompt to quit cleanly
+# (sensor disconnects, pybinsim stops) and continue with the daily test below.
 run_training()                     # trained ear + trained hemifield, modified HRIR
 
 # %% adaptation days: daily TEST -------------------------------------------------

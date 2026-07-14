@@ -37,6 +37,7 @@ class UIShared:
     enter_pressed: Any
     ui_state: Any    # 0=idle, 1=waiting to start trial, 2=running, 3=session over/prompt
     highscore: Any
+    quit_pressed: Any = None  # UI sets to 1 on ESC at the game-over prompt (optional)
 
 
 def fmt_time(seconds: float) -> str:
@@ -614,6 +615,9 @@ class GameWindow(QtWidgets.QMainWindow):
             sc = QtWidgets.QShortcut(QtGui.QKeySequence(key), self)
             sc.setContext(QtCore.Qt.ApplicationShortcut)
             sc.activated.connect(self._on_enter_pressed)
+        esc = QtWidgets.QShortcut(QtGui.QKeySequence(QtCore.Qt.Key_Escape), self)
+        esc.setContext(QtCore.Qt.ApplicationShortcut)
+        esc.activated.connect(self._on_esc_pressed)
 
         # OS-level global listener so Enter/Space also work when another
         # window (terminal, plot, etc.) is focused, matching Localization_AR.
@@ -665,6 +669,17 @@ class GameWindow(QtWidgets.QMainWindow):
         elif state == 3 and self._reveal_ready:  # play-again prompt (after the reveal delay)
             self.shared.enter_pressed.value = 1
 
+    def _on_esc_pressed(self):
+        """ESC quits the session, but ONLY at the game-over prompt (between
+        games) — never mid-game or at a trial prompt, so a stray ESC can't
+        abort a running game. The parent (Training_AR.play_session) polls
+        quit_pressed at its between-game wait loops and shuts down cleanly
+        (sensor disconnect, worker teardown)."""
+        state = int(self.shared.ui_state.value)
+        if (state == 3 and self._reveal_ready
+                and getattr(self.shared, "quit_pressed", None) is not None):
+            self.shared.quit_pressed.value = 1
+
     def _start_global_hotkeys(self):
         """Start an OS-level keyboard listener (pynput) so Enter/Space are
         caught even when the game window isn't the focused application.
@@ -687,13 +702,16 @@ class GameWindow(QtWidgets.QMainWindow):
         trigger_keys = {keyboard.Key.enter, keyboard.Key.space}
 
         def on_press(key):
-            if key not in trigger_keys:
+            if key not in trigger_keys and key != keyboard.Key.esc:
                 return
             now = time.monotonic()
             if now - self._last_hotkey_ts < 0.3:  # debounce key-repeat
                 return
             self._last_hotkey_ts = now
-            self._on_enter_pressed()
+            if key == keyboard.Key.esc:
+                self._on_esc_pressed()
+            else:
+                self._on_enter_pressed()
 
         try:
             self._hotkey_listener = keyboard.Listener(on_press=on_press)
@@ -760,7 +778,7 @@ class GameWindow(QtWidgets.QMainWindow):
             if state == 1:
                 self.overlay_btn.setText("PRESS ENTER TO START")
             else:
-                self.overlay_btn.setText("GAME OVER — PRESS ENTER")
+                self.overlay_btn.setText("GAME OVER — ENTER: PLAY AGAIN  ·  ESC: QUIT")
         else:
             self.start_stack.setCurrentIndex(1)
         self.center_stack.setCurrentIndex(1 if (state == 3 and self._show_scoreboard) else 0)

@@ -13,7 +13,7 @@ from hrtf_relearning.utils.paths import PATH as ROOT
 from hrtf_relearning.experiment.misc import meta_motion
 from hrtf_relearning.experiment.training.training_helpers import game_ui
 from hrtf_relearning.experiment.misc.Subject import Subject
-from hrtf_relearning.experiment.training.training_helpers.training_targets import set_target_probabilistic
+from hrtf_relearning.experiment.training.training_helpers.training_targets import set_target_probabilistic, set_target
 from hrtf_relearning.hrtf.binsim.hrtf2binsim import *
 from hrtf_relearning.utils import paths
 matplotlib.rcParams['figure.raise_window'] = False
@@ -516,11 +516,15 @@ def play_session():
                 # next trial goes at the end of the list (sequential append)
                 trial_idx = len(subject.trials)
 
-                # pick next target
+                # pick next target. On failure fall back to uniform sampling --
+                # never run the trial with the target left at its (0,0) initial
+                # value (= the calibration pose -> instant hit).
                 try:
                     set_target_probabilistic(target, settings, sequence, hrir)
                 except AttributeError:
-                    logging.debug("Could not load target probabilities")
+                    logging.warning("Could not load target probabilities; "
+                                    "sampling uniformly.")
+                    set_target(target, settings, hrir)
 
                 # show "Press Enter" overlay and wait for user
                 ui_state.value = 1

@@ -16,6 +16,12 @@ def _az_el_distance_deg(p, q):
     delv = (p[1] - q[1])
     return float(numpy.hypot(daz, delv))
 
+def _is_origin(az, el, tol=1e-6):
+    """True if (az, el) is (0,0). Never a valid training target: (0,0) is both
+    the shared-Array sentinel for 'no previous target' and the pose the sensor
+    is calibrated to at trial start, so it would be an instant hit."""
+    return abs(float(az)) < tol and abs(float(el)) < tol
+
 
 """2) Build sector → candidate index lists (intersected with training ranges)"""
 def _sources_in_sector_indices(sources_vp, center_az, center_el, az_size, el_size):
@@ -79,6 +85,8 @@ def _pick_target_from_sector(sources_vp, sector_indices, prev_target_deg, min_di
         az0, el0 = sources_vp[sector_indices[i], :2]  # az in 0..360
         az = _wrap180(az0)  # convert to (-180,180] to be consistent with your pipeline
         el = el0
+        if _is_origin(az, el):  # never target (0,0)
+            continue
         if prev_target_deg is None or _az_el_distance_deg(prev_target_deg, (az, el)) >= min_dist_deg:
             return (float(az), float(el))
     return None  # couldn’t satisfy min distance within this sector
@@ -175,6 +183,8 @@ def set_target_probabilistic(target, settings, sequence, hrir, max_sector_hops=1
     numpy.random.shuffle(all_idx)
     for i in all_idx:
         az = _wrap180(sources[i, 0]); el = sources[i, 1]
+        if _is_origin(az, el):  # never target (0,0)
+            continue
         if prev is None or _az_el_distance_deg(prev, (az, el)) >= min_dist:
             target[:] = (float(az), float(el))
             logging.info("Fallback Set Target to [%.1f, %.1f]", az, el)
@@ -194,6 +204,10 @@ def set_target(target, settings, hrir):
         else ((sources[:, 0] >= az_range[0]) | (sources[:, 0] <= az_range[1]))
     el_mask = (sources[:, 1] >= ele_range[0]) & (sources[:, 1] <= ele_range[1])
     candidates = sources[az_mask & el_mask, :2]
+    # drop the (0,0) source -- never a valid target (see _is_origin)
+    cand_az_wrapped = _wrap180(candidates[:, 0])
+    origin = (numpy.abs(cand_az_wrapped) < 1e-6) & (numpy.abs(candidates[:, 1]) < 1e-6)
+    candidates = candidates[~origin]
     if candidates.shape[0] == 0:
         raise RuntimeError("No HRIR positions within the given ranges!")
     prev_tar = target[:]

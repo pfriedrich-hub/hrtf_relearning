@@ -53,9 +53,9 @@ EDIT THE CONFIG BLOCK BELOW PER PARTICIPANT.
 ------------------------------------------------------------------------------
 """
 
-SUBJECT_ID = "SS"
+SUBJECT_ID = "AS"
 
-# %% imports and config ------------------------------------------------------
+# %% imports and config # todo run this cell ------------------------------------------------------
 import csv
 import os
 import subprocess
@@ -318,7 +318,7 @@ def show_status(subject):
         print(f"\nNo localization runs on file yet for {SUBJECT_ID}.")
     print("-" * 70)
 
-
+ # todo run this cel
 # %% status check (rerun anytime) --------------------------------------------
 subject = hr.Subject(SUBJECT_ID)
 show_status(subject)

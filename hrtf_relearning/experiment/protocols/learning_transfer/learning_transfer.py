@@ -53,9 +53,10 @@ EDIT THE CONFIG BLOCK BELOW PER PARTICIPANT.
 ------------------------------------------------------------------------------
 """
 
-SUBJECT_ID = "AS"
+SUBJECT_ID = "SS"
 
-# %% imports and config # todo run this cell ------------------------------------------------------
+# todo run this cell
+# %% imports and config #------------------------------------------------------
 import csv
 import os
 import subprocess
@@ -318,7 +319,9 @@ def show_status(subject):
         print(f"\nNo localization runs on file yet for {SUBJECT_ID}.")
     print("-" * 70)
 
- # todo run this cel
+
+
+
 # %% status check (rerun anytime) --------------------------------------------
 subject = hr.Subject(SUBJECT_ID)
 show_status(subject)
@@ -357,9 +360,10 @@ run_phase("daily", subject)
 # Order is loaded per-subject from data/documentation/exp1_transfer_block_order.csv
 # (FINAL_ORDER). To redo a single condition instead, use one of the cells below.
 print(f"Running final tests in order: {FINAL_ORDER}")
-for _key in FINAL_ORDER:
-    run_phase(_key, subject)
-    subject = hr.Subject(SUBJECT_ID)   # reload after each write
+
+
+
+
 
 # %% final day: A -- trained ear, same locations (redo individually) -----------
 run_phase("A", subject)

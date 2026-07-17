@@ -34,8 +34,8 @@ from hrtf_relearning.hrtf.record.record_hrir import record_hrir
 from hrtf_relearning.hrtf.record.calibration.calibrate_headphones import calibrate_headphones
 from hrtf_relearning.utils import paths
 
-SUBJECT_ID   = 'SZ'          # edit per participant
-HEAD_RADIUS  = 0.074
+SUBJECT_ID   = 'CO'          # edit per participant
+HEAD_RADIUS  = 0.075
 REFERENCE_ID = 'ref_03.04'
 N_DIRECTIONS = 3              # directions for the HRIR recording
 N_RECORDINGS = 10
@@ -146,10 +146,6 @@ logging.info('--- Step 2: HP calibration ---')
 # hp_filter = calibrate_headphones(SUBJECT_ID, 'MYSPHERE', N_REC_HP, SHOW, True)
 hp_filter = calibrate_headphones(SUBJECT_ID, 'DT990', N_REC_HP, SHOW, False, overwrite=True)
 
-# %% step 3: acoustic sanity check (optional) -----------------------------------
-logging.info('--- Step 3: Acoustic test ---')
-acoustic_test(hrir, hp_filter, subject_id=SUBJECT_ID, hp_id='DT990', show=SHOW)
-
 # %% step 4: dome localization ---------------------------------------------------
 # Real speakers, vertical midline. Each run gets a fresh timestamped filename
 # (see LocalizationDome.__init__), so repeats are stored as separate sequences
@@ -158,14 +154,7 @@ logging.info('--- Step 4: Dome localization ---')
 dome_loc = LocalizationDome(subject, {'targets_per_speaker': 3, 'min_distance': 15})
 dome_loc.run()
 
-# %% step 5a: virtual localization -- MYSPHERE (optional) ------------------------
-logging.info('--- Step 5: HP localization (MYSPHERE) ---')
-ar_loc_settings = {'kind': 'standard', 'azimuth_range': (-1, 1), 'elevation_range': (-35, 35),
-    'targets_per_speaker': 2, 'min_distance': 15, 'gain': .07, 'stim': 'noise'}
-mysphere_hrir_settings = dict(name=SUBJECT_ID, subject_id=SUBJECT_ID, ear=None, mirror=False,
-    reverb=True, drr=20, hp_filter=True, hp='MYSPHERE', convolution='cpu', storage='cpu')
-ar_loc = Localization(subject, mysphere_hrir_settings, ar_loc_settings)
-ar_loc.run()
+
 
 # %% step 5b: virtual localization -- DT990 ---------------------------------------
 logging.info('--- Step 5: HP localization (DT990) ---')
@@ -175,3 +164,19 @@ dt990_hrir_settings = dict(name=SUBJECT_ID, subject_id=SUBJECT_ID, ear=None, mir
     reverb=True, drr=20, hp_filter=True, hp='DT990', convolution='cpu', storage='cpu')
 ar_loc = Localization(subject, dt990_hrir_settings, ar_loc_settings)
 ar_loc.run()
+
+
+
+# # %% step 3: acoustic sanity check (optional) -----------------------------------
+# logging.info('--- Step 3: Acoustic test ---')
+# acoustic_test(hrir, hp_filter, subject_id=SUBJECT_ID, hp_id='DT990', show=SHOW)
+
+
+# %% step 5a: virtual localization -- MYSPHERE (optional) ------------------------
+# logging.info('--- Step 5: HP localization (MYSPHERE) ---')
+# ar_loc_settings = {'kind': 'standard', 'azimuth_range': (-1, 1), 'elevation_range': (-35, 35),
+#     'targets_per_speaker': 2, 'min_distance': 15, 'gain': .07, 'stim': 'noise'}
+# mysphere_hrir_settings = dict(name=SUBJECT_ID, subject_id=SUBJECT_ID, ear=None, mirror=False,
+#     reverb=True, drr=20, hp_filter=True, hp='MYSPHERE', convolution='cpu', storage='cpu')
+# ar_loc = Localization(subject, mysphere_hrir_settings, ar_loc_settings)
+# ar_loc.run()

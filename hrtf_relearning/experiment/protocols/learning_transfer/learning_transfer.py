@@ -53,9 +53,8 @@ EDIT THE CONFIG BLOCK BELOW PER PARTICIPANT.
 ------------------------------------------------------------------------------
 """
 
-SUBJECT_ID = "SS"
+SUBJECT_ID = "CO"
 
-# todo run this cell
 # %% imports and config #------------------------------------------------------
 import csv
 import os
@@ -325,6 +324,7 @@ def show_status(subject):
 # %% status check (rerun anytime) --------------------------------------------
 subject = hr.Subject(SUBJECT_ID)
 show_status(subject)
+
 
 # %% day 1: native reference (original HRIR, full field) ----------------------
 run_phase("native", subject)

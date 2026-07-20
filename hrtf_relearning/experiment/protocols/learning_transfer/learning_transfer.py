@@ -53,7 +53,7 @@ EDIT THE CONFIG BLOCK BELOW PER PARTICIPANT.
 ------------------------------------------------------------------------------
 """
 
-SUBJECT_ID = "CO"
+SUBJECT_ID = "JF"
 
 # %% imports and config #------------------------------------------------------
 import csv

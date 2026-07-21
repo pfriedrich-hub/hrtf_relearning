@@ -45,7 +45,7 @@ from hrtf_relearning.hrtf.modify.shift_spectral_detail import smooth_magnitude
 # ---------------------------------------------------------------------------
 # Parameters — edit these, then run this file
 # ---------------------------------------------------------------------------
-SUB_ID     = 'JF'            # subject with a measured <id>.sofa in data/hrtf/sofa/<id>/
+SUB_ID     = 'CO'            # subject with a measured <id>.sofa in data/hrtf/sofa/<id>/
 OUT_SUFFIX = 'synth'         # writes <SUB_ID>_<OUT_SUFFIX>.sofa
 
 SMOOTH     = True            # smooth before inserting features (erases native cues)
@@ -70,11 +70,18 @@ VSI_BW     = (5700, 11300)   # band for the VSI / VSI-dissimilarity readout
 #   X1, X2 : (azimuth, elevation) anchor directions [deg]
 FEATURES = [
     {
-        'freqs': (8000, 9000),   # centre freq at X1 and X2 [Hz]
+        'freqs': (6000, 9000),   # centre freq at X1 and X2 [Hz]
         'width': (300,   300),   # Gaussian sigma at X1 and X2 [Hz]
         'depth': (12.0,  12.0),  # >0 = notch, <0 = peak [dB]
         'X1':    (0, 0),         # anchor 1 (az, el)
         'X2':    (-40, 40),      # anchor 2 (az, el)
+    },
+    {
+        'freqs': (11000, 10000),  # centre freq at X1 and X2 [Hz]
+        'width': (300, 300),  # Gaussian sigma at X1 and X2 [Hz]
+        'depth': (12.0, 12.0),  # >0 = notch, <0 = peak [dB]
+        'X1': (0, 0),  # anchor 1 (az, el)
+        'X2': (-40, 40),  # anchor 2 (az, el)
     },
     # add further features here, e.g.
     # {'freqs': (11000, 10000), 'width': (300, 300), 'depth': (12, 12),

@@ -71,7 +71,7 @@ import numpy
 # ---------------------------------------------------------------------------
 # Parameters — edit these, then run this file
 # ---------------------------------------------------------------------------
-SUB_ID     = 'JF'            # subject with a measured <id>.sofa in data/hrtf/sofa/<id>/
+SUB_ID     = 'FD'            # subject with a measured <id>.sofa in data/hrtf/sofa/<id>/
 
 # SHIFT_BAND selects WHICH features move. They are transported to
 # target_band(SHIFT_BAND, SHIFT_ERB) — above the band for a positive shift.
@@ -80,6 +80,9 @@ SHIFT_ERB  = 1               # ERB displacement; > 0 up, < 0 down, 0 = no-op
 N_KEEP     = 4               # cosine coeffs kept for the coarse envelope (M)
 SKIRT      = 0.1            # taper on the selection window [octaves]; 0 = hard edges
 EQ_RMS     = True            # match per-ERB detail RMS between source and target
+FILL_GAP   = True            # pad the vacated strip from its own edges, so it is
+                             # filled uniformly instead of dropping to envelope-only
+                             # (no new notch is created). False -> leave it flat.
 
 PLOT_KIND  = 'image'         # 'image' (before/after heatmap) | 'waterfall' | 'surface'
 EAR        = 'right'         # ear shown in the QC plot
@@ -251,7 +254,7 @@ def band_window(freqs, low_hz, high_hz, skirt_octaves=0.0):
 
 def shift_detail_spectrum(freqs, mag, shift_erb, band=(5700.0, 11300.0),
                           envelope_n_keep=4, skirt_octaves=0.0,
-                          equalize_rms=True):
+                          equalize_rms=True, fill_gap=True):
     """Select, split, and transport — the whole manipulation on one spectrum.
 
     Kept free of any HRTF/slab plumbing so it can be unit-tested directly on
@@ -277,6 +280,15 @@ def shift_detail_spectrum(freqs, mag, shift_erb, band=(5700.0, 11300.0),
         Rescale the transported detail so its per-ERB RMS matches the selected
         detail. Because the shift is a pure translation on the ERB axis this is
         already true up to interpolation loss, so it is a small correction.
+    fill_gap : bool, default True
+        Moving a finite band up vacates its bottom ``shift_erb`` worth of
+        frequency: detail is taken out and nothing lands there, leaving
+        envelope-only — a flat, elevation-independent stripe in the TF image.
+        With ``fill_gap`` the gap is padded from its OWN edges: the detail is
+        interpolated linearly (on the ERB axis) between the values bounding the
+        gap. That is continuous at both ends and monotone in between, so the
+        region is filled uniformly without introducing a new notch or peak.
+        ``False`` leaves the gap at envelope-only.
 
     Returns
     -------
@@ -336,7 +348,29 @@ def shift_detail_spectrum(freqs, mag, shift_erb, band=(5700.0, 11300.0),
             if e_mov > 0 and e_sel > 0:
                 moved[:, ch] *= numpy.sqrt(e_sel / e_mov)
 
-    new_log_mag = envelope_db + residual + moved
+    new_detail = residual + moved
+
+    # 5) fill the vacated gap by padding from its own edges. The gap is where
+    #    the detail was taken out and nothing landed: coverage counts how much
+    #    of a bin is accounted for by kept-native plus transported content, so
+    #    the shortfall isolates the gap (partial ramps included). Filling by
+    #    linear interpolation across the gap on the ERB axis is continuous at
+    #    both edges and monotone between them, so it cannot create a notch or
+    #    peak that was not there. Where a gap runs to the end of the spectrum
+    #    numpy.interp clamps, i.e. it holds the edge value flat.
+    if fill_gap:
+        coverage = (1.0 - w) * (1.0 - w_moved) + w_moved
+        shortfall = numpy.clip(1.0 - coverage, 0.0, 1.0)
+        if numpy.any(shortfall > 1e-6):
+            erb = hz_to_erb(freqs)
+            known = shortfall <= 1e-6
+            if numpy.any(known):
+                for ch in range(new_detail.shape[1]):
+                    filler = numpy.interp(erb, erb[known], new_detail[known, ch])
+                    new_detail[:, ch] = ((1.0 - shortfall) * new_detail[:, ch]
+                                         + shortfall * filler)
+
+    new_log_mag = envelope_db + new_detail
     return 10.0 ** (new_log_mag / 20.0)
 
 
@@ -346,7 +380,7 @@ def shift_detail_spectrum(freqs, mag, shift_erb, band=(5700.0, 11300.0),
 
 def shift_spectral_detail(hrtf, shift_erb, band=(5700.0, 11300.0),
                           envelope_n_keep=4, skirt_octaves=0.0,
-                          equalize_rms=True, warn_nyquist=True):
+                          equalize_rms=True, fill_gap=True, warn_nyquist=True):
     """Move each direction's fine spectral cues up (or down) the ERB axis.
 
     Select the features inside ``band``, separate them from the coarse envelope
@@ -387,6 +421,7 @@ def shift_spectral_detail(hrtf, shift_erb, band=(5700.0, 11300.0),
             freqs, numpy.abs(spec_original), shift_erb,
             band=band, envelope_n_keep=envelope_n_keep,
             skirt_octaves=skirt_octaves, equalize_rms=equalize_rms,
+            fill_gap=fill_gap,
         )
 
         # magnitude-only edit: keep the ORIGINAL phase, so onset / ITD structure
@@ -488,8 +523,9 @@ if __name__ == '__main__':
         envelope_n_keep=N_KEEP,
         skirt_octaves=SKIRT,
         equalize_rms=EQ_RMS,
+        fill_gap=FILL_GAP,
     )
-    print(f'M={N_KEEP}, skirt={SKIRT} oct, eq_rms={EQ_RMS}')
+    print(f'M={N_KEEP}, skirt={SKIRT} oct, eq_rms={EQ_RMS}, fill_gap={FILL_GAP}')
 
     vsi_o = _vsi(hrtf,       bandwidth=VSI_BW)
     vsi_m = _vsi(hrtf_shift, bandwidth=VSI_BW)

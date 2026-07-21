@@ -34,8 +34,8 @@ from hrtf_relearning.hrtf.record.record_hrir import record_hrir
 from hrtf_relearning.hrtf.record.calibration.calibrate_headphones import calibrate_headphones
 from hrtf_relearning.utils import paths
 
-SUBJECT_ID   = 'JF'          # edit per participant
-HEAD_RADIUS  = 0.075
+SUBJECT_ID   = 'FD'          # edit per participant
+HEAD_RADIUS  = 0.073
 REFERENCE_ID = 'ref_03.04'
 N_DIRECTIONS = 3              # directions for the HRIR recording
 N_RECORDINGS = 10
@@ -153,7 +153,6 @@ hp_filter = calibrate_headphones(SUBJECT_ID, 'DT990', N_REC_HP, SHOW, False, ove
 logging.info('--- Step 4: Dome localization ---')
 dome_loc = LocalizationDome(subject, {'targets_per_speaker': 3, 'min_distance': 15})
 dome_loc.run()
-
 
 
 # %% step 5b: virtual localization -- DT990 ---------------------------------------

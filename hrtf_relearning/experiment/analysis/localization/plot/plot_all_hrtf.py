@@ -11,7 +11,7 @@
 import logging
 import slab
 from hrtf_relearning.utils import paths
-from hrtf_relearning.hrtf.processing.edge_shift import (
+from hrtf_relearning.hrtf.modify.edge_shift import (
     save_waterfall_qc, save_recorded_hrtf_waterfall,
 )
 

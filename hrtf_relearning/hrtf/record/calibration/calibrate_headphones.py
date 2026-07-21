@@ -213,7 +213,7 @@ def compute_headphone_equalization(recording, excitation, beta, n_samp_out=1024,
         ears = ['left', 'right']
         if save_path is not None and not show:
             # isolated Agg canvas: save-only, never touches the interactive backend
-            from hrtf_relearning.hrtf.processing.edge_shift import _agg_figure
+            from hrtf_relearning.hrtf.modify.edge_shift import _agg_figure
             fig, axes = _agg_figure(2, (12, 4))
         else:
             fig, axes = plt.subplots(1, 2, figsize=(12, 4))
@@ -318,7 +318,7 @@ def save_hp_repeats_deviation(recordings, subject_id, hp_id, plot_dir=None,
     especially in the 2-16 kHz pinna-cue band -- means the earphone moved
     between repeats, so the averaged calibration is unreliable and should be
     redone. Rendered on an isolated Agg canvas (save-only). Returns Path."""
-    from hrtf_relearning.hrtf.processing.edge_shift import _agg_figure
+    from hrtf_relearning.hrtf.modify.edge_shift import _agg_figure
     data = numpy.stack([numpy.asarray(r.data) for r in recordings], axis=0)  # (n_rep, n_samp, n_ch)
     n_rep, n_samp, n_ch = data.shape
 

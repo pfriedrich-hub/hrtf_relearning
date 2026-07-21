@@ -3,7 +3,7 @@ protocol_edge_shift.py
 
 Cell-by-cell protocol for the spectral-edge elevation experiment (see
 documentation/elevation_spectral_cue_models.md for the model background).
-Manipulation itself lives in hrtf.processing.edge_shift; this script just
+Manipulation itself lives in hrtf.modify.edge_shift; this script just
 sequences it: build condition SOFAs -> verify against the model -> run the
 VR localization blocks (Localization_VR.run).
 
@@ -11,7 +11,7 @@ Run cell by cell (# %%) in an IDE/console -- do NOT run this top-to-bottom
 as a plain script. Nothing here loops or blocks on input; rerun any cell as
 needed (e.g. re-verify a condition, redo a block).
 
-Conditions (hrtf.processing.edge_shift), sharing one shift magnitude DELTA_ERB:
+Conditions (hrtf.modify.edge_shift), sharing one shift magnitude DELTA_ERB:
     baseline  unmodified individual HRTF                     (reference)
     whole     shift the WHOLE notch up                       (A: dose/sanity check -- all models agree)
     rising    shift the RISING edge up, notch minimum pinned  (B: rising-edge vs notch-CF -- the key contrast)
@@ -22,7 +22,7 @@ Conditions (hrtf.processing.edge_shift), sharing one shift magnitude DELTA_ERB:
 import slab
 
 import hrtf_relearning as hr
-from hrtf_relearning.hrtf.processing.edge_shift import (
+from hrtf_relearning.hrtf.modify.edge_shift import (
     save_condition_sofa, verify_condition, compare_waterfall, print_notch_summary,
 )
 from hrtf_relearning.experiment.localization.Localization_VR import run as run_localization

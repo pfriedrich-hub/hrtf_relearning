@@ -28,7 +28,7 @@ up and the band window selects it, so within the band the pattern translates up 
 replaces higher-frequency content (native detail kept outside the band) -- a bijective,
 relearnable remap of the elevation cue rather than a destroyed or conflicting cue
 (Kulkarni & Colburn 1998 cepstral split; magnitude-only, original phase kept). See
-hrtf.processing.modify.shift_detail and learning_transfer_methods.md (this folder) for
+hrtf.modify.shift_spectral_detail and learning_transfer_methods.md (this folder) for
 the full method.
 
 The day-1 baselines use the SAME configs as final A and D (same ear/mirror/field/
@@ -65,7 +65,8 @@ import slab
 
 import hrtf_relearning as hr
 from hrtf_relearning.experiment.localization.Localization_AR import Localization
-from hrtf_relearning.hrtf.processing.modify import shift_detail, plot
+from hrtf_relearning.hrtf.modify.shift_spectral_detail import shift_spectral_detail, describe
+from hrtf_relearning.hrtf.modify.plot_compare import plot
 from hrtf_relearning.utils import paths
 
 # The ONLY thing you set per session. Everything else (trained ear, final-day
@@ -97,12 +98,16 @@ MODIFIED_SOFA = f"{SUBJECT_ID}_shift"    # ERB-shift modified set (built below; 
 
 HP = "DT990"   # headphone EQ profile
 
-# --- modification (ERB shift) -- see build_modified_sofa() and modify.shift_detail ---
-SHIFT_BAND      = (5700, 11300)  # Trapeau et al. 2016 peak-VSI octave (selected, then shifted)
+# --- modification (ERB shift) -- see build_modified_sofa() and
+#     hrtf.modify.shift_spectral_detail ---
+# SHIFT_BAND selects WHICH features move; they are transported to
+# shift_spectral_detail.target_band(SHIFT_BAND, SHIFT_ERB), which lies above
+# SHIFT_BAND for a positive shift.
+SHIFT_BAND      = (5700, 11300)  # Trapeau et al. 2016 peak-VSI octave (selection window)
 SHIFT_ERB       = 1    # ERB displacement of the fine detail (tune per pilot)
 SHIFT_ENV_NKEEP = 4      # Fourier coeffs kept for the coarse envelope (Kulkarni & Colburn 1998)
-SHIFT_SKIRT     = 0.25   # raised-cosine taper on the selection window [octaves]
-SHIFT_EQ_RMS    = True   # match in-band detail energy per direction/ear
+SHIFT_SKIRT     = 0.0    # taper on the selection window [octaves]; 0 = hard edges (no ghosting)
+SHIFT_EQ_RMS    = True   # match per-ERB detail RMS between source and target
 
 # --- shared localization sampling grid (do not change without re-checking the
 #     baseline-vs-final comparability; see project notes) ---
@@ -176,9 +181,10 @@ def build_modified_sofa(overwrite=True, show_qc=True):
     """Build the ERB-shift modified HRTF from the subject's native SOFA and write
     it to data/hrtf/sofa/<subject>/<subject>_shift.sofa (= MODIFIED_SOFA).
 
-    Translates each direction's fine spectral detail by SHIFT_ERB along the
-    ERB-number axis inside SHIFT_BAND, envelope held fixed, magnitude-only
-    (original phase). Run ONCE per subject once the native recording exists;
+    Selects each direction's fine spectral detail inside SHIFT_BAND and
+    transports it by SHIFT_ERB along the ERB-number axis, envelope held fixed,
+    magnitude-only (original phase). The features land above SHIFT_BAND for a
+    positive shift. Run ONCE per subject once the native recording exists;
     baseline_A/D, daily and final all load the result. Saves a before/after HRTF
     image (native vs modified, median plane) so you can eyeball the shift.
     """
@@ -188,8 +194,8 @@ def build_modified_sofa(overwrite=True, show_qc=True):
         print(f"{out_path.name} already exists (overwrite=False) -- skipping build")
         return out_path
     native = slab.HRTF(str(sofa_dir / f"{NATIVE_SOFA}.sofa"))
-    print(f"shift_detail: band={SHIFT_BAND} Hz, shift={SHIFT_ERB} ERB")
-    modified = shift_detail(native, shift_erb=SHIFT_ERB, band=SHIFT_BAND,
+    describe(SHIFT_BAND, SHIFT_ERB)
+    modified = shift_spectral_detail(native, shift_erb=SHIFT_ERB, band=SHIFT_BAND,
                             envelope_n_keep=SHIFT_ENV_NKEEP, skirt_octaves=SHIFT_SKIRT,
                             equalize_rms=SHIFT_EQ_RMS)
     sofa_dir.mkdir(parents=True, exist_ok=True)

@@ -242,12 +242,12 @@ def run(subject_id, condition, delta, ear=None, hp='DT990', stim='noise',
     """Run one localization test block for one subject/condition.
 
     subject_id : e.g. 'AS'.
-    condition  : 'baseline', or an hrtf.processing.edge_shift condition name
+    condition  : 'baseline', or an hrtf.modify.edge_shift condition name
         ('rising', 'falling', 'whole'). Resolves the SOFA to load via
         hrtf2binsim's name-based lookup: 'baseline' -> '{subject_id}.sofa',
         else '{subject_id}_{condition}.sofa', both under
         data/hrtf/sofa/{subject_id}/. The SOFA must already exist -- write it
-        once via hrtf.processing.edge_shift.save_condition_sofa before
+        once via hrtf.modify.edge_shift.save_condition_sofa before
         calling run() (see experiment/protocols/cue_shift.py).
     delta      : the ERB shift magnitude used to build this condition's SOFA
         (edge_shift shift_erb). Recorded in the sequence filename/metadata for

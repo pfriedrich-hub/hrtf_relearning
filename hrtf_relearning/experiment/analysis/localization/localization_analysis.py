@@ -452,4 +452,41 @@ def plot_elevation_response(sequence, axis=None, add_fit=True, filepath=None, ti
     return fig
 
 
+def learning_plot(subject_id, save=True, **kwargs):
+    """Plot the learning curve (EG / RMSE / SD across days) for one subject.
+
+    Thin wrapper around plot.elevation_learning.learning_plot so the curve can
+    be produced by running this module directly with a subject ID. The import
+    is deferred: this module is imported by the package __init__, and
+    elevation_learning imports hrtf_relearning — importing it at module level
+    would be circular.
+
+    Parameters
+    ----------
+    subject_id : str
+        Subject initials, e.g. 'SS'.
+    save : bool
+        Save the figure to subject_plot_dir(subject_id)/learning_plot.svg.
+    **kwargs
+        Passed to elevation_learning.learning_plot
+        (last_day_width, other_day_width, annotate_times).
+    """
+    from hrtf_relearning.experiment.analysis.localization.plot.elevation_learning \
+        import learning_plot as _learning_plot
+    from hrtf_relearning.utils import paths
+    hrir_name, fig, axes = _learning_plot(subject_id, **kwargs)
+    if save:
+        plot_dir = paths.subject_plot_dir(subject_id)
+        plot_dir.mkdir(parents=True, exist_ok=True)
+        fig.savefig(plot_dir / 'learning_plot.svg')
+    return hrir_name, fig, axes
+
+
+if __name__ == "__main__":
+    import sys
+    subject_id = sys.argv[1] if len(sys.argv) > 1 else 'SS'
+    learning_plot(subject_id)
+    plt.show()
+
+
 

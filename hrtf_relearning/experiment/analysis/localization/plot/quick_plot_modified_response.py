@@ -9,7 +9,7 @@ from hrtf_relearning.experiment.analysis.localization.localization_analysis impo
     plot_elevation_response,
 )
 import hrtf_relearning
-from hrtf_relearning.hrtf.processing.modify import plot
+from hrtf_relearning.hrtf.modify.plot_compare import plot
 
 idx = 14.05
 

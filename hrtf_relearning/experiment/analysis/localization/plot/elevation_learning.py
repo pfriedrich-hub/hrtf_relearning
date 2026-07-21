@@ -197,13 +197,20 @@ def learning_plot(
 
 
 def parse_loc_key(key):
-    """Parse keys like SK_13.02_14:08 or SK_13.02_14.08."""
+    """Parse keys like SK_13.02_14:08, SK_13.02_14.08 or SS_13.07_14-01_dome.
+
+    The time separator varies across sessions (':', '.', '-') and newer keys
+    carry a suffix after the time (e.g. '_dome', '_SS_shift_left'), so the
+    time must not be end-anchored. Keys that don't parse sort last
+    (datetime.max) — with '-' unhandled this silently applied to *all* keys
+    of a session, leaving chronological order to dict insertion order.
+    """
     try:
         return datetime.datetime.fromisoformat(key)
     except Exception:
         pass
 
-    match = re.search(r"(\d{2})\.(\d{2})_(\d{2})[:.](\d{2})", key)
+    match = re.search(r"(\d{2})\.(\d{2})_(\d{2})[-:.](\d{2})", key)
     if match:
         day, month, hour, minute = match.groups()
         now = datetime.datetime.now()
@@ -235,8 +242,13 @@ def extract_day(key):
 
 
 def key_time_str(key):
-    """Return HH:MM from a localization key."""
-    match = re.search(r"(\d{2})[:.](\d{2})$", key)
+    """Return HH:MM from a localization key.
+
+    Matches the time token following the DD.MM date rather than anchoring at
+    end-of-string, since keys may end in a condition suffix
+    (e.g. SS_13.07_14-01_dome). Accepts ':', '.' or '-' as separator.
+    """
+    match = re.search(r"\d{2}\.\d{2}_(\d{2})[-:.](\d{2})", key)
     if match:
         return f"{match.group(1)}:{match.group(2)}"
     return ""

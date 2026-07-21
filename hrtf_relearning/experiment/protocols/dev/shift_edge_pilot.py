@@ -4,7 +4,7 @@ shift_edge_pilot.py
 Cell-by-cell protocol for the shift-edge PILOT. All localization tests run in AR
 (HRTF over headphones, Localization_AR) on the VERTICAL MIDLINE only, matched to
 the dome speaker layout. Detector/manipulation config: Iida Gaussian, all valid
-notches in 4-15 kHz, half-height edges (hrtf.processing.edge_shift).
+notches in 4-15 kHz, half-height edges (hrtf.modify.edge_shift).
 
 Phases:
   1. Externalization / localization transfer baseline (AR - dome - AR).
@@ -27,7 +27,7 @@ Build a condition's SOFA (build cell) before running its AR block.
 import slab
 
 import hrtf_relearning as hr
-from hrtf_relearning.hrtf.processing.edge_shift import (
+from hrtf_relearning.hrtf.modify.edge_shift import (
     save_condition_sofa, compare_waterfall, print_notch_summary, parametric_summary,
     hrtf_to_array,
 )

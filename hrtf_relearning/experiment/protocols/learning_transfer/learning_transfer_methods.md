@@ -18,7 +18,8 @@ down-weight.
 
 ## The modification: coherent ERB translation of the fine spectral structure
 
-Implemented in `hrtf.processing.modify.shift_detail`. Per HRIR, per ear:
+Implemented in `hrtf.processing.shift_spectral_detail.shift_spectral_detail`
+(`modify.shift_detail` is a thin wrapper around it). Per HRIR, per ear:
 
 1. **Log-magnitude spectrum.** `L(f) = log|H(f)|` from the rFFT of the HRIR.
 2. **Coarse/fine split (Kulkarni & Colburn 1998, *Nature* 396:747).** Fit a
@@ -27,32 +28,41 @@ Implemented in `hrtf.processing.modify.shift_detail`. Per HRIR, per ear:
    is the fine structure: the pinna peaks and notches that carry the vertical
    (elevation) cue. We use `M = 4` — few enough that listeners cannot localise
    from the envelope alone, but the sound still externalises (the K&C result).
-3. **ERB translation of the fine structure.** Each output frequency `f` samples
-   the detail at the frequency whose ERB-number is `ERB(f) − Δ`, i.e.
-   `D'(f) = D(erb_to_hz(hz_to_erb(f) − Δ))`. This is a constant step of `Δ` ERB
-   (Glasberg & Moore 1990), so notch **spacing is preserved on the auditory
-   scale**. `Δ > 0` shifts cues up, `Δ < 0` down. The envelope is held fixed, so
-   every direction keeps a unique pattern — just displaced by `Δ`. This is a
-   bijective remap, not a destroyed or conflicting cue.
-4. **Band selection (Trapeau peak-VSI octave); pattern translates up in place.**
-   The full detail is shifted first — each output frequency `f` takes the detail
-   from `ERB(f) − Δ` — and the band window (**5.7–11.3 kHz**, the peak-VSI band
-   where the elevation cue is strongest, Trapeau et al. 2016; 0.25-octave skirt)
-   then selects it. So *inside* the band the pattern slides up and replaces the
-   higher-frequency content there — because content is sampled from below, the
-   band top is never cut off — while *outside* the band the native detail is
-   kept. `band=None` shifts the whole spectrum.
-5. **In-band energy equalisation.** The energy of the shifted detail is matched
-   to the source, per direction and ear, so relocating a non-stationary residual
-   does not change in-band spectral contrast — removing the overall level /
-   in-notch-power cue (cf. Zonooz et al. 2019) as a confound. Only the cue
-   *position* differs between native and modified.
+3. **Selection (Trapeau peak-VSI octave).** A window `w(f)` picks the detail to
+   move: **5.7–11.3 kHz**, the peak-VSI band where the elevation cue is
+   strongest (Trapeau et al. 2016). `D_sel = w·D` is transported; the residual
+   `D_rest = D − D_sel` stays exactly where it is. Edges are **hard**
+   (`SHIFT_SKIRT = 0`): under transport a tapered edge would leave a partial copy
+   of a feature at its origin *and* deposit a partial copy at the target — the
+   same notch at reduced depth in two places. `band=None` transports the whole
+   detail.
+4. **ERB transport of the selected structure.** `D_sel` is carried by a constant
+   step of `Δ` ERB (Glasberg & Moore 1990), implemented by sampling at
+   `ERB(f) − Δ` with zero extrapolation outside the source support, so a feature
+   at `f₀` reappears at `erb_to_hz(hz_to_erb(f₀) + Δ)`. Constant on the ERB axis
+   means notch **spacing is preserved on the auditory scale**. `Δ > 0` moves cues
+   up, `Δ < 0` down. The envelope is held fixed, so every direction keeps a unique
+   pattern — just displaced by `Δ`: a bijective remap, not a destroyed or
+   conflicting cue. Final spectrum: `L' = E + D_rest + D_moved`.
+
+   **The modified region moves with the content.** The window says *which*
+   features move, not *where* the result is allowed to live; for `Δ > 0` they land
+   in `target_band(band, Δ)`, above 11.3 kHz. Nothing is dropped at the band edge
+   and nothing is duplicated: every selected feature reappears at its new
+   frequency with its depth intact.
+5. **Per-ERB energy equalisation.** The transported detail is rescaled so its
+   per-ERB RMS matches the selected detail, per direction and ear, so relocating a
+   non-stationary residual does not change spectral contrast — removing the overall
+   level / in-notch-power cue (cf. Zonooz et al. 2019) as a confound. Because the
+   transport is a pure translation on the ERB axis this is already true up to
+   interpolation loss, so it is a small correction. Only the cue *position*
+   differs between native and modified.
 6. **Magnitude-only, original phase.** The new magnitude is recombined with the
    **original phase** (`H' = |H'|·e^{i∠H}`). No minimum-phase step, no ITD
-   restoration here: interaural time/level cues are imposed upstream, when the
-   measured frontal arc is expanded across azimuth
-   (`hrtf.record.processing.expand_azimuths_with_binaural_cues`), so the SOFA read
-   here already carries the imposed ITD in its phase and we must preserve it.
+   restoration: the SOFA read here already carries its binaural cues, and keeping
+   the original phase passes them through intact. ITD is untouched; broadband ILD
+   is preserved because both ears receive the same ERB transport, with its fine
+   structure travelling along with the cue.
 
 ### Δ selection
 
@@ -66,11 +76,17 @@ the pilot, then rebuild the modified SOFA.
 
 | param | default | meaning |
 |---|---|---|
-| `SHIFT_BAND` | (5700, 11300) | peak-VSI octave selected, then shifted (`None` = whole spectrum) |
-| `SHIFT_ERB` | 2.5 | ERB displacement of the fine detail |
+| `SHIFT_BAND` | (5700, 11300) | peak-VSI octave: which features are transported (`None` = whole spectrum) |
+| `SHIFT_ERB` | 2.5 | ERB displacement of the fine detail; features land in `target_band(SHIFT_BAND, Δ)` |
 | `SHIFT_ENV_NKEEP` | 4 | Fourier coeffs kept for the envelope (`M`) |
-| `SHIFT_SKIRT` | 0.25 | raised-cosine taper on the selection window [octaves] |
-| `SHIFT_EQ_RMS` | True | match in-band detail energy per direction/ear |
+| `SHIFT_SKIRT` | 0.0 | taper on the selection window [octaves]; 0 = hard edges, no ghosting |
+| `SHIFT_EQ_RMS` | True | match per-ERB detail RMS between source and target |
+
+`describe(SHIFT_BAND, SHIFT_ERB)` prints the selection window, where the features
+land, and the shift in Hz at each edge (the same ERB step spans far more Hz at
+11 kHz than at 5.7 kHz). Check that the target band stays below Nyquist —
+`shift_spectral_detail` warns if it does not, since features above Nyquist really
+are lost.
 
 The same `SHIFT_BAND`, `Δ` and `M` are used for **every direction and both ears** —
 a single map to learn; a direction- or ear-dependent shift would collapse the design

@@ -53,7 +53,7 @@ EDIT THE CONFIG BLOCK BELOW PER PARTICIPANT.
 ------------------------------------------------------------------------------
 """
 
-SUBJECT_ID = "FD"
+SUBJECT_ID = "CO"
 
 # %% imports and config #------------------------------------------------------
 import csv
@@ -106,7 +106,7 @@ HP = "DT990"   # headphone EQ profile
 SHIFT_BAND      = (5700, 11300)  # Trapeau et al. 2016 peak-VSI octave (selection window)
 SHIFT_ERB       = 1    # ERB displacement of the fine detail (tune per pilot)
 SHIFT_ENV_NKEEP = 4      # Fourier coeffs kept for the coarse envelope (Kulkarni & Colburn 1998)
-SHIFT_SKIRT     = 0.0    # taper on the selection window [octaves]; 0 = hard edges (no ghosting)
+SHIFT_SKIRT     = 0.1    # taper on the selection window [octaves]; 0 = hard edges (no ghosting)
 SHIFT_EQ_RMS    = True   # match per-ERB detail RMS between source and target
 
 # --- shared localization sampling grid (do not change without re-checking the
@@ -331,17 +331,15 @@ def show_status(subject):
 subject = hr.Subject(SUBJECT_ID)
 show_status(subject)
 
-
 # %% day 1: native reference (original HRIR, full field) ----------------------
 run_phase("native", subject)
-
 
 # %% day 1: build the modified HRTF (ERB shift) -- run ONCE per subject ---------
 # Reads <subject>.sofa, writes <subject>_shift.sofa (= MODIFIED_SOFA), and shows
 # the split-QC panel. Tune SHIFT_ERB in the config block if the pilot says so,
 # then rerun this cell (overwrite=True). baseline_A/D, daily and final all load
 # the file written here.
-build_modified_sofa(overwrite=False)
+build_modified_sofa(overwrite=True)
 subject = hr.Subject(SUBJECT_ID)   # reload after SOFA write
 
 # %% day 1: baseline A -- trained ear, same loc (matches final A) --------------

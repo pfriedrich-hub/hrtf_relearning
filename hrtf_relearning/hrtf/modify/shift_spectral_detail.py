@@ -76,9 +76,9 @@ SUB_ID     = 'JF'            # subject with a measured <id>.sofa in data/hrtf/so
 # SHIFT_BAND selects WHICH features move. They are transported to
 # target_band(SHIFT_BAND, SHIFT_ERB) — above the band for a positive shift.
 SHIFT_BAND = (5700, 11300)   # Trapeau peak-VSI octave [Hz]; None -> whole spectrum
-SHIFT_ERB  = 2               # ERB displacement; > 0 up, < 0 down, 0 = no-op
+SHIFT_ERB  = 1               # ERB displacement; > 0 up, < 0 down, 0 = no-op
 N_KEEP     = 4               # cosine coeffs kept for the coarse envelope (M)
-SKIRT      = 0.1             # taper on the selection window [octaves]; 0 = hard edges
+SKIRT      = 0.1            # taper on the selection window [octaves]; 0 = hard edges
 EQ_RMS     = True            # match per-ERB detail RMS between source and target
 
 PLOT_KIND  = 'image'         # 'image' (before/after heatmap) | 'waterfall' | 'surface'
@@ -318,6 +318,15 @@ def shift_detail_spectrum(freqs, mag, shift_erb, band=(5700.0, 11300.0),
     for ch in range(selected.shape[1]):
         moved[:, ch] = numpy.interp(src_freqs, freqs, selected[:, ch],
                                     left=0.0, right=0.0)
+
+    # 4) clear the LANDING zone before depositing. Transporting the window the
+    #    same way gives the exact footprint the moved detail occupies (ramps
+    #    included). Without this, the part of the landing zone that lies outside
+    #    the source band still holds its native detail and the two SUM — the
+    #    overlap ends up ~2.6x too deep, which reads as a band of exaggerated
+    #    contrast just above the source band.
+    w_moved = numpy.interp(src_freqs, freqs, w, left=0.0, right=0.0)
+    residual *= (1.0 - w_moved)[:, None]
 
     if equalize_rms:
         weight = erb_density(freqs)

@@ -339,7 +339,7 @@ run_phase("native", subject)
 # the split-QC panel. Tune SHIFT_ERB in the config block if the pilot says so,
 # then rerun this cell (overwrite=True). baseline_A/D, daily and final all load
 # the file written here.
-build_modified_sofa(overwrite=True)
+build_modified_sofa(overwrite=False)
 subject = hr.Subject(SUBJECT_ID)   # reload after SOFA write
 
 # %% day 1: baseline A -- trained ear, same loc (matches final A) --------------
@@ -364,10 +364,6 @@ run_phase("daily", subject)
 # Order is loaded per-subject from data/documentation/exp1_transfer_block_order.csv
 # (FINAL_ORDER). To redo a single condition instead, use one of the cells below.
 print(f"Running final tests in order: {FINAL_ORDER}")
-
-
-
-
 
 # %% final day: A -- trained ear, same locations (redo individually) -----------
 run_phase("A", subject)

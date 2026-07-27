@@ -57,7 +57,7 @@ EDIT THE CONFIG BLOCK BELOW PER PARTICIPANT.
 ------------------------------------------------------------------------------
 """
 
-SUBJECT_ID = ("XX")
+SUBJECT_ID = ("PF")
 
 # %% imports and config #------------------------------------------------------
 import csv
@@ -116,7 +116,7 @@ SHIFT_EQ_RMS    = True   # match per-ERB detail RMS between source and target
 # 'envelope' -> hrtf.processing.envelope.envelope_dtf, ENV_NKEEP coefficients.
 # Set OTHER_EAR = 'flat' to reproduce the parent protocol exactly (useful as a
 # within-subject A/B on day 1 before committing a subject to the pilot).
-OTHER_EAR = "envelope"
+OTHER_EAR = "flat"
 ENV_NKEEP = SHIFT_ENV_NKEEP   # same 'coarse' as the trained ear's held-fixed envelope
 
 # --- shared localization sampling grid (do not change without re-checking the
@@ -169,8 +169,8 @@ def hrir_settings(sofa_name, ear=None, mirror=False):
         "drr": 20,
         "hp_filter": True,
         "hp": HP,
-        "convolution": "cuda",
-        "storage": "cuda",
+        "convolution": "cpu",
+        "storage": "cpu",
     }
 
 

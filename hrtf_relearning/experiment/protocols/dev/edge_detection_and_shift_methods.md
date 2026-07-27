@@ -2,6 +2,8 @@
 
 Scope: the notch/saddle detection and edge-shift procedure used to generate the rising-edge, falling-edge, and whole-notch manipulation conditions (rows A–C of the manipulation matrix in `elevation_spectral_cue_models.md`), as implemented in `edge_shift.py`.
 
+> **Note (current implementation).** §2–3 below document the original cepstral (`n_keep`) identity + raw-derivative edge-extent method. The shipping detector now uses a light **Iida et al. (2007) Gaussian** (σ≈122 Hz) for notch *identity* — it de-ripples without displacing the extrema, so notch centre frequencies read true and closely-spaced pinna notches stay resolved — and reads edge *extent* off the derivative of that **same smoothed** curve rather than the raw spectrum (the raw derivative is dominated by single hyper-narrow ripples). The cepstral path is retained only as an explicit legacy fallback (`detect_notches(n_keep=…)`). The module docstring in `edge_shift.py` is authoritative; §6 below covers the elevation-continuity tracking layer added on top. See also `cue_perception_synthesis.md`.
+
 ---
 
 ## 1. Rationale
@@ -80,6 +82,22 @@ Additional invariants enforced after the warp: notch **depth is preserved** (ver
 | Prominence | 3 dB | minimum depth/height for a local extremum of the coarse curve to count as a notch or saddle |
 | Smoothing for edge extent | none (raw spectrum) | derivative computed directly on the unsmoothed log-magnitude |
 | `eps_frac` | 0.15 | fraction of a given edge window's own peak `|dL/df|` used as the extent threshold |
+
+---
+
+## 6. Elevation-continuity tracking (robust notch identity across a cone)
+
+Detection and gating are computed independently per direction, which flickers: a real notch whose depth momentarily dips below the gate is shifted at some elevations but not adjacent ones, and a "deepest = primary" label swaps between unrelated notches when two are close in depth. Measured across 18 subject-ears (real subjects + KEMAR/FABIAN/KU100 dummies), the per-direction gate produces **21 interior gate-dropouts** (a notch shifted, then not, then shifted again along its own trajectory) and worst-case **primary-CF jumps of ~1 octave** between directions only 4° apart. Median-plane notches, however, are smooth continuous trajectories in elevation (visible as unbroken troughs in the DTF magnitude image), so these are labelling/gating artifacts, not real cue movement.
+
+The fix (`stabilized_valid_cfs`, opt-in via `edge_shift_set`/`manipulate_hrtf` `use_tracking=True`):
+
+1. **Group** directions into constant-azimuth elevation arcs (cones of confusion); a midline-only SOFA is a single arc.
+2. **Link** each direction's detected minima into tracks by nearest centre frequency in log-frequency (`tol_oct` = 0.22; a track may bridge up to `max_gap` = 3 directions where the minimum was momentarily undetected). Greedy nearest-CF association is adequate because tracks are well separated (>~0.5 oct) and move slowly (typically <~0.06 oct/direction, with occasional steeper local segments up to ~0.19 oct). `tol_oct` and `max_gap` are the knobs against **over-segmentation** (one physical trough split into several tracks): they were raised from an initial 0.14/1 after the database overview showed single notches broken where the CF steps steeply between two elevations (>0.14 oct → `tol_oct`) or the notch fades below detection for a couple of directions (→ `max_gap`). `tol_oct` stays well below the ~0.5 oct inter-notch spacing, so distinct notches are not merged (no over-merge across the measured database). Splits that remain where a notch genuinely fades for more than `max_gap` directions are correct and are deliberately not bridged. `sigma_hz` is **not** the lever here — the splits are a linking issue, not detection resolving one trough into two minima.
+3. **Decide validity once per track:** a track is a real elevation cue if it passes the per-direction depth/width gate at ≥ `min_valid_frac` (default 0.5) of the directions where a minimum was actually detected, and spans ≥ `min_len` directions. That single decision is applied to **every** detected member of the track.
+
+Consequences: a notch that momentarily dips below the depth gate is still shifted at that elevation (the manipulation becomes elevation-consistent), a track that is only briefly deep or too short is excluded everywhere (transient/noise minima rejected), and tracks are labelled N1, N2, … by ascending mean CF — stable across the whole arc, replacing the per-direction depth rank. On the same 18 subject-ears this reduces interior gate-dropouts from **21 to 0**. `detect_notches` itself is unchanged; when `use_tracking=False` (default) the per-direction `select_features` path is byte-identical to before.
+
+Validated on real DTFs (h5py-read SOFA, note the raw `Data.IR` axis order is `(dir, ear, tap)` whereas slab's `hrtf_to_array` yields the module's `(dir, tap, ear)`): 21→0 interior dropouts; `valid_cfs=None` reproduces the legacy `select_features` output exactly across all four modes and both ears.
 
 ---
 

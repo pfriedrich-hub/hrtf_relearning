@@ -530,27 +530,18 @@ class GameWindow(QtWidgets.QMainWindow):
         self.center_stack.addWidget(score_page)
 
         # Scoreboard page: the just-finished score (enlarged) sits above the
-        # HIGH SCORES table, both pinned toward the top of the flexible area
-        # ("go higher") with leftover space collecting below. Wrapped in a
-        # QScrollArea as a hard safety net: if this content ever runs taller
-        # than the available space (a smaller display, more rows, bigger
-        # fonts...), it scrolls internally instead of pushing the "press
-        # enter" button off screen — the exact failure mode hit earlier.
+        # HIGH SCORES table, both pinned to the top of the flexible area
+        # ("go higher") with leftover space collecting below. No scroll area —
+        # the content is laid out directly so no scroll bar can ever appear;
+        # a negative top margin pulls the block up into the header gap.
         scoreboard_page = QtWidgets.QWidget()
         scoreboard_page_layout = QtWidgets.QVBoxLayout(scoreboard_page)
         scoreboard_page_layout.setContentsMargins(0, 0, 0, 0)
 
-        scoreboard_scroll = QtWidgets.QScrollArea()
-        scoreboard_scroll.setWidgetResizable(True)
-        scoreboard_scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
-        scoreboard_scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
-        scoreboard_scroll.setStyleSheet("background: transparent; border: none;")
-        scoreboard_scroll.viewport().setStyleSheet("background: transparent;")
-
         scoreboard_content = QtWidgets.QWidget()
         scoreboard_content.setStyleSheet("background: transparent;")
         scl = QtWidgets.QVBoxLayout(scoreboard_content)
-        scl.setContentsMargins(0, 8, 0, 0)
+        scl.setContentsMargins(0, -24, 0, 0)
         scl.setSpacing(4)
 
         self.lblRevealCap = QtWidgets.QLabel("THIS GAME")
@@ -569,8 +560,7 @@ class GameWindow(QtWidgets.QMainWindow):
         scl.addWidget(self.scoreboard, 0, QtCore.Qt.AlignHCenter)
         scl.addStretch(1)
 
-        scoreboard_scroll.setWidget(scoreboard_content)
-        scoreboard_page_layout.addWidget(scoreboard_scroll)
+        scoreboard_page_layout.addWidget(scoreboard_content)
         self.center_stack.addWidget(scoreboard_page)
 
         center_holder = QtWidgets.QWidget()

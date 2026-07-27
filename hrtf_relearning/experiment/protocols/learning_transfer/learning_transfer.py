@@ -361,9 +361,12 @@ subject = hr.Subject(SUBJECT_ID)   # reload after training appended trials
 run_phase("daily", subject)
 
 # %% final day: all 4 conditions in this subject's counterbalanced order --------
-# Order is loaded per-subject from data/documentation/exp1_transfer_block_order.csv
-# (FINAL_ORDER). To redo a single condition instead, use one of the cells below.
+# Order is loaded per-subject from learning_transfer_block_order.csv (FINAL_ORDER).
+# To redo a single condition instead, use one of the cells below.
+subject = hr.Subject(SUBJECT_ID)   # reload after training appended trials
 print(f"Running final tests in order: {FINAL_ORDER}")
+for key in FINAL_ORDER:
+    run_phase(key, subject)
 
 # %% final day: A -- trained ear, same locations (redo individually) -----------
 run_phase("A", subject)

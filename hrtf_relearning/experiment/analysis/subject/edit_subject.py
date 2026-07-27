@@ -1,142 +1,71 @@
 """Interactive Subject editor.
 
 Lists localization runs for a subject and lets you remove selected entries.
+Thin wrapper over Subject.remove_localization_by_index (see
+experiment/misc/Subject.py) — that class holds the reusable editing API for
+use from scripts or `# %%` cells; this is just the interactive front end.
 
 Usage:
     python edit_subject.py SUBJECT_ID
     python edit_subject.py AH
+    python edit_subject.py AH --prune   # drop unfinished + duplicate runs
 """
 
-import json
-import pickle
-import shutil
 import sys
-from pathlib import Path
+from hrtf_relearning.experiment.misc.Subject import Subject
 from hrtf_relearning.utils import paths
-
-# script lives at hrtf_relearning/experiment/analysis/subject/edit_subject.py
-# so package root is 4 levels up
-_pkg_root = Path(__file__).resolve().parents[3]
-results_dir = paths.RESULTS_DIR
-
-
-def _to_jsonable(obj):
-    if obj is None or isinstance(obj, (bool, int, float, str)):
-        return obj
-    try:
-        import numpy as np
-        if isinstance(obj, np.ndarray): return obj.tolist()
-        if isinstance(obj, np.generic): return obj.item()
-    except ImportError:
-        pass
-    if isinstance(obj, dict):
-        return {str(k): _to_jsonable(v) for k, v in obj.items()}
-    if isinstance(obj, (list, tuple, set, frozenset)):
-        return [_to_jsonable(v) for v in obj]
-    if isinstance(obj, Path):
-        return str(obj)
-    if hasattr(obj, "__dict__"):
-        return {
-            "__class__": f"{type(obj).__module__}.{type(obj).__name__}",
-            **{k: _to_jsonable(v) for k, v in vars(obj).items() if not k.startswith("_")},
-        }
-    return repr(obj)
-
-
-def load(path: Path) -> dict:
-    with open(path, "rb") as f:
-        return pickle.load(f)
-
-
-def save(path: Path, data: dict) -> None:
-    shutil.copy2(path, path.with_suffix(".pkl.bak"))
-    tmp = path.with_suffix(".pkl.tmp")
-    with open(tmp, "wb") as f:
-        pickle.dump(data, f)
-    tmp.replace(path)
-
-
-def write_json_backup(data: dict, pkl_path: Path) -> None:
-    # backup lives alongside the pickle: RESULTS_DIR/<id>/<id>.json
-    json_path = pkl_path.with_suffix(".json")
-    json_path.parent.mkdir(parents=True, exist_ok=True)
-    payload = {"id": data["id"], "localization": _to_jsonable(data["localization"])}
-    tmp = json_path.with_suffix(".json.tmp")
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(payload, f, indent=2, ensure_ascii=False)
-    tmp.replace(json_path)
-
-
-def seq_summary(key: str, seq) -> str:
-    label = getattr(seq, "label", "") or ""
-    n = getattr(seq, "n_trials", "?")
-    finished = getattr(seq, "finished", None)
-    status = "✓" if finished else "…"
-    parts = [status, f"{n:>3} trials" if isinstance(n, int) else f"  ? trials"]
-    if label and label not in key:
-        parts.append(f"[{label}]")
-    return "  ".join(parts)
 
 
 def main():
     if len(sys.argv) < 2:
-        sys.exit("Usage: edit_subject.py SUBJECT_ID")
+        sys.exit("Usage: edit_subject.py SUBJECT_ID [--prune]")
 
     subject_id = sys.argv[1]
-    pkl_path = paths.subject_pkl(subject_id)
+    if not paths.subject_pkl(subject_id).exists():
+        sys.exit(f"No file found: {paths.subject_pkl(subject_id)}")
 
-    if not pkl_path.exists():
-        sys.exit(f"No file found: {pkl_path}")
-
-    data = load(pkl_path)
-    loc = data.get("localization") or {}
-
-    if not loc:
+    subject = Subject(subject_id)
+    if not subject.localization:
         print(f"{subject_id}: no localization entries.")
         return
 
-    keys = list(loc.keys())
-    print(f"\nSubject {subject_id!r} — {len(keys)} localization run(s):\n")
-    for i, k in enumerate(keys):
-        summary = seq_summary(k, loc[k])
-        print(f"  [{i+1:>2}]  {k:<45}  {summary}")
+    subject.print_localization()
 
-    print("\nEnter numbers to remove (e.g. 1 3 5), or press Enter to cancel:")
-    raw = input("> ").strip()
-    if not raw:
-        print("Cancelled.")
-        return
+    if "--prune" in sys.argv:
+        removed = subject.prune_localization(write=False)
+        if not removed:
+            print("\nNothing redundant to prune.")
+            return
+        print(f"\nWould prune {len(removed)} redundant run(s):")
+        for k in removed:
+            print(f"  - {k}")
+    else:
+        print("\nEnter numbers to remove (e.g. 1 3 5), or press Enter to cancel:")
+        raw = input("> ").strip()
+        if not raw:
+            print("Cancelled.")
+            return
+        try:
+            indices = [int(x) for x in raw.split()]
+        except ValueError:
+            sys.exit("Invalid input.")
+        keys = list(subject.localization.keys())
+        removed = [keys[i - 1] for i in indices if 1 <= i <= len(keys)]
+        if not removed:
+            print("Nothing to remove.")
+            return
+        print(f"\nWill remove {len(removed)} run(s):")
+        for k in removed:
+            print(f"  - {k}")
 
-    try:
-        indices = [int(x) - 1 for x in raw.split()]
-    except ValueError:
-        sys.exit("Invalid input.")
-
-    to_remove = []
-    for i in indices:
-        if 0 <= i < len(keys):
-            to_remove.append(keys[i])
-        else:
-            print(f"  [warn] index {i+1} out of range, skipped")
-
-    if not to_remove:
-        print("Nothing to remove.")
-        return
-
-    print(f"\nWill remove {len(to_remove)} run(s):")
-    for k in to_remove:
-        print(f"  - {k}")
     print("\nConfirm? [y/N]")
     if input("> ").strip().lower() != "y":
         print("Cancelled.")
         return
 
-    for k in to_remove:
-        del data["localization"][k]
-
-    save(pkl_path, data)
-    write_json_backup(data, pkl_path)
-    print(f"\nDone. {len(data['localization'])} run(s) remaining. Backup → {pkl_path.with_suffix('.pkl.bak').name}")
+    subject.remove_localization(removed)  # backs up, fixes last_sequence, writes
+    print(f"\nDone. {len(subject.localization)} run(s) remaining. "
+          f"Backup → {paths.subject_pkl(subject_id).with_suffix('.pkl.bak').name}")
 
 
 if __name__ == "__main__":

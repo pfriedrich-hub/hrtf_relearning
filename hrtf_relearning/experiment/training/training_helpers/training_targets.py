@@ -91,7 +91,56 @@ def _pick_target_from_sector(sources_vp, sector_indices, prev_target_deg, min_di
             return (float(az), float(el))
     return None  # couldn’t satisfy min distance within this sector
 
-"4) New set_target that uses response_errors from target_p(...)"
+"""4) Select the last localization sequence that matches the training params"""
+def _range_overlap_fraction(train_range, seq_range):
+    """Fraction of the training range covered by the sequence range (linear)."""
+    t_lo, t_hi = min(train_range), max(train_range)
+    s_lo, s_hi = min(seq_range), max(seq_range)
+    overlap = max(0.0, min(t_hi, s_hi) - max(t_lo, s_lo))
+    return overlap / max(t_hi - t_lo, 1e-6)
+
+def _sequence_matches(sequence, train_az, train_el, min_overlap=0.5):
+    """True if a stored localization sequence is usable for probabilistic
+    targeting within the given training ranges: it must be a completed
+    sector-style test (response_errors + sector_size) whose az/el test area
+    covers at least `min_overlap` of each training range."""
+    if not hasattr(sequence, 'response_errors'):
+        return False  # incomplete/aborted test (errors are set on finish)
+    seq_settings = getattr(sequence, 'settings', None)
+    if not isinstance(seq_settings, dict) or seq_settings.get('sector_size') is None:
+        return False  # 'standard' (e.g. midline-only) sequence -> no sectors
+    seq_az = seq_settings.get('azimuth_range')
+    seq_el = seq_settings.get('elevation_range')
+    if seq_az is None or seq_el is None:
+        return False
+    if _range_overlap_fraction(train_az, seq_az) < min_overlap:
+        return False
+    if _range_overlap_fraction(train_el, seq_el) < min_overlap:
+        return False
+    return True
+
+def find_last_matching_sequence(subject, settings, min_overlap=0.5):
+    """Return the most recent localization sequence whose test area matches
+    the training ranges, for target-probability weighting. Falls back to None
+    if no stored sequence matches (callers then sample uniformly).
+
+    Iterates subject.localization in reverse insertion order (chronological
+    for a normally-grown subject file; filename timestamps lack the year, so
+    lexical sorting would break across month/year boundaries).
+    """
+    train_az = settings.get('az_range', settings.get('azimuth_range'))
+    train_el = settings.get('ele_range', settings.get('elevation_range'))
+    for name, seq in reversed(list(getattr(subject, 'localization', {}).items())):
+        if _sequence_matches(seq, train_az, train_el, min_overlap):
+            logging.info('Target probabilities from localization sequence %s '
+                         '(az=%s el=%s).', name, seq.settings.get('azimuth_range'),
+                         seq.settings.get('elevation_range'))
+            return seq
+    logging.warning('No stored localization sequence matches training range '
+                    'az=%s el=%s; targets will be sampled uniformly.', train_az, train_el)
+    return None
+
+"5) New set_target that uses response_errors from target_p(...)"
 def set_target_probabilistic(target, settings, sequence, hrir, max_sector_hops=10):
     """
     Pick next target using per-sector probabilities (response_errors[:,3]),

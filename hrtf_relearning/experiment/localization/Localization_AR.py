@@ -58,9 +58,35 @@ class Localization:
         self.sequence.label = hrir.name
         self.sequence.hrir = hrir.name
         self.sequence.ear = ear
+        # how the non-listening ear was treated in a monaural run ('flat' delta
+        # vs 'envelope'); None when binaural. hrir.name also carries it, but
+        # record it explicitly so old and new runs are comparable at a glance.
+        self.sequence.other_ear = hrir_settings.get('other_ear', 'flat') if ear else None
+        self.sequence.env_n_keep = hrir_settings.get('env_n_keep', None) if ear else None
         self.sequence.mirrored = mirror
         self.sequence.stim = self.stim_type
         self.sequence.hp = hp
+        # Record exactly which modification produced this HRTF (read back from
+        # the SOFA's embedded params), so a run can always be traced to what was
+        # done to it — the name alone is ambiguous (see FD 12:13 vs 12:21).
+        self.sequence.hrir_params = self._read_hrir_params(hrir_settings)
+
+    @staticmethod
+    def _read_hrir_params(hrir_settings):
+        """Modification-params dict embedded in the source SOFA, or None.
+
+        None for an unmodified/free-field HRTF or a SOFA written before param
+        embedding. Best-effort: never raise, so it can't block a test."""
+        try:
+            from hrtf_relearning.hrtf.modify.edge_shift import read_modification_params
+            sofa_name = hrir_settings.get('name')
+            if not sofa_name:
+                return None
+            subject_id = hrir_settings.get('subject_id', sofa_name.split('_')[0])
+            return read_modification_params(
+                paths.SOFA_DIR / subject_id / f'{sofa_name}.sofa')
+        except Exception:
+            return None
 
     def write(self):
         self.subject.localization[self.filename] = self.sequence

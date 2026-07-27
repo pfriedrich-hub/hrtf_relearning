@@ -10,6 +10,7 @@ import hrtf_relearning
 from hrtf_relearning.hrtf.processing.mirror import mirror_hrtf
 from hrtf_relearning.hrtf.processing.tf2ir import hrtf2hrir
 from hrtf_relearning.hrtf.processing.flatten import flatten_dtf
+from hrtf_relearning.hrtf.processing.envelope import envelope_dtf, DEFAULT_N_KEEP
 from hrtf_relearning.hrtf.binsim.hrir2mat import (
     resample_sounds,
     compute_lr_ir,
@@ -180,6 +181,15 @@ def hrtf2binsim(hrir_settings, overwrite: bool = True, build: bool = True):
     # so that JP, JP_left, JP_notch, JP_notch_left all share the same hp filter
     subject_id = hrir_settings.get("subject_id", sofa_name.split("_")[0])
     ear = hrir_settings.get("ear", None)
+    # What happens to the OTHER (non-listening) ear in a monaural condition:
+    #   'flat'     -> single delta at the onset (flatten_dtf); ITD + broadband
+    #                 ILD kept, all spectral shape gone. Historical default.
+    #   'envelope' -> its own coarse cepstral envelope (envelope_dtf), fine
+    #                 detail removed; same ITD/ILD, but the ear still sounds
+    #                 like an ear, which supports externalization.
+    # Ignored when ear is None (binaural).
+    other_ear = hrir_settings.get("other_ear", "flat")
+    env_n_keep = int(hrir_settings.get("env_n_keep", DEFAULT_N_KEEP))
     mirror = hrir_settings.get("mirror", False)
     reverb = hrir_settings.get("reverb", True)
     drr = hrir_settings.get("drr", 20)
@@ -189,8 +199,8 @@ def hrtf2binsim(hrir_settings, overwrite: bool = True, build: bool = True):
     storage = hrir_settings.get("storage", "cuda")
 
     logger.info(
-        "hrtf2binsim | HRTF=%s ear=%s drr=%.1f hp_file=%s",
-        sofa_name, ear or "binaural", drr, hp,
+        "hrtf2binsim | HRTF=%s ear=%s other_ear=%s drr=%.1f hp_file=%s",
+        sofa_name, ear or "binaural", other_ear if ear else "-", drr, hp,
     )
 
     hrir = slab.HRTF(data_dir / "sofa" / subject_id / f"{sofa_name}.sofa")
@@ -203,11 +213,22 @@ def hrtf2binsim(hrir_settings, overwrite: bool = True, build: bool = True):
         logger.info("Converting HRTF → HRIR (FIR)")
         hrir = hrtf2hrir(hrir)
 
-    if ear:   # flatten one ear by zeroing out the DTF
-        flattened = "right" if ear == "left" else "left"
-        logger.info("Flattening DTF for %s ear", flattened)
-        hrir = flatten_dtf(hrir, ear)
-        hrir.name += f"_{ear}"
+    if ear:   # monaural: reduce the other ear's DTF
+        # NB the name suffix must differ per mode — it is the binsim database
+        # folder AND the run label, so 'flat' and 'envelope' versions of the
+        # same SOFA must never share a directory or a filter list.
+        other = "right" if ear == "left" else "left"
+        if other_ear == "flat":
+            logger.info("Flattening DTF for %s ear", other)
+            hrir = flatten_dtf(hrir, ear)
+            hrir.name += f"_{ear}"
+        elif other_ear == "envelope":
+            logger.info("Envelope-only DTF (n_keep=%d) for %s ear", env_n_keep, other)
+            hrir = envelope_dtf(hrir, ear, n_keep=env_n_keep)
+            hrir.name += f"_{ear}_env{env_n_keep}"
+        else:
+            raise ValueError(
+                f"other_ear must be 'flat' or 'envelope', got {other_ear!r}")
 
     if mirror:  # mirror left and right by swapping channels and sources (swap spectral cues)
         logger.info("Mirroring HRIR left ↔ right")

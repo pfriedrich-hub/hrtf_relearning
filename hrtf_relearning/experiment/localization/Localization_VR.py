@@ -58,6 +58,15 @@ class Localization:
         self.sequence.stim = stim
         self.sequence.condition = condition
         self.sequence.shift_erb = delta
+        # Full modification record embedded in the source SOFA (adds forwarded
+        # kw / git hash on top of condition+delta above). Best-effort.
+        try:
+            from hrtf_relearning.hrtf.modify.edge_shift import read_modification_params
+            _sid = hrir.name.split('_')[0]
+            self.sequence.hrir_params = read_modification_params(
+                paths.SOFA_DIR / _sid / f'{hrir.name}.sofa')
+        except Exception:
+            self.sequence.hrir_params = None
 
         self.ue_client = udp_client.SimpleUDPClient(UE_SEND_IP, UE_SEND_PORT)
         self.vr_pose_bridge = None

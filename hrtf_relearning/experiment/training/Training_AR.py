@@ -13,7 +13,8 @@ from hrtf_relearning.utils.paths import PATH as ROOT
 from hrtf_relearning.experiment.misc import meta_motion
 from hrtf_relearning.experiment.training.training_helpers import game_ui
 from hrtf_relearning.experiment.misc.Subject import Subject
-from hrtf_relearning.experiment.training.training_helpers.training_targets import set_target_probabilistic, set_target
+from hrtf_relearning.experiment.training.training_helpers.training_targets import (
+    set_target_probabilistic, set_target, find_last_matching_sequence)
 from hrtf_relearning.hrtf.binsim.hrtf2binsim import *
 from hrtf_relearning.utils import paths
 matplotlib.rcParams['figure.raise_window'] = False
@@ -28,6 +29,10 @@ SUBJECT_ID = os.environ.get("TRAINING_SUBJECT_ID", "JS")
 HRIR_NAME  = os.environ.get("TRAINING_HRIR_NAME", f"{SUBJECT_ID}_shift")  # modified HRIR
 EAR        = os.environ.get("TRAINING_EAR", "left")
 HP         = os.environ.get("TRAINING_HP", "DT990")
+# what the non-listening ear gets: 'flat' (delta impulse) or 'envelope'
+# (own coarse cepstral envelope, n_keep coeffs) — see hrtf.processing.envelope
+OTHER_EAR  = os.environ.get("TRAINING_OTHER_EAR", "flat")
+ENV_NKEEP  = int(os.environ.get("TRAINING_ENV_NKEEP", "4"))
 
 STIM       = os.environ.get("TRAINING_STIM", "noise")  # 'noise' or 'uso'
 AZ_RANGE   = tuple(int(x) for x in os.environ.get("TRAINING_AZ_RANGE", "-35,0").split(","))
@@ -55,6 +60,8 @@ settings = dict(
 hrir_settings = dict(
     name=HRIR_NAME,
     ear=EAR,
+    other_ear=OTHER_EAR,
+    env_n_keep=ENV_NKEEP,
     reverb=True,
     drr=20,
     hp_filter=True,
@@ -423,12 +430,16 @@ def play_session():
     global osc_client, settings
     osc_client = make_osc_client(port=10003)
     subject = Subject(SUBJECT_ID)
-    sequence = subject.last_sequence
 
     az_range  = settings['azimuth_range']
     ele_range = settings['elevation_range']
     logging.info("Training target range: az=%s el=%s", az_range, ele_range)
     settings = dict(settings, az_range=az_range, ele_range=ele_range)
+
+    # Last localization sequence whose test area matches the training ranges
+    # (not simply subject.last_sequence, which may be a mismatched or
+    # midline-only test run just before this session). None -> uniform targets.
+    sequence = find_last_matching_sequence(subject, settings)
 
     # Shared state for workers
     sensor_state    = mp.Value("i", 0)

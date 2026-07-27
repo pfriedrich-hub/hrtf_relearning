@@ -75,6 +75,20 @@ realized shifts against the actual Baumgartner model resolution
 register the manipulation) from whether the manipulation itself is well
 defined and perceptually real, which is what detect_notches is for.
 
+Which notches get shifted can be decided per direction (select_features gate,
+the default) or, more robustly, from ELEVATION-CONTINUITY TRACKS
+(stabilized_valid_cfs, opt-in via edge_shift_set/manipulate_hrtf use_tracking).
+Per-direction gating flickers: a real notch that momentarily dips below the
+depth gate is shifted at some elevations but not adjacent ones, and the
+"deepest" label swaps between unrelated notches (measured on real DTFs: 21
+interior gate-dropouts across 18 subject-ears, primary-CF jumps up to ~1 oct
+between 4-deg-apart directions). Median-plane notches are in fact smooth,
+continuous elevation trajectories, so tracking links detected minima into
+tracks within each constant-azimuth arc, decides each track's validity ONCE
+(passes the depth/width gate at >= min_valid_frac of the directions where it is
+detected), and applies that decision to every member -- shifting the same
+physical notch at all its elevations. detect_notches itself is unchanged.
+
 Core works on numpy arrays; slab adapters (manipulate_hrtf, save_condition_sofa,
 compare_tf) sit on top for the SOFA-per-condition workflow. See
 experiment/protocols/cue_shift.py for the cell-by-cell experiment protocol
@@ -100,7 +114,17 @@ EPS = 1e-9
 # only as an explicit legacy fallback (pass n_keep=... to detect_notches).
 SIGMA_HZ_DEFAULT = 122.0   # Iida Eq 2-3 microscopic-fluctuation Gaussian (Hz)
 NKEEP_LEGACY = 30          # cepstral fallback only (biases CF; do not use for detection)
-SADDLE_PROM_DB = 4.0    # Moore et al. 1989: peak/saddle detection ~2.5-5 dB @8 kHz
+SADDLE_PROM_DB = 4.0    # Moore et al. 1989: peak/saddle detection ~2.5-5 dB @8 kHz.
+                        # Used for peak/saddle prominence (e.g. the P1 reference
+                        # peak); NOT the notch-depth cue gate -- see below.
+MIN_NOTCH_DEPTH_DB = 3.0  # depth (prominence) a detected minimum needs to count as a
+                        # real elevation cue for select_features / stabilized_valid_cfs.
+                        # Set to the detect_notches detection floor (prominence_db=3.0)
+                        # so borderline 3-4 dB notches -- which flicker in/out of the
+                        # 4 dB gate between adjacent elevations -- are kept rather than
+                        # dropped (Moore's detectability range is ~2.5-5 dB, so 3 dB is
+                        # still a defensible cue floor). Decoupled from SADDLE_PROM_DB so
+                        # lowering the cue gate doesn't also loosen peak/P1 detection.
 SEP_MIN_OCT = 0.5       # Macpherson & Middlebrooks 2003: usable to ~2 ripples/oct
 WIDTH_MIN_OCT = 0.17    # Moore et al. 1989: bw < ~0.25*fc undetectable (~0.17 oct at
                         # half depth); also the ~6 ripples/oct timbre limit. NOTE:
@@ -569,7 +593,8 @@ def _notch_centroid_e(e, Le, a, b):
 def edge_shift_ir(ir, fs, shift_erb, mode='rising', f_lo=3000.0, f_hi=17500.0,
                   rms_band=(3000.0, 16000.0), sigma_hz=SIGMA_HZ_DEFAULT, n_keep=None,
                   prominence_db=3.0, eps_frac=0.15, nfft=None, match_power=True,
-                  return_report=False, strict=True, features_only=True, feature_kw=None):
+                  return_report=False, strict=True, features_only=True, feature_kw=None,
+                  valid_cfs=None, valid_tol_oct=0.03):
     """Notches/saddles/edges are found via detect_notches (cepstral-smoothed
     identity + raw-spectrum edge extent -- see that function and the module
     docstring). n_keep, prominence_db, eps_frac are passed straight through
@@ -577,11 +602,19 @@ def edge_shift_ir(ir, fs, shift_erb, mode='rising', f_lo=3000.0, f_hi=17500.0,
     the warp/output.
 
     features_only (default True): warp only the perceptually valid notch(es)
-    from select_features (in-band, depth >= SADDLE_PROM_DB, width >=
+    from select_features (in-band, depth >= MIN_NOTCH_DEPTH_DB, width >=
     WIDTH_MIN_OCT), not every detected minimum -- so sub-perceptual ripple and
     high-frequency measurement spikes (e.g. a sharp ~16 kHz artifact) are left
     untouched. Pass feature_kw={...} to tune the gate, or features_only=False
-    to warp the full detected set (legacy)."""
+    to warp the full detected set (legacy).
+
+    valid_cfs (optional): explicit list of notch centre frequencies (Hz) to warp
+    for THIS direction, overriding the per-direction select_features gate. Used
+    by edge_shift_set(use_tracking=True), which decides validity from
+    elevation-continuity tracks (stabilized_valid_cfs) so the same physical notch
+    is shifted at all its elevations rather than flickering in and out. Detected
+    minima within valid_tol_oct octaves of any listed CF are warped; an empty
+    list means 'no valid notch here' (no manipulation)."""
     ir = np.asarray(ir, float)
     n = len(ir)
     # 4x oversampling beyond the next power of 2: detect_notches' derivative
@@ -601,7 +634,18 @@ def edge_shift_ir(ir, fs, shift_erb, mode='rising', f_lo=3000.0, f_hi=17500.0,
     notches_all = detect_notches(e, freqs, mag, f_lo=f_lo, f_hi=f_hi, sigma_hz=sigma_hz,
                                  n_keep=n_keep, prominence_db=prominence_db, eps_frac=eps_frac)
     ceiling_centers_e = None
-    if features_only:
+    if valid_cfs is not None:
+        # elevation-continuity path: the caller (edge_shift_set with
+        # use_tracking) has already decided, per direction, WHICH notch centre
+        # frequencies are valid cues (stabilized_valid_cfs), so bypass the
+        # per-direction select_features gate entirely and warp exactly the
+        # detected minima matching those CFs. Same detect params were used to
+        # compute valid_cfs, so a small octave tolerance matches them robustly.
+        cfs = list(valid_cfs)
+        notches = [d for d in notches_all
+                   if any(abs(np.log2(d['f_hz'] / c)) < valid_tol_oct for c in cfs)]
+        ceiling_centers_e = sorted(float(e[d['i_min']]) for d in notches)
+    elif features_only:
         fkw = feature_kw or {}
         # manipulate EVERY real notch's edge -- the sep-merge (Macpherson 0.5 oct)
         # is about counting separately-resolvable CUES for the viability screen,
@@ -772,7 +816,7 @@ def edge_only_ir(ir, fs, n_keep_baseline=4, f_lo=3000.0, f_hi=17500.0,
 
 
 # --- Iida-style parametric description + perceptual gates ----
-def select_features(notches, band=NOTCH_BAND, min_depth_db=SADDLE_PROM_DB,
+def select_features(notches, band=NOTCH_BAND, min_depth_db=MIN_NOTCH_DEPTH_DB,
                     min_width_oct=DETECT_WIDTH_MIN_OCT, sep_min_oct=SEP_MIN_OCT):
     """Reduce the full detected-minima set to the real elevation notches,
     treating each separately resolvable notch as one feature.
@@ -815,6 +859,174 @@ def select_features(notches, band=NOTCH_BAND, min_depth_db=SADDLE_PROM_DB,
     return out
 
 
+# --- elevation-continuity tracking (robust notch identity across a cone) ----
+# Per-direction detection + gating flickers: a real notch that momentarily dips
+# below the depth gate pops in and out between adjacent elevations, and a
+# "deepest = primary" label swaps between unrelated notches when two are close in
+# depth (measured on real DTFs: up to ~1 oct primary-CF jumps between 4-deg-apart
+# directions, and ~17% of physical notch tracks shifted at some elevations but
+# not adjacent ones). Median-plane notches are in fact smooth, continuous
+# elevation trajectories, so the fix is to link detected minima into tracks and
+# decide each track's identity/validity ONCE, then apply it to every member
+# direction. detect_notches itself is unchanged; this is a layer on top.
+def _link_tracks(seqs, band=NOTCH_BAND, tol_oct=0.22, max_gap=3):
+    """Link per-direction detected notch minima into elevation trajectories.
+
+    seqs : list (one per direction, ordered by elevation) of the detect_notches
+        output for that direction. Only minima with a centre in `band` are linked.
+    A detected minimum extends the nearest active track whose last centre is
+    within tol_oct octaves; a track may skip up to max_gap directions (a minimum
+    momentarily undetected) and still continue. Unclaimed minima start new tracks.
+
+    tol_oct (0.22) and max_gap (3) are the knobs against OVER-SEGMENTATION (one
+    physical trough chopped into several tracks). Both defaults were raised from
+    the initial 0.14/1 after the database overview showed single notches split
+    where (a) the CF steps locally steeply between two elevations (>0.14 oct,
+    e.g. CO 5.94->6.72 kHz) -- tol_oct handles this -- or (b) the notch fades
+    below detection for a couple of directions before returning -- max_gap
+    handles this. tol_oct stays well under the ~0.5 oct inter-notch spacing, so
+    distinct notches are not merged (verified: no track picks up two minima at
+    one elevation across the measured database). A residual split remains only
+    where a notch genuinely fades for more than max_gap directions -- there the
+    split is correct, not an artifact, and must not be bridged.
+
+    Returns a list of tracks, each a list of (row, notch_dict) in elevation
+    order. Greedy nearest-CF association -- adequate because median-plane notch
+    tracks are well separated (>~0.5 oct) and move smoothly (< ~0.06 oct/step
+    typically; steeper local segments up to ~0.19 oct occur, hence tol_oct 0.22)."""
+    tracks = []  # dict(last_row, last_cf, pts=[(row, notch)])
+    for row, notches in enumerate(seqs):
+        cand = sorted([d for d in notches if band[0] <= d['f_hz'] <= band[1]],
+                      key=lambda d: d['f_hz'])
+        used = set()
+        for tr in tracks:
+            if row - tr['last_row'] > max_gap + 1:
+                continue  # track went cold -- can't bridge this large a gap
+            best, best_d = None, tol_oct
+            for j, d in enumerate(cand):
+                if j in used:
+                    continue
+                dd = abs(np.log2(d['f_hz'] / tr['last_cf']))
+                if dd < best_d:
+                    best, best_d = j, dd
+            if best is not None:
+                used.add(best)
+                tr['pts'].append((row, cand[best]))
+                tr['last_row'], tr['last_cf'] = row, cand[best]['f_hz']
+        for j, d in enumerate(cand):
+            if j not in used:
+                tracks.append(dict(last_row=row, last_cf=d['f_hz'], pts=[(row, d)]))
+    return [tr['pts'] for tr in tracks]
+
+
+def _arcs(sources_vp, az_tol=5.0, el_range=(-90.0, 90.0)):
+    """Group direction indices into constant-azimuth elevation arcs (cones of
+    confusion), each sorted by elevation. Azimuth is binned to az_tol degrees;
+    only elevations within el_range are kept. Returns {az_bin: [dir_idx, ...]}.
+    A midline-only SOFA collapses to a single arc; a full HRTF yields one arc
+    per measured azimuth."""
+    sources_vp = np.asarray(sources_vp, float)
+    az = (sources_vp[:, 0] + 180) % 360 - 180
+    el = sources_vp[:, 1]
+    keys = np.round(az / az_tol) * az_tol
+    arcs = {}
+    for i in range(len(sources_vp)):
+        if el_range[0] <= el[i] <= el_range[1]:
+            arcs.setdefault(float(keys[i]), []).append(i)
+    for k in arcs:
+        arcs[k].sort(key=lambda i: el[i])
+    return arcs
+
+
+def track_notches(arr, fs, sources_vp, ear, az_bin=None, band=NOTCH_BAND,
+                  tol_oct=0.22, max_gap=3, az_tol=5.0, el_range=(-90.0, 90.0),
+                  sigma_hz=SIGMA_HZ_DEFAULT, n_keep=None, prominence_db=3.0,
+                  eps_frac=0.15, nfft=None, f_lo=3000.0, f_hi=17500.0):
+    """Detect + link notch tracks for one ear along each constant-azimuth arc.
+    Returns {az_bin: [track, ...]}, each track a list of (dir_idx, notch_dict) in
+    elevation order (dir_idx are indices into arr's direction axis). Pass az_bin
+    to restrict to one arc. Mostly a QC/plotting entry point; the manipulation
+    uses stabilized_valid_cfs (which wraps this)."""
+    arr = np.asarray(arr, float)
+    arcs = _arcs(sources_vp, az_tol=az_tol, el_range=el_range)
+    if az_bin is not None:
+        arcs = {az_bin: arcs.get(az_bin, [])}
+
+    def detect(ir1d):
+        n = len(ir1d)
+        _nfft = nfft or int(2 ** np.ceil(np.log2(n)) * 4)
+        freqs = np.fft.rfftfreq(_nfft, 1.0 / fs)
+        mag = np.abs(np.fft.rfft(ir1d, _nfft))
+        L = 20.0 * np.log10(np.maximum(mag, EPS))
+        e, _Le, _b, _f = _to_erb_grid(L, freqs, f_lo, f_hi)
+        return detect_notches(e, freqs, mag, f_lo=f_lo, f_hi=f_hi, sigma_hz=sigma_hz,
+                              n_keep=n_keep, prominence_db=prominence_db, eps_frac=eps_frac)
+
+    out = {}
+    for az, idxs in arcs.items():
+        seqs = [detect(arr[i, :, ear]) for i in idxs]
+        tracks = _link_tracks(seqs, band=band, tol_oct=tol_oct, max_gap=max_gap)
+        # remap row -> original direction index
+        out[az] = [[(idxs[row], d) for row, d in pts] for pts in tracks]
+    return out
+
+
+def stabilized_valid_cfs(arr, fs, sources_vp, band=NOTCH_BAND,
+                         min_depth_db=MIN_NOTCH_DEPTH_DB, min_width_oct=DETECT_WIDTH_MIN_OCT,
+                         min_valid_frac=0.5, min_len=3, tol_oct=0.22, max_gap=3,
+                         az_tol=5.0, el_range=(-90.0, 90.0), sigma_hz=SIGMA_HZ_DEFAULT,
+                         n_keep=None, prominence_db=3.0, eps_frac=0.15, nfft=None,
+                         f_lo=3000.0, f_hi=17500.0, return_labels=False):
+    """Per-direction/ear set of notch centre frequencies to treat as VALID,
+    decided by elevation-continuity tracks instead of independent per-direction
+    gating. This is the robust replacement for select_features' per-direction
+    gate when building a whole condition (see the tracking note above and the
+    detection-robustness diagnosis).
+
+    Within each constant-azimuth elevation arc, detected minima are linked into
+    tracks (_link_tracks). A track counts as a real elevation cue when it passes
+    the per-direction depth/width gate (min_depth_db, min_width_oct, in band) at
+    >= min_valid_frac of the directions where a minimum was actually detected --
+    a fraction rule that is robust to a single-direction dip below the gate. That
+    one decision is then applied to EVERY detected member of the track, so:
+      * a notch that momentarily dips below the depth gate is still shifted at
+        that elevation (elevation-consistent manipulation), and
+      * a track that is only briefly deep, or spans fewer than min_len detected
+        directions, is excluded everywhere (rejects transient/noise minima).
+    Only directions where the minimum was actually detected get a CF (a bridged
+    gap has no minimum to shift, so none is fabricated).
+
+    Returns {(dir, ear): [cf_hz, ...]}; with return_labels, also
+    {(dir, ear): {cf_hz: 'N1'|'N2'|...}} labelling tracks by ascending mean CF
+    (stable across the whole arc, unlike a per-direction depth rank)."""
+    arr = np.asarray(arr, float)
+    n_ears = arr.shape[2]
+    valid = {}
+    labels = {}
+    det_kw = dict(band=band, tol_oct=tol_oct, max_gap=max_gap, az_tol=az_tol,
+                  el_range=el_range, sigma_hz=sigma_hz, n_keep=n_keep,
+                  prominence_db=prominence_db, eps_frac=eps_frac, nfft=nfft,
+                  f_lo=f_lo, f_hi=f_hi)
+    for ear in range(n_ears):
+        arc_tracks = track_notches(arr, fs, sources_vp, ear, **det_kw)
+        for az, tracks in arc_tracks.items():
+            kept = []  # (mean_cf, [(dir, notch)]) for labelling
+            for pts in tracks:
+                if len(pts) < min_len:
+                    continue
+                passes = [((d.get('depth_db') or 0.0) >= min_depth_db
+                           and (d.get('width_oct') or 0.0) >= min_width_oct)
+                          for _i, d in pts]
+                if np.mean(passes) >= min_valid_frac:
+                    kept.append((float(np.mean([d['f_hz'] for _i, d in pts])), pts))
+            kept.sort(key=lambda t: t[0])
+            for rank, (_mcf, pts) in enumerate(kept, 1):
+                for i, d in pts:
+                    valid.setdefault((i, ear), []).append(d['f_hz'])
+                    labels.setdefault((i, ear), {})[d['f_hz']] = f"N{rank}"
+    return (valid, labels) if return_labels else valid
+
+
 def parametric_summary(ir, fs, f_lo=3000.0, f_hi=17500.0, sigma_hz=SIGMA_HZ_DEFAULT,
                        n_keep=None, prominence_db=3.0, nfft=None,
                        feature_kw=None):
@@ -838,8 +1050,8 @@ def parametric_summary(ir, fs, f_lo=3000.0, f_hi=17500.0, sigma_hz=SIGMA_HZ_DEFA
       gates     : {n_features, primary_f_hz, primary_depth_db, primary_width_oct,
                    separation_oct (only when two features), usable}
 
-    usable = at least one valid notch (depth >= SADDLE_PROM_DB and width >=
-    WIDTH_MIN_OCT within NOTCH_BAND). Pass feature_kw={...} to tune the
+    usable = at least one valid notch (depth >= MIN_NOTCH_DEPTH_DB and width >=
+    DETECT_WIDTH_MIN_OCT within NOTCH_BAND). Pass feature_kw={...} to tune the
     band/depth/width/separation of select_features.
     """
     ir = np.asarray(ir, float)
@@ -890,7 +1102,8 @@ def shift_is_perceptible(f_hz, shift_erb):
 
 
 # --- full set (numpy core) ----
-def edge_shift_set(hrirs, fs, shift_erb, mode='rising', verbose=False, strict=False, **kw):
+def edge_shift_set(hrirs, fs, shift_erb, mode='rising', verbose=False, strict=False,
+                   use_tracking=False, sources_vp=None, track_kw=None, **kw):
     """hrirs: (n_dir, n_taps, n_ears). Returns (out_array, reports).
 
     strict=False (default, unlike edge_shift_ir's own default): one
@@ -899,14 +1112,42 @@ def edge_shift_set(hrirs, fs, shift_erb, mode='rising', verbose=False, strict=Fa
     never does so silently: any clamped notch is printed below, itemized by
     (dir, ear, frequency, requested vs realized ERB/Hz). Pass strict=True to
     raise on the first one instead (e.g. for interactively checking one
-    direction with edge_shift_ir directly)."""
+    direction with edge_shift_ir directly).
+
+    use_tracking (opt-in): decide which notches to shift from elevation-continuity
+    tracks (stabilized_valid_cfs) instead of the per-direction select_features
+    gate. This removes the count flicker / inconsistent-manipulation artifact
+    (a real notch shifted at some elevations but not adjacent ones). Requires
+    sources_vp (n_dir x 3, az/el/r -- e.g. base_hrtf.sources.vertical_polar);
+    track_kw overrides tracking params (min_valid_frac, min_len, band, tol_oct,
+    max_gap, az_tol, el_range). The band defaults to feature_kw['band'] if given.
+    Tracking uses the same detect params (sigma_hz/n_keep/prominence_db/eps_frac/
+    f_lo/f_hi) as the per-IR warp, taken from kw so the CFs align."""
     hrirs = np.asarray(hrirs, float)
     out = np.empty_like(hrirs)
     reports = []
+
+    valid_map = None
+    if use_tracking:
+        if sources_vp is None:
+            raise ValueError("edge_shift_set(use_tracking=True) requires sources_vp "
+                             "(n_dir x 3 az/el/r, e.g. base_hrtf.sources.vertical_polar)")
+        tkw = dict(track_kw or {})
+        # keep detection params in sync with the per-IR warp so track CFs match
+        for k in ('f_lo', 'f_hi', 'sigma_hz', 'n_keep', 'prominence_db', 'eps_frac', 'nfft'):
+            if k in kw and k not in tkw:
+                tkw[k] = kw[k]
+        fkw = kw.get('feature_kw') or {}
+        if 'band' in fkw and 'band' not in tkw:
+            tkw['band'] = fkw['band']
+        valid_map = stabilized_valid_cfs(hrirs, fs, sources_vp, **tkw)
+
     for d in range(hrirs.shape[0]):
         for ear in range(hrirs.shape[2]):
+            vc = None if valid_map is None else valid_map.get((d, ear), [])
             ir_new, rep = edge_shift_ir(hrirs[d, :, ear], fs, shift_erb,
-                                        mode=mode, return_report=True, strict=strict, **kw)
+                                        mode=mode, return_report=True, strict=strict,
+                                        valid_cfs=vc, **kw)
             out[d, :, ear] = ir_new
             rep.update(dir=d, ear=ear)
             reports.append(rep)
@@ -1064,7 +1305,7 @@ def array_to_hrtf(arr, base_hrtf):
                      listener=base_hrtf.listener)
 
 
-def manipulate_hrtf(base_hrtf, condition, shift_erb, **kw):
+def manipulate_hrtf(base_hrtf, condition, shift_erb, use_tracking=False, **kw):
     """condition in {'baseline','whole','edge','edge_only','rising','falling'}.
     Returns (manipulated slab.HRTF, reports). 'baseline' clones unchanged.
 
@@ -1075,7 +1316,13 @@ def manipulate_hrtf(base_hrtf, condition, shift_erb, **kw):
     flank and clamps). 'edge_only' flattens the DTF keeping ONLY the rising
     edges (shift_erb ignored; the DCN edge-isolation stimulus). Pass
     feature_kw={'band': (4000., 15000.)} to select all perceptually-valid
-    notches in the elevation range (default NOTCH_BAND is narrower)."""
+    notches in the elevation range (default NOTCH_BAND is narrower).
+
+    use_tracking (opt-in, whole/edge/rising/falling only): pick the notches to
+    shift from elevation-continuity tracks rather than per-direction gating, so
+    the same physical notch is shifted at all its elevations (no flicker). The
+    source geometry is taken from base_hrtf; pass track_kw={...} in kw to tune
+    the tracker (min_valid_frac, min_len, ...). Ignored for 'edge_only'."""
     if condition == 'baseline':
         arr, _ = hrtf_to_array(base_hrtf)
         return array_to_hrtf(arr, base_hrtf), [dict(status='baseline')]
@@ -1083,8 +1330,76 @@ def manipulate_hrtf(base_hrtf, condition, shift_erb, **kw):
     if condition == 'edge_only':
         out, reports = edge_only_set(arr, fs, **kw)
     else:
-        out, reports = edge_shift_set(arr, fs, shift_erb, mode=condition, **kw)
+        sources_vp = np.asarray(base_hrtf.sources.vertical_polar) if use_tracking else None
+        out, reports = edge_shift_set(arr, fs, shift_erb, mode=condition,
+                                      use_tracking=use_tracking, sources_vp=sources_vp, **kw)
     return array_to_hrtf(out, base_hrtf), reports
+
+
+def modification_params(base_hrtf, condition, shift_erb, **kw):
+    """Assemble the parameter record that fully describes a manipulation.
+
+    This is the ground truth of *what was done* to produce a modified SOFA:
+    the condition, the shift magnitude, and every keyword forwarded to
+    manipulate_hrtf (use_tracking, feature_kw, track_kw, n_keep, ...), plus the
+    base HRTF identity, a timestamp and the repo git hash so the exact code can
+    be recovered too. Written into the SOFA (see _embed_modification_params)
+    and echoed onto the localization test so a run can always be traced back to
+    its modification -- which was impossible for e.g. FD's 12:13 test."""
+    import datetime, subprocess
+    from pathlib import Path
+    try:
+        git_hash = subprocess.run(
+            ['git', 'rev-parse', '--short', 'HEAD'],
+            cwd=str(Path(__file__).resolve().parent), capture_output=True,
+            text=True, timeout=5).stdout.strip() or None
+    except Exception:
+        git_hash = None
+    return {
+        'condition': condition,
+        'shift_erb': shift_erb,
+        'kw': kw,
+        'base_hrtf': (getattr(base_hrtf, 'name', None)
+                      or str(getattr(base_hrtf, 'sofa_path', '')) or None),
+        'created': datetime.datetime.now().isoformat(timespec='seconds'),
+        'git_hash': git_hash,
+        'module': 'edge_shift',
+    }
+
+
+def _embed_modification_params(path, params):
+    """Best-effort: write `params` as a JSON GLOBAL_ModificationParams attribute
+    into the just-written SOFA (HDF5). Wrapped so a failure never blocks the
+    SOFA write -- the file is already on disk before this runs."""
+    import json
+    try:
+        import h5py
+        blob = json.dumps(params, default=str)
+        with h5py.File(str(path), 'r+') as h:
+            h.attrs['GLOBAL_ModificationParams'] = blob
+        return blob
+    except Exception as exc:
+        print(f"  [warn] could not embed modification params in SOFA: {exc}")
+        return None
+
+
+def read_modification_params(path):
+    """Return the modification-params dict embedded in a SOFA, or None.
+
+    None means the file predates param embedding (e.g. FD_shift.sofa) or was
+    written by another tool -- the modification is then not self-documented."""
+    import json
+    try:
+        import h5py
+        with h5py.File(str(path), 'r') as h:
+            blob = h.attrs.get('GLOBAL_ModificationParams')
+        if blob is None:
+            return None
+        if isinstance(blob, bytes):
+            blob = blob.decode()
+        return json.loads(blob)
+    except Exception:
+        return None
 
 
 def save_condition_sofa(base_hrtf, condition, shift_erb, path, plot=True,
@@ -1092,6 +1407,12 @@ def save_condition_sofa(base_hrtf, condition, shift_erb, path, plot=True,
                         plot_smoothing='raw', **kw):
     """Write one manipulated condition to a SOFA file (metadata cloned from base,
     only the IR data replaced). Returns (manipulated slab.HRTF, reports).
+
+    The modification parameters (condition, shift_erb, forwarded kw, base HRTF,
+    timestamp, git hash) are embedded into the SOFA as a JSON
+    GLOBAL_ModificationParams attribute, so a modified HRTF is self-documenting
+    and any localization run against it can be traced back to exactly what was
+    done (read them back with read_modification_params).
 
     plot : if True (default), also save a baseline-vs-manipulated WATERFALL QC
         figure (one column per ear) via save_waterfall_qc -- the overlay view
@@ -1102,6 +1423,8 @@ def save_condition_sofa(base_hrtf, condition, shift_erb, path, plot=True,
     plot_ears, plot_smoothing : forwarded to save_waterfall_qc."""
     hrtf_new, reports = manipulate_hrtf(base_hrtf, condition, shift_erb, **kw)
     hrtf_new.write_sofa(str(path))
+    _embed_modification_params(
+        path, modification_params(base_hrtf, condition, shift_erb, **kw))
     if plot:
         try:
             fig_path = save_waterfall_qc(base_hrtf, hrtf_new, path, plot_dir=plot_dir,

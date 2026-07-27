@@ -38,6 +38,11 @@ SUBJECT_ID = "SZ"                        # edit per participant
 HP = "DT990"
 NOTCH_BAND = (4000., 15000.)             # manipulate all valid notches here
 FEATURE_KW = dict(band=NOTCH_BAND)
+USE_TRACKING = True                      # decide shifted notches from elevation-
+                                         # continuity tracks, not per-direction
+                                         # gating -> same notch shifted at ALL its
+                                         # elevations (no flicker). See edge_shift
+                                         # header / stabilized_valid_cfs.
 WHOLE_DELTAS = (1, 1.5, 2)     # dose staircase (ERB), quick succession
 CHOSEN_DELTA = 2                       # set to the threshold from phase 2, then run phases 3-4
 
@@ -185,7 +190,8 @@ whole_labels = {}
 for delta in WHOLE_DELTAS:
     label = _label("whole", delta)
     manip_hrtf, reports = save_condition_sofa(base_hrtf, "whole", delta,
-                                     SOFA_DIR / f"{SUBJECT_ID}_{label}.sofa", feature_kw=FEATURE_KW)
+                                     SOFA_DIR / f"{SUBJECT_ID}_{label}.sofa",
+                                     feature_kw=FEATURE_KW, use_tracking=USE_TRACKING)
     whole_labels[delta] = label
     print(f"whole delta={delta:>4} -> {SUBJECT_ID}_{label}.sofa")
     print_notch_summary(reports, label="  notches shifted")
@@ -203,7 +209,8 @@ run_ar(subject, whole_labels[DELTA_TO_RUN])
 # %% PHASE 3a -- build edge-shift SOFA at the chosen delta --------------------
 edge_label = _label("edge", CHOSEN_DELTA)
 _, edge_reports = save_condition_sofa(base_hrtf, "edge", CHOSEN_DELTA,
-                                     SOFA_DIR / f"{SUBJECT_ID}_{edge_label}.sofa", feature_kw=FEATURE_KW)
+                                     SOFA_DIR / f"{SUBJECT_ID}_{edge_label}.sofa",
+                                     feature_kw=FEATURE_KW, use_tracking=USE_TRACKING)
 print(f"edge delta={CHOSEN_DELTA} -> {SUBJECT_ID}_{edge_label}.sofa")
 print_notch_summary(edge_reports, label="  edges shifted")
 

@@ -332,7 +332,7 @@ def plot_localization(sequence, report_stats=['elevation', 'azimuth'], axis=None
             filepath.mkdir(parents=True, exist_ok=True)
         plt.savefig(filepath / f'{sequence.name}.png')
 
-def plot_elevation_response(sequence, axis=None, add_fit=True, filepath=None, tick_step=5):
+def plot_elevation_response(sequence, axis=None, add_fit=True, filepath=None, n_ticks=3):
     """
     Plot elevation responses against elevation targets.
 
@@ -354,9 +354,10 @@ def plot_elevation_response(sequence, axis=None, add_fit=True, filepath=None, ti
         Draw the EG (elevation gain) regression line.
     filepath : Path or None
         Directory to save the figure.
-    tick_step : float
-        Spacing (deg) of the equally spaced axis ticks. Ticks are snapped to
-        multiples of this step and span the sequence elevation range.
+    n_ticks : int
+        Number of evenly spaced axis ticks across the sequence elevation
+        range (default 3), matching the 2-D grid plot (plot_localization) so
+        the elevation axes line up between the two figures.
 
     Returns
     -------
@@ -407,15 +408,14 @@ def plot_elevation_response(sequence, axis=None, add_fit=True, filepath=None, ti
         axis.plot(x_line, intercept + slope * x_line,
                   c='0', linewidth=lw, linestyle='--', zorder=4)
 
-    # Equally spaced ticks (every `tick_step`°) matched to the sequence
-    # elevation range, snapped to multiples of the step. Fall back to the
-    # observed target range if the range is missing from settings.
+    # Evenly spaced ticks across the sequence elevation range, matching the
+    # 2-D grid plot's tick style (plot_localization uses linspace(min,max,3)).
+    # Fall back to the observed target range if it's missing from settings.
     el_range = getattr(sequence, 'settings', {}).get('elevation_range', None)
     if el_range is None:
         el_range = (float(targ_el.min()), float(targ_el.max()))
-    lo = numpy.floor(min(el_range) / tick_step) * tick_step
-    hi = numpy.ceil(max(el_range) / tick_step) * tick_step
-    ticks = numpy.arange(lo, hi + tick_step, tick_step)
+    lo, hi = float(min(el_range)), float(max(el_range))
+    ticks = numpy.unique(numpy.linspace(lo, hi, n_ticks).astype(int))
 
     axis.set_xticks(ticks)
     axis.set_yticks(ticks)

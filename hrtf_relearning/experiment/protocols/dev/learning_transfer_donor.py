@@ -44,7 +44,7 @@ EDIT THE CONFIG BLOCK BELOW PER PARTICIPANT.
 ------------------------------------------------------------------------------
 """
 
-SUBJECT_ID = ("FS")
+SUBJECT_ID = ("GS")
 
 # %% imports and config #------------------------------------------------------
 import csv

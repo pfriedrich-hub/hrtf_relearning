@@ -2,8 +2,8 @@
 protocol_helpers.py — bits every protocol needs, in one place.
 
 These were copy-pasted across expectation_transfer.py,
-expectation_transfer_verification.py, learning_transfer_env.py and
-learning_transfer_donor.py, which meant four slightly different versions of the
+expectation_transfer_verification.py and the learning_transfer protocols,
+which meant four slightly different versions of the
 same question. Keep the wording identical across protocols so ratings from
 different experiments stay comparable.
 """

@@ -1,0 +1,4 @@
+{
+  "_comment": "Copy to local_config.json (gitignored) and edit per machine. See hrtf_relearning/utils/local_config.py.",
+  "torch_device": "cpu"
+}

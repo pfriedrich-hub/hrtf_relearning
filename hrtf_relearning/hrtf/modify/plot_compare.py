@@ -39,6 +39,63 @@ def _build_tf_image(hrtf, sourceidx, ear, n_bins, xlim, floor_db=-25):
     return freqs[mask], elevations, img[mask, :]
 
 
+def plot_ears(hrtf, hrtf_modified, n_bins=None, xlim=(1000, 18000),
+              vsi_dis=None, vsi_bw=None, band=None, suptitle=None):
+    """2x2 before/after image: rows are the two ears, columns original/modified.
+
+    The standard QC figure for any manipulation that touches both ears
+    differently — a donor composite on one ear with an envelope or flat other
+    ear looks fine in a single-ear plot and only shows its asymmetry here.
+    All four panels share one colour scale so interaural level differences stay
+    visible; ``band`` (low, high) draws the scoring band if given.
+    """
+    sources = hrtf.cone_sources(0)
+    images = {}
+    for ear in ('left', 'right'):
+        freqs, elevations, original = _build_tf_image(hrtf, sources, ear, n_bins, xlim)
+        _, _, modified = _build_tf_image(hrtf_modified, sources, ear, n_bins, xlim)
+        images[ear] = (freqs, elevations, original, modified)
+
+    flat = [img for _, _, a, b in images.values() for img in (a, b)]
+    levels = numpy.linspace(float(min(i.min() for i in flat)),
+                            float(max(i.max() for i in flat)), 21)
+
+    fig, axes = plt.subplots(2, 2, figsize=(11, 8), sharex=True, sharey=True)
+    contour = None
+    for row, ear in enumerate(('left', 'right')):
+        freqs, elevations, original, modified = images[ear]
+        for column, (img, label) in enumerate(((original, 'original'),
+                                               (modified, 'modified'))):
+            axis = axes[row, column]
+            contour = axis.contourf(freqs, elevations, img.T, cmap='hot', levels=levels)
+            if band is not None:
+                for edge in band:
+                    axis.axvline(edge, color='#00c8ff', lw=1.0, ls=':')
+            axis.set_title(f'{ear} ear — {label}', fontsize=10)
+            axis.set(xlim=xlim)
+            axis.xaxis.set_major_formatter(
+                matplotlib.ticker.FuncFormatter(lambda x, pos: str(int(x / 1000))))
+            if row == 1:
+                axis.set_xlabel('Frequency [kHz]')
+            if column == 0:
+                axis.set_ylabel('Elevation [°]')
+            axis.tick_params('both', length=2, pad=2)
+
+    cbar = fig.colorbar(contour, ax=list(axes.ravel()), shrink=0.9, pad=0.02)
+    cbar.set_label('Magnitude [dB]')
+    if suptitle:
+        fig.suptitle(suptitle, fontsize=12)
+    if vsi_dis is not None:
+        bandwidth = (f'{vsi_bw[0] / 1000:.1f}–{vsi_bw[1] / 1000:.1f} kHz'
+                     if vsi_bw is not None else '')
+        fig.text(0.5, 0.01,
+                 f'VSI dissimilarity = {vsi_dis:.3f}   ({bandwidth}, Trapeau et al. 2016)',
+                 ha='center', va='bottom', fontsize=9)
+    plt.show(block=False)
+    plt.pause(0.1)
+    return fig
+
+
 def plot(hrtf, hrtf_modified, kind='image', ear='left', n_bins=None, xlim=(1000, 18000),
          vsi_orig=None, vsi_mod=None, vsi_dis=None, vsi_bw=None):
     """Native vs modified median-plane transfer function, side by side."""

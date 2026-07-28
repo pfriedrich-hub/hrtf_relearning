@@ -77,7 +77,7 @@ from hrtf_relearning.experiment.localization.Localization_AR import Localization
 from hrtf_relearning.hrtf.modify.shift_spectral_detail import shift_spectral_detail, describe
 from hrtf_relearning.experiment.protocols.protocol_helpers import (
     collect_externalization_rating, externalization_ladder)
-from hrtf_relearning.hrtf.modify.plot_compare import plot
+from hrtf_relearning.hrtf.modify.plot_compare import plot_ears
 from hrtf_relearning.utils import paths
 
 # The ONLY thing you set per session. Everything else (trained ear, final-day
@@ -237,8 +237,9 @@ def build_modified_sofa(overwrite=True, show_qc=True):
     print(f"wrote {out_path}")
     if show_qc:
         # before/after HRTF image (native vs modified, median plane)
-        fig = plot(native, modified, kind="image", ear="right")
-        plot_dir = paths.subject_plot_dir(SUBJECT_ID)
+        fig = plot_ears(native, modified, band=SHIFT_BAND,
+                        suptitle=f"{SUBJECT_ID}  ERB shift {SHIFT_ERB:+g}")
+        plot_dir = paths.subject_acoustic_dir(SUBJECT_ID)
         plot_dir.mkdir(parents=True, exist_ok=True)
         fig.savefig(plot_dir / f"{MODIFIED_SOFA}_before_after.png", bbox_inches="tight")
     return out_path
@@ -288,9 +289,11 @@ def check_other_ear(save=True):
         print( "   (the modification now survives ONLY as this interaural "
                "difference; the untrained ear reports the unshifted elevation)")
 
-    fig = plot(hrtf, env, "image", ear=other)
+    fig = plot_ears(hrtf, env, band=SHIFT_BAND,
+                    suptitle=f"{SUBJECT_ID}  other ear ({other}) -> envelope "
+                             f"n_keep={ENV_NKEEP}")
     if save:
-        plot_dir = paths.subject_plot_dir(SUBJECT_ID)
+        plot_dir = paths.subject_acoustic_dir(SUBJECT_ID)
         plot_dir.mkdir(parents=True, exist_ok=True)
         out_png = plot_dir / f"{MODIFIED_SOFA}_env{ENV_NKEEP}_{other}_ear.png"
         fig.savefig(out_png, bbox_inches="tight")

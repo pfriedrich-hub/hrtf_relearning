@@ -45,7 +45,7 @@ Usage (via the binsim pipeline, not by hand)::
     hrir_settings = dict(..., ear='left', other_ear='envelope', env_n_keep=4)
 
 See :func:`hrtf_relearning.hrtf.binsim.hrtf2binsim.hrtf2binsim`, and the pilot
-protocol experiment/protocols/dev/learning_transfer_env.py.
+protocol experiment/protocols/learning_transfer/learning_transfer.py.
 """
 
 import copy
@@ -90,8 +90,12 @@ def envelope_dtf(hrir, ear='left', n_keep=DEFAULT_N_KEEP, match_level='energy'):
     ----------
     hrir : slab.HRTF
         Input HRIR (time domain, FIR). Not modified — a deep copy is returned.
-    ear : {'left', 'right'}, default 'left'
-        The ear to KEEP. The other ear is reduced to its envelope.
+    ear : {'left', 'right', 'both'}, default 'left'
+        The ear to KEEP — the other ear is reduced to its envelope. ``'both'``
+        keeps neither and smooths BOTH ears, which is not a monaural condition
+        at all: it is the binaural spectral-detail control (Kulkarni & Colburn
+        1998), where the whole HRTF is replaced by its coarse envelope and the
+        listener has no fine structure at either ear.
     n_keep : int, default 4
         Cosine coefficients kept for the envelope (M in Kulkarni & Colburn
         1998). Same value as the trained ear's ``envelope_n_keep``. Lower ->
@@ -108,36 +112,41 @@ def envelope_dtf(hrir, ear='left', n_keep=DEFAULT_N_KEEP, match_level='energy'):
     slab.HRTF
         Deep copy with one ear reduced to its envelope.
     """
-    if ear not in ('left', 'right'):
-        raise ValueError(f"ear must be 'left' or 'right', got {ear!r}")
+    if ear not in ('left', 'right', 'both'):
+        raise ValueError(f"ear must be 'left', 'right' or 'both', got {ear!r}")
     if int(n_keep) < 1:
         raise ValueError(f'n_keep must be >= 1, got {n_keep}')
     if match_level not in ('energy', None):
         raise ValueError("match_level must be 'energy' or None")
 
     out = copy.deepcopy(hrir)
-    other_idx = 1 if ear == 'left' else 0   # index of the ear being processed
-    logger.debug('Envelope-only DTF for the %s ear (n_keep=%d)',
-                 'right' if other_idx else 'left', int(n_keep))
+    if ear == 'both':
+        channels = (0, 1)
+    else:
+        channels = (1 if ear == 'left' else 0,)   # the ear being processed
+    logger.debug('Envelope-only DTF for the %s ear(s) (n_keep=%d)',
+                 'both' if ear == 'both' else ('right' if channels[0] else 'left'),
+                 int(n_keep))
 
     eps = numpy.finfo(float).tiny
     for source_idx in range(out.n_sources):
-        ir = numpy.asarray(out[source_idx].data[:, other_idx], dtype=float)
-        n_samples = ir.size
-        spectrum = numpy.fft.rfft(ir)
-        mag = numpy.abs(spectrum)
-        if mag.max() <= 0:
-            continue
-        mag_env = envelope_spectrum(mag, n_keep=int(n_keep))
-        # magnitude-only edit: original phase kept -> onset / ITD untouched
-        ir_env = numpy.fft.irfft(mag_env * numpy.exp(1j * numpy.angle(spectrum)),
-                                 n=n_samples)
-        if match_level == 'energy':
-            e_original = float(numpy.linalg.norm(ir, ord=2))
-            e_env = float(numpy.linalg.norm(ir_env, ord=2))
-            if e_env > eps:
-                ir_env *= e_original / e_env
-        out[source_idx].data[:, other_idx] = ir_env
+        for channel in channels:
+            ir = numpy.asarray(out[source_idx].data[:, channel], dtype=float)
+            n_samples = ir.size
+            spectrum = numpy.fft.rfft(ir)
+            mag = numpy.abs(spectrum)
+            if mag.max() <= 0:
+                continue
+            mag_env = envelope_spectrum(mag, n_keep=int(n_keep))
+            # magnitude-only edit: original phase kept -> onset / ITD untouched
+            ir_env = numpy.fft.irfft(mag_env * numpy.exp(1j * numpy.angle(spectrum)),
+                                     n=n_samples)
+            if match_level == 'energy':
+                e_original = float(numpy.linalg.norm(ir, ord=2))
+                e_env = float(numpy.linalg.norm(ir_env, ord=2))
+                if e_env > eps:
+                    ir_env *= e_original / e_env
+            out[source_idx].data[:, channel] = ir_env
     return out
 
 
@@ -237,7 +246,7 @@ if __name__ == '__main__':
     matplotlib.use('tkagg')
     import slab
     from hrtf_relearning.utils import paths
-    from hrtf_relearning.hrtf.modify.plot_compare import plot
+    from hrtf_relearning.hrtf.modify.plot_compare import plot_ears
     from hrtf_relearning.hrtf.processing.flatten import flatten_dtf
 
     sofa_dir = paths.SOFA_DIR / SUB_ID
@@ -269,8 +278,8 @@ if __name__ == '__main__':
 
     # before/after for the ear that is being reduced: everything sharp should be
     # gone, the broad shape and its azimuth dependence should remain.
-    fig = plot(hrtf, hrtf_env, PLOT_KIND, ear=processed_ear)
-    plot_dir = paths.subject_plot_dir(SUB_ID)
+    fig = plot_ears(hrtf, hrtf_env, suptitle=f'{SUB_ID}  envelope n_keep={N_KEEP}')
+    plot_dir = paths.subject_acoustic_dir(SUB_ID)
     plot_dir.mkdir(parents=True, exist_ok=True)
     out_png = plot_dir / f'{hrtf.name}_env{N_KEEP}_{processed_ear}_ear.png'
     fig.savefig(out_png, bbox_inches='tight')

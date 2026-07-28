@@ -27,3 +27,6 @@ __pycache__/
 *.pyc
 /.claude/
 /hrtf_relearning/data/hrtf/sofa/database/
+
+# machine-local settings (torch device etc.) — see local_config.example.json
+local_config.json

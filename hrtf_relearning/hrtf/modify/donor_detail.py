@@ -219,7 +219,7 @@ if __name__ == '__main__':
     from hrtf_relearning.utils import paths
     from hrtf_relearning.hrtf.analysis import donor_selection as selection
     from hrtf_relearning.hrtf.analysis.vsi import vsi as vsi_of
-    from hrtf_relearning.hrtf.modify.plot_compare import plot
+    from hrtf_relearning.hrtf.modify.plot_compare import plot_ears
     from hrtf_relearning.hrtf.modify.edge_shift import _embed_modification_params
 
     sofa_dir = paths.SOFA_DIR / SUB_ID
@@ -252,11 +252,12 @@ if __name__ == '__main__':
     print(f'VSI  own={vsi_of(own):.3f}  composite={vsi_of(modified):.3f}')
 
     stem = f'{SUB_ID}_{OUT_SUFFIX}_{chosen["donor"]}'
-    fig = plot(own, modified, 'image', ear='right')
+    fig = plot_ears(own, modified, band=selection.DEFAULT_BAND,
+                    suptitle=f'{SUB_ID}  own envelope + {chosen["donor"]} detail')
     print(f'about to write {stem}.sofa')
 
     input('press enter to save (ctrl-c to discard)')
-    plot_dir = paths.subject_plot_dir(SUB_ID)
+    plot_dir = paths.subject_acoustic_dir(SUB_ID)
     plot_dir.mkdir(parents=True, exist_ok=True)
     fig.savefig(plot_dir / f'{stem}.png', bbox_inches='tight')
 

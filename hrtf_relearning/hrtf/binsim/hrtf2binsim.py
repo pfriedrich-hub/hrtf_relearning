@@ -18,8 +18,14 @@ from hrtf_relearning.hrtf.binsim.hrir2mat import (
     compute_hp_ir,
     write_filters,
     write_filter_list,
+    normalization_gain,
+    predicted_peak,
+    write_level_info,
+    REFERENCE_GAIN,
+    PEAK_LIMIT,
 )
 from hrtf_relearning.utils import paths
+from hrtf_relearning.utils.local_config import torch_device
 
 logger = logging.getLogger(__name__)
 
@@ -203,8 +209,13 @@ def hrtf2binsim(hrir_settings, overwrite: bool = True, build: bool = True):
     drr = hrir_settings.get("drr", 20)
     hp_filter = hrir_settings.get("hp_filter", True)
     hp = hrir_settings.get("hp", 'DT990')
-    convolution = hrir_settings.get("convolution", 'cuda')
-    storage = hrir_settings.get("storage", "cuda")
+    # cpu/cuda is a property of the machine, not of the experiment. A
+    # gitignored local_config.json ("torch_device") or HRTF_TORCH_DEVICE
+    # overrides whatever the protocol script hardcoded; without either, the
+    # requested value is used but 'cuda' still degrades to 'cpu' where CUDA is
+    # unavailable. See hrtf_relearning.utils.local_config.
+    convolution = torch_device(hrir_settings.get("convolution"))
+    storage = torch_device(hrir_settings.get("storage"))
 
     logger.info(
         "hrtf2binsim | HRTF=%s ear=%s other_ear=%s drr=%.1f hp_file=%s",
@@ -290,8 +301,33 @@ def hrtf2binsim(hrir_settings, overwrite: bool = True, build: bool = True):
     else:
         hp_ir = None
 
-    write_filters(hrir, lr_ir, hp_ir, mat_path)
+    # One scalar for the whole set, so the rendered level is the same for every
+    # subject at a given loc_settings['gain'] and pyBinSim keeps its headroom.
+    # All amplitude ratios (ILD, direction-to-direction, DRR) are preserved.
+    norm_gain, levels = normalization_gain(hrir, hp_ir)
+
+    write_filters(hrir, lr_ir, hp_ir, mat_path, norm_gain=norm_gain)
     write_filter_list(hrir)
+
+    # Headroom QC: what pyBinSim would actually output at the matched gain.
+    peak = None
+    stim_path = base_dir / "sounds" / "noise_pulse.wav"
+    if stim_path.exists():
+        peak = predicted_peak(
+            hrir, lr_ir, hp_ir, slab.Sound.read(stim_path).data,
+            norm_gain=norm_gain, levels=levels,
+        )
+        if peak > PEAK_LIMIT:
+            logger.warning(
+                "Predicted output peak %.2f at gain %.2f — pyBinSim will clip. "
+                "Lower loc_settings['gain'] to <= %.3f or check the HP filter.",
+                peak, REFERENCE_GAIN, REFERENCE_GAIN * PEAK_LIMIT / peak,
+            )
+        else:
+            logger.info("Predicted output peak %.2f at gain %.2f (limit %.2f)",
+                        peak, REFERENCE_GAIN, PEAK_LIMIT)
+
+    write_level_info(hrir, mat_path, norm_gain, levels, peak=peak)
 
     write_settings(
         hrir,

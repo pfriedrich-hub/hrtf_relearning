@@ -141,8 +141,8 @@ def hrir_settings(sofa_name, ear=None, mirror=False, other_ear=None):
         "drr": 20,
         "hp_filter": True,
         "hp": HP,
-        "convolution": "cpu",
-        "storage": "cpu",
+        "convolution": "cuda",
+        "storage": "cuda",
     }
 
 
@@ -442,6 +442,7 @@ show_status(subject)
 # %% day 1: native reference (original HRIR, full field) ----------------------
 run_phase("native", subject)
 
+
 # %% day 1: select the donor and build the modified HRTF -- run ONCE ----------
 # Prints the full candidate ranking, the chosen donor and why, writes
 # <SUBJECT_ID>_donor_<DONOR>.sofa with the selection embedded, plus a ranking
@@ -486,6 +487,7 @@ collect_externalization_rating(baseline_A)
 
 # %% day 1: baseline D -- untrained ear, mirrored loc (matches final D) -------
 baseline_D = run_phase("baseline_D", subject)
+
 collect_externalization_rating(baseline_D)
 
 # %% adaptation days: TRAIN ----------------------------------------------------

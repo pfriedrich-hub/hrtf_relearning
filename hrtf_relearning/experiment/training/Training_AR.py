@@ -29,10 +29,12 @@ SUBJECT_ID = os.environ.get("TRAINING_SUBJECT_ID", "JS")
 HRIR_NAME  = os.environ.get("TRAINING_HRIR_NAME", f"{SUBJECT_ID}_shift")  # modified HRIR
 EAR        = os.environ.get("TRAINING_EAR", "left")
 HP         = os.environ.get("TRAINING_HP", "DT990")
-# what the non-listening ear gets: 'flat' (delta impulse) or 'envelope'
-# (own coarse cepstral envelope, n_keep coeffs) — see hrtf.processing.envelope
+# what the non-listening ear gets: 'flat' (delta impulse), 'envelope' (own
+# coarse cepstral envelope, n_keep coeffs) or 'native' (own unmodified DTF,
+# spliced from NATIVE_SOFA) — see hrtf.processing.{flatten,envelope,native}
 OTHER_EAR  = os.environ.get("TRAINING_OTHER_EAR", "flat")
 ENV_NKEEP  = int(os.environ.get("TRAINING_ENV_NKEEP", "4"))
+NATIVE_SOFA = os.environ.get("TRAINING_NATIVE_SOFA", SUBJECT_ID)
 
 STIM       = os.environ.get("TRAINING_STIM", "noise")  # 'noise' or 'uso'
 AZ_RANGE   = tuple(int(x) for x in os.environ.get("TRAINING_AZ_RANGE", "-35,0").split(","))
@@ -60,8 +62,10 @@ settings = dict(
 hrir_settings = dict(
     name=HRIR_NAME,
     ear=EAR,
+    subject_id=SUBJECT_ID,
     other_ear=OTHER_EAR,
     env_n_keep=ENV_NKEEP,
+    native_sofa=NATIVE_SOFA,
     reverb=True,
     drr=20,
     hp_filter=True,

@@ -7,9 +7,14 @@ is identical EXCEPT what the non-listening ear receives:
 
     learning_transfer.py   other ear = FLAT      (flatten_dtf: one delta at the
                            onset; ITD + broadband ILD kept, no spectral shape)
-    THIS FILE              other ear = ENVELOPE  (envelope_dtf: its own coarse
-                           cepstral envelope, ENV_NKEEP coefficients; ITD +
-                           broadband ILD kept, fine detail removed)
+    THIS FILE, OTHER_EAR = 'envelope'  (envelope_dtf: its own coarse cepstral
+                           envelope, ENV_NKEEP coefficients; ITD + broadband
+                           ILD kept, fine detail removed)
+    THIS FILE, OTHER_EAR = 'native'    (native_dtf: its own UNMODIFIED DTF
+                           spliced back from the native SOFA, so only the
+                           trained ear is shifted). Externalization ceiling and
+                           a diagnostic — NOT a monaural condition; read the
+                           warning at OTHER_EAR below before training with it.
 
 WHY. With a flat other ear the two ears stop looking like they belong to the same
 head: no pinna, no canal resonance, no head-shadow colouration on one side.
@@ -70,6 +75,8 @@ import slab
 import hrtf_relearning as hr
 from hrtf_relearning.experiment.localization.Localization_AR import Localization
 from hrtf_relearning.hrtf.modify.shift_spectral_detail import shift_spectral_detail, describe
+from hrtf_relearning.experiment.protocols.protocol_helpers import (
+    collect_externalization_rating, externalization_ladder)
 from hrtf_relearning.hrtf.modify.plot_compare import plot
 from hrtf_relearning.utils import paths
 
@@ -113,11 +120,25 @@ SHIFT_SKIRT     = 0.1    # taper on the selection window [octaves]; 0 = hard edg
 SHIFT_EQ_RMS    = True   # match per-ERB detail RMS between source and target
 
 # --- THE CHANGE: what the non-listening ear gets in every monaural block ------
-# 'envelope' -> hrtf.processing.envelope.envelope_dtf, ENV_NKEEP coefficients.
-# Set OTHER_EAR = 'flat' to reproduce the parent protocol exactly (useful as a
-# within-subject A/B on day 1 before committing a subject to the pilot).
+#   'flat'     hrtf.processing.flatten.flatten_dtf  — delta impulse, the parent
+#              protocol's behaviour (set this for a within-subject A/B on day 1)
+#   'envelope' hrtf.processing.envelope.envelope_dtf, ENV_NKEEP coefficients
+#   'native'   hrtf.processing.native.native_dtf — the other ear keeps its own
+#              UNMODIFIED DTF, so only the trained ear is shifted.
+#
+# WARNING on 'native': it is not a monaural condition. The other ear keeps a
+# complete veridical elevation cue (measured: as much elevation-dependent
+# spectral variation as the trained ear, only a few dB down at +-35 deg), so
+# day-to-day improvement can be reweighting toward that ear rather than
+# relearning the shifted cue, and the untrained ear is no longer naive at test.
+# Use it as the externalization CEILING diagnostic, and if you train with it,
+# run the probe phases below so remapping and reweighting stay separable.
 OTHER_EAR = "flat"
 ENV_NKEEP = SHIFT_ENV_NKEEP   # same 'coarse' as the trained ear's held-fixed envelope
+
+# What the probe blocks use to silence the other ear as a cue source. Only
+# relevant when OTHER_EAR = 'native'; see the probe cells.
+PROBE_OTHER_EAR = "envelope"
 
 # --- shared localization sampling grid (do not change without re-checking the
 #     baseline-vs-final comparability; see project notes) ---
@@ -157,13 +178,15 @@ else:
 # the flat version.
 
 
-def hrir_settings(sofa_name, ear=None, mirror=False):
+def hrir_settings(sofa_name, ear=None, mirror=False, other_ear=None):
     return {
         "name": sofa_name,
         "subject_id": SUBJECT_ID,
         "ear": ear,              # None -> binaural; 'left'/'right' -> reduce the other ear
-        "other_ear": OTHER_EAR,  # 'envelope' (this pilot) | 'flat' (parent protocol)
+        # 'envelope' (this pilot) | 'flat' (parent protocol) | 'native' (ceiling)
+        "other_ear": OTHER_EAR if other_ear is None else other_ear,
         "env_n_keep": ENV_NKEEP,
+        "native_sofa": NATIVE_SOFA,   # source of the untouched channel for 'native'
         "mirror": mirror,
         "reverb": True,
         "drr": 20,
@@ -250,6 +273,20 @@ def check_other_ear(save=True):
         el_sd, az_sd = direction_variation_db(h, ear=TRAINED_EAR)
         print(f"   spectral SD {label:>14}:  elevation {el_sd:5.2f} dB | "
               f"azimuth {az_sd:5.2f} dB")
+    print(f"   (the 'native' row is what OTHER_EAR='native' delivers to the "
+          f"untrained ear: a full cue)")
+
+    if OTHER_EAR == "native":
+        from hrtf_relearning.hrtf.processing.native import (
+            native_dtf, interaural_cue_conflict_db)
+        unmodified = slab.HRTF(str(paths.SOFA_DIR / SUBJECT_ID / f"{NATIVE_SOFA}.sofa"))
+        composite = native_dtf(hrtf, unmodified, ear=TRAINED_EAR)
+        conflict = interaural_cue_conflict_db(composite, unmodified,
+                                              ear=TRAINED_EAR, band=SHIFT_BAND)
+        print(f"   interaural cue conflict in {SHIFT_BAND[0]}-{SHIFT_BAND[1]} Hz: "
+              f"{conflict:.2f} dB RMS")
+        print( "   (the modification now survives ONLY as this interaural "
+               "difference; the untrained ear reports the unshifted elevation)")
 
     fig = plot(hrtf, env, "image", ear=other)
     if save:
@@ -259,6 +296,20 @@ def check_other_ear(save=True):
         fig.savefig(out_png, bbox_inches="tight")
         print(f"wrote {out_png}")
     return fig
+
+
+def ladder_settings(rung):
+    """(hrir_settings, loc_settings) for one rung of the externalization ladder.
+
+    Coarse grid on purpose (~10 trials): for the rating, not for elevation-gain
+    statistics. 'anchor' is the participant's own unmodified HRTF binaurally,
+    the ceiling of the whole delivery chain.
+    """
+    settings = loc_settings(TRAINED_HEMI, exclude_midline=True)
+    settings.update(sector_size=(14, 14), targets_per_sector=1)
+    if rung == "anchor":
+        return hrir_settings(NATIVE_SOFA, ear=None), settings
+    return hrir_settings(MODIFIED_SOFA, ear=TRAINED_EAR, other_ear=rung), settings
 
 
 TRAINING_SCRIPT = hr.PATH / "experiment" / "training" / "Training_AR.py"
@@ -301,6 +352,7 @@ def run_training(hrir_name=None, ear=None, az_range=None):
                TRAINING_EAR=ear,
                TRAINING_OTHER_EAR=OTHER_EAR,
                TRAINING_ENV_NKEEP=str(ENV_NKEEP),
+               TRAINING_NATIVE_SOFA=NATIVE_SOFA,
                TRAINING_AZ_RANGE=f"{az_range[0]},{az_range[1]}",
                TRAINING_HP=HP)
     # Launch as a package MODULE (-m), not by file path, and with cwd set to the
@@ -349,41 +401,26 @@ def _describe(key):
             f"      ~{_est_trials(az)} trials")
 
 
-def run_phase(key, subject):
+def run_phase(key, subject, other_ear=None):
     """Run one phase. Returns the Localization object so an externalization
-    rating can be attached to the run it belongs to."""
+    rating can be attached to the run it belongs to.
+
+    ``other_ear`` overrides the global setting for this block only — that is how
+    the probe phases measure the trained ear on its own after training with an
+    intact other ear.
+    """
     label, when, sofa, ear, mirror, az, desc = PHASES[key]
     print("\n" + "=" * 70)
-    print(f"RUNNING:  {_describe(key)}")
+    print(f"RUNNING:  {_describe(key)}"
+          + (f"\n      OTHER EAR OVERRIDE: {other_ear}" if other_ear else ""))
     print("=" * 70)
     one_sided = tuple(az) != tuple(FULL_FIELD)   # drop az~=0 only in one-sided tests
-    test = Localization(subject, hrir_settings(sofa, ear=ear, mirror=mirror),
+    test = Localization(subject,
+                        hrir_settings(sofa, ear=ear, mirror=mirror, other_ear=other_ear),
                         loc_settings=loc_settings(az, exclude_midline=one_sided))
     test.run()
     print(f"Done: {test.filename}")
     return test
-
-
-def collect_externalization_rating(loc_test):
-    """Post-block externalization report, console-collected.
-
-    This is the outcome the whole manipulation targets, so collect it after
-    EVERY monaural block (baselines, daily, final). Same 0-10 wording as
-    expectation_transfer.py, so the numbers are comparable across protocols.
-    """
-    print("\n--- Post-block question ---")
-    while True:
-        raw = input("Externalization (0 = entirely inside your head, "
-                    "10 = felt like a real external loudspeaker): ").strip()
-        try:
-            rating = float(raw)
-            break
-        except ValueError:
-            print("Please enter a number 0-10.")
-    sequence = loc_test.subject.localization[loc_test.filename]
-    sequence.externalization_rating = rating
-    loc_test.subject.write()
-    print(f"Recorded: externalization={rating}\n")
 
 
 def show_status(subject):
@@ -426,6 +463,12 @@ subject = hr.Subject(SUBJECT_ID)   # reload after SOFA write
 # image of that ear. Lower ENV_NKEEP if too much fine structure survives.
 check_other_ear()
 
+# %% day 1: externalization ladder -------------------------------------------
+# Four short blocks (~10 trials each) in a per-subject RANDOM order, rating only:
+# anchor (own HRTF, binaural) / flat / envelope / native. Run straight after the
+# native reference block; the anchor is what makes the 0-10 scale comparable.
+externalization_ladder(subject, ladder_settings, seed=SUBJECT_ID)
+
 # %% day 1: baseline A -- trained ear, same loc (matches final A) --------------
 baseline_A = run_phase("baseline_A", subject)
 collect_externalization_rating(baseline_A)
@@ -446,6 +489,17 @@ run_training()
 subject = hr.Subject(SUBJECT_ID)   # reload after training appended trials
 daily = run_phase("daily", subject)
 collect_externalization_rating(daily)
+
+# %% adaptation days: daily PROBE (only needed when OTHER_EAR = 'native') --------
+# With an intact other ear, the daily test above cannot tell relearning of the
+# shifted cue from reweighting toward the untouched ear: both look like rising
+# elevation gain. This block repeats the daily test with the other ear reduced
+# to PROBE_OTHER_EAR, so it measures what the TRAINED EAR ALONE has learned.
+#   probe rises, daily rises   -> the trained ear is relearning
+#   probe flat,  daily rises   -> reweighting toward the intact ear
+# Skip it when OTHER_EAR is already 'flat' or 'envelope' (the daily test IS the
+# probe). Cheap to add and it is the only thing that keeps 'native' interpretable.
+run_phase("daily", subject, other_ear=PROBE_OTHER_EAR)
 
 # %% final day: all 4 conditions in this subject's counterbalanced order --------
 # Order is loaded per-subject from learning_transfer_env_block_order.csv.

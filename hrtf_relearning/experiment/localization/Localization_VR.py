@@ -22,7 +22,7 @@ class Localization:
         Test localization at uniformly random positions within sectors
     """
     def __init__(self, subject, hrir, condition, delta, ear=None, stim='noise',
-                az_range=(0, 35), sector_size=(7, 14), mirror=False):
+                az_range=(0, 35), sector_size=(7, 14), mirror=False, settings=None):
         # make trial sequence and write to subject-
         date = datetime.datetime.now()
         date = f'{date.strftime("%d")}.{date.strftime("%m")}_{date.strftime("%H")}-{date.strftime("%M")}'
@@ -32,6 +32,8 @@ class Localization:
                          'sector_size': sector_size,
                          'targets_per_sector': 3, 'replace': False, 'min_distance': 20,
                          'gain': .2}
+        if settings:  # per-run overrides (e.g. targets_per_sector, elevation_range, gain, exclude_midline)
+            self.settings.update(settings)
         # alternative setting: play 3 times from each source in the hrir (works well for dome recorded hrirs)
         # self.settings = {'kind': 'standard', 'azimuth_range': (-60, 60), 'elevation_range': (-40, 40),
         #                  'targets_per_speaker': 3, 'min_distance': 10, 'gain': .2}
@@ -247,7 +249,7 @@ class VRPoseBridge:
             return self.latest_pose.copy()
 
 def run(subject_id, condition, delta, ear=None, hp='DT990', stim='noise',
-       az_range=(0, 35), sector_size=(7, 14), mirror=False):
+       az_range=(0, 35), sector_size=(7, 14), mirror=False, settings=None):
     """Run one localization test block for one subject/condition.
 
     subject_id : e.g. 'AS'.
@@ -263,6 +265,9 @@ def run(subject_id, condition, delta, ear=None, hp='DT990', stim='noise',
         downstream analysis grouping; does not regenerate the SOFA.
     ear, hp, stim, az_range, sector_size, mirror : per-run overrides of the
         old module-level EAR/HP/STIM/AZ_RANGE/SECTOR_SIZE/MIRROR settings.
+    settings   : optional dict merged into the sequence settings, e.g.
+        {'targets_per_sector': 1, 'elevation_range': (-35, 35),
+         'min_distance': 20, 'exclude_midline': True, 'gain': .2}.
 
     Returns the written sequence (also available via subject.localization).
     """
@@ -275,7 +280,8 @@ def run(subject_id, condition, delta, ear=None, hp='DT990', stim='noise',
 
     set_windows_volume(50)
     loc_test = Localization(subject, hrir, condition, delta, ear=ear, stim=stim,
-                            az_range=az_range, sector_size=sector_size, mirror=mirror)
+                            az_range=az_range, sector_size=sector_size, mirror=mirror,
+                            settings=settings)
     loc_test.run()
 
     sequence = subject.localization[loc_test.filename]

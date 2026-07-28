@@ -1,245 +1,230 @@
+"""Quick listening test for a recorded / modified HRTF — "fly-over".
+
+No head tracker, no game: a virtual source is moved along the measured source
+grid while a continuous stimulus plays, so you can hear what an HRTF does.
+Head position is assumed fixed and facing straight ahead (0, 0).
+
+Run cell by cell (# %%): config -> setup -> one of the fly-over cells (repeat
+as often as you like) -> stop.
+
+Coordinates are given in *world* convention (like training/localization
+targets): azimuth positive = right, elevation positive = up. They are mapped
+to the SOFA convention (az 0..360, counter-clockwise) and snapped to the
+nearest measured source before being sent to pyBinSim.
+"""
+import logging
+import time
+
 import matplotlib
-# matplotlib.rcParams['figure.raise_window'] = False
 matplotlib.use('Qt5Agg')
 import matplotlib.pyplot as plt
-
 import numpy
 import slab
-import time
-import logging
-from pathlib import Path
-import multiprocessing as mp
 from pythonosc import udp_client
-from hrtf_relearning.hrtf.binsim.hrtf2binsim import hrtf2binsim
-from hrtf_relearning.experiment.misc import meta_motion
 
-logging.getLogger().setLevel('INFO')
-import hrtf_relearning
+from hrtf_relearning.hrtf.binsim.hrtf2binsim import hrtf2binsim
+from hrtf_relearning.hrtf.binsim.stream import start_stream
 from hrtf_relearning.utils import paths
 
-# ------------------------ CONFIG ------------------------
+logging.getLogger().setLevel('INFO')
 
-# HRTF selection
-sofa_name = 'universal'
+# ------------------------------ CONFIG ------------------------------
 
-# unilateral vs. binaural
-ear = None
-# ear = 'left'
+SUBJECT_ID = 'GLK'
+HRIR_NAME = 'GLK'          # SOFA in data/hrtf/sofa/<SUBJECT_ID>/, e.g. 'GLK_shift'
+EAR = None                 # None = binaural, 'left'/'right' = monaural
+HP = 'DT990'
 
-settings = dict(
-    trial_time=300,
-    gain=.2,                      # loudness
+GAIN = .2                  # /pyBinSimLoudness
+DWELL = .06                # s per measured direction (sets fly-over speed)
+STIM = 'noise'             # 'noise' (continuous pink noise) or 'pulses'
+PLOT = 'TF'                # 'TF', 'IR' or None — live plot of the active filter
+
+hrir_settings = dict(
+    name=HRIR_NAME,
+    subject_id=SUBJECT_ID,
+    ear=EAR,
+    other_ear='flat',
+    reverb=True,
+    drr=20,
+    hp_filter=True,
+    hp=HP,
+    convolution='cpu',     # 'cuda' on the rig — torch cuda is not available on macOS
+    storage='cpu',
 )
 
-soundfile = None
-# soundfile = 'c_chord_guitar.wav'
-# soundfile = 'uso_225ms_9_.wav'
+# --------------------------- HELPERS --------------------------------
 
-show = 'IR'
-
-# ------------------------ HRTF LOAD ------------------------
-
-hrir = hrtf2binsim(sofa_name, ear, overwrite=False)
-slab.set_default_samplerate(hrir.samplerate)
-hrir_dir = paths.BINSIM_DIR / hrir.name
+def _world_az(sofa_az):
+    """SOFA az (0..360, ccw) -> signed world az (negative left, positive right)."""
+    return ((-numpy.asarray(sofa_az) + 180) % 360) - 180
 
 
-# ------------------------ MAIN LOOP ------------------------
-def play_session():
+def _nearest(values, value):
+    values = numpy.unique(values)
+    return values[numpy.argmin(numpy.abs(values - value))]
+
+
+def horizontal_path(el=0., az_range=(-50, 50)):
+    """Indices of measured sources on one elevation ring, left -> right."""
+    sources = hrir.sources.vertical_polar
+    el = _nearest(sources[:, 1], el)
+    idx = numpy.where(sources[:, 1] == el)[0]
+    az = _world_az(sources[idx, 0])
+    idx = idx[(az >= az_range[0]) & (az <= az_range[1])]
+    return idx[numpy.argsort(_world_az(sources[idx, 0]))]
+
+
+def vertical_path(az=0., el_range=(-37.5, 37.5)):
+    """Indices of measured sources on one azimuth column, bottom -> top."""
+    sources = hrir.sources.vertical_polar
+    az = _nearest(_world_az(sources[:, 0]), az)
+    idx = numpy.where(numpy.isclose(_world_az(sources[:, 0]), az))[0]
+    el = sources[idx, 1]
+    idx = idx[(el >= el_range[0]) & (el <= el_range[1])]
+    return idx[numpy.argsort(sources[idx, 1])]
+
+
+def raster_path(az_range=(-50, 50), el_range=(-37.5, 37.5)):
+    """Boustrophedon sweep over the whole frontal grid, bottom row first."""
+    sources = hrir.sources.vertical_polar
+    els = numpy.unique(sources[:, 1])
+    els = els[(els >= el_range[0]) & (els <= el_range[1])]
+    path = []
+    for i, el in enumerate(els):
+        row = horizontal_path(el, az_range)
+        path.append(row if i % 2 == 0 else row[::-1])
+    return numpy.concatenate(path)
+
+
+def fly(path, dwell=None, loops=1, pingpong=False, stim=None, gain=None, plot=None):
+    """Move the virtual source along `path` (source indices) and play.
+
+    dwell : seconds spent at each measured direction.
+    loops : number of repetitions of the whole path.
+    pingpong : append the reversed path, so the source flies back.
     """
-    Test session: similar to training but allows staying at the center longer.
-    """
-    global osc_client
-    osc_client = make_osc_client(port=10003)  # pyBinSim control
+    dwell = DWELL if dwell is None else dwell
+    stim = STIM if stim is None else stim
+    gain = GAIN if gain is None else gain
+    plot = PLOT if plot is None else plot
 
-    sensor_state = mp.Value("i", 0)       # 1=ready, 2=calibrate, 3=track
-    target = mp.Array("f", [0, 0])        # [az, el] in (-180,180], linear el
-    filter_idx_shared = mp.Value("i", -1)
+    path = numpy.asarray(path)
+    if pingpong:
+        path = numpy.concatenate([path, path[::-1]])
+    path = numpy.tile(path, loops)
+    if not len(path):
+        raise ValueError('empty path — check the az/el ranges against the measured grid')
 
-    # workers
-    # 1) REMOVE daemon=True here
-    plot_worker = mp.Process(target=plot_current_tf, args=(filter_idx_shared, show,))
-    plot_worker.start()
+    sources = hrir.sources.vertical_polar
+    duration = len(path) * dwell + .5
+    soundfile = _write_stim(duration, stim)
 
-    tracking_worker = mp.Process(
-        target=head_tracker,
-        args=(target, sensor_state, filter_idx_shared)
-    )
-    tracking_worker.start()
+    fig = ax = None
+    if plot:
+        fig, ax = plt.subplots(figsize=(7, 4))
+        plt.ion()
+        plt.show(block=False)
 
-    binsim_worker = mp.Process(target=binsim_stream, args=())
-    binsim_worker.start()
-
-    # wait for tracker init
-    while sensor_state.value != 1:
-        time.sleep(0.1)
-
-    sensor_state.value = 2  # calibrate
-    time.sleep(0.1)
-    while sensor_state.value != 3:
-        sensor_state.value = 3
-        time.sleep(0.1)
-
-    osc_client.send_message('/pyBinSimLoudness', settings['gain'])
-    play_sound(
-        osc_client,
-        soundfile=soundfile,
-        duration=float(settings['trial_time']),
-        sleep=False
-    )
-
-    # 2) KEEP MAIN PROCESS ALIVE for the trial, then clean up
+    _set_filter(sources[path[0]])
+    osc_play.send_message('/pyBinSimLoudness', gain)
+    osc_play.send_message('/pyBinSimFile', str(soundfile))
     try:
-        # Let the session run for trial_time seconds, or interrupt with Ctrl-C
-        time.sleep(settings['trial_time'])
+        for idx in path:
+            t0 = time.time()
+            _set_filter(sources[idx])
+            logging.debug('az %.1f el %.1f', _world_az(sources[idx, 0]), sources[idx, 1])
+            if plot:
+                _draw(ax, idx, plot)
+                plt.pause(max(.001, dwell - (time.time() - t0)))
+            else:
+                time.sleep(max(0, dwell - (time.time() - t0)))
     except KeyboardInterrupt:
-        logging.info("Session interrupted by user.")
+        logging.info('interrupted')
     finally:
-        logging.info("Stopping workers...")
-        for p in (tracking_worker, binsim_worker, plot_worker):
-            if p.is_alive():
-                p.terminate()
-        for p in (tracking_worker, binsim_worker, plot_worker):
-            p.join()
-        logging.info("All workers stopped.")
+        osc_play.send_message('/pyBinSimLoudness', 0)
+    return fig
 
 
-# ------------------------ SUB-PROCESSES ------------------------
+def _set_filter(source):
+    """Send one measured direction to the pyBinSim ds convolver."""
+    osc_filter.send_message('/pyBinSim_ds_Filter',
+                            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                             float(source[0]), float(source[1]), 0,
+                             0, 0, 0])
 
-def binsim_stream():
-    import pybinsim
-    pybinsim.logger.setLevel(logging.ERROR)
-    logging.info(f'Loading {hrir.name}')
-    binsim = pybinsim.BinSim(hrir_dir / f'{hrir.name}_training_settings.txt')
-    binsim.stream_start()
 
-def head_tracker(target, sensor_state, filter_idx_shared):
-    osc_client = make_osc_client(port=10000)
-    sources = hrir.sources.vertical_polar
-
-    # init motion sensor
-    device = meta_motion.get_device()
-    state = meta_motion.State(device)
-    motion_sensor = meta_motion.Sensor(state)
-    logging.debug('motion sensor running')
-    sensor_state.value = 1
-
-    last_idx = -1
-    while True:
-        if sensor_state.value == 2:
-            logging.debug('Calibrating sensor..')
-            motion_sensor.calibrate()
-            while not motion_sensor.is_calibrated:
-                time.sleep(0.1)
-            sensor_state.value = 1
-
-        elif sensor_state.value == 3:
-            pose = motion_sensor.get_pose()
-
-            # distance to target in az/el plane
-            relative_coords = target[:] - pose
-
-            # convert to HRIR convention (0..360 az) & pick nearest filter
-            relative_coords[0] = (-relative_coords[0] + 360) % 360
-            rel_target = numpy.array((relative_coords[0], relative_coords[1], sources[0, 2]))
-            filter_idx = numpy.argmin(numpy.linalg.norm(rel_target - sources, axis=1))
-            rel_hrtf_coords = sources[filter_idx]
-
-            # send to pyBinSim
-            osc_client.send_message('/pyBinSim_ds_Filter', [
-                0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                float(rel_hrtf_coords[0]), float(rel_hrtf_coords[1]), 0,
-                0, 0, 0
-            ])
-            logging.debug(f'head tracking: filter coords: {rel_hrtf_coords}')
-
-            # publish to plotter if changed
-            if filter_idx != last_idx:
-                last_idx = filter_idx
-                filter_idx_shared.value = int(filter_idx)
-
-        time.sleep(0.01)
-
-# ------------------------ HELPERS ------------------------
-
-def play_sound(osc_client, soundfile=None, duration=None, sleep=False):
-    """Wrapper that passes the soundfile to pyBinSim. Generates noise if None."""
-    if duration:
-        if soundfile:  # crop file to duration
-            sound = slab.Sound.read(hrir_dir / 'sounds' / soundfile)
-            soundfile = 'cropped_' + soundfile
-            (slab.Sound(sound.data[:int(hrir.samplerate * duration)]).ramp(duration=.03)
-             .write(hrir_dir / 'sounds' / soundfile))
-        else:          # generate noise with pulse duration
-            soundfile = 'noise_pulse.wav'
-            slab.Sound.pinknoise(duration).ramp(duration=.03).write(hrir_dir / 'sounds' / soundfile)
+def _write_stim(duration, stim='noise', level=80):
+    sound_dir = paths.BINSIM_DIR / hrir.name / 'sounds'
+    if stim == 'noise':
+        sound = slab.Sound.pinknoise(duration, level=level)
+    elif stim == 'pulses':
+        pulse = slab.Sound.pinknoise(.1, level=level).ramp(duration=.01)
+        gap = slab.Sound.silence(.05)
+        sound = slab.Sound.sequence(*[s for _ in range(int(numpy.ceil(duration / .15)))
+                                      for s in (pulse, gap)])
     else:
-        # use full length
-        if soundfile is None:
-            soundfile = 'noise_pulse.wav'
-            # ensure it exists (1s default)
-            slab.Sound.pinknoise(1.0).ramp(duration=.03).write(hrir_dir / 'sounds' / soundfile)
-        duration = slab.Sound(hrir_dir / 'sounds' / soundfile).duration
-
-    logging.debug(f'Setting soundfile: {soundfile}')
-    osc_client.send_message('/pyBinSimFile', str(hrir_dir / 'sounds' / soundfile))
-    if sleep:
-        time.sleep(duration)
+        raise ValueError("stim must be 'noise' or 'pulses'")
+    sound = sound.ramp(duration=.05)
+    sound.write(sound_dir / 'flyover.wav')
+    return sound_dir / 'flyover.wav'
 
 
-def make_osc_client(port, ip='127.0.0.1'):
-    return udp_client.SimpleUDPClient(ip, port)
-
-
-# ------------------------ LIVE TF PLOTTER ------------------------
-
-def plot_current_tf(filter_idx_shared, show, redraw_interval_s=0.05, ):
-    """
-    Lives in its own process. Opens a Qt figure and plots the TF of the
-    current HRTF (hrir[filter_idx]) whenever the filter index changes.
-    """
-    global hrir
+def _draw(ax, idx, kind='TF'):
     sources = hrir.sources.vertical_polar
-
-    plt.ion()
-    fig, ax = plt.subplots(figsize=(7, 4))
-    ax.set_title("Current HRTF Transfer Function")
-    try:
-        fig.canvas.manager.set_window_title("Live HRTF TF")
-    except Exception:
-        pass
-
-    last_idx = -1
-    while True:
-        idx = filter_idx_shared.value
-        if idx >= 0 and idx != last_idx:
-            last_idx = idx
-            try:
-                ax.cla()
-                # slab's helper draws into the provided axis
-                if show == 'TF':
-                    hrir[idx].tf(show=True, axis=ax)
-                elif show == 'IR':
-                    times = numpy.linspace(0, hrir[idx].n_samples / hrir.samplerate, hrir[idx].n_samples)
-                    ax.plot(times, hrir[idx].data)
-                az0, el0 = sources[idx, 0], sources[idx, 1]
-                az180 = (az0 + 180) % 360 - 180
-                ax.set_title(f"TF idx {idx}  |  az={az180:.1f}°, el={el0:.1f}°")
-                ax.grid(True, which='both', linestyle=':', linewidth=0.6)
-                fig.canvas.draw_idle()
-                plt.pause(0.001)
-            except Exception as e:
-                ax.cla()
-                ax.text(0.5, 0.5, f"Plot error for idx {idx}:\n{e}", ha='center', va='center')
-                fig.canvas.draw_idle()
-                plt.pause(0.001)
-
-        # throttle loop
-        plt.pause(redraw_interval_s)
+    ax.cla()
+    if kind == 'TF':
+        hrir[idx].channel(0).tf(show=True, axis=ax)
+        hrir[idx].channel(1).tf(show=True, axis=ax)
+        ax.lines[0].set_label('left')
+        ax.lines[1].set_label('right')
+    else:
+        times = numpy.linspace(0, hrir[idx].n_samples / hrir.samplerate, hrir[idx].n_samples)
+        ax.plot(times, hrir[idx].data[:, 0], label='left')
+        ax.plot(times, hrir[idx].data[:, 1], label='right')
+    ax.legend(loc='upper right')
+    ax.set_title(f'{hrir.name} | az {_world_az(sources[idx, 0]):.1f}°  '
+                 f'el {sources[idx, 1]:.1f}°')
+    ax.grid(True, which='both', linestyle=':', linewidth=.6)
 
 
-# ------------------------ ENTRY ------------------------
+# %% ---------------------------- SETUP -------------------------------
+# build the pyBinSim database and start the audio stream (run once)
 
-if __name__ == "__main__":
-    mp.set_start_method("spawn", force=True)  # safer on Windows/Qt
-    play_session()
+hrir = hrtf2binsim(hrir_settings, overwrite=True)
+slab.set_default_samplerate(hrir.samplerate)
+
+osc_filter = udp_client.SimpleUDPClient('127.0.0.1', 10000)   # /pyBinSim_ds_Filter
+osc_play = udp_client.SimpleUDPClient('127.0.0.1', 10003)     # loudness / soundfile
+
+# pyBinSim runs in its own interpreter (not multiprocessing): under 'spawn' a
+# worker would re-execute this script and start a second stream.
+binsim_proc = start_stream(hrir.name, 'test')
+osc_play.send_message('/pyBinSimLoudness', 0)
+
+# %% ------------------------ HORIZONTAL ------------------------------
+# left -> right and back, at ear level
+
+fly(horizontal_path(el=0), pingpong=True)
+
+# %% ------------------------- VERTICAL -------------------------------
+# bottom -> top in the median plane (the elevation cue to listen for)
+
+fly(vertical_path(az=0), dwell=.15, pingpong=True)
+
+# %% -------------------------- RASTER --------------------------------
+# whole frontal field, row by row
+
+fly(raster_path())
+
+# %% ------------------------- SINGLE SPOT ----------------------------
+# park the source at one direction and keep it there
+
+fly(horizontal_path(el=0, az_range=(0, 0)), dwell=3, stim='pulses')
+
+# %% --------------------------- STOP ---------------------------------
+
+osc_play.send_message('/pyBinSimLoudness', 0)
+binsim_proc.terminate()
+binsim_proc.wait()
+plt.close('all')

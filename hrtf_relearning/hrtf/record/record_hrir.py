@@ -82,10 +82,7 @@ def record_hrir(
         logging.info(f"Loading existing HRTF from {out_file}")
         hrtf = slab.HRTF(str(out_file))
         if show:
-            import matplotlib.pyplot as plt
-            fig, axes = plt.subplots(1, 2)
-            hrtf.plot_tf(hrtf.cone_sources(0), axis=axes, ear='both')
-            plt.show()
+            plot_hrtf(hrtf, subject_id)
         return hrtf
 
     subj_dir = base_dir / "rec" / subject_id
@@ -186,13 +183,23 @@ def record_hrir(
     hrtf.write_sofa(out_file)
 
     if show:
-        import matplotlib.pyplot as plt
-        fig, axes = plt.subplots(1,2)
-        hrtf.plot_tf(hrtf.cone_sources(0), axis=axes, ear='both')
-        plt.show()
+        plot_hrtf(hrtf, subject_id)
 
     logging.info("HRIR pipeline finished successfully")
     return hrtf
+
+
+def plot_hrtf(hrtf: slab.HRTF, subject_id: str) -> None:
+    """Plot midline-cone TFs and save the figure to RESULTS_DIR/<id>/plots/acoustic/."""
+    import matplotlib.pyplot as plt
+    fig, axes = plt.subplots(1, 2)
+    hrtf.plot_tf(hrtf.cone_sources(0), axis=axes, ear='both')
+    plot_dir = paths.subject_acoustic_dir(subject_id)
+    plot_dir.mkdir(parents=True, exist_ok=True)
+    fig_file = plot_dir / f'{subject_id}_hrtf.png'
+    fig.savefig(fig_file, dpi=200, bbox_inches='tight')
+    logging.info(f"Saved HRTF plot to {fig_file}")
+    plt.show()
 
 
 from pynput import keyboard

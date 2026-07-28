@@ -1383,6 +1383,16 @@ def _embed_modification_params(path, params):
         return None
 
 
+def embed_modification_params(path, params):
+    """Public name for :func:`_embed_modification_params`.
+
+    Other modules (e.g. modify.donor_detail, the protocols) write their own
+    manipulations' params into a SOFA; they should not have to import a private
+    name to do it.
+    """
+    return _embed_modification_params(path, params)
+
+
 def read_modification_params(path):
     """Return the modification-params dict embedded in a SOFA, or None.
 

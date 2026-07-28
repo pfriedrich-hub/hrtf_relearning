@@ -11,6 +11,7 @@ from hrtf_relearning.hrtf.processing.mirror import mirror_hrtf
 from hrtf_relearning.hrtf.processing.tf2ir import hrtf2hrir
 from hrtf_relearning.hrtf.processing.flatten import flatten_dtf
 from hrtf_relearning.hrtf.processing.envelope import envelope_dtf, DEFAULT_N_KEEP
+from hrtf_relearning.hrtf.processing.native import native_dtf
 from hrtf_relearning.hrtf.binsim.hrir2mat import (
     resample_sounds,
     compute_lr_ir,
@@ -187,9 +188,16 @@ def hrtf2binsim(hrir_settings, overwrite: bool = True, build: bool = True):
     #   'envelope' -> its own coarse cepstral envelope (envelope_dtf), fine
     #                 detail removed; same ITD/ILD, but the ear still sounds
     #                 like an ear, which supports externalization.
+    #   'native'   -> its own UNMODIFIED DTF, spliced back in from the native
+    #                 SOFA (native_dtf), so only the listening ear carries the
+    #                 modification. NOT a monaural condition: the other ear
+    #                 keeps a full veridical elevation cue. See
+    #                 hrtf.processing.native for what that costs.
     # Ignored when ear is None (binaural).
     other_ear = hrir_settings.get("other_ear", "flat")
     env_n_keep = int(hrir_settings.get("env_n_keep", DEFAULT_N_KEEP))
+    # source of the untouched channel for other_ear='native'
+    native_sofa = hrir_settings.get("native_sofa", subject_id)
     mirror = hrir_settings.get("mirror", False)
     reverb = hrir_settings.get("reverb", True)
     drr = hrir_settings.get("drr", 20)
@@ -226,9 +234,23 @@ def hrtf2binsim(hrir_settings, overwrite: bool = True, build: bool = True):
             logger.info("Envelope-only DTF (n_keep=%d) for %s ear", env_n_keep, other)
             hrir = envelope_dtf(hrir, ear, n_keep=env_n_keep)
             hrir.name += f"_{ear}_env{env_n_keep}"
+        elif other_ear == "native":
+            if native_sofa == sofa_name:
+                logger.warning(
+                    "other_ear='native' with native_sofa == the loaded SOFA (%s): "
+                    "nothing to restore, this is a plain binaural condition", sofa_name)
+            else:
+                logger.info("Restoring native DTF from %s.sofa for %s ear",
+                            native_sofa, other)
+                native = slab.HRTF(data_dir / "sofa" / subject_id / f"{native_sofa}.sofa")
+                if native.datatype != "FIR":
+                    native = hrtf2hrir(native)
+                hrir = native_dtf(hrir, native, ear)
+            hrir.name += f"_{ear}_nat"
         else:
             raise ValueError(
-                f"other_ear must be 'flat' or 'envelope', got {other_ear!r}")
+                f"other_ear must be 'flat', 'envelope' or 'native', "
+                f"got {other_ear!r}")
 
     if mirror:  # mirror left and right by swapping channels and sources (swap spectral cues)
         logger.info("Mirroring HRIR left ↔ right")

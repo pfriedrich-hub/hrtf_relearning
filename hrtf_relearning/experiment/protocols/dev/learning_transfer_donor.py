@@ -8,6 +8,7 @@ protocols/learning_transfer/learning_transfer.py — only the cue manipulation
 differs. Instead of translating the participant's own spectral detail along the
 ERB axis, their detail is REPLACED with a donor's:
 
+
     log|H_modified(direction)| = envelope_4( log|H_own| ) + detail( log|H_donor| )
 
 with the participant's own phase and own per-direction broadband level, so ITD
@@ -43,7 +44,7 @@ EDIT THE CONFIG BLOCK BELOW PER PARTICIPANT.
 ------------------------------------------------------------------------------
 """
 
-SUBJECT_ID = ("PF")
+SUBJECT_ID = ("FS")
 
 # %% imports and config #------------------------------------------------------
 import csv
@@ -140,8 +141,8 @@ def hrir_settings(sofa_name, ear=None, mirror=False, other_ear=None):
         "drr": 20,
         "hp_filter": True,
         "hp": HP,
-        "convolution": "cuda",
-        "storage": "cuda",
+        "convolution": "cpu",
+        "storage": "cpu",
     }
 
 

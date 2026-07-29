@@ -11,12 +11,97 @@ def make_sequence(settings, hrir_sources):
         return std_targets(settings, hrir_sources)  # play 3 times from each source in the sequence
     elif settings['kind'] == 'sectors':
         return sector_targets(settings, hrir_sources)
+    elif settings['kind'] == 'columns':
+        return column_targets(settings, hrir_sources)
 
 def az_el_distance(p, q):
     """Euclidean distance in az/el with circular azimuth."""
     daz = (p[0] - q[0] + 180) % 360 - 180
     del_ = p[1] - q[1]
     return numpy.hypot(daz, del_)
+
+
+def order_with_min_distance(points, min_dist, max_tries=int(10e3)):
+    """Greedy random ordering keeping successive targets at least min_dist apart."""
+    n = len(points)
+    for _ in range(max_tries):
+        remaining = list(range(n))
+        order = [remaining.pop(numpy.random.randint(len(remaining)))]
+        while remaining:
+            valid = [i for i in remaining
+                     if az_el_distance(points[order[-1]], points[i]) >= min_dist]
+            if not valid:
+                break
+            nxt = numpy.random.choice(valid)
+            order.append(nxt)
+            remaining.remove(nxt)
+        if len(order) == n:
+            return order
+    raise RuntimeError("Could not satisfy min_distance constraint")
+
+
+def column_targets(settings, hrir_sources):
+    """Fixed azimuth columns, elevations spread evenly within each.
+
+    For contrasts where target LATERALITY is the variable of interest rather
+    than a nuisance — e.g. how much a degraded contralateral ear costs. Sector
+    sampling cannot do this, because there the column position is tied to the
+    sector width: narrow columns force many of them.
+
+    Required settings
+    -----------------
+    azimuths : sequence of float
+        Nominal column centres in degrees, e.g. ``(-30, 0, 30)``.
+    targets_per_column : int
+        Targets per column, spread as evenly as the measured grid allows.
+    elevation_range : (min, max)
+    min_distance : float
+    azimuth_tol : float, default 5
+        How far a source may sit from the nominal azimuth to count as being in
+        the column.
+
+    Sources are used at most once across the whole sequence.
+    """
+    azimuths = list(settings['azimuths'])
+    per_column = int(settings['targets_per_column'])
+    el_range = settings['elevation_range']
+    min_dist = settings['min_distance']
+    tolerance = float(settings.get('azimuth_tol', 5.0))
+
+    src = numpy.asarray(hrir_sources, dtype=float)
+    src_az = (src[:, 0] + 180.0) % 360.0 - 180.0        # -> [-180, 180)
+    src_el = src[:, 1]
+
+    chosen, used = [], set()
+    for azimuth in azimuths:
+        in_column = numpy.where(
+            (numpy.abs((src_az - azimuth + 180.0) % 360.0 - 180.0) <= tolerance)
+            & (src_el >= el_range[0]) & (src_el <= el_range[1]))[0]
+        if len(in_column) < per_column:
+            raise ValueError(
+                f'azimuth column {azimuth} deg has only {len(in_column)} sources '
+                f'within +-{tolerance} deg and elevation {el_range}, '
+                f'need {per_column}')
+        # aim at evenly spaced elevations, take the nearest unused source to each
+        wanted = numpy.linspace(el_range[0], el_range[1], per_column)
+        for target_el in wanted:
+            candidates = [i for i in in_column if i not in used]
+            if not candidates:
+                raise ValueError(f'ran out of sources in column {azimuth} deg')
+            nearest = min(candidates, key=lambda i: abs(src_el[i] - target_el))
+            used.add(nearest)
+            chosen.append(nearest)
+
+    points = numpy.column_stack([src_az[chosen], src_el[chosen]])
+    points = points[order_with_min_distance(points, min_dist)]
+
+    points = numpy.round(points, 2)
+    points[:, 0] = (points[:, 0] + 180) % 360 - 180
+    seq = slab.Trialsequence(points)
+    seq.trials = numpy.arange(1, len(points) + 1)
+    seq.settings = dict(settings)
+    seq.settings['azimuth_columns'] = azimuths
+    return seq
 
 def sector_targets(settings, hrir_sources):
     """

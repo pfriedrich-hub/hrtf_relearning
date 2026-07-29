@@ -5,12 +5,12 @@ import matplotlib.animation as animation
 import slab
 from hrtf_relearning.utils import paths
 
-hrtf_dir = paths.SOFA_DIR / "database"
+hrtf_dir = paths.SOFA_DIR / "GS"
 
 # ---------------------------------------------------------------------------
 # Parameters – edit here
 # ---------------------------------------------------------------------------
-hrtf_id         = "mit_kemar_normal_pinna"  # HRTF file stem (loads <hrtf_id>.sofa)
+hrtf_id         = "GS"  # HRTF file stem (loads <hrtf_id>.sofa)
                                 # NB kemar.sofa / kemar_pir.sofa hold only the midline arc
                                 # (7 sources, all at azimuth 0) - nothing to animate there
 azimuth_range   = (0, 360)     # (min, max) in degrees; None = all

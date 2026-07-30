@@ -495,6 +495,7 @@ run_training()
 
 # %% adaptation days: daily TEST -----------------------------------------------
 subject = hr.Subject(SUBJECT_ID)
+
 daily = run_phase("daily", subject)
 collect_externalization_rating(daily)
 

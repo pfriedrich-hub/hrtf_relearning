@@ -79,7 +79,8 @@ import re
 import slab
 
 import hrtf_relearning as hr
-from hrtf_relearning.experiment.protocols.protocol_helpers import externalization_ladder
+from hrtf_relearning.experiment.protocols.protocol_helpers import (
+    collect_demographics, externalization_ladder)
 from hrtf_relearning.hrtf.modify.edge_shift import (embed_modification_params,
                                                     read_modification_params)
 from hrtf_relearning.hrtf.modify.plot_compare import plot_ears
@@ -298,6 +299,7 @@ donor_sofa_name()
 # %% run the ladder -----------------------------------------------------------
 # Randomised order per participant, ~10 trials per rung, rating after each.
 subject = hr.Subject(SUBJECT_ID)
+collect_demographics(subject)      # once per participant; skipped if on file
 results = externalization_ladder(subject, ladder_settings, rungs=LADDER_RUNGS,
                                  seed=SUBJECT_ID)
 

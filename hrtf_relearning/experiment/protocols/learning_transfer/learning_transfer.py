@@ -64,7 +64,7 @@ from hrtf_relearning.hrtf.modify.donor_detail import donor_detail_dtf, modificat
 from hrtf_relearning.hrtf.modify.edge_shift import (embed_modification_params,
                                                     read_modification_params)
 from hrtf_relearning.experiment.protocols.protocol_helpers import (
-    collect_externalization_rating, externalization_ladder)
+    collect_demographics, collect_externalization_rating, externalization_ladder)
 from hrtf_relearning.hrtf.modify.plot_compare import plot_ears, plot_split_qc
 from hrtf_relearning.utils import paths
 
@@ -438,6 +438,7 @@ def show_status(subject):
 
 # %% status check (rerun anytime) --------------------------------------------
 subject = hr.Subject(SUBJECT_ID)
+collect_demographics(subject)      # once per participant; skipped if on file
 show_status(subject)
 
 # %% day 1: native reference (original HRIR, full field) ----------------------

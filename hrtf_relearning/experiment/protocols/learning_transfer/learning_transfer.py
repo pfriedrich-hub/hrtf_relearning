@@ -106,7 +106,7 @@ ELEVATION_RANGE    = (-35, 35)
 TARGETS_PER_SECTOR = 3
 MIN_DISTANCE       = 20
 GAIN               = 0.2
-STIM               = "noise"
+STIM               = "uso"
 MIDLINE_TOL        = 1.0
 FULL_FIELD = (-35, 35)
 
@@ -495,7 +495,6 @@ run_training()
 
 # %% adaptation days: daily TEST -----------------------------------------------
 subject = hr.Subject(SUBJECT_ID)
-
 daily = run_phase("daily", subject)
 collect_externalization_rating(daily)
 

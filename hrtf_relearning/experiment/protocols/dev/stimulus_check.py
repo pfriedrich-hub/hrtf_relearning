@@ -216,13 +216,13 @@ for rms_tilt in (6.0, 8.0, 10.0, 12.0):
         print(f"{rms_tilt:9.1f} {rms_cue:8.1f} {spectra.std(0).mean():14.2f} "
               f"{tilt_ratio:9.1f}:1 {cue_ratio:8.1f}:1")
 
-# %% 7. SELF-TEST: full AR localization block, noise vs ripple ----------------
+# %% 7. SELF-TEST setup — config and helpers, runs nothing -------------------
 # The decisive check, and the one to run before any participant sees this.
 # Own UNMODIFIED HRTF, binaural, full field. With intact ears and an intact
 # HRTF, a drop in elevation gain from noise to ripple can only mean the
 # envelope is eating the cue. Expect a small cost at most.
 #
-# Order matters: run the two blocks in one sitting and swap the order on a
+# Order matters: run the two blocks in one sitting and swap BLOCK_ORDER on a
 # second run, otherwise practice/fatigue is confounded with stimulus.
 import hrtf_relearning as hr
 from hrtf_relearning.experiment.localization.Localization_AR import Localization
@@ -255,15 +255,31 @@ def self_test_settings(stim):
     return hrir, loc
 
 
-self_runs = {}
-for _stim in BLOCK_ORDER:
-    print(f"\n{'=' * 60}\n  {_stim.upper()}  — own HRTF, binaural, full field\n{'=' * 60}")
-    _subject = hr.Subject(SELF_ID)
-    _test = Localization(_subject, *self_test_settings(_stim))
-    _test.run()
-    self_runs[_stim] = _subject.localization[_test.filename]
+def run_self_block(stim):
+    """One block. Returns the sequence and files it under self_runs[stim]."""
+    print(f"\n{'=' * 60}\n  {stim.upper()}  — own HRTF, binaural, full field"
+          f"  [{LENGTH}]\n{'=' * 60}")
+    subject = hr.Subject(SELF_ID)
+    test = Localization(subject, *self_test_settings(stim))
+    test.run()
+    self_runs[stim] = subject.localization[test.filename]
+    return self_runs[stim]
 
-# %% 8. self-test result ------------------------------------------------------
+
+self_runs = {}
+print(f"ready: {SELF_ID}, {LENGTH}, order {BLOCK_ORDER} — run cell 8 to start")
+
+# %% 8. RUN both blocks -------------------------------------------------------
+for _stim in BLOCK_ORDER:
+    run_self_block(_stim)
+
+# %% 8a. RUN one block at a time (alternative to cell 8) ---------------------
+run_self_block('noise')
+
+# %% 8b. ------------------------------------------------------------------------
+run_self_block('ripple')
+
+# %% 9. self-test result ------------------------------------------------------
 # EG within ~0.05-0.1 of the noise block and no jump in SD -> the stimulus is
 # safe to use. A large drop means rms_tilt is too high for your own cue depth
 # (re-run cell 6) or the envelope is leaking into the cue band.
@@ -277,9 +293,9 @@ if len(self_runs) == 2:
     print(f"\nEG cost of the random envelope: {_n - _r:+.2f} "
           f"({_r / _n * 100:.0f}% of the noise gain)")
 
-# %% 9. reload earlier self-test blocks (skip 7 if already run) ---------------
+# %% 10. reload earlier self-test blocks (skip the run cells) ----------------
 # Pulls the most recent noise and ripple blocks with the unmodified HRTF back
-# out of the subject file, so cell 8 can be re-run without testing again.
+# out of the subject file, so cell 9 can be re-run without testing again.
 _subject = hr.Subject(SELF_ID)
 self_runs = {}
 for _name, _seq in _subject.localization.items():

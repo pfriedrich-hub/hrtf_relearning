@@ -2,9 +2,10 @@ import sys
 import runpy
 
 COMMANDS = {
-    "training": "hrtf_relearning.experiment.training",
-    "record-dome": "hrtf_relearning.experiment.record_dome",
-    "analyze": "hrtf_relearning.experiment.analyze_localization",
+    "training": "hrtf_relearning.experiment.training.Training_AR",
+    "localize-ar": "hrtf_relearning.experiment.localization.Localization_AR",
+    "localize-vr": "hrtf_relearning.experiment.localization.Localization_VR",
+    "analyze": "hrtf_relearning.experiment.analysis.localization.localization_analysis",
 }
 
 def main():

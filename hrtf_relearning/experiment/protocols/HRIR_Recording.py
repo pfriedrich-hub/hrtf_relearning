@@ -34,7 +34,7 @@ from hrtf_relearning.hrtf.record.record_hrir import record_hrir
 from hrtf_relearning.hrtf.record.calibration.calibrate_headphones import calibrate_headphones
 from hrtf_relearning.utils import paths
 
-SUBJECT_ID   = 'GS'          # edit per participant
+SUBJECT_ID   = 'TS'          # edit per participant
 HEAD_RADIUS  = 0.075
 REFERENCE_ID = 'ref_03.04'
 N_DIRECTIONS = 3              # directions for the HRIR recording

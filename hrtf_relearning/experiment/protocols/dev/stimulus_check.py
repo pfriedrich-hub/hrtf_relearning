@@ -231,10 +231,16 @@ from hrtf_relearning.experiment.analysis.localization.localization_analysis impo
 
 SELF_ID = "PF"                        # own id — independent of the QC config above
 BLOCK_ORDER = ('noise', 'ripple')     # swap on the second run
-TARGETS_PER_SECTOR = 2                # 2 -> ~100 trials/block ~10 min; 1 -> ~50, ~5 min
+
+# 'quick'  25 trials/block, ~3 min  — gross check only, EG is +/- ~0.15
+# 'short'  50 trials/block, ~5 min  — EG +/- ~0.10
+# 'full'  100 trials/block, ~10 min — EG +/- ~0.07, use before running anyone else
+LENGTH = 'quick'
+_GRID = {'quick': ((14, 14), 1), 'short': ((7, 14), 1), 'full': ((7, 14), 2)}
 
 
 def self_test_settings(stim):
+    sector_size, targets_per_sector = _GRID[LENGTH]
     hrir = {"name": SELF_ID, "subject_id": SELF_ID, "ear": None,
             "other_ear": "envelope", "env_n_keep": 4, "native_sofa": SELF_ID,
             "mirror": False, "reverb": True, "drr": 20,
@@ -242,8 +248,8 @@ def self_test_settings(stim):
             "convolution": "cpu", "storage": "cpu"}
     loc = {"kind": "sectors", "azimuth_range": (-35, 35),
            "elevation_range": (-35, 35), "targets_per_speaker": 3,
-           "targets_per_sector": TARGETS_PER_SECTOR, "min_distance": 20,
-           "gain": 0.2, "stim": stim, "sector_size": (7, 14),
+           "targets_per_sector": targets_per_sector, "min_distance": 20,
+           "gain": 0.2, "stim": stim, "sector_size": sector_size,
            "replace": False, "exclude_midline": False, "midline_tol": 1.0,
            "stim_settings": {"rms_tilt": RMS_TILT, "rms_cue": RMS_CUE}}
     return hrir, loc

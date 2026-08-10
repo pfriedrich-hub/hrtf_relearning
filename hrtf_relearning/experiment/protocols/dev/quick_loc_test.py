@@ -49,7 +49,7 @@ TARGETS_PER_SPEAKER = 3    # 'standard' only
 MIN_DISTANCE = 20          # deg between successive targets
 EXCLUDE_MIDLINE = False    # drop az ~= 0 sources (hemifield/ear contrasts)
 GAIN = 0.2
-STIM = "noise"             # 'noise' | 'uso'
+STIM = "noise"             # 'noise' | 'ripple' | 'uso'
 
 SOFA_DIR = paths.SOFA_DIR / SUBJECT_ID
 

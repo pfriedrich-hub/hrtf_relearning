@@ -1,0 +1,111 @@
+% ---------------------------------------------------------------------------
+% DRAFT SEGMENT — localization test stimuli
+% Standalone; not \input anywhere yet. Stitch into Methods later.
+% Backing analysis + parameter sweeps: docs/stimulus_spectral_variation.md
+% Code: experiment/localization/localization_helpers/stimulus.py
+% ---------------------------------------------------------------------------
+
+\subsection{Localization stimuli}
+
+Localization stimuli were 225\,ms trains of five 25\,ms pink-noise bursts
+separated by 25\,ms silent gaps (10\,ms raised-cosine onset and offset ramps,
+5\,ms at the gap edges), cut from a single continuous noise realization. In the
+fixed-spectrum condition the train was used unmodified, so its expected
+spectrum was the same on every trial and only the realization noise varied
+(SD of the 1/6-octave-smoothed log spectrum: 0.4\,dB across trains, 0.8\,dB
+across the bursts within a train).
+
+In the variable-spectrum condition each train was recolored, before gapping, by
+a random spectral envelope drawn anew on every trial and shared by all five
+bursts. Natural sound sources differ from one another mainly in broad spectral
+coloration, which the auditory system must discount in order to read the finer,
+elevation-dependent pattern imposed by the pinna; the envelope was built to
+impose exactly that kind of variation. It was a smooth random function of log
+frequency (0.5--16\,kHz), band-limited to ripple densities below 0.5 ripples
+per octave with an rms of 8\,dB (mean peak-to-trough depth 27\,dB), applied as
+a zero-phase gain. The cutoff follows Macpherson and Middlebrooks
+% \citet{macpherson_vertical-plane_2003}
+, who found that localization was disrupted by spectral ripple at densities of
+0.5--2 ripples per octave but not by coarser variation, and concluded that
+broad-scale spectral structure is discounted despite contributing most to the
+shape of directional transfer functions. Each trial was
+therefore strongly recolored while the 0.5--2 ripples/octave band, in which the
+pinna notch shifts with elevation, was left largely untouched. The manipulation
+thus tests whether what was learned during training is tied to the spectrum of
+the training stimulus or generalizes across source spectra. It does not
+separate a perceptual remapping from an explicitly learned association: a
+listener who had learned to read the preserved band would succeed under either
+account. Timing, bandwidth and level were unchanged, and the envelope of every
+trial was stored.
+
+Across 400 realizations the variable stimulus varied with an SD of 6.4\,dB,
+against 0.4\,dB for the fixed-spectrum stimulus. Within the 0.5--2
+ripples/octave band the elevation-dependent variation of the participants'
+directional transfer functions (SD across elevation at fixed azimuth) exceeded
+the trial-to-trial variation of the source spectrum by a factor of 2.8; below
+0.5 ripples/octave the source dominated (factor 0.4).
+
+% --- supplement ------------------------------------------------------------
+% The envelope is a discrete cosine series in dB on a 128-point log-frequency
+% grid, coefficient k corresponding to k/10 ripples per octave; the constant
+% term and all coefficients at or above 0.5 ripples/octave are zero, a zero
+% coefficient contributing 0 dB, i.e. unity gain. Burst-to-burst correlation of
+% the detrended log spectra within a trial was r = 0.95, versus r = -0.01 for
+% the unmodified stimulus.
+
+% --- what this manipulation can and cannot decide ---------------------------
+% Rules out: a mapping tied to the overall spectrum of the training stimulus
+%   ("this timbre = that elevation"), since gross coloration now varies by
+%   8 dB rms trial to trial and is uninformative.
+% Does NOT rule out: a lookup restricted to the preserved 0.5-2 rip/oct band.
+%   The pinna notch is a shape-within-band feature, so a remapping of that
+%   structure onto space and a learned association between that structure and a
+%   response both survive the manipulation. Arguably the two are not
+%   distinguishable acoustically at all -- adaptation at the spectral-to-spatial
+%   mapping stage IS the learning of new pattern-location associations.
+% What would separate perceptual from explicit/procedural learning:
+%   - response latency and dual-task cost (explicit strategies are slow and
+%     interference-prone)
+%   - generalization to untrained locations WITHIN the trained ear: a graded map
+%     should interpolate, a lookup should not (cf. condition B)
+%   - graded vs catastrophic degradation under band-limiting of the cue region
+%   - aftereffects / coexistence on return to the native HRTF
+%   - subjective report: does it sound like it comes from there, or is the
+%     response reasoned to
+% On whether the listener CAN discount the source spectrum here — two reasons
+% they can, so a failure is informative rather than a ceiling of the paradigm:
+%  (1) Presentation is not strictly monaural. The other ear receives the same
+%      source convolved with a cepstrally smoothed (n_keep=4) DTF, so the
+%      interaural log-difference cancels the source spectrum exactly while
+%      retaining almost all of the trained ear's fine structure. The reference
+%      channel is in fact smoother than in natural binaural listening, where
+%      both ears carry notches. Its level falls with lateral angle (up to ~9 dB
+%      down at 35 deg), so the reference degrades toward the periphery.
+%  (2) Source-spectrum discounting is anyway achievable monaurally: models based
+%      on the first/second spectral derivative recover direction for sources
+%      with locally flat or locally constant-slope spectra (Zakarauskas &
+%      Cynader 1993), and current sagittal-plane models use monaural spectral
+%      gradients (Baumgartner et al. 2014, already cited in the Intro).
+%
+% Framing for the Discussion: Macpherson & Middlebrooks show the NORMAL system
+% already discounts broad-scale spectral variation. The open question is whether
+% a NEWLY acquired spectral-to-spatial mapping inherits that invariance, or is
+% initially stimulus-specific and only becomes source-invariant with further
+% exposure. That, not "sensory vs cognitive", is what the ripple blocks test.
+
+% --- open items ------------------------------------------------------------
+% - Citations to add once a .bib exists:
+%     Macpherson & Middlebrooks (2003) JASA 114(1):430-445,
+%       doi:10.1121/1.1582174  -- ripple-spectrum probe, the 0.5-2 rip/oct window
+%     Zakarauskas & Cynader (1993) JASA 94(3):1323-1331 -- spectral-derivative
+%       model, monaural source-spectrum invariance
+%     Middlebrooks (1992), Baumgartner et al. (2014) -- already cited in Intro
+% - Report ripple depth as peak-to-trough as well as rms, since Macpherson &
+%   Middlebrooks parameterise by depth (they saw degradation at 1 rip/oct only
+%   for depths >= 20 dB; ours is 27 dB but below 0.5 rip/oct, where even 40 dB
+%   did not strongly disrupt).
+% - Cue depth varies by ear and subject; the 2.8:1 figure is FS's modified left
+%   ear at az -20. Decide whether to report a group range instead.
+% - FS's two "USO" blocks were run with the old generator (one fixed base
+%   texture per session, 0.8 dB variation). They are NOT a variable-spectrum
+%   test and should be reported as such, or dropped.

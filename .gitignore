@@ -30,3 +30,33 @@ __pycache__/
 
 # machine-local settings (torch device etc.) — see local_config.example.json
 local_config.json
+
+# --- OS / editor junk --------------------------------------------------------
+.DS_Store
+**/.DS_Store
+Thumbs.db
+/.idea/shelf/
+
+# --- regenerable stimulus output ---------------------------------------------
+# QC wavs written by protocols/dev/stimulus_check.py (cells 2 and 3). Every one
+# of these is a fresh random draw, so committing them is meaningless — rerun the
+# cell instead. The stimulus itself is defined by
+# localization_helpers/stimulus.py and each trial's exact spectrum is stored in
+# sequence.stim_params, so nothing is lost.
+/hrtf_relearning/data/sounds/stimulus_check/
+
+# Regenerable figures/CSVs live in .claude/ (ignored above), not in the tree.
+
+# --- LaTeX build artefacts ---------------------------------------------------
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.lof
+*.lot
+*.out
+*.synctex.gz
+*.toc
+writing/**/*.log
+writing/**/*.pdf

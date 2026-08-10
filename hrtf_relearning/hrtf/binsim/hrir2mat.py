@@ -1,6 +1,9 @@
+import json
+
 import numpy
 from matplotlib import pyplot as plt
 from scipy.io import savemat
+from scipy.signal import fftconvolve
 import slab
 import logging
 import pyfar
@@ -8,6 +11,9 @@ from pathlib import Path
 import hrtf_relearning
 from hrtf_relearning.hrtf.record.calibration.calibrate_headphones import load_hp_filter
 from hrtf_relearning.utils import paths
+
+logger = logging.getLogger(__name__)
+
 ROOT = Path(hrtf_relearning.__file__).resolve().parent
 wav_path = paths.BINSIM_DIR
 sofa_path = paths.SOFA_DIR
@@ -22,9 +28,154 @@ def resample_sounds(target_samplerate, target_directory):
             sound = sound.resample(target_samplerate)
         sound.write(target_directory / file.name, normalise=True)
 
+# ---- level normalisation ---- #
+
+# Broadband gain the rendered chain should have: the RMS that a unit-RMS source
+# picks up on its way to the ear drum (DS convolved with the headphone filter),
+# taken as the MEDIAN over source directions.
+#
+# Why this is needed: DTF-derived HRIRs carry no meaningful absolute scale --
+# free-field equalisation, the diffuse-field division and the headphone
+# inversion each move the level by several dB, differently per subject. Measured
+# across the first four databases the chain gain spanned 6.5 to 15.2 dB, i.e.
+# the SAME loc_settings['gain'] produced an 8.7 dB louder presentation for one
+# subject than for another, and the loudest ones drove pyBinSim past +-1
+# ("Clipping occured: Adjust loudnessFactor!" -- pybinsim/application.py).
+#
+# The reference is the level of the first databases (JS, GLK) that the AR/dome
+# loudness match was made against, so the matched gain stays valid; re-verify it
+# once with match_ar_dome_loudness.py.
+REFERENCE_LEVEL = 2.3
+
+# Runtime loudness (loc_settings['gain'] / '/pyBinSimLoudness') that the
+# headroom check assumes. Only used for the QC warning, not for the scaling.
+REFERENCE_GAIN = 0.2
+
+# Warn when the predicted output peak gets this close to full scale.
+PEAK_LIMIT = 0.9
+
+
+def _chain_ir(ds_ir, hp_ir):
+    """Direct-sound IR in series with the headphone filter, per ear."""
+    if hp_ir is None:
+        return ds_ir
+    return numpy.stack(
+        [fftconvolve(ds_ir[:, c], hp_ir[:, c]) for c in range(2)], axis=1
+    )
+
+
+def chain_levels(hrir, hp_ir=None):
+    """
+    Broadband gain of the DS (-> HP) chain, per source direction.
+
+    Returns
+    -------
+    numpy.ndarray
+        Array of shape [n_sources]: the output RMS a unit-RMS white-noise source
+        would produce, averaged over the two ears. This is the L2 norm of the
+        chain impulse response, so it is independent of the stimulus.
+    """
+    return numpy.array([
+        numpy.sqrt(numpy.mean(numpy.sum(_chain_ir(hrir[idx].data, hp_ir) ** 2, axis=0)))
+        for idx in range(hrir.n_sources)
+    ])
+
+
+def normalization_gain(hrir, hp_ir=None, reference=REFERENCE_LEVEL):
+    """
+    Single scalar that brings the whole filter set to the reference level.
+
+    ONE gain for the entire HRTF -- applied to every direction and to the reverb
+    tail alike -- so all amplitude ratios survive untouched: left/right within a
+    direction (ILD), direction-to-direction level differences, and the
+    direct-to-reverberant ratio. Only the absolute scale changes.
+
+    Returns
+    -------
+    (float, numpy.ndarray)
+        The gain, and the per-direction chain levels it was derived from.
+    """
+    levels = chain_levels(hrir, hp_ir)
+    level = float(numpy.median(levels))
+    if not level > 0:
+        raise ValueError(f"Median chain level is {level}. Check the HRIR and HP filter.")
+
+    gain = reference / level
+    logger.info(
+        "Level normalisation | median chain gain %.2f dB -> reference %.2f dB "
+        "(scalar %.4f, %+.2f dB)",
+        20 * numpy.log10(level), 20 * numpy.log10(reference), gain, 20 * numpy.log10(gain),
+    )
+    return gain, levels
+
+
+def predicted_peak(hrir, lr_ir, hp_ir, stimulus, norm_gain=1.0,
+                   loudness=REFERENCE_GAIN, levels=None, n_check=20):
+    """
+    Peak output pyBinSim would produce, for the loudest directions.
+
+    Mirrors the render chain in pybinsim.application.audio_callback: the source
+    is scaled by ``loudness``, convolved with DS and LR, summed, then convolved
+    with the headphone filter. Values above 1.0 clip.
+
+    Only the ``n_check`` loudest directions are checked, which is where the peak
+    lives, so the build does not pay for all directions.
+    """
+    stimulus = numpy.asarray(stimulus, dtype=float)
+    if stimulus.ndim > 1:
+        stimulus = stimulus[:, 0]
+    source = stimulus * loudness * norm_gain
+
+    if levels is None:
+        levels = chain_levels(hrir, hp_ir)
+    loudest = numpy.argsort(levels)[::-1][:n_check]
+
+    peak = 0.0
+    for idx in loudest:
+        ds = hrir[idx].data
+        out = numpy.stack([fftconvolve(source, ds[:, c]) for c in range(2)], axis=1)
+        if lr_ir is not None:
+            rev = numpy.stack(
+                [fftconvolve(source, lr_ir[:, c] * norm_gain) for c in range(2)], axis=1)
+            n = max(out.shape[0], rev.shape[0])
+            summed = numpy.zeros((n, 2))
+            summed[:out.shape[0]] = out
+            summed[:rev.shape[0]] += rev
+            out = summed
+        if hp_ir is not None:
+            out = numpy.stack(
+                [fftconvolve(out[:, c], hp_ir[:, c]) for c in range(2)], axis=1)
+        peak = max(peak, float(numpy.abs(out).max()))
+    return peak
+
+
+def write_level_info(hrir, mat_path, norm_gain, levels, peak=None,
+                     reference=REFERENCE_LEVEL, loudness=REFERENCE_GAIN):
+    """
+    Write the normalisation provenance next to the MAT database.
+
+    It cannot live inside the MAT: pyBinSim's FilterStorage.parse_and_load_matfile
+    walks EVERY top-level variable in the file and raises "Filter indentifier
+    wrong or missing" on anything that is not a filter struct.
+    """
+    info_path = Path(mat_path).with_name(f"{hrir.name}_level.json")
+    info = {
+        "name": hrir.name,
+        "reference_level": reference,
+        "median_chain_level": float(numpy.median(levels)),
+        "chain_level_range": [float(levels.min()), float(levels.max())],
+        "norm_gain": float(norm_gain),
+        "norm_gain_db": float(20 * numpy.log10(norm_gain)),
+        "reference_loudness": loudness,
+        "predicted_peak": None if peak is None else float(peak),
+    }
+    info_path.write_text(json.dumps(info, indent=2))
+    return info_path
+
+
 # ---- mat writers ---- #
 
-def write_filters(hrir, lr_ir, hp_ir, mat_path):
+def write_filters(hrir, lr_ir, hp_ir, mat_path, norm_gain=1.0):
     """
     Write a pyBinSim-compatible MAT database matching FilterStorage.parse_and_load_matfile()
 
@@ -36,7 +187,13 @@ def write_filters(hrir, lr_ir, hp_ir, mat_path):
       - sourcePosition (1x3)   (az, el, r) in your convention
       - custom (1x3)
       - ir  (nSamples x 2)
+
+    norm_gain scales the DS and LR filters (never HP, which is the measured
+    equalisation and sits in series with them). One scalar for the whole set, so
+    ILD, direction-to-direction level differences and the DRR are all preserved.
+    See normalization_gain().
     """
+    norm_gain = float(norm_gain)
 
     # structured dtype with all required fields
     dtype = numpy.dtype([
@@ -64,7 +221,7 @@ def write_filters(hrir, lr_ir, hp_ir, mat_path):
             zeros3.copy(),                 # sourceOrientation
             numpy.array([az, el, 0.0], dtype=numpy.float32),  # sourcePosition
             zeros3.copy(),                 # custom
-            hrir[src_idx].data.astype(numpy.float32),         # ir
+            (hrir[src_idx].data * norm_gain).astype(numpy.float32),  # ir
         ))
 
     # ---------- LR row ----------
@@ -76,7 +233,7 @@ def write_filters(hrir, lr_ir, hp_ir, mat_path):
             zeros3.copy(),
             zeros3.copy(),
             zeros3.copy(),
-            lr_ir.astype(numpy.float32),
+            (lr_ir * norm_gain).astype(numpy.float32),
         ))
 
     # ---------- HP row ----------

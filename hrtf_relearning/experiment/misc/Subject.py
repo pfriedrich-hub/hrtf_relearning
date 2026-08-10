@@ -21,6 +21,10 @@ class Subject:
     ----------
     id : str
         Subject identifier; also the folder name under RESULTS_DIR.
+    demographics : dict
+        Age, gender and when they were recorded. Empty for records created
+        before demographics were collected; fill with
+        ``protocol_helpers.collect_demographics(subject)``.
     localization : dict[str, slab.Trialsequence]
         Localization runs keyed by filename ``<id>_<date>_<hrir>``, in
         insertion (chronological) order. Each value is the completed test
@@ -89,6 +93,7 @@ class Subject:
             self.trials = []
             self.last_sequence = None
             self.highscore = 0
+            self.demographics = {}
 
     def _load(self):
         logging.info("Loading subject data.")
@@ -99,6 +104,8 @@ class Subject:
         self.trials = data.get("trials", [])
         self.last_sequence = data.get("last_sequence", None)
         self.highscore = data.get("highscore", 0)
+        # {} for records created before demographics were collected
+        self.demographics = data.get("demographics", {})
 
     def write(self):
         logging.debug("Writing subject data.")
@@ -109,6 +116,7 @@ class Subject:
             "trials": self.trials,
             "last_sequence": self.last_sequence,
             "highscore": self.highscore,
+            "demographics": self.demographics,
         }
         with open(self.file_path, "wb") as f:
             pickle.dump(data, f)
@@ -367,6 +375,7 @@ class Subject:
             payload = {
                 "id": self.id,
                 "highscore": int(self.highscore) if self.highscore is not None else 0,
+                "demographics": dict(self.demographics or {}),
                 "localization": merged,
             }
             # Write via temp file + replace so a crash mid-write can't

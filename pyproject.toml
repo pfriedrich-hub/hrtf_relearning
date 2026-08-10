@@ -5,6 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "hrtf_relearning"
 version = "0.1.0"
+requires-python = ">=3.10"
 dependencies = [
     "slab @ git+https://github.com/pfriedrich-hub/slab.git",
     "pybinsim @ git+https://github.com/pfriedrich-hub/pybinsim_tuil.git",
@@ -14,6 +15,7 @@ dependencies = [
 
 [tool.setuptools.packages.find]
 where = ["."]
+include = ["hrtf_relearning*"]
 
 [project.scripts]
 hrtf = "hrtf_relearning.cli:main"

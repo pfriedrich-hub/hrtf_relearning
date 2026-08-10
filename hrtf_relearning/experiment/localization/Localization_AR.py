@@ -5,7 +5,8 @@ import time
 import slab
 from hrtf_relearning.experiment.analysis.localization.localization_analysis import *
 from hrtf_relearning.experiment.localization.localization_helpers.uso_generation import generate_uso
-from hrtf_relearning.experiment.localization.localization_helpers.stimulus import make_gapped_pinknoise
+from hrtf_relearning.experiment.localization.localization_helpers.stimulus import (
+    make_gapped_pinknoise, make_rippled_pinknoise, RMS_TILT, RMS_CUE, RIPPLE_CUE_MAX)
 from hrtf_relearning.experiment.localization.localization_helpers.make_sequence import make_sequence
 from pythonosc import udp_client
 from hrtf_relearning.experiment.misc import meta_motion
@@ -65,6 +66,11 @@ class Localization:
         self.sequence.env_n_keep = hrir_settings.get('env_n_keep', None) if ear else None
         self.sequence.mirrored = mirror
         self.sequence.stim = self.stim_type
+        # per-trial source-spectrum recipe, appended by make_stim(). Empty for
+        # older runs; for 'ripple' it holds the DCT coefficients of that
+        # trial's spectral shape, so the stimulus is exactly reconstructible.
+        self.sequence.stim_params = []
+        self.sequence.stim_settings = self.settings.get('stim_settings', {}) or {}
         self.sequence.hp = hp
         # Record exactly which modification produced this HRTF (read back from
         # the SOFA's embedded params), so a run can always be traced to what was
@@ -191,13 +197,36 @@ class Localization:
         return meta_motion.Sensor(state)
 
     def make_stim(self):
+        """Build this trial's stimulus and record what it was.
+
+        'noise'  fixed-spectrum gapped pinknoise (the training stimulus)
+        'ripple' the same burst train with a NEW random smooth spectral shape
+                 every trial -- use this to ask whether the elevation map
+                 survives a source spectrum that moves, i.e. whether learning
+                 was a spectral-to-spatial recalibration or a timbre lookup
+        'uso'    Mitsuhashi composite; `uso_base` pins the base texture
+
+        The per-trial recipe goes into sequence.stim_params, so the source
+        spectrum of every trial can be reconstructed offline.
+        """
+        stim_settings = self.settings.get('stim_settings', {}) or {}
         if self.stim_type == 'noise':
-            stim = make_gapped_pinknoise(level=80)
+            stim, params = make_gapped_pinknoise(level=80), {'kind': 'noise'}
+        elif self.stim_type == 'ripple':
+            stim, params = make_rippled_pinknoise(
+                level=80,
+                rms_tilt=stim_settings.get('rms_tilt', RMS_TILT),
+                rms_cue=stim_settings.get('rms_cue', RMS_CUE),
+                flat_rms=stim_settings.get('flat_rms', None),
+                ripple_max=stim_settings.get('ripple_max', RIPPLE_CUE_MAX))
         elif self.stim_type == 'uso':
-            stim = generate_uso(samplerate=self.samplerate)
+            stim, params = generate_uso(samplerate=self.samplerate,
+                                        base=stim_settings.get('uso_base', None),
+                                        return_params=True)
         else:
-            raise ValueError('stim_type must be "noise" or "uso".')
+            raise ValueError('stim_type must be "noise", "ripple" or "uso".')
         stim.level = 80
+        self.sequence.stim_params.append(params)
         return stim
 
     @staticmethod

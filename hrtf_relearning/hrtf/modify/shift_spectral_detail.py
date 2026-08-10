@@ -543,7 +543,7 @@ if __name__ == '__main__':
     print(f'about to write {stem}.sofa')
 
     input('press enter to save (ctrl-c to discard)')
-    plot_dir = paths.subject_plot_dir(SUB_ID)
+    plot_dir = paths.subject_acoustic_dir(SUB_ID)
     plot_dir.mkdir(parents=True, exist_ok=True)
     fig.savefig(plot_dir / f'{stem}.png', bbox_inches='tight')
     sofa_dir.mkdir(parents=True, exist_ok=True)

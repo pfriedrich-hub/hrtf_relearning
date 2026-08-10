@@ -27,7 +27,7 @@ condition and does not behave like one:
   ear rather than relearning the modified cue on the trained ear. The two are
   indistinguishable unless you also probe with the other ear reduced (flat or
   envelope) — see the probe phases in
-  experiment/protocols/dev/learning_transfer_env.py.
+  experiment/protocols/learning_transfer/learning_transfer.py.
 * And the untrained ear is no longer naive at test time: it was stimulated with
   its own veridical cues throughout training.
 

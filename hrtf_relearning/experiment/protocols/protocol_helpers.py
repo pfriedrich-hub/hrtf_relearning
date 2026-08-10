@@ -2,8 +2,8 @@
 protocol_helpers.py — bits every protocol needs, in one place.
 
 These were copy-pasted across expectation_transfer.py,
-expectation_transfer_verification.py, learning_transfer_env.py and
-learning_transfer_donor.py, which meant four slightly different versions of the
+expectation_transfer_verification.py and the learning_transfer protocols,
+which meant four slightly different versions of the
 same question. Keep the wording identical across protocols so ratings from
 different experiments stay comparable.
 """
@@ -32,6 +32,63 @@ LADDER_RUNGS = ('anchor', 'flat', 'envelope', 'native')
 EXTERNALIZATION_PROMPT = (
     "Externalization (0 = entirely inside your head, "
     "10 = felt like a real external loudspeaker): ")
+
+# f / m / d follows the German convention (weiblich / männlich / divers); any
+# other free-text answer is stored verbatim, and an empty answer is recorded as
+# 'not stated' rather than guessed at.
+GENDER_CODES = {'f': 'female', 'm': 'male', 'd': 'diverse',
+                'w': 'female', '': 'not stated'}
+AGE_RANGE = (16, 100)
+
+
+def collect_demographics(subject, force=False, age_range=AGE_RANGE):
+    """Ask for age and gender once per participant and store them on the pkl.
+
+    Idempotent: if ``subject.demographics`` is already filled it prints what is
+    there and returns, unless ``force=True``. Safe to leave at the top of every
+    protocol, so whichever session a participant starts with collects it.
+
+    Stored as ``subject.demographics`` and mirrored into the JSON archive:
+    ``{'age': int, 'gender': str, 'gender_input': str, 'recorded': isoformat}``.
+    The raw keypress is kept alongside the expanded label so a coding decision
+    can always be revisited.
+    """
+    import datetime
+
+    existing = getattr(subject, 'demographics', None) or {}
+    if existing and not force:
+        print(f"demographics on file for {subject.id}: "
+              f"age {existing.get('age')}, gender {existing.get('gender')}"
+              f"  (force=True to re-enter)")
+        return existing
+
+    print(f"\n--- demographics for {subject.id} ---")
+    while True:
+        raw = input(f"Age (years, {age_range[0]}-{age_range[1]}): ").strip()
+        try:
+            age = int(raw)
+        except ValueError:
+            print("  please enter a whole number")
+            continue
+        if not age_range[0] <= age <= age_range[1]:
+            print(f"  outside {age_range[0]}-{age_range[1]} — re-enter, or "
+                  f"widen age_range if that is genuinely the age")
+            continue
+        break
+
+    raw_gender = input("Gender [f]emale / [m]ale / [d]iverse / free text / "
+                       "blank = not stated: ").strip()
+    gender = GENDER_CODES.get(raw_gender.lower(), raw_gender)
+
+    subject.demographics = {
+        'age': age,
+        'gender': gender,
+        'gender_input': raw_gender,
+        'recorded': datetime.datetime.now().isoformat(timespec='seconds'),
+    }
+    subject.write()
+    print(f"Recorded: age {age}, gender {gender}\n")
+    return subject.demographics
 
 
 def collect_externalization_rating(loc_test, ask_plausibility=False):

@@ -10,7 +10,7 @@ pyBinSim database.
 Run cell by cell (# %%). Stop at the first FAIL and send the report back.
 
 BEFORE RUNNING: add SUBJECT_ID to the 'subject' column of
-learning_transfer_donor_block_order.csv (replace an '(assign)' cell), otherwise
+learning_transfer/learning_transfer_block_order.csv (replace an '(assign)' cell),
 the protocol's config cell raises.
 """
 
@@ -28,7 +28,7 @@ from hrtf_relearning.hrtf.analysis import donor_selection as selection
 from hrtf_relearning.hrtf.modify.donor_detail import donor_detail_dtf, modification_params
 from hrtf_relearning.hrtf.modify.edge_shift import (embed_modification_params,
                                                     read_modification_params)
-from hrtf_relearning.hrtf.modify.plot_compare import plot
+from hrtf_relearning.hrtf.modify.plot_compare import plot_ears
 from hrtf_relearning.utils import paths
 
 RESULTS = []
@@ -153,17 +153,17 @@ check('reloaded data matches what was written', data_error < 1e-6,
 check('reloaded source count matches', reloaded.n_sources == n)
 
 # %% stage 5: QC figures ------------------------------------------------------
-plot_dir = paths.subject_plot_dir(SUBJECT_ID)
+plot_dir = paths.subject_acoustic_dir(SUBJECT_ID)
 plot_dir.mkdir(parents=True, exist_ok=True)
-for kind in ('image', 'waterfall'):
-    try:
-        fig = plot(own, modified, kind, ear='right',
-                   vsi_dis=chosen['vsi_dissimilarity'], vsi_bw=selection.DEFAULT_BAND)
-        fig.savefig(plot_dir / f'{modified.name}_{kind}.png', bbox_inches='tight')
-        check(f'plot_compare kind={kind}', True, str(plot_dir / f'{modified.name}_{kind}.png'))
-    except Exception as exc:
-        traceback.print_exc()
-        check(f'plot_compare kind={kind}', False, repr(exc))
+try:
+    fig = plot_ears(own, modified, vsi_dis=chosen['vsi_dissimilarity'],
+                    vsi_bw=selection.DEFAULT_BAND, band=selection.DEFAULT_BAND,
+                    suptitle=f'{SUBJECT_ID}  + {chosen["donor"]} detail')
+    fig.savefig(plot_dir / f'{modified.name}.png', bbox_inches='tight')
+    check('plot_ears 2x2 figure', True, str(plot_dir / f'{modified.name}.png'))
+except Exception as exc:
+    traceback.print_exc()
+    check('plot_ears 2x2 figure', False, repr(exc))
 
 # %% stage 6: pyBinSim database builds under the new name ---------------------
 # No hardware needed, but the subject's DT990_equalization.npz must exist.

@@ -15,21 +15,28 @@ localization runs, never trials). GS is the only subject affected.
 
 What can be recovered, and from where
 -------------------------------------
-    e4b0661  GS/GS.pkl    intact pickle, 2026-07-10   12 runs, 10 trials,
-                                                      highscore 2
+    e4b0661  GS/GS.pkl    intact pickle, 2026-07-10   12 runs (07.07/08.07),
+                                                      10 trials, highscore 2
     ce9e607  GS/GS.json   valid JSON archive           3 runs (28.07),
                                                       highscore 12
-    working  GS/GS.pkl    empty record written today  demographics only
+    working  GS/GS.pkl    live pickle, restarted       8 runs (10.08),
+                          from empty after the loss    0 trials
 
 The 2026-07-28 JSON is *not* a superset: it holds only the three 28.07 runs,
 so restoring from it alone (restore_from_json.py) would silently drop the
-twelve 07.07/08.07 runs. This script merges all three sources instead:
+twelve 07.07/08.07 runs. Nor is the live pickle: after the corruption the
+record was restarted empty, so it holds only the 10.08 session. This script
+merges all three sources:
 
-    localization  12 runs from the 07-10 pickle + 3 runs from the 07-28 JSON
+    localization  12 runs (07-10 pickle) + 3 (07-28 JSON) + 8 (live pickle),
+                  in that order, i.e. chronological
     trials        10, from the 07-10 pickle (07-10..07-28 trials are lost)
-    highscore     max of the two sources
-    demographics  from the current pickle, if present
+    highscore     max over all three sources
+    demographics  from the live pickle, if present
     last_sequence repointed at the newest surviving run
+
+The live pickle's own runs always win on a key collision -- it is the only
+source that can have been edited since.
 
 Both git sources are read by blob sha with ``git cat-file blob`` (never
 ``git show``, which would apply text filters), so nothing extra needs to be
@@ -88,6 +95,29 @@ def load_json_blob(sha: str) -> tuple:
         return load_json_localization(tmp)
 
 
+def restore_array_dtypes(restored: dict, templates) -> list:
+    """JSON has no arrays, so a run reconstructed from the archive comes back
+    with lists where a natively pickled Trialsequence holds numpy arrays
+    (``trials``, ``conditions``, ``response_errors``). Analysis code indexes
+    and broadcasts those, so cast them back.
+
+    Which attributes are arrays is taken from the intact sequences, unioned
+    over all of them -- a single template is not enough, e.g. aborted runs
+    carry an empty list where finished ones have an ndarray of
+    response_errors. Returns the attribute names that were cast."""
+    import numpy as np
+    array_attrs = {k for t in templates for k, v in vars(t).items()
+                   if isinstance(v, np.ndarray)}
+    cast = []
+    for seq in restored.values():
+        for attr in array_attrs:
+            val = getattr(seq, attr, None)
+            if isinstance(val, list):
+                setattr(seq, attr, np.asarray(val))
+                cast.append(attr)
+    return sorted(set(cast))
+
+
 def main():
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -103,44 +133,70 @@ def main():
           f"{len(old['trials'])} trials, highscore {old['highscore']}")
 
     _, archived = load_json_blob(JSON_BLOB)
-    print(f"07-28 archive: {len(archived)} runs")
+    cast = restore_array_dtypes(archived, old["localization"].values())
+    print(f"07-28 archive: {len(archived)} runs "
+          f"(list -> ndarray: {', '.join(cast) or 'nothing'})")
 
-    # Demographics were collected today into the empty replacement pickle;
-    # keep them if they are there.
-    demographics = {}
+    # The live pickle: everything recorded after the record was restarted
+    # empty, plus any demographics collected since.
+    live = {}
     if pkl_path.exists():
         try:
             with open(pkl_path, "rb") as f:
-                demographics = pickle.load(f).get("demographics") or {}
-            print(f"current pkl  : demographics {demographics or '(none)'}")
+                live = pickle.load(f)
+            print(f"live pickle  : {len(live.get('localization') or {})} runs, "
+                  f"{len(live.get('trials') or [])} trials, "
+                  f"highscore {live.get('highscore') or 0}, "
+                  f"demographics {live.get('demographics') or '(none)'}")
         except Exception as e:
-            print(f"current pkl  : unreadable ({e}) -- no demographics carried over")
+            print(f"live pickle  : unreadable ({e}) -- nothing carried over")
+    live_loc = live.get("localization") or {}
+    demographics = live.get("demographics") or {}
 
-    # 07.07/08.07 first, then 28.07: insertion order stays chronological.
+    # 07.07/08.07 first, then 28.07, then the live runs: insertion order stays
+    # chronological. The live pickle wins on a collision -- it is the only
+    # source that can have been edited since.
     localization = dict(old["localization"])
-    added = [k for k in archived if k not in localization]
-    for key in added:
+    from_archive = [k for k in archived if k not in localization]
+    for key in from_archive:
         localization[key] = archived[key]
+    from_live = list(live_loc)
+    for key in from_live:
+        localization[key] = live_loc[key]
+
+    # Trials only ever existed in the pickle; the live record starts empty.
+    # Re-running the script must not append the 07-10 trials a second time, so
+    # skip them if the live list already starts with them.
+    old_trials = list(old["trials"])
+    live_trials = list(live.get("trials") or [])
+    if live_trials[:len(old_trials)] == old_trials:
+        print("             (live pickle already carries the 07-10 trials -- "
+              "re-run, not appending them again)")
+        trials = live_trials
+    else:
+        trials = old_trials + live_trials
 
     json_highscore = json.loads(git_blob(JSON_BLOB)).get("highscore") or 0
-    highscore = max(int(old.get("highscore") or 0), int(json_highscore))
+    highscore = max(int(old.get("highscore") or 0), int(json_highscore),
+                    int(live.get("highscore") or 0))
     last_sequence = next(reversed(localization.values())) if localization else None
 
     data = {
         "id": SUBJECT_ID,
         "localization": localization,
-        "trials": old["trials"],
+        "trials": trials,
         "last_sequence": last_sequence,
         "highscore": highscore,
         "demographics": demographics,
     }
 
     print(f"\nmerged       : {len(localization)} runs "
-          f"(+{len(added)} from the archive), {len(data['trials'])} trials, "
-          f"highscore {highscore}")
+          f"(+{len(from_archive)} from the archive, +{len(from_live)} live), "
+          f"{len(trials)} trials, highscore {highscore}")
     print(f"last_sequence: {getattr(last_sequence, 'name', None)}")
     for i, (key, seq) in enumerate(localization.items(), 1):
-        src = "archive" if key in added else "pickle "
+        src = ("live   " if key in from_live else
+               "archive" if key in from_archive else "pickle ")
         print(f"  [{i:>2}] {src}  {key:<48} {getattr(seq, 'n_trials', '?')} trials")
 
     if args.dry_run:
@@ -148,9 +204,14 @@ def main():
         return
 
     for path in (pkl_path, json_path):
-        if path.exists():
-            shutil.copy2(path, path.with_suffix(path.suffix + ".pre-recovery"))
-            print(f"\nsaved {path.name} -> {path.name}.pre-recovery")
+        pre = path.with_suffix(path.suffix + ".pre-recovery")
+        if pre.exists():
+            # A second run must not overwrite the pre-recovery copy with the
+            # output of the first one -- that is the only untouched original.
+            print(f"\nkept existing {pre.name} (not overwritten)")
+        elif path.exists():
+            shutil.copy2(path, pre)
+            print(f"\nsaved {path.name} -> {pre.name}")
 
     pkl_path.parent.mkdir(parents=True, exist_ok=True)
     tmp = pkl_path.with_suffix(".pkl.tmp")

@@ -46,7 +46,7 @@ EDIT THE CONFIG BLOCK BELOW PER PARTICIPANT.
 ------------------------------------------------------------------------------
 """
 
-SUBJECT_ID = ("IR")
+SUBJECT_ID = ("GS")
 
 # %% imports and config #------------------------------------------------------
 import csv
@@ -106,7 +106,7 @@ ELEVATION_RANGE    = (-35, 35)
 TARGETS_PER_SECTOR = 3
 MIN_DISTANCE       = 20
 GAIN               = 0.2
-STIM               = "uso"
+STIM               = "noise"
 MIDLINE_TOL        = 1.0
 FULL_FIELD = (-35, 35)
 
@@ -449,7 +449,7 @@ run_phase("native", subject)
 # <SUBJECT_ID>_donor_<DONOR>.sofa with the selection embedded, plus a ranking
 # CSV and before/after figures. Note the donor id -- put it in DONOR_ID at the
 # top so later sessions can skip straight to load_existing_donor().
-build_donor_sofa(overwrite=False)
+build_donor_sofa(overwrite=True)
 subject = hr.Subject(SUBJECT_ID)
 
 # %% later sessions: reload the modified HRTF without rebuilding --------------
@@ -481,6 +481,8 @@ build_donor_sofa(overwrite=False, show_qc=False, n_keep=8)
 externalization_ladder(
     subject, ladder_settings, seed=SUBJECT_ID,
     rungs=("anchor", "flat", "native", "donor_n4", "donor_n8"))
+
+
 
 # %% day 1: baseline A -- trained ear, same loc (matches final A) -------------
 baseline_A = run_phase("baseline_A", subject)

@@ -34,7 +34,7 @@ from hrtf_relearning.hrtf.record.record_hrir import record_hrir
 from hrtf_relearning.hrtf.record.calibration.calibrate_headphones import calibrate_headphones
 from hrtf_relearning.utils import paths
 
-SUBJECT_ID   = 'TS'          # edit per participant
+SUBJECT_ID   = 'IR'          # edit per participant
 HEAD_RADIUS  = 0.075
 REFERENCE_ID = 'ref_03.04'
 N_DIRECTIONS = 3              # directions for the HRIR recording
@@ -48,7 +48,6 @@ ROOT = hr.PATH
 slab.set_default_samplerate(FS)
 freefield.set_logger('info')
 subject = hr.Subject(SUBJECT_ID)
-
 
 # %% helper: acoustic_test (define before running the Step 3 cell) -----------
 def acoustic_test(hrir, hp_filter, subject_id, hp_id, show=True):
@@ -154,7 +153,6 @@ logging.info('--- Step 4: Dome localization ---')
 dome_loc = LocalizationDome(subject, {'targets_per_speaker': 3, 'min_distance': 15})
 dome_loc.run()
 
-
 # %% step 5b: virtual localization -- DT990 ---------------------------------------
 logging.info('--- Step 5: HP localization (DT990) ---')
 ar_loc_settings = {'kind': 'standard', 'azimuth_range': (-1, 1), 'elevation_range': (-35, 35),
@@ -164,12 +162,9 @@ dt990_hrir_settings = dict(name=SUBJECT_ID, subject_id=SUBJECT_ID, ear=None, mir
 ar_loc = Localization(subject, dt990_hrir_settings, ar_loc_settings)
 ar_loc.run()
 
-
-
 # # %% step 3: acoustic sanity check (optional) -----------------------------------
 # logging.info('--- Step 3: Acoustic test ---')
 # acoustic_test(hrir, hp_filter, subject_id=SUBJECT_ID, hp_id='DT990', show=SHOW)
-
 
 # %% step 5a: virtual localization -- MYSPHERE (optional) ------------------------
 # logging.info('--- Step 5: HP localization (MYSPHERE) ---')

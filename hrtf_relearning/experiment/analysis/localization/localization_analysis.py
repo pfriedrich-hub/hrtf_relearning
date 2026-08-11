@@ -53,8 +53,24 @@ def _safe_subplots(**kwargs):
         matplotlib.use('Agg', force=True)
         return plt.subplots(**kwargs)
 
+def _no_usable_data(sequence):
+    """True when a sequence has nothing that can be analysed or plotted.
+
+    Beyond the never-started cases (this_n == -1, no data, no trial collected),
+    this also catches runs aborted *part way*: Trialsequence pre-allocates one
+    slot per trial and leaves the unrun ones as [], so sequence.data is ragged
+    and numpy.asarray() raises "inhomogeneous shape" instead of the guard
+    tripping. Such runs hold a handful of trials at most and are not worth
+    plotting, so treat a partially filled data list as unusable.
+    """
+    data = getattr(sequence, "data", None)
+    if not data or sequence.this_n == -1 or sequence.n_remaining == len(data):
+        return True
+    return any(not trial for trial in data)
+
+
 def localization_accuracy(sequence):
-    if sequence.this_n == -1 or sequence.n_remaining == len(sequence.data) or not sequence.data:
+    if _no_usable_data(sequence):
         return numpy.nan, numpy.nan, numpy.nan, numpy.nan, numpy.nan, numpy.nan
     # retrieve data
     loc_data = numpy.asarray(sequence.data)
@@ -219,7 +235,7 @@ def plot_localization(sequence, report_stats=['elevation', 'azimuth'], axis=None
     Skipped for (near-)midline tests: the response grid is only drawn when the
     sequence azimuth span exceeds 2 deg (e.g. not for azimuth_range=(-1, 1)).
     """
-    if sequence.this_n == -1 or sequence.n_remaining == len(sequence.data) or not sequence.data:
+    if _no_usable_data(sequence):
         return numpy.nan, numpy.nan, numpy.nan, numpy.nan, numpy.nan, numpy.nan
     if _azimuth_span(sequence) <= 2:
         logging.info(f'{getattr(sequence, "name", "sequence")}: azimuth span <= 2 deg '
@@ -363,7 +379,7 @@ def plot_elevation_response(sequence, axis=None, add_fit=True, filepath=None, n_
     -------
     fig : matplotlib.figure.Figure
     """
-    if sequence.this_n == -1 or sequence.n_remaining == len(sequence.data) or not sequence.data:
+    if _no_usable_data(sequence):
         return numpy.nan, numpy.nan, numpy.nan, numpy.nan, numpy.nan, numpy.nan
 
     fs = 8

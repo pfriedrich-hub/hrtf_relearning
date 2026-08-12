@@ -39,6 +39,19 @@ tested per participant by the ladder in protocols/dev/ladder.py.
 Counterbalancing is read from learning_transfer_block_order.csv IN THIS FOLDER.
 Write each subject's id into the 'subject' column before running.
 
+RUN ORDER. Cells top to bottom are the protocol proper, in the order they are
+performed:
+    day 1            status -> native reference -> build donor -> baseline A/D
+    adaptation days  PRE test -> train -> POST test   (three cells, in order)
+    final day        the counterbalanced 2x2
+Everything under MISC at the bottom is diagnostic and is NOT run as a matter of
+course -- the externalization ladder, the cepstral-split QC, the n_keep=8 build
+and the other-ear probe live there.
+
+The OS master volume is forced to OS_VOLUME (50%) at the start of every
+localization block and every training run, because the pybinsim gain was
+matched to the dome at that setting. Off Windows this is a logged no-op.
+
 Run cell by cell (# %%) in an IDE/console -- do NOT run top-to-bottom.
 
 ------------------------------------------------------------------------------
@@ -46,7 +59,7 @@ EDIT THE CONFIG BLOCK BELOW PER PARTICIPANT.
 ------------------------------------------------------------------------------
 """
 
-SUBJECT_ID = ("PF")
+SUBJECT_ID = ("IR")
 
 # %% imports and config #------------------------------------------------------
 import csv
@@ -64,7 +77,9 @@ from hrtf_relearning.hrtf.modify.donor_detail import donor_detail_dtf, modificat
 from hrtf_relearning.hrtf.modify.edge_shift import (embed_modification_params,
                                                     read_modification_params)
 from hrtf_relearning.experiment.protocols.protocol_helpers import (
-    collect_demographics, collect_externalization_rating, externalization_ladder)
+    collect_demographics, collect_externalization_rating, externalization_check,
+    externalization_ladder)
+from hrtf_relearning.experiment.misc.system_volume import set_windows_volume
 from hrtf_relearning.hrtf.modify.plot_compare import plot_ears, plot_split_qc
 from hrtf_relearning.utils import paths
 
@@ -106,6 +121,13 @@ ELEVATION_RANGE    = (-35, 35)
 TARGETS_PER_SECTOR = 3
 MIN_DISTANCE       = 20
 GAIN               = 0.2
+# Every block in this file inherits STIM. It is 'noise' for the whole protocol:
+# baselines, daily tests and the final 2x2 must all be measured with the same
+# stimulus or the change scores are meaningless. A variable-spectrum stimulus
+# ('ripple' | 'uso') belongs only in dedicated final-day comparison blocks, set
+# explicitly there -- NOT here.
+#   !! TS (10.08) and IR (11.08) had their day-1 blocks run with STIM='uso'
+#      because this was left set to 'uso'. See docs/stimulus_spectral_variation.md.
 STIM               = "noise"
 MIDLINE_TOL        = 1.0
 FULL_FIELD = (-35, 35)
@@ -145,7 +167,6 @@ def hrir_settings(sofa_name, ear=None, mirror=False, other_ear=None):
         "hp": HP,
         "convolution": "cpu",
         "storage": "cpu",
-        "target_samplerate": 48000
     }
 
 
@@ -343,6 +364,19 @@ def _describe(key):
             f"      ~{_est_trials(az)} trials")
 
 
+OS_VOLUME = 50   # Windows master slider, %. The pybinsim gain was matched to the
+                 # dome at this setting (match_ar_dome_loudness.py), so every
+                 # localization test and training run forces it before starting;
+                 # a moved slider silently invalidates the presentation level.
+
+
+def _fix_output_level():
+    """Force the OS master volume to OS_VOLUME. No-op off Windows."""
+    if not set_windows_volume(OS_VOLUME):
+        print(f"  [!] OS volume NOT set programmatically — check the slider is "
+              f"at {OS_VOLUME}% before continuing")
+
+
 def run_phase(key, subject, other_ear=None):
     label, when, sofa, ear, mirror, az, desc = phases()[key]
     if sofa is None:
@@ -352,6 +386,7 @@ def run_phase(key, subject, other_ear=None):
     print(f"RUNNING:  {_describe(key)}"
           + (f"\n      OTHER EAR OVERRIDE: {other_ear}" if other_ear else ""))
     print("=" * 70)
+    _fix_output_level()
     one_sided = tuple(az) != tuple(FULL_FIELD)
     test = Localization(subject,
                         hrir_settings(sofa, ear=ear, mirror=mirror, other_ear=other_ear),
@@ -359,6 +394,27 @@ def run_phase(key, subject, other_ear=None):
     test.run()
     print(f"Done: {test.filename}")
     return test
+
+
+def run_anchor(subject):
+    """Short native-HRTF block + rating -- the top of the 0-10 scale.
+
+    'A real external loudspeaker' is not a sound the participant has heard over
+    these headphones, so an unanchored rating is a number about their
+    imagination. This is the participant's OWN unmodified HRTF played
+    binaurally: the ceiling of the whole delivery chain, and the closest thing
+    to a 10 the setup can produce. ~10 trials, about a minute.
+
+    Run it once per day, before that day's first test, so ratings are comparable
+    within a day AND across days -- a rating of 6 on day 1 and 6 on day 4 only
+    means the same thing if the anchor also came out the same. If the anchor
+    itself drifts, that is a delivery-chain problem (headphone seat, HP filter,
+    OS volume), not adaptation, and it is worth catching before the day's data.
+    """
+    settings = loc_settings(FULL_FIELD)
+    settings.update(sector_size=(14, 14), targets_per_sector=1)   # ~10 trials
+    return externalization_check(subject, hrir_settings(NATIVE_SOFA, ear=None),
+                                 settings, label=f"{SUBJECT_ID} anchor (own HRTF, binaural)")
 
 
 def ladder_settings(rung):
@@ -403,6 +459,7 @@ def run_training(hrir_name=None, ear=None, az_range=None):
     print(f"           HRIR={hrir_name}.sofa   HP={HP}")
     print(f"           other ear={OTHER_EAR} (n_keep={ENV_NKEEP})")
     print("-" * 64)
+    _fix_output_level()
 
     env = dict(os.environ,
                TRAINING_SUBJECT_ID=SUBJECT_ID,
@@ -443,47 +500,21 @@ collect_demographics(subject)      # once per participant; skipped if on file
 show_status(subject)
 
 # %% day 1: native reference (original HRIR, full field) ----------------------
-run_phase("native", subject)
+# Doubles as the first anchor: this is the best the chain can sound, so its
+# rating defines the top of the 0-10 scale for everything that follows.
+native = run_phase("native", subject)
+collect_externalization_rating(native)
 
 # %% day 1: select the donor and build the modified HRTF -- run ONCE ----------
 # Prints the full candidate ranking, the chosen donor and why, writes
 # <SUBJECT_ID>_donor_<DONOR>.sofa with the selection embedded, plus a ranking
 # CSV and before/after figures. Note the donor id -- put it in DONOR_ID at the
 # top so later sessions can skip straight to load_existing_donor().
-build_donor_sofa(overwrite=True)
+build_donor_sofa(overwrite=False)
 subject = hr.Subject(SUBJECT_ID)
 
 # %% later sessions: reload the modified HRTF without rebuilding --------------
 load_existing_donor()
-
-# %% day 1: QC the split the manipulation depends on --------------------------
-# Envelope (red) should be smooth and roughly elevation-invariant; if it tracks
-# elevation, the split is freezing part of the cue instead of separating it.
-plot_split_qc(slab.HRTF(str(paths.SOFA_DIR / SUBJECT_ID / f"{NATIVE_SOFA}.sofa")),
-              envelope_n_keep=selection.N_KEEP, ear=TRAINED_EAR,
-              band=selection.DEFAULT_BAND)
-
-# %% day 1: build the second composite strength for the ladder ---------------
-# Same donor, n_keep=8: half as much of the cue handed over. Only needed for the
-# ladder; the training/testing SOFA stays the n_keep=4 one.
-build_donor_sofa(overwrite=False, show_qc=False, n_keep=8)
-
-# %% day 1: externalization + acute-degradation ladder ------------------------
-# Blocks of ~10 trials in a per-subject RANDOM order, each followed by the 0-10
-# rating; elevation gain is reported alongside.
-#   anchor     own unmodified HRTF, binaural      <- ceiling of the whole chain
-#   flat       other ear = delta impulse          }
-#   native     other ear = own full DTF           } ear treatment
-#   donor_n4   composite n_keep=4, other ear = OTHER_EAR   }
-#   donor_n8   composite n_keep=8, other ear = OTHER_EAR   } composite strength
-# donor_n4 is the condition the experiment actually runs. Read the EG column for
-# the acute degradation (target 0.3-0.5) and the rating column for
-# externalization -- but see the caveat the summary prints about 10-trial EG.
-externalization_ladder(
-    subject, ladder_settings, seed=SUBJECT_ID,
-    rungs=("anchor", "flat", "native", "donor_n4", "donor_n8"))
-
-
 
 # %% day 1: baseline A -- trained ear, same loc (matches final A) -------------
 baseline_A = run_phase("baseline_A", subject)
@@ -493,18 +524,39 @@ collect_externalization_rating(baseline_A)
 baseline_D = run_phase("baseline_D", subject)
 collect_externalization_rating(baseline_D)
 
-# %% adaptation days: TRAIN ----------------------------------------------------
+# ---------------------------------------------------------------------------
+# ADAPTATION DAYS
+# anchor -> PRE test -> train -> POST test, so within-session change is
+# separable from overnight consolidation and every rating has a same-day top.
+# Run the four cells in order.
+# ---------------------------------------------------------------------------
+
+# %% adaptation day: 0. ANCHOR (~10 trials, own HRTF) -------------------------
+# Re-tops the 0-10 scale for today and checks the delivery chain before any
+# data is collected. If this rating is well below yesterday's, stop and check
+# headphone seating / HP filter / OS volume rather than logging the day.
+subject = hr.Subject(SUBJECT_ID)
+run_anchor(subject)
+
+# %% adaptation day: 1. PRE-training test -------------------------------------
+subject = hr.Subject(SUBJECT_ID)
+daily_pre = run_phase("daily", subject)
+collect_externalization_rating(daily_pre)
+
+# %% adaptation day: 2. TRAIN --------------------------------------------------
 run_training()
 
-# %% adaptation days: daily TEST -----------------------------------------------
+# %% adaptation day: 3. POST-training test ------------------------------------
 subject = hr.Subject(SUBJECT_ID)
-daily = run_phase("daily", subject)
-collect_externalization_rating(daily)
+daily_post = run_phase("daily", subject)
+collect_externalization_rating(daily_post)
 
-# %% adaptation days: daily PROBE (only when OTHER_EAR = 'native') -------------
-# Repeats the daily test with the other ear reduced, so relearning of the
-# modified cue can be told apart from reweighting toward the intact ear.
-run_phase("daily", subject, other_ear=PROBE_OTHER_EAR)
+# %% final day: 0. ANCHOR (run before the 2x2) --------------------------------
+# Same-day top of the scale. The four final ratings are compared against each
+# other and against the day-1 baselines, so both need an anchor from their own
+# day; four days of headphone re-seating is enough to move the scale on its own.
+subject = hr.Subject(SUBJECT_ID)
+run_anchor(subject)
 
 # %% final day: all 4 conditions in this subject's counterbalanced order -------
 subject = hr.Subject(SUBJECT_ID)
@@ -523,3 +575,72 @@ collect_externalization_rating(run_phase("C", subject))
 
 # %% final day: D -- untrained ear, mirrored locations [MAIN] -----------------
 collect_externalization_rating(run_phase("D", subject))
+
+
+# ===========================================================================
+# MISC — diagnostics, not part of the per-participant protocol.
+# Nothing below runs as a matter of course. Reach for it when something looks
+# wrong, or on the odd participant where the extra measurement is worth the
+# time. Each cell stands alone; the config cell at the top must have been run.
+# ===========================================================================
+
+# %% misc: QC the cepstral split the manipulation depends on ------------------
+# Envelope (red) should be smooth and roughly elevation-invariant; if it tracks
+# elevation, the split is freezing part of the cue instead of separating it.
+# Worth a look on the first few participants and whenever a donor composite
+# looks odd in the before/after figure.
+plot_split_qc(slab.HRTF(str(paths.SOFA_DIR / SUBJECT_ID / f"{NATIVE_SOFA}.sofa")),
+              envelope_n_keep=selection.N_KEEP, ear=TRAINED_EAR,
+              band=selection.DEFAULT_BAND)
+
+# %% misc: build the second composite strength (n_keep=8) ---------------------
+# Half as much of the cue handed over. Only needed as a rung of the
+# externalization ladder below; the training/testing SOFA stays the n_keep=4 one.
+build_donor_sofa(overwrite=False, show_qc=False, n_keep=8)
+
+# %% misc: externalization + acute-degradation ladder -------------------------
+# ~50 trials plus ratings, so it is NOT run on every participant. Use it when
+# externalization is in doubt, when picking OTHER_EAR for a new cohort, or to
+# check that a donor composite lands in the intended acute-degradation range.
+# Requires the n_keep=8 SOFA from the cell above.
+#
+# Blocks of ~10 trials in a per-subject RANDOM order, each followed by the 0-10
+# rating; elevation gain is reported alongside.
+#   anchor     own unmodified HRTF, binaural      <- ceiling of the whole chain
+#   flat       other ear = delta impulse          }
+#   native     other ear = own full DTF           } ear treatment
+#   donor_n4   composite n_keep=4, other ear = OTHER_EAR   }
+#   donor_n8   composite n_keep=8, other ear = OTHER_EAR   } composite strength
+# donor_n4 is the condition the experiment actually runs. Read the EG column for
+# the acute degradation (target 0.3-0.5) and the rating column for
+# externalization -- but see the caveat the summary prints about 10-trial EG.
+subject = hr.Subject(SUBJECT_ID)
+externalization_ladder(
+    subject, ladder_settings, seed=SUBJECT_ID,
+    rungs=("anchor", "flat", "native", "donor_n4", "donor_n8"))
+
+# %% misc: daily PROBE (only meaningful when OTHER_EAR = 'native') ------------
+# Repeats the daily test with the other ear reduced, so relearning of the
+# modified cue can be told apart from reweighting toward the intact ear.
+subject = hr.Subject(SUBJECT_ID)
+run_phase("daily", subject, other_ear=PROBE_OTHER_EAR)
+
+# %% misc: externalization ratings so far, in order ---------------------------
+# Every rating on file for this participant, with its block, so drift in the
+# anchor can be told apart from drift in the conditions. Anchors are the
+# ~10-trial native binaural blocks; they should stay roughly flat across days.
+subject = hr.Subject(SUBJECT_ID)
+print(f"{'run':46s} {'n':>4s} {'ear':6s} {'mir':5s} {'rating':>6s}")
+for _name, _seq in subject.localization.items():
+    _rating = getattr(_seq, "externalization_rating", None)
+    if _rating is None:
+        continue
+    _n = len(getattr(_seq, "data", []) or [])
+    _tag = " <- anchor" if (_n <= 12 and getattr(_seq, "hrir", "") == NATIVE_SOFA) else ""
+    print(f"{_name:46s} {_n:4d} {str(getattr(_seq, 'ear', None)):6s} "
+          f"{str(getattr(_seq, 'mirrored', None)):5s} {_rating:6.1f}{_tag}")
+
+# %% misc: force the OS output level on its own -------------------------------
+# run_phase() and run_training() already do this. Use it when checking levels
+# by ear outside a block, or after someone has touched the volume slider.
+_fix_output_level()

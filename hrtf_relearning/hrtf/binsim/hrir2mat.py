@@ -394,9 +394,26 @@ def compute_lr_ir(
     for direct level.
     """
     # Load the stored binaural reverb tail.
-    reverb = slab.Sound(
-        wav_path / hrir.name / "sounds" / "reverb.wav"
-    ).data
+    reverb_path = wav_path / hrir.name / "sounds" / "reverb.wav"
+    reverb_sound = slab.Sound(reverb_path)
+
+    # The tail is staged into the database by resample_sounds, which only runs
+    # on a first build (or with overwrite=True), while this function is called
+    # on every build. Changing the render rate without a rebuild therefore
+    # leaves the whole sounds/ directory at the previous rate, and the crop and
+    # predelay below -- both derived from hrir.samplerate -- would be applied to
+    # a tail that does not match. Fail rather than resample here: a stale
+    # reverb.wav means the stimuli pyBinSim streams at runtime are stale too,
+    # and fixing only the tail would hide that.
+    if reverb_sound.samplerate != hrir.samplerate:
+        raise ValueError(
+            f"reverb.wav is at {reverb_sound.samplerate:g} Hz but the HRIR is at "
+            f"{hrir.samplerate:g} Hz ({reverb_path}). The database's sounds/ "
+            f"directory was staged for a different render rate -- rebuild with "
+            f"overwrite=True so resample_sounds runs again."
+        )
+
+    reverb = reverb_sound.data
 
     # Ensure the reverb has shape [n_samples, 2].
     # If the file is mono, duplicate it to both ears.

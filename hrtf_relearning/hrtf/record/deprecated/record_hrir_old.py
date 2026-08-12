@@ -1,5 +1,6 @@
 import matplotlib
-matplotlib.use('tkagg')
+from hrtf_relearning.utils.mpl_backend import use_interactive
+use_interactive()
 import logging
 from pathlib import Path
 import copy

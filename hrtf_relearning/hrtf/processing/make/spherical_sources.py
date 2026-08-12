@@ -1,6 +1,7 @@
 import numpy
 import matplotlib
-matplotlib.use('tkagg')
+from hrtf_relearning.utils.mpl_backend import use_interactive
+use_interactive()
 import matplotlib.pyplot as plt
 
 import numpy

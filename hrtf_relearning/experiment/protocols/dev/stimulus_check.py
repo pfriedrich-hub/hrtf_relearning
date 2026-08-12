@@ -30,8 +30,8 @@ eating the cue, elevation gain would drop there -- with intact ears and an
 intact HRTF there is nothing else that could cause it.
 """
 
-SUBJECT_ID = "FS"
-SOFA_NAME = "FS_donor_AS"      # the modified HRTF the subject is tested on
+SUBJECT_ID = "PF"
+SOFA_NAME = "PF_donor_VD"      # the modified HRTF the subject is tested on
 EAR = "left"                    # ear whose DTF carries the cue
 AZIMUTH = -20.0                 # audition azimuth, experiment convention (neg = left)
 
@@ -142,7 +142,7 @@ print(f"wrote to {OUT_DIR}")
 # externalization. Do it for 'noise' first to hear what the cue sounds like when
 # the source spectrum is fixed, then for 'ripple': the elevation percept should
 # survive, the timbre should not.
-KIND = 'ripple'          # 'noise' | 'ripple' | 'uso'
+KIND = 'noise'          # 'noise' | 'ripple' | 'uso'
 ELEVATIONS = (-30, -15, 0, 15, 30)
 
 _, hrtf, idx = cue_spectra()
@@ -235,7 +235,7 @@ BLOCK_ORDER = ('noise', 'ripple')     # swap on the second run
 # 'quick'  25 trials/block, ~3 min  — gross check only, EG is +/- ~0.15
 # 'short'  50 trials/block, ~5 min  — EG +/- ~0.10
 # 'full'  100 trials/block, ~10 min — EG +/- ~0.07, use before running anyone else
-LENGTH = 'quick'
+LENGTH = 'short'
 _GRID = {'quick': ((14, 14), 1), 'short': ((7, 14), 1), 'full': ((7, 14), 2)}
 
 
@@ -245,10 +245,10 @@ def self_test_settings(stim):
             "other_ear": "envelope", "env_n_keep": 4, "native_sofa": SELF_ID,
             "mirror": False, "reverb": True, "drr": 20,
             "hp_filter": True, "hp": "DT990",
-            "convolution": "cpu", "storage": "cpu"}
-    loc = {"kind": "sectors", "azimuth_range": (-35, 35),
+            "convolution": "cpu", "storage": "cpu", "target_samplerate": 48000}
+    loc = {"kind": "standard", "azimuth_range": (-1, 1),
            "elevation_range": (-35, 35), "targets_per_speaker": 3,
-           "targets_per_sector": targets_per_sector, "min_distance": 20,
+           "targets_per_sector": targets_per_sector, "min_distance": 10,
            "gain": 0.2, "stim": stim, "sector_size": sector_size,
            "replace": False, "exclude_midline": False, "midline_tol": 1.0,
            "stim_settings": {"rms_tilt": RMS_TILT, "rms_cue": RMS_CUE}}

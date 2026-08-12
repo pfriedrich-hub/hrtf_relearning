@@ -11,8 +11,12 @@ root. That file is gitignored; ``local_config.example.json`` next to it is
 committed and shows the available keys.
 
     {
-      "torch_device": "cuda"
+      "torch_device": "cuda",
+      "mpl_backend": "TkAgg"
     }
+
+``mpl_backend`` is read by :mod:`hrtf_relearning.utils.mpl_backend` and is only
+needed on a machine where the auto-detected plot backend is wrong.
 
 Resolution order for ``torch_device()`` (first hit wins):
 

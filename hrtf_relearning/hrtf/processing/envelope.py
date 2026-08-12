@@ -243,7 +243,8 @@ PLOT_KIND = 'image'    # 'image' | 'waterfall' | 'surface'
 
 if __name__ == '__main__':
     import matplotlib
-    matplotlib.use('tkagg')
+    from hrtf_relearning.utils.mpl_backend import use_interactive
+    use_interactive()
     import slab
     from hrtf_relearning.utils import paths
     from hrtf_relearning.hrtf.modify.plot_compare import plot_ears

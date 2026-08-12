@@ -1,5 +1,6 @@
 import matplotlib
-matplotlib.use("tkagg")
+from hrtf_relearning.utils.mpl_backend import use_interactive
+use_interactive()
 from matplotlib import pyplot as plt
 from hrtf_relearning.hrtf.record.record_hrir import record_hrir
 from hrtf_relearning.hrtf.record.calibration.calibrate_headphones import calibrate_headphones

@@ -1,5 +1,6 @@
 import matplotlib as mpl
-mpl.use('Qt5Agg')
+from hrtf_relearning.utils.mpl_backend import use_interactive
+use_interactive()
 from pathlib import Path
 from sklearn.linear_model import LinearRegression
 from hrtf_relearning.hrtf.processing.tf2ir import *

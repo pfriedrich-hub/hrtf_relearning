@@ -38,6 +38,65 @@ If `slab` or `pybinsim` are missing after this, the pip run failed partway —
 re-run it and read the error rather than the tail of the log; a missing `git`
 executable is the usual cause.
 
+### Plot windows
+
+Check that plots open:
+
+```bash
+hrtf backend
+```
+
+It prints the backend in use and opens one test window; close it to finish. If
+it reports `Agg`, no window will ever open — the message tells you which of the
+two fixes applies.
+
+The backend is chosen once, in `hrtf_relearning/utils/mpl_backend.py`, when the
+package is imported: **TkAgg**, falling back to QtAgg and then to file-only Agg.
+Nothing else in the package sets a backend, so there is no longer a machine
+where plots open in one script and hang in the next. Override per machine in
+`local_config.json`:
+
+```json
+{ "mpl_backend": "QtAgg" }
+```
+
+or for one run with `HRTF_MPL_BACKEND=QtAgg` (`"none"` means never open a
+window). Qt is *not* the default: PyQt5 is installed (the game UI is written in
+it) and `QtAgg` imports fine, but its plot windows do not come up — see the
+module docstring.
+
+**PyCharm:** turn off *Settings → Tools → Python Plotting → Show plots in tool
+window* (older versions: *Python Scientific → Show plots in tool window*). That
+setting routes figures through PyCharm's own SciView backend, which hangs on
+scripts that run subprocesses or an event loop — i.e. every protocol here. The
+package unsets the corresponding `MPLBACKEND` for run configurations, but in the
+**Python Console** PyCharm patches `plt.show` before any of our code executes,
+so that one has to be switched off in the settings.
+
+### Why plots used to freeze in the console
+
+In the Python Console (the `# %%` cell workflow), a bare `plt.show()` calls the
+toolkit's `mainloop()` and blocks the prompt until you close the window. Ctrl-C
+gives the prompt back but tears the event loop out from under a window that is
+still on screen, and it stops repainting from then on:
+
+```
+File "matplotlib/backends/_backend_tk.py", line 583, in start_main_loop
+  first_manager.window.mainloop()
+KeyboardInterrupt
+```
+
+That is not a backend problem — it happens on Tk and Qt alike. On import, the
+package now hands the GUI event loop to the console's input hook (PyCharm's
+`pydev_ipython`, or IPython's `%matplotlib`) and turns on interactive mode, so
+`plt.show()` returns immediately and figures stay live and redrawable while you
+keep typing. **You should not need Ctrl-C any more.** Interactive mode is only
+enabled when a hook was actually installed — without one it would produce a
+window that neither blocks nor responds.
+
+Script runs are deliberately left alone: there, `plt.show()` blocking at the end
+is the only thing keeping the window on screen until the process exits.
+
 ### Optional extras
 
 CUDA build of torch (RTX 30xx and newer):

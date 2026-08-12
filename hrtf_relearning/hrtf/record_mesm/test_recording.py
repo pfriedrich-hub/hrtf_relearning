@@ -25,7 +25,8 @@ from __future__ import annotations
 
 import logging
 import matplotlib
-matplotlib.use("TkAgg")
+from hrtf_relearning.utils.mpl_backend import use_interactive
+use_interactive()
 import matplotlib.pyplot as plt
 import numpy as np
 from pathlib import Path

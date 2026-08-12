@@ -1,5 +1,6 @@
 import matplotlib
-matplotlib.use("tkagg")
+from hrtf_relearning.utils.mpl_backend import use_interactive
+use_interactive()
 
 import logging
 from pathlib import Path
@@ -14,6 +15,7 @@ from hrtf_relearning.hrtf.processing.envelope import envelope_dtf, DEFAULT_N_KEE
 from hrtf_relearning.hrtf.processing.native import native_dtf
 from hrtf_relearning.hrtf.binsim.hrir2mat import (
     resample_sounds,
+    resample_hrir,
     compute_lr_ir,
     compute_hp_ir,
     write_filters,
@@ -209,6 +211,14 @@ def hrtf2binsim(hrir_settings, overwrite: bool = True, build: bool = True):
     drr = hrir_settings.get("drr", 20)
     hp_filter = hrir_settings.get("hp_filter", True)
     hp = hrir_settings.get("hp", 'DT990')
+    # Rate the database is rendered at. None keeps the rate the HRTF was
+    # recorded at, which is what the TDT rig produces (48828) and what every
+    # build did before this option existed. Set it to the playback device's
+    # native rate (48000 for a USB interface) so the conversion happens here,
+    # once and on record, instead of silently in the Windows mixer at runtime.
+    # The recordings on disk are never touched -- this applies to the loaded
+    # copy only.
+    target_samplerate = hrir_settings.get("target_samplerate", None)
     # cpu/cuda is a property of the machine, not of the experiment. A
     # gitignored local_config.json ("torch_device") or HRTF_TORCH_DEVICE
     # overrides whatever the protocol script hardcoded; without either, the
@@ -267,6 +277,16 @@ def hrtf2binsim(hrir_settings, overwrite: bool = True, build: bool = True):
         logger.info("Mirroring HRIR left ↔ right")
         hrir = mirror_hrtf(hrir)
         hrir.name += "_mirrored"
+
+    # Resample last: the DTF manipulations above splice this HRIR against other
+    # recordings (native_dtf loads a second SOFA), so they have to run while
+    # everything is still at the rate it was measured at. Everything below
+    # derives from hrir.samplerate -- the resampled stimuli, the LR/HP filter
+    # lengths, the predelay, and the samplingRate written into the settings --
+    # so it has to happen before any of them. Placed ahead of the build=False
+    # return so spawned workers see the same object the database was built from.
+    if target_samplerate:
+        hrir = resample_hrir(hrir, target_samplerate)
 
     base_dir = data_dir / "binsim" / hrir.name
     mat_path = base_dir / f"{hrir.name}_filters.mat"

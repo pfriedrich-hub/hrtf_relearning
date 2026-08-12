@@ -8,7 +8,8 @@ Mirrors Localization_AR.Localization in API and conventions:
   - Enter key to advance trials
 """
 import matplotlib
-matplotlib.use('TkAgg')
+from hrtf_relearning.utils.mpl_backend import use_interactive
+use_interactive()
 import numpy
 import slab
 import freefield

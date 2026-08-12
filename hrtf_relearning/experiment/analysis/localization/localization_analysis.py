@@ -1,15 +1,10 @@
 import matplotlib
 import matplotlib.patches
-# Request an interactive backend so figures show on screen. This module is
-# imported by the package __init__, so `import hrtf_relearning` sets the
-# interactive default for the whole package (many run-directly scripts rely on
-# this for plt.show()). NOTE: 'tkagg' can still fail *lazily* at figure-creation
-# time when these plot functions run from inside Localization.run() via
-# learning_transfer.py (after the pybinsim/multiprocessing worker, the training
-# subprocess and the pynput listener). Because savefig() runs after figure
-# creation, such a failure used to lose the PNG — _safe_subplots() below now
-# falls back to the non-interactive Agg backend so the save always happens.
-matplotlib.use('tkagg')
+# Interactive backend so figures show on screen. This module is imported by the
+# package __init__, which has already resolved the backend; the call here only
+# matters when the module is imported on its own, and is a no-op otherwise.
+from hrtf_relearning.utils.mpl_backend import use_interactive, use_headless
+use_interactive()
 from matplotlib import pyplot as plt
 from matplotlib.lines import Line2D
 import numpy
@@ -34,15 +29,14 @@ _FONT_FAMILY = _preferred_font()
 def _safe_subplots(**kwargs):
     """plt.subplots that never blocks a figure from being saved.
 
-    The module requests the interactive 'tkagg' backend so figures can be shown
-    when a plot function is run on its own (e.g. Localization_AR.__main__ +
-    plt.show()). But when the same plot functions are called from inside
-    Localization.run() via learning_transfer.py — i.e. after the pybinsim
-    multiprocessing worker, the training subprocess and the pynput keyboard
-    listener have run — creating a Tk figure can raise, and because the
-    savefig() call comes *after* figure creation the PNG is then never written.
-    Here we fall back to the non-interactive 'Agg' backend (which always renders
-    to file) so the figure is created and the save still happens.
+    An interactive backend is in use so figures can be shown when a plot
+    function is run on its own (e.g. Localization_AR.__main__ + plt.show()).
+    When the same plot functions are called from inside Localization.run() via
+    learning_transfer.py — i.e. after the pybinsim multiprocessing worker, the
+    training subprocess and the pynput keyboard listener have run — creating a
+    GUI figure can still raise, and because the savefig() call comes *after*
+    figure creation the PNG would then never be written. Falling back to the
+    file-only backend keeps the save.
     """
     try:
         return plt.subplots(**kwargs)
@@ -50,7 +44,7 @@ def _safe_subplots(**kwargs):
         logging.warning("interactive matplotlib backend failed (%s); "
                         "falling back to Agg so the figure can still be saved",
                         type(exc).__name__)
-        matplotlib.use('Agg', force=True)
+        use_headless()
         return plt.subplots(**kwargs)
 
 def _no_usable_data(sequence):

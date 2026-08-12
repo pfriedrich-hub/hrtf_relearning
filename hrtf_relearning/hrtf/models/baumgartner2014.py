@@ -1,6 +1,7 @@
 from pathlib import Path
 import matplotlib
-matplotlib.use('TkAgg')
+from hrtf_relearning.utils.mpl_backend import use_interactive
+use_interactive()
 import numpy as numpy
 import pyfar as pf
 import sofar as sf

@@ -283,7 +283,8 @@ def build_inverse_filter(recording: slab.Sound, excitation: slab.Sound) -> slab.
 
 def main() -> dict:
     import matplotlib
-    matplotlib.use("TkAgg")
+    from hrtf_relearning.utils.mpl_backend import use_interactive
+    use_interactive()
     from matplotlib import pyplot as plt
 
     from hrtf_relearning.hrtf.record_mesm.calibration.diagnostics import plot_calibration_result, calibration_metrics

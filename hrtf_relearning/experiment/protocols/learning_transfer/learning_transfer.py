@@ -46,7 +46,7 @@ EDIT THE CONFIG BLOCK BELOW PER PARTICIPANT.
 ------------------------------------------------------------------------------
 """
 
-SUBJECT_ID = ("GS")
+SUBJECT_ID = ("PF")
 
 # %% imports and config #------------------------------------------------------
 import csv
@@ -145,6 +145,7 @@ def hrir_settings(sofa_name, ear=None, mirror=False, other_ear=None):
         "hp": HP,
         "convolution": "cpu",
         "storage": "cpu",
+        "target_samplerate": 48000
     }
 
 

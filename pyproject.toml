@@ -9,7 +9,14 @@ requires-python = ">=3.10"
 dependencies = [
     "slab @ git+https://github.com/pfriedrich-hub/slab.git",
     "pybinsim @ git+https://github.com/pfriedrich-hub/pybinsim_tuil.git",
-"h5py", "h5netcdf", "netCDF4", "metawear", "pyqt5", "pynput", "pyfar",
+"h5py", "h5netcdf", "netCDF4", "metawear", "pynput", "pyfar",
+    # Plots. matplotlib is declared explicitly rather than inherited from slab /
+    # pyfar because the package now selects the backend itself; >=3.5 for the
+    # 'QtAgg' backend name. Plot windows themselves use Tk, which ships with the
+    # interpreter and cannot be required here — see
+    # hrtf_relearning/utils/mpl_backend.py. pyqt5 is the game UI (game_ui.py) and
+    # doubles as the fallback plot backend on an interpreter built without Tk.
+    "matplotlib>=3.5", "pyqt5>=5.15",
     "pycaw ; sys_platform == 'win32'"
 ]
 

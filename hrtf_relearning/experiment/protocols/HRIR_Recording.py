@@ -19,7 +19,8 @@ Steps:
 ' TODO check led, make run'
 # %% imports and config ------------------------------------------------------
 import matplotlib
-matplotlib.use('TkAgg')
+from hrtf_relearning.utils.mpl_backend import use_interactive
+use_interactive()
 from matplotlib import pyplot as plt
 import numpy
 import copy

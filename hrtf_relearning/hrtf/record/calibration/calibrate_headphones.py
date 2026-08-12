@@ -27,19 +27,30 @@ import matplotlib
 from pyfar import Signal
 from slab import Filter
 
-matplotlib.use("tkagg")
+from hrtf_relearning.utils.mpl_backend import use_interactive
+use_interactive()
 from matplotlib import pyplot as plt
 import numpy
 import pyfar
 import slab
-import freefield
 import warnings
 import soundfile as sf
 from pathlib import Path
 import pickle
 import logging
 warnings.filterwarnings("ignore", category=pyfar._utils.PyfarDeprecationWarning)
-freefield.set_logger("info")
+
+# freefield drives the TDT processors and is only needed to *measure* a headphone
+# filter. Loading a saved filter (load_hp_filter) does not touch it, and that is
+# the only entry point the binsim/localization path imports -- so keep this
+# module importable on machines without the TDT stack.
+try:
+    import freefield
+    freefield.set_logger("info")
+except ImportError:
+    freefield = None
+    logging.warning('Could not import freefield - headphone recording is disabled')
+
 import hrtf_relearning
 from hrtf_relearning.utils import paths
 ROOT = hrtf_relearning.PATH
@@ -69,6 +80,16 @@ N_OUT = 256
 # -------------------------------------------------------------------------
 # SIGNAL GENERATION
 # -------------------------------------------------------------------------
+
+def _require_freefield():
+    """Fail with an actionable message instead of an AttributeError on None."""
+    if freefield is None:
+        raise ImportError(
+            'This function needs the TDT stack. Install it with:\n'
+            '    pip install git+https://github.com/pfriedrich-hub/freefield.git\n'
+            '    conda install pywin32'
+        )
+
 
 def generate_chirp():
     """
@@ -109,6 +130,7 @@ def measure_hp_raw(signal, repeats=1):
     slab.Binaural
         Averaged binaural recording.
     """
+    _require_freefield()
 
     recs = []
     for _ in range(repeats):
@@ -290,7 +312,12 @@ def load_hp_filter(path: Path, output='pyfar') -> Filter | Signal:
     if wav_path.exists():
         logging.warning(f"No .npz found at {path} – loading legacy .wav: {wav_path}")
         # return pyfar.io.read_audio(wav_path)
-        return slab.Filter(data=slab.Sound(wav_path).data, samplerate=48842, fir='FIR')
+        # Legacy .wav files carry no samplerate of their own, so it has to be
+        # supplied here. They were all written at the TDT rate in use at the
+        # time (48828), which is deliberately hardcoded rather than taken from
+        # ``fs`` -- ``fs`` tracks the *current* recording rate, and following it
+        # would mislabel these old files the moment the rig changes rate.
+        return slab.Filter(data=slab.Sound(wav_path).data, samplerate=48828, fir='FIR')
     raise FileNotFoundError(f"HP filter not found: tried {path} and {wav_path}")
 
 
@@ -392,6 +419,7 @@ def ff_equalization(eq_filter, hp_id, save_freefield=True):
     equalization.update({f"{speakers[1].index}": {"level": 0, "filter": filter.channel(1)}})
 
     if save_freefield:
+        _require_freefield()
         with open(freefield.DIR / 'data' / f'calibration_{hp_id}.pkl', 'wb') as f:  # save the newly recorded calibration
             pickle.dump(equalization, f, pickle.HIGHEST_PROTOCOL)
         print(f"Writing calibration to {freefield.DIR / 'data' / f'calibration_{hp_id}.pkl'}")
@@ -422,6 +450,7 @@ def calibrate_headphones(subject_id=SUB_ID, hp_id=HP_ID, n_rec=N_REC, show=True,
 
     # measure a fresh calibration (no file on disk, or overwrite requested)
     # Initialize freefield for headphone playback
+    _require_freefield()
     if not freefield.PROCESSORS.mode == 'bi_play_rec':
         freefield.initialize("headphones", default="bi_play_rec")
 

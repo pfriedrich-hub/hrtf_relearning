@@ -893,7 +893,8 @@ def main(subject_id="JS", target_radius_deg=4.0, block_gap_s=BLOCK_GAP_S,
          day_gap_s=DAY_GAP_S, drop_first_day=True, export_dir="analysis_results"):
     """Load a subject, run both analyses, plot, and export CSVs."""
     import matplotlib
-    matplotlib.use("tkagg")
+    from hrtf_relearning.utils.mpl_backend import use_interactive
+    use_interactive()
     from hrtf_relearning.experiment.misc.Subject import Subject
 
     subject = Subject(subject_id)

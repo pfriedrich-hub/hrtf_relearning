@@ -1,5 +1,6 @@
 import matplotlib
-matplotlib.use("tkagg")
+from hrtf_relearning.utils.mpl_backend import use_interactive
+use_interactive()
 from matplotlib import pyplot as plt
 import logging
 import freefield

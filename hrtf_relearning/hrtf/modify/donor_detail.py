@@ -213,7 +213,8 @@ OUT_SUFFIX = 'donor'   # writes <SUB_ID>_donor_<DONOR>.sofa
 
 if __name__ == '__main__':
     import matplotlib
-    matplotlib.use('tkagg')
+    from hrtf_relearning.utils.mpl_backend import use_interactive
+    use_interactive()
     import slab
 
     from hrtf_relearning.utils import paths

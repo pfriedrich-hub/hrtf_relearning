@@ -1,7 +1,8 @@
 import copy
 import numpy
 import matplotlib
-matplotlib.use('tkagg')
+from hrtf_relearning.utils.mpl_backend import use_interactive
+use_interactive()
 from matplotlib import pyplot as plt
 from sklearn.linear_model import LinearRegression
 from hrtf_relearning import PATH

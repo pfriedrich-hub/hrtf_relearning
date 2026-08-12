@@ -1,6 +1,7 @@
 # recordings.py
 import matplotlib
-matplotlib.use('TkAgg')
+from hrtf_relearning.utils.mpl_backend import use_interactive
+use_interactive()
 import matplotlib.pyplot as plt
 import logging
 import copy

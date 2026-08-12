@@ -11,7 +11,8 @@ shift_spectral_detail.py and synth_spectral_features.py use them.
 import numpy
 import matplotlib
 import matplotlib.ticker
-matplotlib.use('tkagg')
+from hrtf_relearning.utils.mpl_backend import use_interactive
+use_interactive()
 from matplotlib import pyplot as plt
 
 from hrtf_relearning.hrtf.modify.shift_spectral_detail import smooth_magnitude

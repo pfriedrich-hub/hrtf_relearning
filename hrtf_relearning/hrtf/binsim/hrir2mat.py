@@ -1,9 +1,11 @@
+import copy
 import json
+from fractions import Fraction
 
 import numpy
 from matplotlib import pyplot as plt
 from scipy.io import savemat
-from scipy.signal import fftconvolve
+from scipy.signal import fftconvolve, resample_poly
 import slab
 import logging
 import pyfar
@@ -22,11 +24,80 @@ rec_path = paths.REC_DIR
 
 def resample_sounds(target_samplerate, target_directory):
     logging.info('Resampling sound files.')
+    # soundfile needs an integer rate, and slab carries whatever it is given
+    # straight through resample() into write(). A float target only shows up
+    # when a resample actually happens, so coerce here rather than relying on
+    # the caller.
+    target_samplerate = int(target_samplerate)
     for file in sound_path.glob('*.wav'): # resample sound files
         sound = slab.Sound.read(file)
         if not sound.samplerate == target_samplerate:
             sound = sound.resample(target_samplerate)
         sound.write(target_directory / file.name, normalise=True)
+
+
+def resample_hrir(hrir, samplerate):
+    """Return a copy of ``hrir`` resampled to ``samplerate``.
+
+    The recordings stay on disk at the rate the rig measured them at; this is
+    the single point where a database is moved to the rate the playback device
+    actually runs. Doing it here rather than leaving it to the audio backend
+    matters because a mismatch is not reported: WASAPI shared mode converts
+    silently to the endpoint's mix format, and exclusive mode simply refuses to
+    open the stream.
+
+    ``slab.HRTF`` has no resample of its own, but it carries nothing beyond
+    ``data`` / ``datatype`` / ``samplerate`` / ``sources`` / ``listener``, so
+    resampling each Filter on a deepcopy keeps source positions, listener
+    geometry and ``name`` intact without going through the constructor.
+
+    Deliberately NOT slab's ``Filter.resample``: that wraps
+    ``scipy.signal.resample``, whose periodicity assumption is a poor fit for an
+    impulse response and drifts the pinna notches -- measured over KEMAR at
+    48828 -> 48000 it moved them by a median 7.2 Hz, against 0.2 Hz for the
+    polyphase route. Small either way, but it is a systematic bias in the exact
+    cue these experiments manipulate, and the exact 4000/4069 ratio only costs
+    about six seconds over a 710-source database.
+
+    Resampling preserves duration, not tap count -- 512 taps at 48828 Hz come
+    back as 504 at 48000. ``block_size`` is derived from ``n_taps``, so filters
+    that shrink are zero-padded back to their original length and the block
+    size stays what it was. Filters that grow are left alone: padding is free,
+    but trimming would drop the tail of the IR.
+    """
+    # Keep this an int. It becomes hrir.samplerate, which is handed straight to
+    # resample_sounds and ends up in slab.Sound.write -> soundfile, and that
+    # rejects a float rate outright ("an integer is required").
+    samplerate = int(samplerate)
+
+    if hrir.samplerate == samplerate:
+        return hrir
+
+    logger.info("Resampling HRIR %s: %g -> %g Hz",
+                getattr(hrir, "name", "?"), hrir.samplerate, samplerate)
+
+    # limit_denominator keeps the polyphase kernel finite; 10000 is loose enough
+    # that the rig rates in use resolve exactly (48000/48828 -> 4000/4069).
+    ratio = Fraction(samplerate / hrir.samplerate).limit_denominator(10000)
+
+    n_taps_in = hrir[0].n_taps
+    out = copy.deepcopy(hrir)
+
+    resampled = []
+    for filt in hrir.data:
+        new = copy.deepcopy(filt)
+        new.data = resample_poly(filt.data, ratio.numerator, ratio.denominator,
+                                 axis=0)
+        new.samplerate = samplerate
+        resampled.append(new)
+
+    out.data = resampled
+    out.samplerate = samplerate
+
+    if out[0].n_taps < n_taps_in:
+        out.data = [filt.resize(n_taps_in) for filt in out.data]
+
+    return out
 
 # ---- level normalisation ---- #
 
@@ -478,6 +549,39 @@ def compute_hp_ir(hrir, hp, subject_id, block_size=256):
         Output length is rounded down to a multiple of this.
     """
     hp_sig = load_hp_filter(rec_path / subject_id / f"{hp}_equalization.npz", 'pyfar')
+
+    # The saved filter carries the rate it was measured at, which is not
+    # necessarily the rate this database is being built for. n_samp_out below
+    # is derived from hrir.samplerate, so without this the window length would
+    # refer to one rate while the data it crops sits at another -- and the
+    # filter would then be convolved against signals at a rate it was not
+    # designed for. This is the only rate that does not follow the HRIR
+    # automatically.
+    if hp_sig.sampling_rate != hrir.samplerate:
+        logger.info("Resampling HP filter %s: %g -> %g Hz",
+                    hp, hp_sig.sampling_rate, hrir.samplerate)
+
+        # Driving resample_poly directly rather than going through
+        # pyfar.dsp.resample, for the same reason resample_hrir does: pyfar
+        # warns that a rate not divisible by 10 (48828 is not) can hang
+        # scipy's resample_poly, and its frac_limit workaround perturbs the
+        # realised rate. The exact ratio avoids both.
+        ratio = Fraction(int(hrir.samplerate)
+                         / hp_sig.sampling_rate).limit_denominator(10000)
+        n_samp_in = hp_sig.n_samples
+        hp_sig = pyfar.Signal(
+            resample_poly(hp_sig.time, ratio.numerator, ratio.denominator,
+                          axis=-1),
+            int(hrir.samplerate), fft_norm=hp_sig.fft_norm)
+
+        # Downsampling shortens the filter (1024 -> 1007 going 48828 -> 48000)
+        # while n_samp_out below stays a multiple of block_size, so the window
+        # would end up longer than the signal it crops. Pad back to the stored
+        # length: the filter is boxcar-cropped to n_samp_out anyway and its
+        # tail has already decayed, so this only restores the length the
+        # windowing step has always assumed.
+        if hp_sig.n_samples < n_samp_in:
+            hp_sig = pyfar.dsp.pad_zeros(hp_sig, n_samp_in - hp_sig.n_samples)
 
     n_samp_out = int(
         (int(hrir.samplerate * 0.02) // int(block_size))

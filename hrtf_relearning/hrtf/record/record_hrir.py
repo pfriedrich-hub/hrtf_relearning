@@ -3,7 +3,8 @@
 - recording + processing
 """
 import matplotlib
-matplotlib.use('TkAgg')
+from hrtf_relearning.utils.mpl_backend import use_interactive
+use_interactive()
 from hrtf_relearning.hrtf.record.recordings import *
 from hrtf_relearning.hrtf.record.processing import *
 import hrtf_relearning

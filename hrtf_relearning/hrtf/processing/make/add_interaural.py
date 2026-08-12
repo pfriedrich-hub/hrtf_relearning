@@ -1,5 +1,6 @@
 import matplotlib
-matplotlib.use('Qt5Agg')
+from hrtf_relearning.utils.mpl_backend import use_interactive
+use_interactive()
 from matplotlib import pyplot as plt
 import slab
 import numpy

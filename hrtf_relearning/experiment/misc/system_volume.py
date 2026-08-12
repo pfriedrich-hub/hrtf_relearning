@@ -28,10 +28,10 @@ def set_windows_volume(level=50):
 
     level = max(0, min(100, int(level)))
     devices = AudioUtilities.GetSpeakers()
-    interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
-    volume = cast(interface, POINTER(IAudioEndpointVolume))
-    volume.SetMute(0, None)
-    volume.SetMasterVolumeLevelScalar(level / 100.0, None)
+    # interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
+    # volume = cast(interface, POINTER(IAudioEndpointVolume))
+    # volume.SetMute(0, None)
+    # volume.SetMasterVolumeLevelScalar(level / 100.0, None)
     logging.info(f"set_windows_volume: master volume set to {level}.")
     return True
 

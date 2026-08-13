@@ -9,7 +9,7 @@ import datetime
 date = datetime.datetime.now()
 from hrtf_relearning.utils.paths import PATH as ROOT
 
-# from hrtf_relearning.experiment.misc.system_volume import set_windows_volume
+from hrtf_relearning.experiment.misc.system_volume import set_windows_volume
 from hrtf_relearning.experiment.misc import meta_motion
 from hrtf_relearning.experiment.training.training_helpers import game_ui
 from hrtf_relearning.experiment.misc.Subject import Subject
@@ -626,7 +626,11 @@ def play_session():
 # -------------------- Main --------------------
 
 if __name__ == "__main__":
-    # set_windows_volume(50)
+    # Pin the OS slider to the level the pybinsim gain was matched at. Returns
+    # False (never raises) if it could not be set -- see system_volume.
+    if not set_windows_volume(50) and os.name == "nt":
+        print("[Training] OS volume NOT set programmatically — check the Windows "
+              "slider is at 50% before starting.")
     try:
         play_session()
     except KeyboardInterrupt:

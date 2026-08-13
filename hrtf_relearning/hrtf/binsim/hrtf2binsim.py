@@ -21,7 +21,8 @@ from hrtf_relearning.hrtf.binsim.hrir2mat import (
     write_filters,
     write_filter_list,
     normalization_gain,
-    predicted_peak,
+    max_safe_gain,
+    frontal_index,
     write_level_info,
     REFERENCE_GAIN,
     PEAK_LIMIT,
@@ -329,25 +330,63 @@ def hrtf2binsim(hrir_settings, overwrite: bool = True, build: bool = True):
     write_filters(hrir, lr_ir, hp_ir, mat_path, norm_gain=norm_gain)
     write_filter_list(hrir)
 
-    # Headroom QC: what pyBinSim would actually output at the matched gain.
-    peak = None
-    stim_path = base_dir / "sounds" / "noise_pulse.wav"
-    if stim_path.exists():
-        peak = predicted_peak(
+    # Headroom QC. The output is a max safe gain per stimulus rather than a peak
+    # at one assumed gain: the chain is linear in the runtime loudness, so a
+    # limit cannot go stale the way a quoted peak does when a protocol changes
+    # its level. Scripts vet their own gain against it via hrir2mat.check_gain.
+    #
+    # Direction sets differ by how the sound is triggered. The stimuli sweep
+    # EVERY direction, because the training game updates the DS filter from
+    # target-minus-pose while the listener turns, so relative azimuth spans the
+    # whole grid -- and the peak runs 1.6x above the median direction here,
+    # since normalization_gain targets the median. The SFX play only once the
+    # listener is on the target, i.e. at relative (0, 0), so bounding them over
+    # all directions would report a limit no run can hit.
+    #
+    # localization.wav is rewritten per trial by the loc test; the copy on disk
+    # is a representative realisation, peak-normalised like every other wav.
+    sweep_all = ("noise_pulse.wav", "localization.wav")
+    frontal_only = ("coin.wav", "coins.wav", "hi_score.wav", "buzzer.wav",
+                    "beep.wav", "c_chord_guitar.wav", "reverb.wav")
+    frontal = frontal_index(hrir)
+
+    headroom = {}
+    for fname in sweep_all + frontal_only:
+        stim_path = base_dir / "sounds" / fname
+        if not stim_path.exists():
+            continue
+        directions = None if fname in sweep_all else [frontal]
+        limit, idx, unit_peak = max_safe_gain(
             hrir, lr_ir, hp_ir, slab.Sound.read(stim_path).data,
-            norm_gain=norm_gain, levels=levels,
+            norm_gain=norm_gain, directions=directions,
         )
-        if peak > PEAK_LIMIT:
+        az, ele = hrir.sources.vertical_polar[idx, :2]
+        headroom[fname] = {
+            "max_safe_gain": float(limit),
+            "unit_gain_peak": float(unit_peak),
+            "direction": [float(az), float(ele)],
+            "swept": directions is None,
+        }
+        logger.debug("Headroom | %-18s max safe gain %.3f (az %.1f el %.1f)",
+                     fname, limit, az, ele)
+
+    if headroom:
+        worst = min(headroom, key=lambda k: headroom[k]["max_safe_gain"])
+        limit = headroom[worst]["max_safe_gain"]
+        az, ele = headroom[worst]["direction"]
+        if limit < REFERENCE_GAIN:
             logger.warning(
-                "Predicted output peak %.2f at gain %.2f — pyBinSim will clip. "
-                "Lower loc_settings['gain'] to <= %.3f or check the HP filter.",
-                peak, REFERENCE_GAIN, REFERENCE_GAIN * PEAK_LIMIT / peak,
+                "Headroom | max safe gain %.3f, set by %s at az %.1f el %.1f. "
+                "Protocols running above this WILL clip (loudest in use: %.2f). "
+                "Every script should call hrir2mat.check_gain with its own gain.",
+                limit, worst, az, ele, REFERENCE_GAIN,
             )
         else:
-            logger.info("Predicted output peak %.2f at gain %.2f (limit %.2f)",
-                        peak, REFERENCE_GAIN, PEAK_LIMIT)
+            logger.info("Headroom | max safe gain %.3f (set by %s at az %.1f "
+                        "el %.1f), clear at every gain in use.",
+                        limit, worst, az, ele)
 
-    write_level_info(hrir, mat_path, norm_gain, levels, peak=peak)
+    write_level_info(hrir, mat_path, norm_gain, levels, headroom=headroom)
 
     write_settings(
         hrir,

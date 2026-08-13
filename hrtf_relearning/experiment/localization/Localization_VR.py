@@ -10,6 +10,7 @@ from hrtf_relearning.experiment.localization.localization_helpers.make_sequence 
 from hrtf_relearning.experiment.misc import meta_motion
 from hrtf_relearning.experiment.misc.system_volume import set_windows_volume
 from hrtf_relearning.hrtf.binsim.hrtf2binsim import hrtf2binsim
+from hrtf_relearning.hrtf.binsim.hrir2mat import check_gain
 from pynput import keyboard
 from hrtf_relearning.utils import paths
 logging.getLogger().setLevel('INFO')
@@ -34,6 +35,11 @@ class Localization:
                          'gain': .2}
         if settings:  # per-run overrides (e.g. targets_per_sector, elevation_range, gain, exclude_midline)
             self.settings.update(settings)
+        # Vet OUR gain against the headroom the build measured, once the
+        # overrides are in. The check is direction-proof, so it does not depend
+        # on which targets this particular sequence happens to draw: with the
+        # head free to turn, any direction in the grid can end up in front.
+        check_gain(hrir.name, self.settings['gain'], stimulus='localization.wav')
         # alternative setting: play 3 times from each source in the hrir (works well for dome recorded hrirs)
         # self.settings = {'kind': 'standard', 'azimuth_range': (-60, 60), 'elevation_range': (-40, 40),
         #                  'targets_per_speaker': 3, 'min_distance': 10, 'gain': .2}
@@ -183,7 +189,11 @@ class Localization:
     @staticmethod
     def _binsim_stream(hrir_name):
         import pybinsim
-        pybinsim.logger.setLevel(logging.ERROR)
+        # WARNING, not ERROR: pybinsim reports "Clipping occurred: Adjust
+        # loudnessFactor!" (application.py) at WARNING. At ERROR the test cannot
+        # tell you that the render went past +-1, which is the one pybinsim
+        # message that invalidates the data rather than just annoying you.
+        pybinsim.logger.setLevel(logging.WARNING)
         binsim = pybinsim.BinSim(paths.BINSIM_DIR / hrir_name / f'{hrir_name}_test_settings.txt')
         binsim.stream_start()  # run binsim loop
 

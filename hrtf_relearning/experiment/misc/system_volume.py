@@ -39,9 +39,17 @@ def set_windows_volume(level=50):
             from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
 
             comtypes.CoInitialize()
-            devices = AudioUtilities.GetSpeakers()
-            interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
-            volume = cast(interface, POINTER(IAudioEndpointVolume))
+            device = AudioUtilities.GetSpeakers()
+            # pycaw >= 20251023 wraps the endpoint in an AudioDevice that already
+            # exposes the activated IAudioEndpointVolume; older versions hand back
+            # the raw IMMDevice pointer, which has to be activated here.
+            if hasattr(device, "EndpointVolume"):
+                volume = device.EndpointVolume
+            else:
+                interface = device.Activate(
+                    IAudioEndpointVolume._iid_, CLSCTX_ALL, None
+                )
+                volume = cast(interface, POINTER(IAudioEndpointVolume))
             volume.SetMute(0, None)
             volume.SetMasterVolumeLevelScalar(level / 100.0, None)
             # Read back: on an endpoint whose volume is not host-controlled the

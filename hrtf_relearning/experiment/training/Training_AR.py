@@ -16,6 +16,7 @@ from hrtf_relearning.experiment.misc.Subject import Subject
 from hrtf_relearning.experiment.training.training_helpers.training_targets import (
     set_target_probabilistic, set_target, find_last_matching_sequence)
 from hrtf_relearning.hrtf.binsim.hrtf2binsim import *
+from hrtf_relearning.hrtf.binsim.hrir2mat import check_gain
 from hrtf_relearning.utils import paths
 matplotlib.rcParams['figure.raise_window'] = False
 logging.getLogger().setLevel('INFO')
@@ -53,7 +54,15 @@ settings = dict(
     game_time=90,
     trial_time=10,
     score_time=3,
-    gain=.10,
+    # pyBinSim runtime loudness ('/pyBinSimLoudness'). 0.07 is the level matched
+    # by ear against the dome at Windows master volume 50% (see
+    # match_ar_dome_loudness.py and protocols/dev/expectation_transfer.py), and
+    # it is also the only value with headroom: at 0.10 the score SFX rendered to
+    # 1.25 at relative (0, 0) and drove pyBinSim past +-1 ("Clipping occurred:
+    # Adjust loudnessFactor!"). check_gain below vets this against the limit the
+    # build measured, so a database whose loudest direction cannot take 0.07
+    # says so at startup rather than mid-session.
+    gain=.07,
     azimuth_range=AZ_RANGE, elevation_range=(-35, 35)
 )
 
@@ -84,6 +93,12 @@ hrir_settings = dict(
 hrir = hrtf2binsim(hrir_settings, build=(__name__ == "__main__"))
 slab.set_default_samplerate(hrir.samplerate)
 HRIR_DIR = paths.BINSIM_DIR / hrir.name
+
+# Vet OUR gain against the headroom the build measured. The build cannot do this
+# alone: it does not know whether the database will be opened by this game at
+# 0.07 or a localization test at 0.2. Warns and continues -- see check_gain.
+if __name__ == "__main__":
+    check_gain(hrir.name, settings["gain"])
 
 # -------------------- Helpers --------------------
 def make_osc_client(port, ip="127.0.0.1"):

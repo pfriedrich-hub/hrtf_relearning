@@ -494,6 +494,7 @@ def show_status(subject):
 
 
 
+
 # %% status check (rerun anytime) --------------------------------------------
 subject = hr.Subject(SUBJECT_ID)
 collect_demographics(subject)      # once per participant; skipped if on file

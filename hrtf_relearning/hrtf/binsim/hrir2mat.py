@@ -118,8 +118,13 @@ def resample_hrir(hrir, samplerate):
 # once with match_ar_dome_loudness.py.
 REFERENCE_LEVEL = 2.3
 
-# Runtime loudness (loc_settings['gain'] / '/pyBinSimLoudness') that the
-# headroom check assumes. Only used for the QC warning, not for the scaling.
+# Highest runtime loudness (loc_settings['gain'] / '/pyBinSimLoudness') any
+# protocol currently plays at, so the build can give a pass/fail verdict without
+# knowing which script will open the database. It is NOT a scaling factor and
+# NOT the calibrated level -- the dome match landed on 0.07 (see
+# match_ar_dome_loudness.py); the localization tests still run at 0.2. Raise
+# this if a protocol ever goes louder, and check_gain() covers the actual value
+# at run time either way.
 REFERENCE_GAIN = 0.2
 
 # Warn when the predicted output peak gets this close to full scale.
@@ -181,33 +186,49 @@ def normalization_gain(hrir, hp_ir=None, reference=REFERENCE_LEVEL):
 
 
 def predicted_peak(hrir, lr_ir, hp_ir, stimulus, norm_gain=1.0,
-                   loudness=REFERENCE_GAIN, levels=None, n_check=20):
+                   loudness=1.0, levels=None, directions=None):
     """
-    Peak output pyBinSim would produce, for the loudest directions.
+    Peak output pyBinSim would produce, over ``directions``.
 
     Mirrors the render chain in pybinsim.application.audio_callback: the source
     is scaled by ``loudness``, convolved with DS and LR, summed, then convolved
     with the headphone filter. Values above 1.0 clip.
 
-    Only the ``n_check`` loudest directions are checked, which is where the peak
-    lives, so the build does not pay for all directions.
+    EVERY direction is checked unless ``directions`` restricts the set. Ranking
+    by ``chain_levels`` and checking only the loudest few does NOT bound the
+    peak: that level is the DS->HP L2 norm averaged over ears, while clipping is
+    a per-ear, per-sample event that the reverb tail also contributes to, so the
+    two orderings are not the same. The full sweep is a few seconds per build.
+
+    ``directions`` takes filter indices, for sounds that can only ever play from
+    one place -- the game SFX are triggered when the listener is already on the
+    target, i.e. always at relative (0, 0), so bounding them over all directions
+    would report a limit that no run can hit. See ``frontal_index``.
+
+    Returns
+    -------
+    (float, int)
+        The peak and the index of the direction that produced it.
     """
     stimulus = numpy.asarray(stimulus, dtype=float)
     if stimulus.ndim > 1:
         stimulus = stimulus[:, 0]
+    # norm_gain belongs on the source, ONCE: write_filters scales both the DS
+    # and the LR filters by it, so putting it here covers both paths. Scaling
+    # lr_ir by it again on top of this is what the old version did, which
+    # shrank the reverb contribution to norm_gain**2 and under-read the peak.
     source = stimulus * loudness * norm_gain
 
-    if levels is None:
-        levels = chain_levels(hrir, hp_ir)
-    loudest = numpy.argsort(levels)[::-1][:n_check]
+    if directions is None:
+        directions = range(hrir.n_sources)
 
-    peak = 0.0
-    for idx in loudest:
+    peak, peak_idx = 0.0, -1
+    for idx in directions:
         ds = hrir[idx].data
         out = numpy.stack([fftconvolve(source, ds[:, c]) for c in range(2)], axis=1)
         if lr_ir is not None:
             rev = numpy.stack(
-                [fftconvolve(source, lr_ir[:, c] * norm_gain) for c in range(2)], axis=1)
+                [fftconvolve(source, lr_ir[:, c]) for c in range(2)], axis=1)
             n = max(out.shape[0], rev.shape[0])
             summed = numpy.zeros((n, 2))
             summed[:out.shape[0]] = out
@@ -216,18 +237,53 @@ def predicted_peak(hrir, lr_ir, hp_ir, stimulus, norm_gain=1.0,
         if hp_ir is not None:
             out = numpy.stack(
                 [fftconvolve(out[:, c], hp_ir[:, c]) for c in range(2)], axis=1)
-        peak = max(peak, float(numpy.abs(out).max()))
-    return peak
+        this = float(numpy.abs(out).max())
+        if this > peak:
+            peak, peak_idx = this, int(idx)
+    return peak, peak_idx
 
 
-def write_level_info(hrir, mat_path, norm_gain, levels, peak=None,
-                     reference=REFERENCE_LEVEL, loudness=REFERENCE_GAIN):
+def frontal_index(hrir):
+    """Index of the filter closest to relative (0, 0) -- straight ahead."""
+    az, ele = hrir.sources.vertical_polar[:, 0], hrir.sources.vertical_polar[:, 1]
+    az = numpy.where(az > 180, az - 360, az)
+    return int(numpy.argmin(az ** 2 + ele ** 2))
+
+
+def max_safe_gain(hrir, lr_ir, hp_ir, stimulus, norm_gain=1.0,
+                  directions=None, limit=PEAK_LIMIT):
+    """
+    Highest ``loc_settings['gain']`` this stimulus can be played at without
+    clipping, and the direction that sets it.
+
+    The render chain is linear in the runtime loudness, so the peak at loudness
+    1.0 converts to a limit that holds for EVERY gain -- no reference gain to go
+    stale, and nothing to rescale by hand when a protocol changes its level.
+
+    Returns
+    -------
+    (float, int, float)
+        Max safe gain, the limiting direction index, and the unit-gain peak.
+    """
+    peak, idx = predicted_peak(
+        hrir, lr_ir, hp_ir, stimulus, norm_gain=norm_gain, loudness=1.0,
+        directions=directions)
+    if not peak > 0:
+        raise ValueError("Unit-gain peak is 0. Check the stimulus and filters.")
+    return limit / peak, idx, peak
+
+
+def write_level_info(hrir, mat_path, norm_gain, levels, headroom=None,
+                     reference=REFERENCE_LEVEL):
     """
     Write the normalisation provenance next to the MAT database.
 
     It cannot live inside the MAT: pyBinSim's FilterStorage.parse_and_load_matfile
     walks EVERY top-level variable in the file and raises "Filter indentifier
     wrong or missing" on anything that is not a filter struct.
+
+    ``headroom`` maps each stimulus to its max safe gain; check_gain() reads it
+    back at run time to vet the gain a protocol actually plays at.
     """
     info_path = Path(mat_path).with_name(f"{hrir.name}_level.json")
     info = {
@@ -237,11 +293,72 @@ def write_level_info(hrir, mat_path, norm_gain, levels, peak=None,
         "chain_level_range": [float(levels.min()), float(levels.max())],
         "norm_gain": float(norm_gain),
         "norm_gain_db": float(20 * numpy.log10(norm_gain)),
-        "reference_loudness": loudness,
-        "predicted_peak": None if peak is None else float(peak),
+        "peak_limit": PEAK_LIMIT,
+        "headroom": headroom or {},
+        "max_safe_gain": (min(h["max_safe_gain"] for h in headroom.values())
+                          if headroom else None),
     }
     info_path.write_text(json.dumps(info, indent=2))
     return info_path
+
+
+def read_level_info(hrir_name, binsim_dir=None):
+    """Load the level.json written next to a built database, or None."""
+    binsim_dir = paths.BINSIM_DIR if binsim_dir is None else Path(binsim_dir)
+    info_path = Path(binsim_dir) / hrir_name / f"{hrir_name}_level.json"
+    if not info_path.exists():
+        return None
+    return json.loads(info_path.read_text())
+
+
+def check_gain(hrir_name, gain, stimulus=None, binsim_dir=None):
+    """
+    Vet the gain a protocol is about to play at against the built database.
+
+    This is the direction-proof half of the headroom check: the build measures
+    the worst direction once and stores a max safe gain, and every script that
+    opens the database compares its OWN loc_settings['gain'] against it. The
+    build cannot do this alone -- it does not know whether the caller will be
+    the training game at 0.07 or a localization test at 0.2.
+
+    ``stimulus`` picks one entry from the stored headroom map (e.g.
+    'noise_pulse.wav'); the default takes the strictest over all of them.
+
+    Never raises -- a build predating this check, or a missing database, is not
+    a reason to lose a session. Returns True only if the gain is known to be
+    safe.
+    """
+    info = read_level_info(hrir_name, binsim_dir)
+    if not info or not info.get("headroom"):
+        logger.info(
+            "check_gain: no headroom data for %s -- rebuild with overwrite=True "
+            "to vet gain=%.3f.", hrir_name, gain)
+        return False
+
+    headroom = info["headroom"]
+    if stimulus is not None:
+        entry = headroom.get(stimulus)
+        if entry is None:
+            logger.info("check_gain: %s not in headroom map for %s.", stimulus, hrir_name)
+            return False
+        limit, worst = entry["max_safe_gain"], stimulus
+    else:
+        worst = min(headroom, key=lambda k: headroom[k]["max_safe_gain"])
+        limit = headroom[worst]["max_safe_gain"]
+
+    if gain > limit:
+        logger.warning(
+            "HEADROOM | gain=%.3f exceeds the safe limit %.3f for %s (set by "
+            "%s at az %.1f el %.1f). pyBinSim will clip on the loudest "
+            "directions -- lower the gain or rebuild the database.",
+            gain, limit, hrir_name, worst,
+            headroom[worst]["direction"][0], headroom[worst]["direction"][1],
+        )
+        return False
+
+    logger.info("HEADROOM | gain=%.3f OK for %s (limit %.3f, set by %s).",
+                gain, hrir_name, limit, worst)
+    return True
 
 
 # ---- mat writers ---- #

@@ -47,6 +47,10 @@ CONFIG_PATHS = (
 
 ENV_PREFIX = "HRTF_"
 
+# What people actually write, mapped to what torch and the pyBinSim settings key
+# accept.
+ALIASES = {"gpu": "cuda", "nvidia": "cuda", "cpu": "cpu", "cuda": "cuda"}
+
 _cache = None
 
 
@@ -120,7 +124,13 @@ def torch_device(requested=None, key="torch_device"):
         device = "cuda" if cuda_available() else "cpu"
         source = "auto-detect"
 
-    device = str(device).lower()
+    # 'gpu' and 'cuda:0' are the obvious things to write in local_config.json,
+    # but torch (and the pyBinSim settings key) only know 'cpu' and 'cuda', and
+    # an unrecognised value used to fall through to cpu with nothing but a
+    # warning -- i.e. the whole rig silently ran on the CPU.
+    device = ALIASES.get(str(device).strip().lower(), str(device).strip().lower())
+    if device.startswith("cuda:"):
+        device = "cuda"
     if device not in ("cpu", "cuda"):
         logger.warning("Unknown torch device %r (%s) — falling back to cpu.", device, source)
         return "cpu"

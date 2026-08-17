@@ -39,6 +39,13 @@ Metrics, all from one pair of correlation matrices
     For real human donors the ridge normally collapses, but check rather than
     assume.
 
+``detail_strength`` (see :func:`detail_strength`)
+    Not a pairing score — a property of ONE recording. The SD across directions
+    of its own in-band spectral detail, in dB. This is how strong the cue being
+    handed over actually is, and it is what ranks the pool and breaks ties
+    inside the tolerance band. It is NOT VSI; see the pool comment at the bottom
+    of this module for why VSI turned out to be the wrong quantity for this job.
+
 Method
 ------
 Scoring follows the paper: the composite is built on the FFT grid (that is what
@@ -86,9 +93,28 @@ DEFAULT_RESOLUTION = 'filterbank'
 # the same for everyone, so the manipulation is one sentence in the methods.
 # ---------------------------------------------------------------------------
 N_KEEP = 4                    # envelope coefficients kept (Kulkarni & Colburn 1998)
-TARGET_DISSIMILARITY = 0.50   # aim, in this cohort's between-subject distribution
+TARGET_DISSIMILARITY = 0.40   # aim, in this cohort's between-subject distribution
 MAX_RIDGE_SLOPE = 0.5         # above this the old map can read the composite as
                               # a coherent elevation and absorb it as a bias
+TOLERANCE = 0.05              # half-width of the band around the target
+
+# WHY THE TARGET MOVED FROM 0.50 TO 0.40 (2026-08-13). The rule has always been
+# "the median of this cohort's between-subject distribution" — 0.50 was that
+# median when it could only be estimated from 7 listeners (21 pairs: median
+# 0.55). Measured over all 20 conforming recordings (190 pairs) the
+# distribution is min 0.157 | Q1 0.334 | median 0.403 | Q3 0.526 | max 0.942,
+# so 0.50 had drifted to roughly the 72nd percentile — a stronger perturbation
+# than intended, in the direction Trapeau found gives slower adaptation. 0.40
+# restores the stated rationale rather than changing it. On the 11 listeners
+# recorded so far this moves 2/11 in-band picks to 5/11 with no loss of donor
+# cue strength (median detail SD 3.0 dB either way).
+#
+# WHY A TOLERANCE BAND INSTEAD OF PLAIN ARGMIN. With a pool this size,
+# min |dissimilarity - target| is decided by differences of 0.01-0.02, which is
+# well inside the measurement noise of the metric — it selects on noise. The
+# band says "close enough to target" and then picks on a quantity that is
+# actually meaningful (donor detail strength). It also gives the in-session
+# swap a principled 2nd and 3rd choice instead of an arbitrary one.
 
 # VSI IS REPORTED BUT DOES NOT GATE ANYTHING HERE. Trapeau's VSI is defined on
 # diffuse-field-normalised DTFs; these recordings sample only the az=0 arc, so no
@@ -257,11 +283,12 @@ def rank_donors(subject_hrtf, donors, n_keep=DEFAULT_N_KEEP,
             donor_split = median_plane_split(donor, n_keep=n_keep)
             scores = score_pair(own_split, donor_split, bandwidth=bandwidth,
                                 donor_ear=donor_ear, resolution=resolution)
+            strength = detail_strength(donor_split, bandwidth, resolution)
         except Exception as exc:
             logger.warning('skipping donor %s: %s', name, exc)
             continue
         scores.pop('per_ear')
-        rows.append({'donor': name, **scores})
+        rows.append({'donor': name, 'donor_strength': strength, **scores})
     return sorted(rows, key=lambda row: row['vsi_dissimilarity'])
 
 
@@ -298,6 +325,34 @@ def pairwise_reference(hrtfs, n_keep=DEFAULT_N_KEEP, bandwidth=DEFAULT_BAND,
     return numpy.array(sorted(pairs.values())), pairs
 
 
+def detail_strength(split, bandwidth=DEFAULT_BAND, resolution=DEFAULT_RESOLUTION):
+    """How strong ONE recording's own elevation cue is, in dB. Ear-averaged.
+
+    The SD across directions of the in-band spectral DETAIL — i.e. of exactly
+    the quantity :func:`~hrtf_relearning.hrtf.modify.donor_detail.donor_detail_dtf`
+    transplants. High means the donor's fine structure both is deep AND changes
+    with elevation; a donor scoring low is handing over almost nothing, which is
+    a cue REMOVAL dressed up as a cue replacement.
+
+    Two components have to be there and only their product is a cue:
+    depth alone is not enough (a deep but elevation-INDEPENDENT ripple is
+    timbre, not a cue — pilot/AGV has 6.7 dB of detail and 2.1 dB of SD), and
+    elevation dependence of a shallow spectrum is not enough either. Taking the
+    SD across directions of the detail requires both.
+
+    Computed on the per-direction detail, so unlike VSI it does not depend on
+    the diffuse-field normalisation this rig cannot produce — the envelope,
+    which is where the un-normalised common component lives, has already been
+    subtracted direction by direction.
+    """
+    values = []
+    for ear in EARS:
+        detail = _reduce(split[ear]['detail'], split['freqs'], bandwidth, resolution)
+        values.append(float(numpy.mean(numpy.std(numpy.asarray(detail, dtype=float),
+                                                 axis=0))))
+    return float(numpy.mean(values))
+
+
 def own_vsi(split, bandwidth=DEFAULT_BAND, resolution=DEFAULT_RESOLUTION):
     """VSI of an unmodified set, in the same band/resolution as the scores."""
     values = [matrix_metrics(_reduce(split[ear]['full'], split['freqs'], bandwidth, resolution),
@@ -306,29 +361,36 @@ def own_vsi(split, bandwidth=DEFAULT_BAND, resolution=DEFAULT_RESOLUTION):
     return float(numpy.mean(values))
 
 
-def select_donor(subject_hrtf, candidates, target=TARGET_DISSIMILARITY,
-                 n_keep=N_KEEP, bandwidth=DEFAULT_BAND,
-                 resolution=DEFAULT_RESOLUTION, donor_ear=None,
-                 max_ridge_slope=MAX_RIDGE_SLOPE):
-    """The per-subject donor choice — the ONLY thing that varies between subjects.
+def shortlist(subject_hrtf, candidates, target=TARGET_DISSIMILARITY,
+              n_keep=N_KEEP, bandwidth=DEFAULT_BAND,
+              resolution=DEFAULT_RESOLUTION, donor_ear=None,
+              max_ridge_slope=MAX_RIDGE_SLOPE, tolerance=TOLERANCE):
+    """Every candidate, ranked best-first by the selection rule.
 
-    Every candidate composite (listener's envelope + that donor's detail, same
-    fixed ``n_keep``) is scored against the listener's own HRTF. A candidate is
-    eligible if its correlation ridge has collapsed
-    (``ridge_slope <= max_ridge_slope``), i.e. the listener's existing map can no
-    longer read the composite as a coherent elevation and absorb the change as a
-    constant bias. Among eligible candidates the one whose VSI dissimilarity is
-    closest to ``target`` wins.
+    ``shortlist()[0]`` is the donor :func:`select_donor` returns; ``[1]`` and
+    ``[2]`` are the principled 2nd and 3rd choices the in-session swap uses when
+    a participant cannot localize at all with the first one. The ordering is a
+    RULE, not a preference, so a swap stays reportable: it moves down a list
+    that was fixed before the participant heard anything.
 
-    If nothing is eligible the candidate with the LOWEST ridge slope is returned
-    with ``fallback=True`` rather than raising — the 0.5 cutoff has no external
-    anchor, so treating 0.49 and 0.51 as categorically different would be false
-    precision. Check ``fallback`` and report it.
+    Three tiers, in order:
 
-    Returns ``(chosen_row, all_rows)``; every row carries ``distance``,
-    ``eligible`` and the listener's ``own_vsi`` so the full table can go in a
-    supplement. Note ``vsi`` is diagnostic only — see the constants block above
-    for why it does not gate anything.
+    ``'band'``
+        Ridge collapsed (``ridge_slope <= max_ridge_slope``) AND dissimilarity
+        within ``tolerance`` of ``target``. Ranked by ``donor_strength``
+        DESCENDING — among donors that are all equally close to the intended
+        perturbation size, hand over the strongest cue.
+    ``'widened'``
+        Ridge collapsed but outside the band. Ranked by distance to target
+        ascending. This is the old rule, and it is what runs when the band is
+        empty.
+    ``'fallback'``
+        Ridge did not collapse for any candidate. Ranked by ridge slope
+        ascending. The composite may be partly absorbable as a bias; report it.
+
+    Every row carries ``tier``, ``rank``, ``distance``, ``eligible``
+    (ridge criterion), ``in_band``, ``donor_strength`` and the listener's
+    ``own_vsi``, so the whole table can go in a supplement.
     """
     own_split = median_plane_split(subject_hrtf, n_keep=n_keep)
     reference_vsi = own_vsi(own_split, bandwidth, resolution)
@@ -342,45 +404,127 @@ def select_donor(subject_hrtf, candidates, target=TARGET_DISSIMILARITY,
         row['own_vsi'] = reference_vsi
         row['distance'] = abs(row['vsi_dissimilarity'] - target)
         row['eligible'] = bool(row['ridge_slope'] <= max_ridge_slope)
-        row['fallback'] = False
+        row['in_band'] = bool(row['eligible'] and row['distance'] <= tolerance)
 
-    eligible = [row for row in rows if row['eligible']]
-    if eligible:
-        return min(eligible, key=lambda row: row['distance']), rows
-    chosen = min(rows, key=lambda row: row['ridge_slope'])
-    chosen['fallback'] = True
-    logger.warning(
-        'no candidate reached ridge_slope <= %.2f (best %.2f, donor %s) — '
-        'falling back to the lowest slope', max_ridge_slope,
-        chosen['ridge_slope'], chosen['donor'])
-    return chosen, rows
+    band = [row for row in rows if row['in_band']]
+    ridge_only = [row for row in rows if row['eligible'] and not row['in_band']]
+    rejected = [row for row in rows if not row['eligible']]
+
+    if band:
+        ordered = (sorted(band, key=lambda r: -r['donor_strength'])
+                   + sorted(ridge_only, key=lambda r: r['distance'])
+                   + sorted(rejected, key=lambda r: r['ridge_slope']))
+        tier = 'band'
+    elif ridge_only:
+        ordered = (sorted(ridge_only, key=lambda r: r['distance'])
+                   + sorted(rejected, key=lambda r: r['ridge_slope']))
+        tier = 'widened'
+        logger.warning(
+            'no candidate landed within %.2f of target %.2f — falling back to '
+            'nearest-to-target among ridge-eligible donors', tolerance, target)
+    else:
+        ordered = sorted(rejected, key=lambda r: r['ridge_slope'])
+        tier = 'fallback'
+        logger.warning(
+            'no candidate reached ridge_slope <= %.2f (best %.2f, donor %s) — '
+            'falling back to the lowest slope', max_ridge_slope,
+            ordered[0]['ridge_slope'], ordered[0]['donor'])
+
+    for rank, row in enumerate(ordered):
+        row['rank'] = rank
+        # the tier the CHOSEN donor sits in, so one field says how the pick was
+        # made; per-row membership is still readable from eligible/in_band
+        row['tier'] = tier
+        row['fallback'] = bool(tier == 'fallback')
+    return ordered
+
+
+def select_donor(subject_hrtf, candidates, target=TARGET_DISSIMILARITY,
+                 n_keep=N_KEEP, bandwidth=DEFAULT_BAND,
+                 resolution=DEFAULT_RESOLUTION, donor_ear=None,
+                 max_ridge_slope=MAX_RIDGE_SLOPE, tolerance=TOLERANCE,
+                 rank=0):
+    """The per-subject donor choice — the ONLY thing that varies between subjects.
+
+    Thin wrapper over :func:`shortlist`: returns ``(chosen_row, all_rows)`` with
+    ``all_rows`` already in rule order. ``rank=0`` is the protocol choice;
+    ``rank=1``/``rank=2`` are the documented alternates for an in-session swap
+    (see :func:`shortlist` for what defines the order).
+
+    Note ``vsi`` is diagnostic only — see the constants block above for why it
+    does not gate anything, and the pool comment for why ``donor_strength``
+    replaced it as the ranking quantity.
+    """
+    rows = shortlist(subject_hrtf, candidates, target=target, n_keep=n_keep,
+                     bandwidth=bandwidth, resolution=resolution,
+                     donor_ear=donor_ear, max_ridge_slope=max_ridge_slope,
+                     tolerance=tolerance)
+    if rank >= len(rows):
+        raise IndexError(f'requested donor rank {rank} but only {len(rows)} '
+                         f'candidates were scored')
+    return rows[rank], rows
 
 
 # ---------------------------------------------------------------------------
 # The donor pool — EDIT THIS LIST.
 #
-# Only recordings made with the current setup can be used as they stand: 475
-# sources, 512 taps, 48828 Hz, 19 median-plane elevations from -38 to +38 deg.
-# 16 of the 32 available recordings qualify (the rest are 256-tap or coarser
-# grids and would need resampling/interpolation first). Use 'pilot/NAME' to
-# force the pilot copy when an id exists in both folders (AS, PF do).
+# The target grid is 475 sources, 512 taps, 48828 Hz, 19 median-plane
+# elevations from -38 to +38 deg. 30 of the 38 recordings on disk reach it:
+# 20 natively, and 10 more through `conform_recording` (zero-padding 256 taps
+# to 512, dropping the second az=0 arc where it was measured twice). The
+# remaining 8 have a genuinely coarser source grid and would need spatial
+# interpolation, which smooths the notches this manipulation transplants, so
+# they stay out. Use 'pilot/NAME' to force the pilot copy when an id exists in
+# both folders (AS, PF do).
 #
-# SIZE MATTERS as much as quality. The ridge guard rejects most candidates for
-# any given listener, so a small pool leaves the rule no choice: measured on the
-# seven current listeners, a pool of the 4 best gives an eligible donor for only
-# 4 of them and forces one (CO) onto a composite at 0.95, above the maximum of
-# any real subject pair. A pool of 8 resolves all 7 with every pick inside the
-# between-subject range (0.37-0.68). Going to all 16 also resolves, but then the
-# rule starts selecting donors whose own cue is visibly weak (IM, AGV), which is
-# the thing the pool is there to prevent. Eight is the compromise.
+# RANKED BY DETAIL STRENGTH, NOT BY VSI (changed 2026-08-13). The pool used to
+# be the 8 highest-VSI recordings. That was wrong: measured over all 20, VSI is
+# NEGATIVELY rank-correlated with how deep the spectral detail is (Spearman
+# -0.40). AS tops the VSI table at 0.93 and has the SHALLOWEST detail of all 20
+# (3.6 dB); GS scores 0.29 — 16th — on the deepest detail in the set (7.1 dB)
+# and the 4th most elevation-dependent, and localizes well with her own HRTF.
+# The reason is the one already documented above for why VSI cannot gate
+# eligibility: without the diffuse-field normalisation this rig cannot produce,
+# a large shared across-direction component drags every correlation toward 1,
+# so a listener with a strong common resonance reads as "all my spectra look
+# alike" no matter how much fine structure rides on top. `detail_strength`
+# is computed after the per-direction envelope has been subtracted, so it does
+# not have that failure mode — and it measures the exact quantity the donor
+# hands over. VSI is still reported everywhere; it just no longer ranks anything.
 #
-# Per-ear VSI of the qualifying 16 (left/right, 5657-11314 Hz, filter bank):
-#   AS  .89/.97   PF  .77/.81   NKa .59/.63   GS  .61/.58   <- pool
-#   AH  .60/.43   FD  .56/.42   VD  .39/.65   CO  .65/.29   <- pool
-#   PC  .45/.41   SS  .39/.48   MSc .28/.39   UG  .26/.35
-#   JF  .24/.24   LS  .18/.19   IM  .11/.24   AGV .11/.12
+# SIZE IS NOT THE BINDING CONSTRAINT — the ridge guard is. Admitting every
+# recording raises in-band picks from 5/11 to 8/11, but only by selecting IM,
+# AGV, LS and JF, whose detail SD is 1.6-2.2 dB against 2.7-3.9 for the pool.
+# Those composites hand over almost nothing, i.e. they are a cue REMOVAL
+# dressed up as a cue replacement. So the pool is a STRENGTH FLOOR (>= 2.66 dB,
+# the weakest recording that was already in it), not a rank cut. Adding the
+# five padded recordings that clear that floor takes the pool from 12 to 17 and
+# buys one fewer fallback (2 -> 1) plus a much stronger donor for GLK and IR
+# (MB at 3.9 dB, against 2.7 and 3.2 before) at no cost to the floor.
+#
+# DO NOT READ THE ORDER BELOW AS MEANINGFUL AT RANK GRANULARITY. Adjacent
+# ranks differ by ~0.05 dB and THERE IS NO REPEATABILITY ESTIMATE to say
+# whether that is a real difference: every subject's arc is measured once.
+# (An earlier note here claimed a 0.42 dB test-retest from the six recordings
+# that carry the arc twice. That was wrong — the second arc is the azimuth
+# expansion's own processed copy, not a repeat measurement, so 0.42 dB is the
+# fidelity of that pipeline step, not measurement noise. See
+# `conform_recording`.) Until someone re-records a subject, treat only broad
+# differences as real — JF at 1.6 vs FD at 3.7 is a distinction, rank 12 vs
+# rank 13 is not. Hence a floor rather than a top-N.
+#
+# Elevation SD of in-band detail, dB, ear-averaged (`detail_strength`).
+# '*' = reaches the grid only via conform_recording (was 256-tap):
+#   MB* 3.9   FD  3.7   NKa 3.6   MSc 3.5   GS  3.3   SK* 3.3
+#   CO  3.3   TS  3.3   AS  3.2   GLK 3.2   JP* 3.2   VD  3.0
+#   PF  3.0   NK* 3.0   RK* 2.7   AH  2.7   FS  2.7
+#   --------------------------------------------- floor 2.66 dB
+#   SS  2.4   IR  2.3   UG  2.3   SW* 2.3   IM  2.2   PC  2.2
+#   PFo* 2.2  LS  2.1   AGV 2.1   JR* 2.1   VG* 2.0   CZ* 1.7   JF  1.6
 # ---------------------------------------------------------------------------
-DONOR_POOL = ('AS', 'PF', 'pilot/NKa', 'GS', 'pilot/AH', 'FD', 'pilot/VD', 'CO')
+DONOR_POOL = ('pilot/MB', 'FD', 'pilot/NKa', 'pilot/MSc', 'GS', 'pilot/SK',
+              'CO', 'TS', 'AS', 'GLK', 'pilot/JP', 'pilot/VD', 'PF',
+              'pilot/NK', 'pilot/RK', 'pilot/AH', 'FS')
 
 # what a recording must match to be usable without resampling
 REQUIRED_TAPS = 512
@@ -394,8 +538,9 @@ def conforms(hrtf, taps=REQUIRED_TAPS, samplerate=REQUIRED_SAMPLERATE,
 
     Composites are built sample-by-sample against the listener's own HRIR, so a
     donor with a different tap count, sample rate or median-plane grid cannot be
-    used as it stands — it would need resampling and elevation interpolation
-    first. Checked explicitly rather than left to fail deep in the scoring.
+    used as it stands. Run :func:`conform_recording` first — it fixes the two
+    differences that are lossless to fix (short tap count, duplicated az=0 arc)
+    and leaves everything else to fail here.
     """
     try:
         return bool(hrtf[0].data.shape[0] == taps
@@ -403,6 +548,84 @@ def conforms(hrtf, taps=REQUIRED_TAPS, samplerate=REQUIRED_SAMPLERATE,
                     and len(vsi_module.median_plane_sources(hrtf)) == elevations)
     except Exception:
         return False
+
+
+def conform_recording(hrtf, taps=REQUIRED_TAPS, samplerate=REQUIRED_SAMPLERATE):
+    """Bring a recording onto the current grid where that is LOSSLESS, else None.
+
+    Two differences among the recordings on disk can be repaired exactly, and
+    only those two are attempted:
+
+    ``256 taps instead of 512``
+        Zero-padded. Padding an impulse response interpolates its spectrum onto
+        a finer frequency grid; it invents nothing. Whether 256 taps RESOLVE the
+        detail is a separate question, and it was measured: truncating the
+        512-tap recordings to 256 and padding back moves detail strength and
+        notch depth by <= 0.01 dB (against a 2.7-3.7 dB spread across donors)
+        and VSI dissimilarity by <= 0.001 (against a +-0.05 tolerance band).
+        99.98% of the energy is in the first 256 samples and 191 Hz bin spacing
+        is far finer than the in-band notches. The one quantity that does move
+        is ``ridge_slope``, by up to 0.087 — it is an argmax statistic, so it
+        steps rather than drifts. A candidate sitting within ~0.09 of the
+        MAX_RIDGE_SLOPE cutoff can therefore flip on tap count alone; treat
+        those as ties rather than as decisions.
+
+    ``494 sources instead of 475``
+        These files carry the az=0 arc twice, at 0 and at 360. The two copies
+        are NOT two measurements. Only the median-plane arc is ever recorded;
+        `record_hrir.expand_azimuths_with_binaural_cues` generates every other
+        azimuth from it, and older versions of that function did not exclude
+        360, so the second arc is the pipeline's own processed copy of the
+        first. Current recordings have 475 sources because that function now
+        skips 0/360 explicitly.
+
+        The FIRST occurrence is kept, i.e. the measured arc, and the generated
+        copy is discarded. That is deliberate: the generated one has been
+        through the spherical-head ITD step, which time-shifts the RIGHT ear —
+        measured against the arc it was derived from, the right ear moves by up
+        to 11 samples and correlates at r 0.72-0.94, while the left ear stays
+        at r 0.86-0.98 with no onset shift. Verified: after dedup the source
+        set matches the 475-source grid exactly.
+
+    Anything else — a different sample rate, a coarser source grid, a shorter
+    median-plane arc — is NOT repaired, because the only repair available is
+    interpolation, and interpolating an HRTF across direction smooths precisely
+    the notches this manipulation transplants. Those return ``None``.
+    """
+    import slab
+
+    if abs(float(hrtf[0].samplerate) - samplerate) >= 50:
+        return None
+
+    sources = numpy.asarray(hrtf.sources.vertical_polar, dtype=float)
+    n_taps = hrtf[0].data.shape[0]
+    if n_taps > taps:
+        return None
+
+    # duplicate rows: same (azimuth mod 360, elevation) to 0.1 deg
+    key = numpy.stack([numpy.mod(numpy.round(sources[:, 0], 1), 360.0),
+                       numpy.round(sources[:, 1], 1)], axis=1)
+    seen, keep = set(), []
+    for index, row in enumerate(map(tuple, key)):
+        if row in seen:
+            continue
+        seen.add(row)
+        keep.append(index)
+
+    if len(keep) == hrtf.n_sources and n_taps == taps:
+        return hrtf
+
+    data = numpy.zeros((len(keep), 2, taps), dtype=float)
+    for new_index, old_index in enumerate(keep):
+        ir = numpy.asarray(hrtf[old_index].data, dtype=float)   # (taps, 2)
+        data[new_index, :, :n_taps] = ir.T
+
+    conformed = slab.HRTF(data, datatype='FIR', samplerate=hrtf[0].samplerate,
+                          sources=sources[keep], listener=hrtf.listener)
+    conformed.name = getattr(hrtf, 'name', None)
+    logger.info('conformed %s: %d sources x %d taps -> %d x %d',
+                conformed.name, hrtf.n_sources, n_taps, len(keep), taps)
+    return conformed
 
 
 def load_candidates(subject_id, pool=DONOR_POOL, sofa_dir=None, suffix='',
@@ -460,27 +683,51 @@ def load_candidates(subject_id, pool=DONOR_POOL, sofa_dir=None, suffix='',
         except Exception as exc:
             logger.warning('could not load donor %s: %s', name, exc)
             continue
-        if check_conformance and not conforms(hrtf):
-            logger.warning(
-                'donor %s does not match the current setup (%d taps, %.0f Hz, '
-                '%d median-plane elevations) — skipped', name,
-                hrtf[0].data.shape[0], float(hrtf[0].samplerate),
-                len(vsi_module.median_plane_sources(hrtf)))
-            continue
+        hrtf.name = name
+        if check_conformance:
+            hrtf = conform_recording(hrtf)
+            if hrtf is None or not conforms(hrtf):
+                logger.warning(
+                    'donor %s does not match the current setup and cannot be '
+                    'conformed losslessly — skipped', name)
+                continue
         candidates[name] = hrtf
     return candidates
 
 
 def report(rows, reference=None):
-    """Print a donor ranking, with the between-subject distribution for scale."""
-    print(f'{"donor":>14}  {"VSI-dis":>8} {"VSI":>6} {"I_sim":>7} {"peak r":>7} '
-          f'{"ridge":>7} {"bias":>7}  {"":>3}')
+    """Print a donor ranking, with the between-subject distribution for scale.
+
+    Rows are expected in :func:`shortlist` order, so the top line is the pick
+    and the next two are the alternates an in-session swap would move to.
+    """
+    tier = rows[0].get('tier') if rows else None
+    if tier == 'band':
+        print(f'selection tier: BAND — within {TOLERANCE:.2f} of target '
+              f'{TARGET_DISSIMILARITY:.2f}, ranked by donor cue strength')
+    elif tier == 'widened':
+        print(f'selection tier: WIDENED — nothing within {TOLERANCE:.2f} of '
+              f'target {TARGET_DISSIMILARITY:.2f}; ranked by distance to target')
+    elif tier == 'fallback':
+        print(f'selection tier: FALLBACK — no candidate collapsed the ridge '
+              f'(<= {MAX_RIDGE_SLOPE:.2f}); ranked by ridge slope. REPORT THIS.')
+    print(f'{"":>4}{"donor":>14}  {"VSI-dis":>8} {"strength":>8} {"VSI":>6} '
+          f'{"I_sim":>7} {"peak r":>7} {"ridge":>7} {"bias":>7}  {"":>5}')
     for row in rows:
-        mark = ('' if 'eligible' not in row
-                else ('ok ' if row['eligible'] else 'x  '))
-        print(f'{row["donor"]:>14}  {row["vsi_dissimilarity"]:8.3f} {row["vsi"]:6.2f} '
+        if 'eligible' not in row:
+            mark = ''
+        elif row.get('in_band'):
+            mark = 'band'
+        elif row['eligible']:
+            mark = 'ok'
+        else:
+            mark = 'x'
+        arrow = '-->' if row.get('rank') == 0 else (
+            f'{row["rank"]}.' if 'rank' in row else '')
+        print(f'{arrow:>4}{row["donor"]:>14}  {row["vsi_dissimilarity"]:8.3f} '
+              f'{row.get("donor_strength", float("nan")):8.1f} {row["vsi"]:6.2f} '
               f'{row["i_sim"]:7.3f} {row["peak_r"]:7.2f} {row["ridge_slope"]:+7.2f} '
-              f'{row["ridge_bias"]:+7.1f}  {mark:>3}')
+              f'{row["ridge_bias"]:+7.1f}  {mark:>5}')
     if reference is not None and len(reference):
         quartiles = numpy.percentile(reference, [25, 50, 75])
         print(f'\nbetween-subject VSI dissimilarity (n={len(reference)} pairs): '

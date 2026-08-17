@@ -253,8 +253,19 @@ def hrtf2binsim(hrir_settings, overwrite: bool = True, build: bool = True):
             hrir = flatten_dtf(hrir, ear)
             hrir.name += f"_{ear}"
         elif other_ear == "envelope":
-            logger.info("Envelope-only DTF (n_keep=%d) for %s ear", env_n_keep, other)
-            hrir = envelope_dtf(hrir, ear, n_keep=env_n_keep)
+            # elevation_average defaults to False HERE, unlike envelope_dtf
+            # itself. This is the render-time path, which operates on an
+            # already-expanded 475-direction set; it is what every build before
+            # 2026-08 used and it is pinned so those subjects stay reproducible.
+            # The current pipeline applies the monaural reduction to the az=0
+            # arc at SOFA build time instead (hrtf.processing.midline), where
+            # averaging over elevation removes the cue outright, and reaches
+            # this branch with ear=None.
+            elevation_average = bool(hrir_settings.get("env_elevation_average", False))
+            logger.info("Envelope-only DTF (n_keep=%d, elevation_average=%s) for %s ear",
+                        env_n_keep, elevation_average, other)
+            hrir = envelope_dtf(hrir, ear, n_keep=env_n_keep,
+                                elevation_average=elevation_average)
             hrir.name += f"_{ear}_env{env_n_keep}"
         elif other_ear == "native":
             if native_sofa == sofa_name:

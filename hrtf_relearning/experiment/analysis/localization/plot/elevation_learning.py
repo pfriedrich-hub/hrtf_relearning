@@ -14,9 +14,35 @@ from hrtf_relearning.utils import paths
 subject_id = "CA"
 
 
+# localization_accuracy returns
+#   (ele_gain, ele_rmse, ele_sd, az_gain, az_rmse, az_sd)
+# so a plane is just which half of that tuple to read, plus the axis floors the
+# metric is normally drawn against.
+_PLANES = {
+    "elevation": dict(cols=(0, 1, 2),
+                      labels=("Elevation Gain", "RMSE (deg)", "SD (deg)"),
+                      rmse_floor=25.0, sd_floor=8.0),
+    "azimuth":   dict(cols=(3, 4, 5),
+                      labels=("Azimuth Gain", "RMSE (deg)", "SD (deg)"),
+                      rmse_floor=15.0, sd_floor=8.0),
+}
+
+
+def _metrics(seq):
+    """localization_accuracy as a float array, None -> nan.
+
+    azimuth_gain is None whenever a run has a single target azimuth (the dome
+    and midline references), which makes the raw tuple an object array and
+    breaks every downstream comparison. Coerce here instead."""
+    import hrtf_relearning as _hr
+    return numpy.array([numpy.nan if v is None else float(v)
+                        for v in _hr.localization_accuracy(seq)], dtype=float)
+
+
 def learning_plot(
     subject_id,
     *,
+    plane="elevation",
     last_day_width=0.15,
     other_day_width=0.12,
     annotate_times=True,
@@ -26,6 +52,12 @@ def learning_plot(
     split_final_transfer=True,
 ):
     """Plot learning metrics across days for one subject.
+
+    ``plane`` selects which half of the accuracy tuple is drawn —
+    'elevation' (the trained dimension) or 'azimuth'. Azimuth is the control
+    dimension: the cue manipulation is spectral and monaural, so azimuth is
+    carried by ITD/ILD and should be largely unaffected. A drop there is a
+    sign of something other than the intended manipulation.
 
     By default only non-midline AR localization tests are shown: dome tests
     (free-field, hrir is None) and midline tests (azimuth span <= 2 deg, e.g.
@@ -42,6 +74,11 @@ def learning_plot(
     side in a labelled cluster to the right, and the own-HRTF post test is
     drawn as a faint reference (like the dome baseline).
     """
+    try:
+        cfg = _PLANES[plane]
+    except KeyError:
+        raise ValueError(f"plane must be one of {sorted(_PLANES)}, got {plane!r}")
+
     figsize_cm = (17.5, 6.5)
     fig_size = (figsize_cm[0] / 2.54, figsize_cm[1] / 2.54)
     dpi = 264
@@ -91,7 +128,7 @@ def learning_plot(
     if show_dome_baseline:
         for key, seq in items:
             if _is_analysable(seq) and not getattr(seq, "hrir", None):
-                dome_baseline = (key, numpy.asarray(hr.localization_accuracy(seq)))
+                dome_baseline = (key, _metrics(seq))
                 break
 
     # Which hemifield was trained (to place the final 2x2 relative to it).
@@ -108,7 +145,7 @@ def learning_plot(
         kept = []
         for key, seq in by_day[final_day]:
             meta = extract_seq_meta(seq, fallback_name=key)
-            metrics = numpy.asarray(hr.localization_accuracy(seq))
+            metrics = _metrics(seq)
             block = transfer_block(meta, trained_field)
             if block in ("B", "C", "D"):
                 transfer_by_block[block] = (meta, metrics)      # last wins
@@ -133,7 +170,7 @@ def learning_plot(
         day_meta = []
 
         for key, seq in loc_tests:
-            day_data.append(hr.localization_accuracy(seq))
+            day_data.append(_metrics(seq))
             day_times.append(key_time_str(key))
             day_meta.append(extract_seq_meta(seq, fallback_name=key))
 
@@ -147,7 +184,8 @@ def learning_plot(
     ax2 = plt.subplot2grid((2, 3), (1, 2))
     axes = [ax0, ax1, ax2]
 
-    labels = ["Elevation Gain", "RMSE (deg)", "SD (deg)"]
+    labels = list(cfg["labels"])
+    cols = cfg["cols"]
     days = numpy.arange(1, len(data_by_day) + 1)
 
     def x_positions(day_idx, n_points):
@@ -179,7 +217,7 @@ def learning_plot(
             dome_key, dome_metrics = dome_baseline
             axis.plot(
                 [dome_x],
-                [dome_metrics[metric_idx]],
+                [dome_metrics[cols[metric_idx]]],
                 marker="o",
                 markersize=markersize,
                 color="0.65",
@@ -202,7 +240,7 @@ def learning_plot(
             xs = x_positions(day_idx, day_data.shape[0])
             for point_idx, meta in enumerate(meta_by_day[day_idx]):
                 if _on_curve(meta):
-                    le_pts.append((day_idx, xs[point_idx], day_data[point_idx, metric_idx]))
+                    le_pts.append((day_idx, xs[point_idx], day_data[point_idx, cols[metric_idx]]))
         for (d0, xa, ya), (d1, xb, yb) in zip(le_pts, le_pts[1:]):
             if d0 == d1:
                 axis.plot([xa, xb], [ya, yb], c="0", linewidth=lw, zorder=1)
@@ -212,16 +250,21 @@ def learning_plot(
 
         for day_idx, day_data in enumerate(data_by_day):
             x = x_positions(day_idx, day_data.shape[0])
-            y = day_data[:, metric_idx]
+            y = day_data[:, cols[metric_idx]]
 
             for point_idx, meta in enumerate(meta_by_day[day_idx]):
-                open_marker = condition_of_meta(meta) == "baseline"
+                if condition_of_meta(meta) == "baseline":
+                    face = "none"          # own HRTF -> open
+                elif is_uso(meta):
+                    face = "0.6"           # USO probe -> grey face, shape kept
+                else:
+                    face = "0"
                 axis.plot(
                     [x[point_idx]],
                     [y[point_idx]],
                     marker=marker_for_meta(meta),
                     markersize=markersize,
-                    markerfacecolor="none" if open_marker else "0",
+                    markerfacecolor=face,
                     markeredgecolor="0",
                     color="0",
                     linestyle="None",
@@ -234,17 +277,22 @@ def learning_plot(
         for b in transfer_order:
             meta, metrics = transfer_by_block[b]
             is_main = b in main_blocks
-            edge = "0" if is_main else "0.6"       # counterbalance drawn faint
+            # Faintness is alpha, NOT a grey face: face colour already encodes
+            # own-HRTF (open) vs USO probe (grey), so greying B and C made the
+            # trained-ear counterbalance block read as a USO probe. Alpha keeps
+            # the two channels independent.
             ms = markersize if is_main else markersize * 0.9
             axis.plot(
-                [transfer_x[b]], [metrics[metric_idx]],
+                [transfer_x[b]], [metrics[cols[metric_idx]]],
                 marker=marker_for_meta(meta), markersize=ms,
-                markerfacecolor=edge, markeredgecolor=edge, color=edge,
+                markerfacecolor="0.6" if is_uso(meta) else "0",
+                markeredgecolor="0", color="0",
+                alpha=1.0 if is_main else 0.45,
                 linestyle="None", zorder=2 if is_main else 1,
             )
         if post_baseline is not None:
             axis.plot(
-                [postbase_x], [post_baseline[1][metric_idx]],
+                [postbase_x], [post_baseline[1][cols[metric_idx]]],
                 marker="D", markersize=markersize, markerfacecolor="none",
                 markeredgecolor="0.65", color="0.65", linestyle="None", zorder=1,
             )
@@ -266,16 +314,47 @@ def learning_plot(
     ax0.set_xlabel("Days")
     ax2.set_xlabel("Days")
 
+    # Every y value actually drawn, per metric — the RMSE and SD ranges were
+    # hardcoded to 25 and 8 deg, which silently cut the top off any subject
+    # whose scores exceed that (a modified HRTF routinely does: IR's day-1
+    # mirrored block is 27 deg RMSE / 21 deg SD). Grow the axis to fit.
+    def _drawn(metric_idx):
+        vals = [d[:, cols[metric_idx]] for d in data_by_day]
+        vals += [m[cols[metric_idx]] for _, m in transfer_by_block.values()]
+        if dome_baseline is not None:
+            vals.append(dome_baseline[1][cols[metric_idx]])
+        if post_baseline is not None:
+            vals.append(post_baseline[1][cols[metric_idx]])
+        if not vals:
+            # Nothing drawn at all — a subject whose every run is a dome or
+            # midline reference, or whose only day was wholly consumed by the
+            # final-2x2 split. Fall through to the floor rather than raising.
+            return numpy.empty(0, dtype=float)
+        flat = numpy.concatenate([numpy.atleast_1d(v).ravel() for v in vals])
+        flat = flat[numpy.isfinite(flat)]
+        return flat
+
+    def _top(metric_idx, floor, step):
+        drawn = _drawn(metric_idx)
+        needed = float(numpy.nanmax(drawn)) if drawn.size else floor
+        return max(floor, step * numpy.ceil((needed * 1.08) / step))
+
     ax0.set_ylim(0, 1.02)
     ax0.set_yticks(numpy.arange(0, 1.2, 0.2))
-    ax1.set_yticks(numpy.arange(0, 26, 5))
-    ax2.set_yticks(numpy.arange(0, 10, 2))
+
+    rmse_top = _top(1, cfg["rmse_floor"], 5.0)
+    ax1.set_ylim(0, rmse_top)
+    ax1.set_yticks(numpy.arange(0, rmse_top + 1, 5 if rmse_top <= 40 else 10))
+
+    sd_top = _top(2, cfg["sd_floor"], 2.0)
+    ax2.set_ylim(0, sd_top)
+    ax2.set_yticks(numpy.arange(0, sd_top + 1, 2 if sd_top <= 16 else 5))
 
     for y in numpy.linspace(0.1, 1, 9):
         ax0.axhline(y=y, color="0.9", linewidth=0.5, zorder=-1)
-    for y in numpy.arange(5, 22, 5):
+    for y in ax1.get_yticks()[1:]:
         ax1.axhline(y=y, color="0.9", linewidth=0.5, zorder=-1)
-    for y in numpy.arange(2, 9, 2):
+    for y in ax2.get_yticks()[1:]:
         ax2.axhline(y=y, color="0.9", linewidth=0.5, zorder=-1)
 
     ax0.annotate("A", xy=(-0.1, 1.005), xycoords="axes fraction", fontsize=fs, weight="bold")
@@ -299,13 +378,13 @@ def learning_plot(
 
     handles = []
     if "learning" in present:
-        handles.append(_handle("o", "Learning (shifted, LE)"))
+        handles.append(_handle("o", "Learning (modified, trained ear)"))
     if "baseline" in present:
-        handles.append(_handle("D", "Baseline (own HRTF, BL)", open_marker=True))
+        handles.append(_handle("D", "Baseline (own HRTF)", open_marker=True))
     if "mirrored" in present:
-        handles.append(_handle("^", "Mirrored (untrained ear, RE)"))
+        handles.append(_handle("^", "Mirrored (untrained ear)"))
     if has_uso:
-        handles.append(_handle("s", "USO probe"))
+        handles.append(_handle("o", "grey face = USO probe", color="0.6"))
     if dome_baseline is not None:
         handles.append(_handle("o", "Dome (real ear)", color="0.65"))
     if transfer_order:
@@ -315,8 +394,9 @@ def learning_plot(
         handles.append(_handle("D", "Post (own HRTF)", open_marker=True, color="0.65"))
 
     if handles:
-        ax0.legend(handles=handles, frameon=False, fontsize=7, loc="lower right",
-                   handletextpad=0.4, labelspacing=0.3, borderaxespad=0.3)
+        ax0.legend(handles=handles, frameon=False, fontsize=6, loc="upper left",
+                   bbox_to_anchor=(0.13, 1.0), handletextpad=0.4,
+                   labelspacing=0.25, borderaxespad=0.2)
 
     hrir_names = []
     for day_meta in meta_by_day:
@@ -435,21 +515,31 @@ def _is_analysable(seq):
     return bool(numpy.all(numpy.isfinite(arr)))
 
 
+# Tokens that mark an HRIR name as carrying a cue manipulation. The name is
+# built from the SOFA stem, so every manipulation the protocols write shows up
+# here: donor_detail ('_donor_<ID>'), the ERB/edge shifts ('_shift', '_edge',
+# '_whole') and the older notch/synth builds. Anything without one of these is
+# the participant's own measured HRTF.
+_MODIFICATION_TOKENS = ("donor", "shift", "edge", "whole", "notch", "synth",
+                        "modified")
+
+
 def condition_of_meta(meta):
     """Classify a test by its HRIR into one of three learning conditions.
 
-    - 'mirrored' : mirrored HRTF, probes the untrained (right) ear -> RE
-    - 'learning' : shifted/modified HRTF, the trained (left) ear -> LE
+    - 'mirrored' : mirrored HRTF, probes the untrained ear -> RE
+    - 'learning' : modified HRTF on the trained ear -> LE
     - 'baseline' : unmodified own HRTF, the pre/post reference -> BL
 
-    The previous logic labelled *everything* that wasn't mirrored as 'LE',
-    so baseline (unmodified) runs were wrongly tagged LE. Baseline is neither
-    a learning nor a mirrored condition and gets its own label/marker here.
+    Matching only 'shift'/'modified' silently demoted the whole donor-detail
+    cohort to 'baseline' — '<SID>_donor_<DONOR>_<ear>_env<k>' contains neither
+    token — which emptied the learning trace and made trained_hemifield()
+    unresolvable. Match the full token set instead.
     """
     hrir = (meta.get("hrir") or "").lower()
     if "mirrored" in hrir:
         return "mirrored"
-    if "shift" in hrir or "modified" in hrir:
+    if any(token in hrir for token in _MODIFICATION_TOKENS):
         return "learning"
     return "baseline"
 
@@ -523,11 +613,20 @@ def transfer_block(meta, trained_field):
 
 
 def marker_for_meta(meta):
-    """Marker by condition. Baseline and modified are deliberately different."""
-    stim = (meta.get("stim") or "").lower()
-    if stim == "uso":
-        return "s"
+    """Marker SHAPE by condition — baseline, learning and mirrored differ.
+
+    Shape carries the condition and nothing else. Returning a square for any
+    USO run overwrote that, so on a day whose blocks were all run with USO the
+    trained-side and mirrored (untrained-ear) tests collapsed to the same
+    symbol — losing exactly the trained-vs-transfer contrast the figure exists
+    to show. USO is marked by the face colour instead (:func:`is_uso`).
+    """
     return {"baseline": "D", "learning": "o", "mirrored": "^"}[condition_of_meta(meta)]
+
+
+def is_uso(meta):
+    """True for a USO-probe run — drawn with a grey face, shape unchanged."""
+    return (meta.get("stim") or "").lower() == "uso"
 
 
 def flags_for_meta(meta):

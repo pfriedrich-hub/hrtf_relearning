@@ -46,7 +46,7 @@ SOFA_NAME = "PF_donor_VD"      # the modified HRTF the subject is tested on
 EAR = "left"                    # ear whose DTF carries the cue
 AZIMUTH = -20.0                 # audition azimuth, experiment convention (neg = left)
 
-RMS_TILT = 8.0                  # dB rms of the envelope below 0.5 ripples/oct
+RMS_TILT = 3.0               # dB rms of the envelope below 0.5 ripples/oct
 RMS_CUE = 0.0                   # dB rms inside the cue band -- 0 by design, see cell 6
 
 # %% imports and helpers ------------------------------------------------------
@@ -137,6 +137,10 @@ for i in range(6):
     token, params = make_rippled_pinknoise(rms_tilt=RMS_TILT, rms_cue=RMS_CUE)
     print(f"token {i}  shape rms {numpy.std(shape_from_coefficients(params['coeffs'])[1]):.1f} dB")
     token.play()
+
+for i in range(6):
+    stim = make_gapped_pinknoise()
+    stim.play()
 
 # %% 2. write dry tokens to disk for listening in your own player -------------
 OUT_DIR.mkdir(parents=True, exist_ok=True)

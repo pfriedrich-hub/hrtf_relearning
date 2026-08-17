@@ -28,9 +28,18 @@ bias; a donor's detail collapses it.
 
 DONOR SELECTION is the only thing that varies between participants, and it is
 made by a fixed rule in hrtf.analysis.donor_selection — see
-DONOR_POOL / TARGET_DISSIMILARITY / MAX_RIDGE_SLOPE there, and
+DONOR_POOL / TARGET_DISSIMILARITY / TOLERANCE / MAX_RIDGE_SLOPE there, and
 docs/methods_donor_detail.md for the paragraph this becomes in a paper.
 Everything else (n_keep, band, filter bank, target) is identical for everyone.
+
+DONOR SWAPS. The rule produces a ranked shortlist, not a single name, so a
+participant who is at floor with the first donor can be moved to the second
+without inventing a criterion on the spot. Stage the alternates before the
+session with prepare_donor_shortlist(), swap with use_donor(rank=1, reason=...).
+Every change is appended to <SUBJECT>_donor_log.csv. A swap is still a
+data-dependent decision — the discarded block was run, and both donors belong
+in the participant's record — so the log is not optional bookkeeping, it is
+what makes the decision reportable.
 
 The monaural ear treatment is orthogonal and selectable via OTHER_EAR
 ('flat' | 'envelope' | 'native'); which one to use is still an open question,
@@ -74,6 +83,9 @@ from hrtf_relearning.experiment.localization.Localization_AR import Localization
 from hrtf_relearning.hrtf.analysis import donor_selection as selection
 from hrtf_relearning.hrtf.analysis.vsi import vsi as vsi_of
 from hrtf_relearning.hrtf.modify.donor_detail import donor_detail_dtf, modification_params
+from hrtf_relearning.hrtf.processing.envelope import envelope_dtf
+from hrtf_relearning.hrtf.processing.midline import (midline_arc, expand_from_midline,
+                                                     qc_midline, format_qc)
 from hrtf_relearning.hrtf.modify.edge_shift import (embed_modification_params,
                                                     read_modification_params)
 from hrtf_relearning.experiment.protocols.protocol_helpers import (
@@ -115,6 +127,25 @@ OTHER_EAR = "envelope"
 ENV_NKEEP = selection.N_KEEP
 PROBE_OTHER_EAR = "envelope"
 
+# --- which build this subject's filters were made with -----------------------
+# 'v1'  Donor detail applied to the finished 475-direction SOFA; the monaural
+#       reduction applied again at RENDER time by hrtf2binsim. Every build
+#       before 2026-08.
+# 'v2'  Donor detail AND the monaural reduction applied to the 19 MEASURED
+#       az=0 DTFs, then re-expanded through the spherical head model
+#       (hrtf.processing.midline). Three things follow: the ITD comes from the
+#       model's interaural phase so native and modified sets share it exactly;
+#       the envelope is fitted to the pinna response rather than to the pinna
+#       response times the head shadow; and it is averaged over elevation, so
+#       the untrained ear carries no elevation-dependent spectral structure at
+#       all -- measured, v1 left about half of it there.
+#
+# Subjects already run stay on v1. The change alters the untrained ear, and
+# swapping builds mid-cohort would put a discontinuity in the middle of their
+# own pre/post comparison, which is worse than the bias itself.
+LEGACY_V1_SUBJECTS = ("FS", "GS", "IR", "TS", "PF")
+PIPELINE = "v1" if SUBJECT_ID in LEGACY_V1_SUBJECTS else "v2"
+
 # --- shared localization sampling grid (do not change) -----------------------
 SECTOR_SIZE        = (7, 14)
 ELEVATION_RANGE    = (-35, 35)
@@ -147,17 +178,42 @@ LADDER_N_KEEP = (4, 8)
 
 
 def _modified_name(donor_id, n_keep=None):
+    """The SOFA the protocol's blocks load.
+
+    On v2 the monaural reduction is already inside the file, so it is part of
+    the name -- there is no longer a render-time switch that could be set
+    differently between two runs of the same block.
+    """
+    n_keep = selection.N_KEEP if n_keep is None else n_keep
+    stem = f"{SUBJECT_ID}_donor_{donor_id.split('/')[-1]}"
+    if n_keep != selection.N_KEEP:
+        stem = f"{stem}_n{n_keep}"
+    if PIPELINE == "v2":
+        stem = f"{stem}_env{ENV_NKEEP}_{TRAINED_EAR}"
+    return stem
+
+
+def _binaural_name(donor_id, n_keep=None):
+    """v2 only: the composite BEFORE the monaural reduction. QC reference."""
     n_keep = selection.N_KEEP if n_keep is None else n_keep
     stem = f"{SUBJECT_ID}_donor_{donor_id.split('/')[-1]}"
     return stem if n_keep == selection.N_KEEP else f"{stem}_n{n_keep}"
 
 
 def hrir_settings(sofa_name, ear=None, mirror=False, other_ear=None):
+    # v2 bakes the monaural reduction into the SOFA, so hrtf2binsim must NOT
+    # apply it a second time -- ear=None means "take the file as it is".
+    # `mirror` still happens at render time: it is a channel/source swap and
+    # commutes with everything above it, so blocks C and D come off this file.
+    baked = PIPELINE == "v2" and f"_env{ENV_NKEEP}_" in sofa_name
     return {
         "name": sofa_name,
         "subject_id": SUBJECT_ID,
-        "ear": ear,
+        "ear": None if baked else ear,
         "other_ear": OTHER_EAR if other_ear is None else other_ear,
+        # pins the v1 render-time envelope to its historical behaviour; unused
+        # when `baked`. See hrtf2binsim and hrtf.processing.envelope.
+        "env_elevation_average": False,
         "env_n_keep": ENV_NKEEP,
         "native_sofa": NATIVE_SOFA,
         "mirror": mirror,
@@ -191,13 +247,74 @@ def loc_settings(azimuth_range, exclude_midline=False):
 # Build
 # ---------------------------------------------------------------------------
 
-def build_donor_sofa(overwrite=False, show_qc=True, n_keep=None):
-    """Select the donor, build the composite, write it, return (path, donor_id).
+_SHORTLIST = None      # cached rows from selection.shortlist(), rule order
+
+
+def donor_shortlist(refresh=False, quiet=False):
+    """This subject's candidate donors in rule order — cached.
+
+    ``[0]`` is the protocol pick, ``[1]`` and ``[2]`` are the alternates
+    ``use_donor(rank=...)`` swaps to. Scoring the pool takes ~20 s, so it is
+    computed once and reused; pass ``refresh=True`` after editing
+    selection.DONOR_POOL.
+    """
+    global _SHORTLIST
+    if _SHORTLIST is not None and not refresh:
+        return _SHORTLIST
+
+    sofa_dir = paths.SOFA_DIR / SUBJECT_ID
+    own = slab.HRTF(str(sofa_dir / f"{NATIVE_SOFA}.sofa"))
+    own.name = SUBJECT_ID
+    candidates = selection.load_candidates(SUBJECT_ID)
+    if not candidates:
+        raise RuntimeError("empty donor pool — check selection.DONOR_POOL")
+    if not quiet:
+        print(f"donor pool ({len(candidates)}): {', '.join(candidates)}")
+
+    _SHORTLIST = selection.shortlist(own, candidates)
+    if not quiet:
+        reference, _ = selection.pairwise_reference({SUBJECT_ID: own, **candidates})
+        selection.report(_SHORTLIST, reference)
+    return _SHORTLIST
+
+
+def _log_donor_event(event, donor_id, rank, reason=""):
+    """Append to <SUBJECT>_donor_log.csv — the audit trail for a swap.
+
+    Swapping donor mid-session is a DATA-DEPENDENT decision: it is made after
+    hearing how the participant performs. That is defensible only if what was
+    tried, in what order, and why is on record, so this is written every time
+    the active donor changes. The order itself is fixed by the rule before the
+    participant hears anything (see selection.shortlist), so the only free
+    parameter is how far down the list you went.
+    """
+    import datetime
+    plot_dir = paths.subject_acoustic_dir(SUBJECT_ID)
+    plot_dir.mkdir(parents=True, exist_ok=True)
+    log_path = plot_dir / f"{SUBJECT_ID}_donor_log.csv"
+    new = not log_path.exists()
+    with open(log_path, "a", newline="") as handle:
+        writer = csv.writer(handle)
+        if new:
+            writer.writerow(["timestamp", "event", "donor", "rank", "reason"])
+        writer.writerow([datetime.datetime.now().isoformat(timespec="seconds"),
+                         event, donor_id, rank, reason])
+    return log_path
+
+
+def build_donor_sofa(overwrite=False, show_qc=True, n_keep=None, rank=0,
+                     donor_id=None, set_active=True, quiet=False):
+    """Build one composite, write it, return (path, donor_id).
 
     Writes <SUBJECT_ID>_donor_<DONOR>.sofa next to the native one, embeds the
     full selection record as GLOBAL_ModificationParams, and saves the candidate
-    ranking as a CSV for the supplement. Run ONCE per participant; every
-    subsequent cell loads the result.
+    ranking as a CSV for the supplement.
+
+    ``rank`` picks which entry of :func:`donor_shortlist` to build — 0 is the
+    protocol choice, 1 and 2 are the alternates. ``donor_id`` overrides the rank
+    and names a donor directly (use only to rebuild something already run).
+    ``set_active=False`` builds without repointing the protocol, which is what
+    :func:`prepare_donor_shortlist` uses to stage the alternates.
     """
     global DONOR_ID, MODIFIED_SOFA
 
@@ -208,33 +325,71 @@ def build_donor_sofa(overwrite=False, show_qc=True, n_keep=None):
     own.name = SUBJECT_ID
 
     candidates = selection.load_candidates(SUBJECT_ID)
-    print(f"donor pool ({len(candidates)}): {', '.join(candidates)}")
     if not candidates:
         raise RuntimeError("empty donor pool — check selection.DONOR_POOL")
 
-    chosen, rows = selection.select_donor(own, candidates)
-    reference, _ = selection.pairwise_reference({SUBJECT_ID: own, **candidates})
-    selection.report(rows, reference)
-    print(f"\nchosen donor: {chosen['donor']}   VSI dissimilarity "
-          f"{chosen['vsi_dissimilarity']:.3f} (target {selection.TARGET_DISSIMILARITY:.2f})"
-          f"   ridge slope {chosen['ridge_slope']:+.2f}")
+    rows = donor_shortlist(quiet=quiet)
+    if donor_id is not None:
+        matches = [row for row in rows if row["donor"] == donor_id]
+        if not matches:
+            raise ValueError(f"{donor_id} is not in this subject's pool: "
+                             f"{', '.join(r['donor'] for r in rows)}")
+        chosen = matches[0]
+    else:
+        if rank >= len(rows):
+            raise IndexError(f"requested rank {rank} but only {len(rows)} "
+                             f"candidates were scored")
+        chosen = rows[rank]
+
+    if not quiet:
+        print(f"\ndonor rank {chosen['rank']}: {chosen['donor']}   VSI dissimilarity "
+              f"{chosen['vsi_dissimilarity']:.3f} (target "
+              f"{selection.TARGET_DISSIMILARITY:.2f} ± {selection.TOLERANCE:.2f})"
+              f"   ridge slope {chosen['ridge_slope']:+.2f}"
+              f"   cue strength {chosen['donor_strength']:.1f} dB"
+              f"   [{chosen['tier']}]")
     if chosen["fallback"]:
         print("  !! FALLBACK: no candidate met the ridge criterion; lowest slope "
               "used. This must be reported.")
+    elif chosen["tier"] == "widened" and not quiet:
+        print(f"  !  no candidate landed within {selection.TOLERANCE:.2f} of the "
+              f"target; nearest-to-target used. Report the tier.")
 
     # The donor is always selected at the protocol n_keep, so the two ladder
     # strengths differ ONLY in how much of the cue is handed over -- not in
     # whose cue it is.
     donor_id = chosen["donor"]
     name = _modified_name(donor_id, n_keep)
-    if is_default:
+    if is_default and set_active:
         DONOR_ID, MODIFIED_SOFA = donor_id, name
+        _log_donor_event("build", donor_id, chosen["rank"], chosen["tier"])
     out_path = sofa_dir / f"{name}.sofa"
     if out_path.exists() and not overwrite:
-        print(f"{out_path.name} already exists (overwrite=False) -- skipping build")
+        if not quiet:
+            print(f"{out_path.name} already exists (overwrite=False) -- skipping build")
         return out_path, donor_id
 
-    modified = donor_detail_dtf(own, candidates[donor_id], n_keep=n_keep)
+    if PIPELINE == "v1":
+        modified = donor_detail_dtf(own, candidates[donor_id], n_keep=n_keep)
+    else:
+        # --- v2: modify the 19 MEASURED directions, then re-expand -----------
+        # The az=0 arc in the finished SOFA is magnitude-identical to what went
+        # into the expansion (step 2 skips az=0), so it is read back from there
+        # rather than replayed from the npz -- no reference recording needed.
+        own_arc = midline_arc(own)
+        donor_arc = midline_arc(candidates[donor_id])
+        arc = donor_detail_dtf(own_arc, donor_arc, n_keep=n_keep)
+        # binaural composite, kept as the QC reference and for the ladder
+        binaural = expand_from_midline(arc)
+        binaural.name = _binaural_name(donor_id, n_keep)
+        binaural.write_sofa(str(sofa_dir / f"{binaural.name}.sofa"))
+
+        arc = envelope_dtf(arc, ear=TRAINED_EAR, n_keep=ENV_NKEEP)
+        report = qc_midline(own_arc, arc, processed_ear=UNTRAINED_EAR,
+                            raise_on_fail=True)
+        print(format_qc(report))
+        modified = expand_from_midline(arc)
+
     modified.name = name
     own_vsi, modified_vsi = vsi_of(own), vsi_of(modified)
     print(f"VSI  own={own_vsi:.3f}  modified={modified_vsi:.3f}  "
@@ -249,15 +404,17 @@ def build_donor_sofa(overwrite=False, show_qc=True, n_keep=None):
         fallback=chosen["fallback"],
         scores={k: chosen[k] for k in ('vsi_dissimilarity', 'vsi', 'own_vsi',
                                        'i_sim', 'peak_r', 'ridge_slope')},
-        ranking=[{k: row[k] for k in ('donor', 'vsi_dissimilarity', 'vsi',
-                                      'ridge_slope', 'eligible')} for row in rows]))
+        ranking=[{k: row[k] for k in ('donor', 'rank', 'tier', 'donor_strength',
+                                      'vsi_dissimilarity', 'vsi', 'ridge_slope',
+                                      'eligible', 'in_band')} for row in rows]))
     print(f"wrote {out_path}")
 
     plot_dir = paths.subject_acoustic_dir(SUBJECT_ID)
     plot_dir.mkdir(parents=True, exist_ok=True)
     with open(plot_dir / f"{name}_donor_ranking.csv", "w", newline="") as handle:
-        fields = ['donor', 'vsi_dissimilarity', 'vsi', 'own_vsi', 'i_sim',
-                  'peak_r', 'ridge_slope', 'ridge_bias', 'distance', 'eligible']
+        fields = ['rank', 'donor', 'tier', 'donor_strength', 'vsi_dissimilarity',
+                  'vsi', 'own_vsi', 'i_sim', 'peak_r', 'ridge_slope',
+                  'ridge_bias', 'distance', 'eligible', 'in_band']
         writer = csv.DictWriter(handle, fieldnames=fields)
         writer.writeheader()
         for row in rows:
@@ -271,6 +428,169 @@ def build_donor_sofa(overwrite=False, show_qc=True, n_keep=None):
         fig.savefig(plot_dir / f"{name}.png", bbox_inches="tight")
         print(f"QC figure: {plot_dir / f'{name}.png'}")
     return out_path, donor_id
+
+
+def _binsim_names(sofa_name, mirror):
+    """The binsim database directory name hrtf2binsim would produce."""
+    name = sofa_name
+    # v2 carries the reduction in the SOFA name already, so hrtf2binsim adds
+    # nothing here -- see hrir_settings, which passes ear=None for those files.
+    baked = PIPELINE == "v2" and f"_env{ENV_NKEEP}_" in sofa_name
+    if TRAINED_EAR and not baked:
+        if OTHER_EAR == "flat":
+            name += f"_{TRAINED_EAR}"
+        elif OTHER_EAR == "envelope":
+            name += f"_{TRAINED_EAR}_env{ENV_NKEEP}"
+        elif OTHER_EAR == "native":
+            name += f"_{TRAINED_EAR}_nat"
+    if mirror:
+        name += "_mirrored"
+    return name
+
+
+def prepare_donor_shortlist(n=3, mirrored=True, overwrite=False):
+    """Stage the top ``n`` donors so a mid-session swap costs seconds.
+
+    Builds, for each of the first ``n`` entries of :func:`donor_shortlist`, the
+    composite SOFA and the pyBinSim filter databases the protocol actually
+    plays: trained ear + OTHER_EAR, un-mirrored (day-1 baseline A, the daily
+    test, training) and mirrored (baseline D and the final C/D blocks).
+
+    RUN THIS BEFORE THE PARTICIPANT ARRIVES. write_filters passes over all 475
+    directions, so a database is minutes, not seconds; doing it with someone in
+    the chair is what makes a donor swap expensive. Once staged,
+    :func:`use_donor` is instant.
+
+    Only the rank-0 donor is left active — the alternates are built but not
+    selected, so nothing about the default path changes.
+    """
+    rows = donor_shortlist()
+    n = min(n, len(rows))
+    print(f"\nstaging {n} donors for {SUBJECT_ID}: "
+          f"{', '.join(r['donor'] for r in rows[:n])}")
+
+    from hrtf_relearning.hrtf.binsim.hrtf2binsim import hrtf2binsim
+
+    staged = []
+    for row in rows[:n]:
+        donor = row["donor"]
+        print(f"\n--- rank {row['rank']}: {donor} "
+              f"(VSI-dis {row['vsi_dissimilarity']:.3f}, ridge "
+              f"{row['ridge_slope']:+.2f}, strength {row['donor_strength']:.1f} dB, "
+              f"{row['tier']}) ---")
+        # set_active=False: staging must not silently repoint the protocol
+        build_donor_sofa(overwrite=overwrite, show_qc=False,
+                         donor_id=donor, set_active=False, quiet=True)
+        name = _modified_name(donor)
+        for mirror in ((False, True) if mirrored else (False,)):
+            db = paths.BINSIM_DIR / _binsim_names(name, mirror)
+            if db.exists() and not overwrite:
+                print(f"    binsim {db.name} exists — skipping")
+                continue
+            print(f"    building binsim {db.name} ...")
+            hrtf2binsim(hrir_settings(name, ear=TRAINED_EAR, mirror=mirror),
+                        overwrite=overwrite, build=True)
+        staged.append(donor)
+
+    # rank 0 is the protocol donor; make it the active one
+    build_donor_sofa(overwrite=False, show_qc=False, rank=0, quiet=True)
+    print(f"\nstaged: {', '.join(staged)}")
+    print(f"active: {DONOR_ID}  ({MODIFIED_SOFA})")
+    print(f"swap with  use_donor(rank=1, reason='...')")
+    return staged
+
+
+def use_donor(rank=None, donor_id=None, reason=""):
+    """Switch the active donor mid-session. Instant if pre-staged.
+
+    Use when a participant cannot localize at all with the current composite —
+    a floor-level block is uninformative, and the design needs an acute
+    degradation, not an abolished cue. ``rank=1`` moves to the next donor on
+    the rule's list.
+
+    ``reason`` goes in <SUBJECT>_donor_log.csv and should say what was observed
+    ('EG 0.02 on baseline A, at floor'), because a swap made after seeing the
+    data has to be reportable as such. It is NOT free: the discarded block was
+    still run, and both the discarded and the replacement donor belong in the
+    participant's record.
+
+    Refuses to swap if the replacement's binsim database has not been built,
+    rather than silently starting a multi-minute build with someone in the rig
+    — pass ``build=True`` to override that by hand if you really want to wait.
+    """
+    global DONOR_ID, MODIFIED_SOFA
+
+    rows = donor_shortlist(quiet=True)
+    if donor_id is not None:
+        matches = [row for row in rows if row["donor"] == donor_id]
+        if not matches:
+            raise ValueError(f"{donor_id} is not in this subject's pool")
+        row = matches[0]
+    elif rank is not None:
+        if rank >= len(rows):
+            raise IndexError(f"rank {rank} but only {len(rows)} candidates")
+        row = rows[rank]
+    else:
+        raise ValueError("pass rank= or donor_id=")
+
+    previous = DONOR_ID
+    name = _modified_name(row["donor"])
+    sofa_path = paths.SOFA_DIR / SUBJECT_ID / f"{name}.sofa"
+    if not sofa_path.exists():
+        raise FileNotFoundError(
+            f"{sofa_path.name} has not been built — run "
+            f"prepare_donor_shortlist() before the session, or "
+            f"build_donor_sofa(rank={row['rank']}) now (slow).")
+
+    missing = [_binsim_names(name, m) for m in (False, True)
+               if not (paths.BINSIM_DIR / _binsim_names(name, m)).exists()]
+    if missing:
+        print(f"  [!] binsim database(s) not staged: {', '.join(missing)}")
+        print(f"      building now — this takes minutes. Ctrl-C and run "
+              f"prepare_donor_shortlist() before the next session.")
+        from hrtf_relearning.hrtf.binsim.hrtf2binsim import hrtf2binsim
+        for mirror in (False, True):
+            if _binsim_names(name, mirror) in missing:
+                hrtf2binsim(hrir_settings(name, ear=TRAINED_EAR, mirror=mirror),
+                            overwrite=False, build=True)
+
+    DONOR_ID, MODIFIED_SOFA = row["donor"], name
+    _log_donor_event("swap", row["donor"], row["rank"],
+                     reason or f"(no reason given; from {previous})")
+    print(f"\nactive donor: {previous} -> {row['donor']}   (rank {row['rank']}, "
+          f"{row['tier']}, VSI-dis {row['vsi_dissimilarity']:.3f}, ridge "
+          f"{row['ridge_slope']:+.2f}, strength {row['donor_strength']:.1f} dB)")
+    print(f"MODIFIED_SOFA = {MODIFIED_SOFA}")
+    print(f"  !! set DONOR_ID = '{row['donor']}' in the config block at the top "
+          f"so later sessions reload THIS donor, not the rank-0 one.")
+    if not reason:
+        print("  !! no reason logged — edit the last row of "
+              f"{SUBJECT_ID}_donor_log.csv to say what was observed.")
+    return row
+
+
+def _last_active_donor():
+    """The donor most recently made active, from <SUBJECT>_donor_log.csv."""
+    log_path = paths.subject_acoustic_dir(SUBJECT_ID) / f"{SUBJECT_ID}_donor_log.csv"
+    if not log_path.exists():
+        return None
+    with open(log_path, newline="") as handle:
+        rows = [row for row in csv.DictReader(handle)
+                if row.get("event") in ("build", "swap")]
+    return rows[-1]["donor"] if rows else None
+
+
+def show_donor_log():
+    """Every donor this participant was put on, in order. Read before analysis."""
+    log_path = paths.subject_acoustic_dir(SUBJECT_ID) / f"{SUBJECT_ID}_donor_log.csv"
+    if not log_path.exists():
+        print(f"no donor log for {SUBJECT_ID}")
+        return
+    print(f"{'when':>20} {'event':>6} {'donor':>12} {'rank':>4}  reason")
+    with open(log_path, newline="") as handle:
+        for row in csv.DictReader(handle):
+            print(f"{row['timestamp']:>20} {row['event']:>6} {row['donor']:>12} "
+                  f"{row['rank']:>4}  {row['reason']}")
 
 
 def load_existing_donor():
@@ -299,10 +619,24 @@ def load_existing_donor():
         raise FileNotFoundError(
             f"no {SUBJECT_ID}_donor_*.sofa in {sofa_dir} — run build_donor_sofa() first")
     if len(matches) > 1:
-        raise RuntimeError(
-            f"several donor SOFAs for {SUBJECT_ID}: "
-            f"{', '.join(p.name for p in matches)}. Set DONOR_ID in the config "
-            f"block to say which one this subject was trained on.")
+        # prepare_donor_shortlist() stages alternates, so several composites
+        # existing is now NORMAL and must not be read as ambiguity. The donor
+        # log says which one was last made active; that is the authority.
+        active = _last_active_donor()
+        if active is None:
+            raise RuntimeError(
+                f"several donor SOFAs for {SUBJECT_ID}: "
+                f"{', '.join(p.name for p in matches)}, and no donor log to say "
+                f"which is active. Set DONOR_ID in the config block to the one "
+                f"this subject was trained on.")
+        wanted = sofa_dir / f"{_modified_name(active)}.sofa"
+        if wanted not in matches:
+            raise RuntimeError(
+                f"donor log says the active donor is {active} but "
+                f"{wanted.name} is not on disk")
+        print(f"  {len(matches)} composites on disk (staged alternates); donor "
+              f"log says {active} is active")
+        matches = [wanted]
 
     path = matches[0]
     if not path.exists():
@@ -506,16 +840,37 @@ show_status(subject)
 native = run_phase("native", subject)
 collect_externalization_rating(native)
 
+# %% BEFORE THE SESSION: stage the top 3 donors -------------------------------
+# Run this with nobody in the rig. Builds the rank 0/1/2 composites AND their
+# pyBinSim databases (mirrored and un-mirrored), so that if the participant
+# turns out to be at floor with the rank-0 donor you can swap in seconds
+# instead of rebuilding filters while they wait. Leaves rank 0 active.
+prepare_donor_shortlist(n=3)
+
 # %% day 1: select the donor and build the modified HRTF -- run ONCE ----------
 # Prints the full candidate ranking, the chosen donor and why, writes
 # <SUBJECT_ID>_donor_<DONOR>.sofa with the selection embedded, plus a ranking
 # CSV and before/after figures. Note the donor id -- put it in DONOR_ID at the
 # top so later sessions can skip straight to load_existing_donor().
+# Redundant if prepare_donor_shortlist() was run; harmless to run anyway.
 build_donor_sofa(overwrite=False)
 subject = hr.Subject(SUBJECT_ID)
 
 # %% later sessions: reload the modified HRTF without rebuilding --------------
 load_existing_donor()
+
+# %% IN SESSION: participant is at floor -- swap to the next donor ------------
+# Only when the composite has abolished the cue rather than degraded it (a
+# block at chance tells you nothing). Moves down the rule's ranked list, which
+# was fixed before the participant heard anything -- see selection.shortlist.
+# WRITE WHAT YOU SAW in reason=: the swap is a data-dependent decision and has
+# to be reportable as one. Then set DONOR_ID at the top of this file so later
+# sessions reload the donor you switched TO.
+#   use_donor(rank=1, reason="EG 0.03 on baseline A, responses at chance")
+# use_donor(rank=1, reason="")
+
+# %% which donors this participant has been on ---------------------------------
+show_donor_log()
 
 # %% day 1: baseline A -- trained ear, same loc (matches final A) -------------
 baseline_A = run_phase("baseline_A", subject)

@@ -62,21 +62,94 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_N_KEEP = 4
 
+#: Band the envelope is fitted over when frequencies are supplied. Below the
+#: lower edge there are no pinna cues to remove and the highpass plus the
+#: low-frequency extrapolation are steep enough to drag any fit; above the
+#: upper edge is the anti-alias rolloff. Outside it the measured response is
+#: kept, so the untrained ear's low-frequency level -- and therefore the ILD --
+#: is the listener's own.
+ENVELOPE_BAND = (700.0, 18000.0)
 
-def envelope_spectrum(mag, n_keep=DEFAULT_N_KEEP):
+
+def _erb_rate(frequencies):
+    """Glasberg & Moore (1990) ERB-rate: Hz -> ERB number."""
+    return 21.4 * numpy.log10(1.0 + 0.00437 * numpy.asarray(frequencies, dtype=float))
+
+
+def _erb_envelope(mag, n_keep, freqs, band, skirt_octaves=(1.0, 0.5)):
+    """``n_keep``-term cosine fit to log-magnitude on an ERB-rate axis.
+
+    WHY NOT THE LINEAR AXIS. :func:`...shift_spectral_detail.smooth_magnitude`
+    puts the cosine basis on the FFT bin index, i.e. linear in Hz. At
+    ``n_keep=4`` the finest term is one half-cycle over 8.1 kHz, so below about
+    2 kHz all four basis functions are still sitting at their k=0 values and the
+    envelope cannot vary there at all. 200-700 Hz is 1.6% of that axis against
+    40% for 8-18 kHz, so least squares sets the low end to whatever best serves
+    the top of the band -- measured on this cohort, 15 dB above the true DTF at
+    DC, which put the untrained ear's 200-2000 Hz ILD 9-12 dB away from native
+    and outside the range of any real direction in the listener's own HRTF.
+
+    On an ERB-rate axis the same four terms give 0.7-2 kHz a quarter of the
+    fit instead of a twentieth, which also matches the 0.5-2 ripples/octave
+    scale the split is meant to sit at rather better than the linear axis did.
+
+    The least-squares solve uses only the first ``n_keep`` basis COLUMNS on the
+    in-band ROWS -- restricting rows alone leaves the system underdetermined.
+    """
+    lo, hi = float(band[0]), float(band[1])
+    log_mag = numpy.log(numpy.maximum(mag, numpy.finfo(float).tiny))
+
+    rate = (_erb_rate(freqs) - _erb_rate(lo)) / (_erb_rate(hi) - _erb_rate(lo))
+    basis = numpy.cos(numpy.pi * numpy.clip(rate, 0.0, 1.0)[:, None]
+                      * numpy.arange(int(n_keep))[None, :])
+    in_band = (freqs >= lo) & (freqs <= hi)
+    if int(in_band.sum()) < int(n_keep):
+        raise ValueError(f'only {int(in_band.sum())} bins inside {band}, '
+                         f'need at least n_keep={n_keep}')
+
+    # raised-cosine crossfade in log frequency: envelope in band, measured out
+    freq = numpy.maximum(numpy.asarray(freqs, dtype=float), 1e-6)
+    weight = ((freq >= lo) & (freq <= hi)).astype(float)
+    low_edge = lo * 2.0 ** -skirt_octaves[0]
+    rising = (freq > low_edge) & (freq < lo)
+    weight[rising] = 0.5 - 0.5 * numpy.cos(
+        numpy.pi * numpy.log2(freq[rising] / low_edge) / skirt_octaves[0])
+    falling = (freq > hi) & (freq < hi * 2.0 ** skirt_octaves[1])
+    weight[falling] = 0.5 + 0.5 * numpy.cos(
+        numpy.pi * numpy.log2(freq[falling] / hi) / skirt_octaves[1])
+
+    out = numpy.empty_like(log_mag)
+    for channel in range(mag.shape[1]):
+        coeffs, *_ = numpy.linalg.lstsq(basis[in_band], log_mag[in_band, channel],
+                                        rcond=None)
+        out[:, channel] = (weight * (basis @ coeffs)
+                           + (1.0 - weight) * log_mag[:, channel])
+    return numpy.exp(out)
+
+
+def envelope_spectrum(mag, n_keep=DEFAULT_N_KEEP, freqs=None, band=ENVELOPE_BAND):
     """Coarse envelope of a one-sided magnitude spectrum (linear, not dB).
 
-    Thin wrapper over
+    With ``freqs`` the fit runs on an ERB-rate axis over ``band`` and the
+    measured response is kept outside it (:func:`_erb_envelope`). Without
+    ``freqs`` this is the historical linear-axis, full-range smoother
     :func:`hrtf_relearning.hrtf.modify.shift_spectral_detail.smooth_magnitude`
-    that accepts a 1-D spectrum as well as ``(n_bins, n_channels)``.
+    -- kept so pre-2026-08 builds stay reproducible, NOT because it is
+    equivalent. Accepts a 1-D spectrum as well as ``(n_bins, n_channels)``.
     """
     mag = numpy.asarray(mag, dtype=float)
-    if mag.ndim == 1:
-        return smooth_magnitude(mag[:, None], n_keep=int(n_keep))[:, 0]
-    return smooth_magnitude(mag, n_keep=int(n_keep))
+    squeeze = mag.ndim == 1
+    if squeeze:
+        mag = mag[:, None]
+    if freqs is None:
+        out = smooth_magnitude(mag, n_keep=int(n_keep))
+    else:
+        out = _erb_envelope(mag, int(n_keep), numpy.asarray(freqs, dtype=float), band)
+    return out[:, 0] if squeeze else out
 
 
-def envelope_dtf(hrir, ear='left', n_keep=DEFAULT_N_KEEP, match_level='energy'):
+def envelope_dtf(hrir, ear='left', n_keep=DEFAULT_N_KEEP, match_level='energy',
+                 band=ENVELOPE_BAND, elevation_average=True):
     """Replace the OTHER ear's DTF with its coarse spectral envelope.
 
     Drop-in alternative to
@@ -107,6 +180,32 @@ def envelope_dtf(hrir, ear='left', n_keep=DEFAULT_N_KEEP, match_level='energy'):
         leaves the envelope's own level (already close, since the DC cosine
         coefficient carries the mean log-magnitude).
 
+        NB broadband energy being exact says nothing about the ILD inside any
+        given band -- it read exactly 0.00 dB while the 200-2000 Hz ILD was
+        10 dB out. Check bands, not the broadband number; see
+        :func:`hrtf_relearning.hrtf.processing.midline.qc_midline`.
+    band : (float, float), default ``ENVELOPE_BAND``
+        Band the envelope is fitted over; the measured response is kept
+        outside it. See :func:`_erb_envelope`.
+    elevation_average : bool, default True
+        Replace each direction's envelope by the mean over elevation at that
+        azimuth, so one spectral shape serves every elevation.
+
+        This is what actually removes the cue. Smoothing in FREQUENCY only ever
+        approximated it, and had to be traded against level accuracy because
+        both come out of the same n_keep coefficients -- measured on this
+        cohort, a per-direction envelope still carried 2.30 dB of
+        elevation-varying structure in the 5.7-11.3 kHz band against 4.66 dB
+        for the unprocessed ear, i.e. about half the cue. Averaging removes it
+        by construction: identical shapes cannot encode elevation.
+
+        Grouping by azimuth means only elevation dependence goes. On the az=0
+        arc that is every direction; on a full set the head shadow survives,
+        which is what keeps the ear plausible enough to externalize.
+
+        ``match_level`` is applied after, per direction, so broadband ILD is
+        still exact even though the shape no longer varies.
+
     Returns
     -------
     slab.HRTF
@@ -124,29 +223,64 @@ def envelope_dtf(hrir, ear='left', n_keep=DEFAULT_N_KEEP, match_level='energy'):
         channels = (0, 1)
     else:
         channels = (1 if ear == 'left' else 0,)   # the ear being processed
-    logger.debug('Envelope-only DTF for the %s ear(s) (n_keep=%d)',
+    logger.debug('Envelope-only DTF for the %s ear(s) (n_keep=%d, elevation_average=%s)',
                  'both' if ear == 'both' else ('right' if channels[0] else 'left'),
-                 int(n_keep))
+                 int(n_keep), bool(elevation_average))
 
     eps = numpy.finfo(float).tiny
-    for source_idx in range(out.n_sources):
+    n_sources = out.n_sources
+
+    # pass 1 -- envelope per direction, kept in log magnitude so the averaging
+    # below is a mean of log spectra (i.e. a geometric mean of magnitudes)
+    log_envelope = {}
+    for source_idx in range(n_sources):
+        freqs = numpy.fft.rfftfreq(
+            hrir[source_idx].data.shape[0],
+            d=1.0 / float(hrir[source_idx].samplerate))
         for channel in channels:
-            ir = numpy.asarray(out[source_idx].data[:, channel], dtype=float)
-            n_samples = ir.size
-            spectrum = numpy.fft.rfft(ir)
-            mag = numpy.abs(spectrum)
+            mag = numpy.abs(numpy.fft.rfft(
+                numpy.asarray(hrir[source_idx].data[:, channel], dtype=float)))
             if mag.max() <= 0:
                 continue
-            mag_env = envelope_spectrum(mag, n_keep=int(n_keep))
-            # magnitude-only edit: original phase kept -> onset / ITD untouched
-            ir_env = numpy.fft.irfft(mag_env * numpy.exp(1j * numpy.angle(spectrum)),
-                                     n=n_samples)
-            if match_level == 'energy':
-                e_original = float(numpy.linalg.norm(ir, ord=2))
-                e_env = float(numpy.linalg.norm(ir_env, ord=2))
-                if e_env > eps:
-                    ir_env *= e_original / e_env
-            out[source_idx].data[:, channel] = ir_env
+            log_envelope[(source_idx, channel)] = numpy.log(numpy.maximum(
+                envelope_spectrum(mag, n_keep=int(n_keep), freqs=freqs, band=band),
+                eps))
+
+    # pass 2 -- replace each envelope by the mean over elevation AT ITS AZIMUTH.
+    # Grouping by azimuth is what makes this safe to call on a full set as well
+    # as on the az=0 arc: it removes the elevation dependence and nothing else,
+    # so the head shadow (which is azimuth dependence) is untouched.
+    if elevation_average:
+        azimuth = numpy.round(numpy.mod(
+            numpy.asarray(hrir.sources.vertical_polar[:, 0], dtype=float), 360.0), 3)
+        for value in numpy.unique(azimuth):
+            group = numpy.where(azimuth == value)[0]
+            for channel in channels:
+                stack = [log_envelope[(i, channel)] for i in group
+                         if (i, channel) in log_envelope]
+                if not stack:
+                    continue
+                mean_log = numpy.mean(numpy.asarray(stack), axis=0)
+                for i in group:
+                    if (i, channel) in log_envelope:
+                        log_envelope[(i, channel)] = mean_log
+
+    # pass 3 -- back to the time domain, per-direction level restored
+    for (source_idx, channel), log_env in log_envelope.items():
+        ir = numpy.asarray(hrir[source_idx].data[:, channel], dtype=float)
+        spectrum = numpy.fft.rfft(ir)
+        # magnitude-only edit: original phase kept -> onset / ITD untouched
+        ir_env = numpy.fft.irfft(
+            numpy.exp(log_env) * numpy.exp(1j * numpy.angle(spectrum)), n=ir.size)
+        if match_level == 'energy':
+            # applied AFTER the averaging, so each direction keeps its own
+            # broadband level and the per-direction ILD stays exact even though
+            # every elevation now shares one spectral shape
+            e_original = float(numpy.linalg.norm(ir, ord=2))
+            e_env = float(numpy.linalg.norm(ir_env, ord=2))
+            if e_env > eps:
+                ir_env *= e_original / e_env
+        out[source_idx].data[:, channel] = ir_env
     return out
 
 

@@ -9,9 +9,14 @@ from pathlib import Path
 from datetime import datetime
 import numpy
 import slab
-import freefield
 import soundfile as sf
 import pyfar
+
+# freefield is imported lazily, inside the one method that drives the rig.
+# Importing it here made every consumer of this module hardware-dependent --
+# including record.processing, whose own docstring promises "No I/O. No
+# hardware. No FreeField." — so the cue-editing install (and anything that only
+# wants to re-expand or modify an existing SOFA) could not import it at all.
 
 # ---------------------------------------------------------------------
 # Base grid container
@@ -116,6 +121,8 @@ class Recordings(SpeakerGridBase):
         filt = slab.Filter.band("hp", frequency=hp_freq, samplerate=fs)
 
         # dome setup
+        import freefield  # rig-only dependency; see the note at the top
+
         if freefield.PROCESSORS.mode != "play_birec":
             freefield.initialize("dome", "play_birec")
         speakers = cls._select_speakers(freefield.read_speaker_table(), azimuth, elevation)

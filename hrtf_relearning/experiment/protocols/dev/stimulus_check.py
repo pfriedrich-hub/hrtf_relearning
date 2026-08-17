@@ -24,10 +24,21 @@ against YOUR subject's own DTF -- do this per subject, the cue depth varies.
 
 Listening in cell 2/3 is dry (no headphone EQ, no reverb, no head tracking), so
 it is for judging timbre variation and whether elevation is still audible, not
-for externalization. Cells 7-8 are the real check: run the full AR test on
+for externalization. Cells 7-9 are the real check: run the full AR test on
 YOURSELF with your OWN unmodified HRTF, noise vs ripple. If the envelope were
 eating the cue, elevation gain would drop there -- with intact ears and an
 intact HRTF there is nothing else that could cause it.
+
+CHOOSING rms_tilt. It is the only knob (rms_cue is 0 by design). More of it
+means more source variation, which is the point, but the band limit leaks, so
+past some point it erodes the cue it was supposed to spare. Two steps:
+  cell 6   acoustic screen -- sweep rms_tilt against BOTH of your ears and find
+           the largest value that still leaves the cue >= 3:1 above the source
+           in the 0.5-2 rip/oct band. Narrows the field; proves nothing about
+           whether the result is still localizable.
+  cells 7-9  behavioural check -- the surviving candidates plus a noise
+           reference, run on yourself, scored by elevation gain. This is what
+           decides it.
 """
 
 SUBJECT_ID = "PF"
@@ -200,18 +211,110 @@ fig.savefig(paths.subject_acoustic_dir(SUBJECT_ID) / 'stimulus_spectral_variatio
             bbox_inches='tight')
 plt.show()
 
-# %% 6. tune rms_tilt for this subject ----------------------------------------
-# rms_tilt buys audible timbre variation almost for free; rms_cue trades
-# directly against the cue and is 0 in the experiment. Pick the rms_tilt whose
-# cue-band ratio is nearest 3:1. The rms_cue > 0 rows are the diagnostic: they
-# show how fast the cue goes once the envelope reaches into its band.
+# %% 6. sweep rms_tilt against BOTH ears --------------------------------------
+# rms_tilt is the only knob (rms_cue stays 0 -- see 6b). Two ratios move in
+# opposite directions as it rises, and the compromise is where they cross:
+#
+#   tilt band (0.2-0.5 rip/oct)  cue:source should be WELL BELOW 1 -- the source
+#     spectrum must dominate here, that is what defeats a fixed template.
+#   cue band  (0.5-2 rip/oct)    cue:source should stay ABOVE ~3 -- the notch
+#     must still stand clear. This falls as rms_tilt rises even with rms_cue=0,
+#     because a band-limited envelope cannot have a sharp edge at 0.5 rip/oct.
+#     That leakage, not rms_cue, is the ceiling on the knob.
+#
+# Cue depth differs between ears, so the binding constraint is the WEAKER ear:
+# pick the largest rms_tilt whose cue-band ratio is still >= TARGET_RATIO there.
+# This is an acoustic screen only -- it narrows the field for the self-test in
+# cells 7-9, it does not establish that the stimulus is still localizable.
+TILT_GRID = (4.0, 6.0, 8.0, 10.0, 12.0, 14.0)
+TARGET_RATIO = 3.0              # minimum acceptable cue:source in the cue band
+TILT_BAND = (0.2, 0.5)
+N_TOKENS = 120
+
+# tokens once per rms_tilt, scored against both ears -- the stimulus does not
+# depend on the ear, only the cue it is measured against does
+_sweep_spectra = {t: make_set('ripple', n=N_TOKENS, rms_tilt=t, rms_cue=0.0)[1]
+                  for t in TILT_GRID}
+sweep = {}
+for _ear in ('left', 'right'):
+    _cue, _, _ = cue_spectra(ear=_ear)
+    _cue_band_rms, _cue_tilt_rms = ripple_rms(_cue, CUE_BAND), ripple_rms(_cue, TILT_BAND)
+    sweep[_ear] = {
+        'cue_band_rms': _cue_band_rms,
+        'cue_pointwise': float(_cue.std(0).mean()),
+        'cue_ratio': numpy.array([_cue_band_rms / ripple_rms(_sweep_spectra[t], CUE_BAND)
+                                  for t in TILT_GRID]),
+        'tilt_ratio': numpy.array([_cue_tilt_rms / ripple_rms(_sweep_spectra[t], TILT_BAND)
+                                   for t in TILT_GRID])}
+source_sd = numpy.array([_sweep_spectra[t].std(0).mean() for t in TILT_GRID])
+
+print(f"{SUBJECT_ID} {SOFA_NAME}, az {AZIMUTH:+.0f}, {N_TOKENS} tokens per setting")
+for _ear in sweep:
+    print(f"  {_ear:5s} ear cue: {sweep[_ear]['cue_pointwise']:.2f} dB point-wise, "
+          f"{sweep[_ear]['cue_band_rms']:.2f} dB in the cue band")
+print(f"\n{'rms_tilt':>9s} {'source SD':>10s} "
+      f"{'tilt L':>8s} {'tilt R':>8s} {'CUE L':>8s} {'CUE R':>8s}   verdict")
+for i, t in enumerate(TILT_GRID):
+    lo = min(sweep[e]['cue_ratio'][i] for e in sweep)
+    print(f"{t:9.1f} {source_sd[i]:9.2f}dB "
+          f"{sweep['left']['tilt_ratio'][i]:7.2f}:1 {sweep['right']['tilt_ratio'][i]:7.2f}:1 "
+          f"{sweep['left']['cue_ratio'][i]:7.2f}:1 {sweep['right']['cue_ratio'][i]:7.2f}:1   "
+          f"{'ok' if lo >= TARGET_RATIO else 'CUE ERODED'}")
+
+_worst = numpy.minimum(sweep['left']['cue_ratio'], sweep['right']['cue_ratio'])
+_ok = [t for t, r in zip(TILT_GRID, _worst) if r >= TARGET_RATIO]
+CANDIDATES = ([_ok[-1]] if _ok else [TILT_GRID[0]])           # largest still safe
+CANDIDATES += [t for t in TILT_GRID if t > CANDIDATES[0]][:1]  # one step past it
+if _ok:
+    print(f"\nlargest rms_tilt with cue:source >= {TARGET_RATIO:.0f}:1 in BOTH ears: "
+          f"{CANDIDATES[0]:.0f} dB")
+else:
+    print(f"\n!! NO setting on the grid keeps cue:source >= {TARGET_RATIO:.0f}:1 in both "
+          f"ears.\n   Either this subject's cue is unusually shallow (check the cue-band "
+          f"rms above\n   against the ~3 dB typical), or the grid starts too high — extend "
+          f"TILT_GRID\n   downwards before treating {CANDIDATES[0]:.0f} dB as a candidate.")
+print(f"take to the self-test (cells 7-9): noise + ripple at "
+      f"{' and '.join(f'{c:.0f}' for c in CANDIDATES)} dB\n"
+      f"the second is deliberately past the acoustic criterion -- if it costs no\n"
+      f"elevation gain either, the criterion is too conservative.")
+
+# %% 6a. figure: the two ratios vs rms_tilt -----------------------------------
+fig, axes = plt.subplots(1, 2, figsize=(10, 4), dpi=140, sharex=True)
+for _ear, _style in (('left', '-o'), ('right', '--s')):
+    axes[0].plot(TILT_GRID, sweep[_ear]['cue_ratio'], _style, color='#2e8b57',
+                 label=f'{_ear} ear', ms=4)
+    axes[1].plot(TILT_GRID, sweep[_ear]['tilt_ratio'], _style, color='#1b6ca8',
+                 label=f'{_ear} ear', ms=4)
+axes[0].axhline(TARGET_RATIO, color='k', ls=':', lw=1)
+axes[0].axhspan(0, TARGET_RATIO, color='#c94f2e', alpha=.08)
+axes[0].set_ylabel('cue : source'); axes[0].set_title(
+    f'cue band {CUE_BAND[0]}-{CUE_BAND[1]} rip/oct — cue must stay above {TARGET_RATIO:.0f}:1')
+axes[1].axhline(1.0, color='k', ls=':', lw=1)
+axes[1].axhspan(1.0, 100, color='#c94f2e', alpha=.08)
+axes[1].set_ylim(0, max(2.0, float(numpy.max([sweep[e]['tilt_ratio'] for e in sweep])) * 1.15))
+axes[1].set_ylabel('cue : source'); axes[1].set_title(
+    f'tilt band {TILT_BAND[0]}-{TILT_BAND[1]} rip/oct — source must dominate (< 1)')
+for ax in axes:
+    for c in CANDIDATES:
+        ax.axvline(c, color='#e0a33e', lw=1.2, alpha=.7)
+    ax.set_xlabel('rms_tilt (dB)'); ax.grid(alpha=.25); ax.legend(fontsize=7)
+fig.suptitle(f'{SUBJECT_ID} — choosing rms_tilt (orange = self-test candidates)')
+fig.tight_layout()
+fig.savefig(paths.subject_acoustic_dir(SUBJECT_ID) / 'rms_tilt_sweep.png',
+            bbox_inches='tight')
+plt.show()
+
+# %% 6b. diagnostic: what rms_cue > 0 costs -----------------------------------
+# Not a setting to use -- this is the manipulation check. Deliberately push the
+# envelope INTO the cue band and watch the ratio collapse. If a later behavioural
+# effect tracks these rows, the cue band is doing the work.
 cue, _, _ = cue_spectra()
 cue_rms = ripple_rms(cue, CUE_BAND)
 print(f"{'rms_tilt':>9s} {'rms_cue':>8s} {'point-wise SD':>14s} {'tilt-band':>10s} {'cue-band':>9s}")
 for rms_tilt in (6.0, 8.0, 10.0, 12.0):
     for rms_cue in (0.0, 0.5, 1.2):
         spectra = make_set('ripple', n=80, rms_tilt=rms_tilt, rms_cue=rms_cue)[1]
-        tilt_ratio = ripple_rms(cue, (0.2, 0.5)) / ripple_rms(spectra, (0.2, 0.5))
+        tilt_ratio = ripple_rms(cue, TILT_BAND) / ripple_rms(spectra, TILT_BAND)
         cue_ratio = cue_rms / ripple_rms(spectra, CUE_BAND)
         print(f"{rms_tilt:9.1f} {rms_cue:8.1f} {spectra.std(0).mean():14.2f} "
               f"{tilt_ratio:9.1f}:1 {cue_ratio:8.1f}:1")
@@ -230,16 +333,32 @@ from hrtf_relearning.experiment.analysis.localization.localization_analysis impo
     localization_accuracy)
 
 SELF_ID = "PF"                        # own id — independent of the QC config above
-BLOCK_ORDER = ('noise', 'ripple')     # swap on the second run
+
+# (stim, rms_tilt) per block. Fill the ripple rows from CANDIDATES in cell 6 --
+# the noise block is the reference every ripple block is scored against, so it
+# always runs. Keep it to 3 blocks: past that, fatigue costs more gain than the
+# envelope does.
+CONDITIONS = [('noise', None), ('ripple', 8.0), ('ripple', 12.0)]
+REVERSE_ORDER = False                 # flip on the second sitting
 
 # 'quick'  25 trials/block, ~3 min  — gross check only, EG is +/- ~0.15
 # 'short'  50 trials/block, ~5 min  — EG +/- ~0.10
 # 'full'  100 trials/block, ~10 min — EG +/- ~0.07, use before running anyone else
+#
+# The comparison is WITHIN a sitting, so block order is confounded with practice
+# and fatigue. With 3 blocks a single order is not enough: run the whole set
+# twice with REVERSE_ORDER flipped and average, or the middle condition is
+# systematically flattered. 'short' x 3 x 2 sittings ~= 30 min of testing.
 LENGTH = 'short'
 _GRID = {'quick': ((14, 14), 1), 'short': ((7, 14), 1), 'full': ((7, 14), 2)}
 
 
-def self_test_settings(stim):
+def block_label(stim, rms_tilt=None):
+    """Key for self_runs: 'noise', 'ripple@8', ..."""
+    return stim if stim == 'noise' or rms_tilt is None else f"{stim}@{rms_tilt:g}"
+
+
+def self_test_settings(stim, rms_tilt=None):
     sector_size, targets_per_sector = _GRID[LENGTH]
     hrir = {"name": SELF_ID, "subject_id": SELF_ID, "ear": None,
             "other_ear": "envelope", "env_n_keep": 4, "native_sofa": SELF_ID,
@@ -251,57 +370,81 @@ def self_test_settings(stim):
            "targets_per_sector": targets_per_sector, "min_distance": 10,
            "gain": 0.2, "stim": stim, "sector_size": sector_size,
            "replace": False, "exclude_midline": False, "midline_tol": 1.0,
-           "stim_settings": {"rms_tilt": RMS_TILT, "rms_cue": RMS_CUE}}
+           # goes to sequence.stim_settings, so the block records its own knob
+           "stim_settings": {"rms_tilt": RMS_TILT if rms_tilt is None else rms_tilt,
+                             "rms_cue": RMS_CUE}}
     return hrir, loc
 
 
-def run_self_block(stim):
-    """One block. Returns the sequence and files it under self_runs[stim]."""
-    print(f"\n{'=' * 60}\n  {stim.upper()}  — own HRTF, binaural, full field"
+def run_self_block(stim, rms_tilt=None):
+    """One block. Returns the sequence and files it under its label."""
+    label = block_label(stim, rms_tilt)
+    print(f"\n{'=' * 60}\n  {label.upper()}  — own HRTF, binaural, full field"
           f"  [{LENGTH}]\n{'=' * 60}")
     subject = hr.Subject(SELF_ID)
-    test = Localization(subject, *self_test_settings(stim))
+    test = Localization(subject, *self_test_settings(stim, rms_tilt))
     test.run()
-    self_runs[stim] = subject.localization[test.filename]
-    return self_runs[stim]
+    self_runs[label] = subject.localization[test.filename]
+    return self_runs[label]
 
 
 self_runs = {}
-print(f"ready: {SELF_ID}, {LENGTH}, order {BLOCK_ORDER} — run cell 8 to start")
+_order = list(reversed(CONDITIONS)) if REVERSE_ORDER else list(CONDITIONS)
+print(f"ready: {SELF_ID}, {LENGTH}, order "
+      f"{[block_label(*c) for c in _order]} — run cell 8 to start")
 
-# %% 8. RUN both blocks -------------------------------------------------------
-for _stim in BLOCK_ORDER:
-    run_self_block(_stim)
+# %% 8. RUN all blocks in order ------------------------------------------------
+for _stim, _tilt in _order:
+    run_self_block(_stim, _tilt)
 
 # %% 8a. RUN one block at a time (alternative to cell 8) ---------------------
 run_self_block('noise')
 
 # %% 8b. ------------------------------------------------------------------------
-run_self_block('ripple')
+run_self_block('ripple', 8.0)
+
+# %% 8c. ------------------------------------------------------------------------
+run_self_block('ripple', 12.0)
 
 # %% 9. self-test result ------------------------------------------------------
-# EG within ~0.05-0.1 of the noise block and no jump in SD -> the stimulus is
-# safe to use. A large drop means rms_tilt is too high for your own cue depth
-# (re-run cell 6) or the envelope is leaking into the cue band.
-print(f"{'block':10s} {'n':>4s} {'EG':>6s} {'RMSE_el':>8s} {'SD_el':>7s} {'AG':>6s} {'RMSE_az':>8s}")
-for _stim, _seq in self_runs.items():
+# Read this against the noise block, not in absolute terms. EG within ~0.05-0.1
+# of noise and no jump in elevation SD -> that rms_tilt is safe. A clear drop
+# means the envelope is eating the cue at that setting: take the next one down.
+# Note the resolution: at 'short' the EG error is ~0.10, so a 0.05 difference
+# between two ripple settings is not a difference -- prefer the LARGER rms_tilt
+# whenever the two are within noise of each other, since more source variation
+# is the whole point.
+print(f"{'block':12s} {'n':>4s} {'EG':>6s} {'RMSE_el':>8s} {'SD_el':>7s} "
+      f"{'AG':>6s} {'RMSE_az':>8s}")
+for _label, _seq in self_runs.items():
     eg, ele_rmse, ele_sd, ag, az_rmse, az_sd = localization_accuracy(_seq)
-    print(f"{_stim:10s} {len(_seq.data):4d} {eg:6.2f} {ele_rmse:8.1f} {ele_sd:7.1f} "
+    print(f"{_label:12s} {len(_seq.data):4d} {eg:6.2f} {ele_rmse:8.1f} {ele_sd:7.1f} "
           f"{(ag if ag is not None else float('nan')):6.2f} {az_rmse:8.1f}")
-if len(self_runs) == 2:
-    _n, _r = (localization_accuracy(self_runs[k])[0] for k in ('noise', 'ripple'))
-    print(f"\nEG cost of the random envelope: {_n - _r:+.2f} "
-          f"({_r / _n * 100:.0f}% of the noise gain)")
+
+if 'noise' in self_runs and len(self_runs) > 1:
+    _ref = localization_accuracy(self_runs['noise'])[0]
+    print(f"\nEG cost of the random envelope (vs noise, EG {_ref:.2f}):")
+    for _label, _seq in self_runs.items():
+        if _label == 'noise':
+            continue
+        _eg = localization_accuracy(_seq)[0]
+        print(f"  {_label:12s} {_ref - _eg:+.2f}  ({_eg / _ref * 100:3.0f}% of the noise gain)")
+else:
+    print("\nno noise reference in this set — run cell 8a before comparing")
 
 # %% 10. reload earlier self-test blocks (skip the run cells) ----------------
 # Pulls the most recent noise and ripple blocks with the unmodified HRTF back
-# out of the subject file, so cell 9 can be re-run without testing again.
+# out of the subject file, so cell 9 can be re-run without testing again. Blocks
+# are keyed by rms_tilt, so several ripple settings coexist; runs from before
+# stim_settings was logged fall back to the module default.
 _subject = hr.Subject(SELF_ID)
 self_runs = {}
 for _name, _seq in _subject.localization.items():
     if getattr(_seq, "hrir", None) != SELF_ID:      # unmodified HRTF only
         continue
     _stim = getattr(_seq, "stim", "noise")
-    if _stim in ("noise", "ripple"):
-        self_runs[_stim] = _seq                     # dict order -> last wins
+    if _stim not in ("noise", "ripple"):
+        continue
+    _tilt = (getattr(_seq, "stim_settings", None) or {}).get('rms_tilt', RMS_TILT)
+    self_runs[block_label(_stim, _tilt)] = _seq     # dict order -> last wins
 print({k: v.name for k, v in self_runs.items()})

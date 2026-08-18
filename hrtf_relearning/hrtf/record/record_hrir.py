@@ -26,7 +26,15 @@ equalize_dome = True
 align_interaural = True
 
 slab.set_default_samplerate(fs)
-freefield.set_logger("info")
+
+# freefield is a rig-only dependency: recordings.py imports it lazily so that
+# this module stays importable on a cue-editing install (no TDT, no drivers).
+# Keep the same contract here -- only configure its logger if it is present.
+try:
+    import freefield
+    freefield.set_logger("info")
+except ImportError:
+    logging.info("freefield not available -- recording disabled, processing only")
 
 
 # ---------------------------------------------------------------------

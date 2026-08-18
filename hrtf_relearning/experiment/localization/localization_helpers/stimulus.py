@@ -52,6 +52,7 @@ transducer paths is a separate by-ear step (match_ar_dome_loudness.py).
 import numpy
 import slab
 from scipy.fftpack import idct
+slab.set_default_samplerate(48828)
 
 DURATION = 0.225          # s, whole burst train
 

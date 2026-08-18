@@ -16,7 +16,7 @@ Steps:
     4. Dome localization          (real speakers, vertical midline)
     5. Virtual localization       (pybinsim, same locations, independent randomisation)
 """
-' TODO check led, make run'
+
 # %% imports and config ------------------------------------------------------
 import matplotlib
 from hrtf_relearning.utils.mpl_backend import use_interactive
@@ -27,7 +27,6 @@ import copy
 import logging
 import freefield
 import slab
-
 import hrtf_relearning as hr
 from hrtf_relearning.experiment.localization.Localization_AR import Localization
 from hrtf_relearning.experiment.localization.Localization_dome import LocalizationDome
@@ -35,8 +34,8 @@ from hrtf_relearning.hrtf.record.record_hrir import record_hrir
 from hrtf_relearning.hrtf.record.calibration.calibrate_headphones import calibrate_headphones
 from hrtf_relearning.utils import paths
 
-SUBJECT_ID   = 'IR'          # edit per participant
-HEAD_RADIUS  = 0.075
+SUBJECT_ID   = 'AS'          # edit per participant
+HEAD_RADIUS  = 0.0725
 REFERENCE_ID = 'ref_03.04'
 N_DIRECTIONS = 3              # directions for the HRIR recording
 N_RECORDINGS = 10
@@ -49,6 +48,60 @@ ROOT = hr.PATH
 slab.set_default_samplerate(FS)
 freefield.set_logger('info')
 subject = hr.Subject(SUBJECT_ID)
+
+# %% step 1: record / load HRIR ------------------------------------------------
+logging.info('--- Step 1: HRIR recording ---')
+hrir = record_hrir(
+    subject_id     = SUBJECT_ID,
+    reference_id   = REFERENCE_ID,
+    n_directions   = N_DIRECTIONS,
+    n_recordings   = N_RECORDINGS,
+    fs             = FS,
+    hp_freq        = HP_FREQ,
+    head_radius    = HEAD_RADIUS,
+    show           = SHOW,
+    overwrite_rec  = True,
+    overwrite_hrir = True,
+)
+
+# %% step 2: headphone calibration ---------------------------------------------
+logging.info('--- Step 2: HP calibration ---')
+# hp_filter = calibrate_headphones(SUBJECT_ID, 'MYSPHERE', N_REC_HP, SHOW, True)
+hp_filter = calibrate_headphones(SUBJECT_ID, 'DT990', N_REC_HP, SHOW, False, overwrite=True)
+
+# %% stimulus for every localization test in this file -------------------------
+# The test stimulus varies its source spectrum on every trial, so that
+# localization cannot be solved by matching an absolute spectrum to a stored
+# template -- see learning_transfer.STIM for the full reason. Set in one place
+# here so the dome reference and the virtual test are never run on different
+# stimuli, which is the comparison this session exists to make.
+#   !! Depth not yet settled -- see learning_transfer.STIM_SETTINGS. Verify with
+#      protocols/dev/stimulus_check.py (cells 11-13 dome, 7-9 AR) before use.
+STIM = 'noise'            # -> 'ripple' once the depth is settled
+STIM_SETTINGS = {'rms_tilt': 3}        # empty = inherit localization_helpers.stimulus defaults
+
+# %% step 4: dome localization ---------------------------------------------------
+# Real speakers, vertical midline. Each run gets a fresh timestamped filename
+# (see LocalizationDome.__init__), so repeats are stored as separate sequences
+# rather than overwriting one another -- rerun this cell to redo it.
+logging.info('--- Step 4: Dome localization ---')
+dome_loc = LocalizationDome(subject, {'targets_per_speaker': 3, 'min_distance': 15,
+    'stim': STIM, 'stim_settings': STIM_SETTINGS})
+dome_loc.run()
+
+# %% step 5b: virtual localization -- DT990 ---------------------------------------
+logging.info('--- Step 5: HP localization (DT990) ---')
+ar_loc_settings = {'kind': 'standard', 'azimuth_range': (-1, 1), 'elevation_range': (-35, 35),
+    'targets_per_speaker': 2, 'min_distance': 15, 'gain': .2, 'stim': STIM,
+    'stim_settings': STIM_SETTINGS}
+dt990_hrir_settings = dict(name=SUBJECT_ID, subject_id=SUBJECT_ID, ear=None, mirror=False,
+    reverb=True, drr=20, hp_filter=True, hp='DT990', convolution='cpu', storage='cpu')
+ar_loc = Localization(subject, dt990_hrir_settings, ar_loc_settings)
+ar_loc.run()
+
+# # %% step 3: acoustic sanity check (optional) -----------------------------------
+# logging.info('--- Step 3: Acoustic test ---')
+# acoustic_test(hrir, hp_filter, subject_id=SUBJECT_ID, hp_id='DT990', show=SHOW)
 
 # %% helper: acoustic_test (define before running the Step 3 cell) -----------
 def acoustic_test(hrir, hp_filter, subject_id, hp_id, show=True):
@@ -124,61 +177,6 @@ def acoustic_test(hrir, hp_filter, subject_id, hp_id, show=True):
         save_dir.mkdir(parents=True, exist_ok=True)
         fig.savefig(save_dir / f'acoustic_test_{hp_id}.svg')
         plt.show()
-
-
-# %% step 1: record / load HRIR ------------------------------------------------
-logging.info('--- Step 1: HRIR recording ---')
-hrir = record_hrir(
-    subject_id     = SUBJECT_ID,
-    reference_id   = REFERENCE_ID,
-    n_directions   = N_DIRECTIONS,
-    n_recordings   = N_RECORDINGS,
-    fs             = FS,
-    hp_freq        = HP_FREQ,
-    head_radius    = HEAD_RADIUS,
-    show           = SHOW,
-    overwrite_rec  = True,
-    overwrite_hrir = True,
-)
-
-# %% step 2: headphone calibration ---------------------------------------------
-logging.info('--- Step 2: HP calibration ---')
-# hp_filter = calibrate_headphones(SUBJECT_ID, 'MYSPHERE', N_REC_HP, SHOW, True)
-hp_filter = calibrate_headphones(SUBJECT_ID, 'DT990', N_REC_HP, SHOW, False, overwrite=True)
-
-# %% stimulus for every localization test in this file -------------------------
-# The test stimulus varies its source spectrum on every trial, so that
-# localization cannot be solved by matching an absolute spectrum to a stored
-# template -- see learning_transfer.STIM for the full reason. Set in one place
-# here so the dome reference and the virtual test are never run on different
-# stimuli, which is the comparison this session exists to make.
-#   !! Depth not yet settled -- see learning_transfer.STIM_SETTINGS. Verify with
-#      protocols/dev/stimulus_check.py (cells 11-13 dome, 7-9 AR) before use.
-STIM = 'noise'            # -> 'ripple' once the depth is settled
-STIM_SETTINGS = {}        # empty = inherit localization_helpers.stimulus defaults
-
-# %% step 4: dome localization ---------------------------------------------------
-# Real speakers, vertical midline. Each run gets a fresh timestamped filename
-# (see LocalizationDome.__init__), so repeats are stored as separate sequences
-# rather than overwriting one another -- rerun this cell to redo it.
-logging.info('--- Step 4: Dome localization ---')
-dome_loc = LocalizationDome(subject, {'targets_per_speaker': 3, 'min_distance': 15,
-    'stim': STIM, 'stim_settings': STIM_SETTINGS})
-dome_loc.run()
-
-# %% step 5b: virtual localization -- DT990 ---------------------------------------
-logging.info('--- Step 5: HP localization (DT990) ---')
-ar_loc_settings = {'kind': 'standard', 'azimuth_range': (-1, 1), 'elevation_range': (-35, 35),
-    'targets_per_speaker': 2, 'min_distance': 15, 'gain': .2, 'stim': STIM,
-    'stim_settings': STIM_SETTINGS}
-dt990_hrir_settings = dict(name=SUBJECT_ID, subject_id=SUBJECT_ID, ear=None, mirror=False,
-    reverb=True, drr=20, hp_filter=True, hp='DT990', convolution='cpu', storage='cpu')
-ar_loc = Localization(subject, dt990_hrir_settings, ar_loc_settings)
-ar_loc.run()
-
-# # %% step 3: acoustic sanity check (optional) -----------------------------------
-# logging.info('--- Step 3: Acoustic test ---')
-# acoustic_test(hrir, hp_filter, subject_id=SUBJECT_ID, hp_id='DT990', show=SHOW)
 
 # %% step 5a: virtual localization -- MYSPHERE (optional) ------------------------
 # logging.info('--- Step 5: HP localization (MYSPHERE) ---')

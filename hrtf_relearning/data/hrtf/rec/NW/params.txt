@@ -1,4 +1,4 @@
-id: AS
+id: NW
 fs: 48828
 n_recordings: 10
 n_directions: 3
@@ -11,4 +11,4 @@ signal:
   samplerate: 48828
 highpass_frequency: 120
 equalize_dome: False
-datetime: 2026-08-18T11:16:27.661969
+datetime: 2026-08-18T09:27:12.837401

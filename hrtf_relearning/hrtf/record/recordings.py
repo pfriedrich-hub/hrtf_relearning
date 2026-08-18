@@ -11,6 +11,7 @@ import numpy
 import slab
 import soundfile as sf
 import pyfar
+import freefield
 
 # freefield is imported lazily, inside the one method that drives the rig.
 # Importing it here made every consumer of this module hardware-dependent --

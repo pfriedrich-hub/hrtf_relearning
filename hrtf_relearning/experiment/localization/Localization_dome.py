@@ -38,6 +38,7 @@ ROOT = hrtf_relearning.PATH
 # from the HRIR in its __init__; the dome has no HRIR to take it from, so it is
 # pinned here.
 SAMPLERATE = 48828
+slab.set_default_samplerate(SAMPLERATE)
 
 
 class LocalizationDome:

@@ -169,7 +169,7 @@ GAIN               = 0.2
 #
 # Subjects run before this date were tested on noise. They are pilots and are
 # not pooled with what follows.
-STIM               = "noise"      # -> "ripple" once the depth is settled, below
+STIM               = "ripple"      # -> "ripple" once the depth is settled, below
 # Envelope parameters for STIM='ripple'. Empty dict = inherit the defaults in
 # localization_helpers.stimulus (the single source of truth); set rms_tilt here
 # only to override for a specific cohort, and it is recorded per block in
@@ -179,7 +179,7 @@ STIM               = "noise"      # -> "ripple" once the depth is settled, below
 #      Middlebrooks report localization degradation. Run the free-field check
 #     nm and the AR self-test
 #      (cells 7-9) BEFORE flipping STIM to 'ripple' for a participant.
-STIM_SETTINGS      = {}
+STIM_SETTINGS      = {'rms_tilt': 3}
 MIDLINE_TOL        = 1.0
 FULL_FIELD = (-35, 35)
 
@@ -919,7 +919,8 @@ load_existing_donor()
 # WRITE WHAT YOU SAW in reason=: the swap is a data-dependent decision and has
 # to be reportable as one. Then set DONOR_ID at the top of this file so later
 # sessions reload the donor you switched TO.
-#   use_donor(rank=1, reason="EG 0.03 on baseline A, responses at chance")
+#   use_donor(rank=1, reason
+#   ="EG 0.03 on baseline A, responses at chance")
 # use_donor(rank=1, reason="")
 
 # %% which donors this participant has been on ---------------------------------

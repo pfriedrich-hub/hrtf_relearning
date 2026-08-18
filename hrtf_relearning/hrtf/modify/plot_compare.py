@@ -18,6 +18,36 @@ from matplotlib import pyplot as plt
 from hrtf_relearning.hrtf.modify.shift_spectral_detail import smooth_magnitude
 
 
+def _band_spread_db(hrtf, sourceidx, ear, band):
+    """Spread of the spectrum across directions inside ``band``, in dB.
+
+    Read from the impulse responses directly rather than from the image built
+    below. ``_build_tf_image`` defaults to ``n_bins = n_taps``, i.e. it asks
+    slab for 512 spectral points out of a 257-point rfft, and that
+    interpolation invents ~0.5 dB of direction-dependent variation where there
+    is none — an elevation-averaged ear that is provably flat reads 0.56 dB
+    through it. Fine for a picture, not fine for a number that is supposed to
+    match qc_midline.
+
+    Each direction's own mean level is removed first: that part is the intended
+    ILD, not a cue.
+    """
+    channel = {'left': 0, 'right': 1}[ear]
+    spectra = []
+    for index in sourceidx:
+        ir = numpy.asarray(hrtf[index].data[:, channel], dtype=float)
+        spectra.append(20.0 * numpy.log10(numpy.maximum(
+            numpy.abs(numpy.fft.rfft(ir)), 1e-30)))
+    spectra = numpy.asarray(spectra)
+    freqs = numpy.fft.rfftfreq(hrtf[sourceidx[0]].data.shape[0],
+                               d=1.0 / float(hrtf[sourceidx[0]].samplerate))
+    in_band = (freqs >= band[0]) & (freqs <= band[1])
+    if not in_band.any():
+        return float('nan')
+    spectra = spectra - spectra.mean(axis=1, keepdims=True)
+    return float(numpy.mean(numpy.std(spectra[:, in_band], axis=0)))
+
+
 def _build_tf_image(hrtf, sourceidx, ear, n_bins, xlim, floor_db=-25):
     """
     Build the image array used by plot's 'image' mode, using tfs_from_sources to
@@ -48,7 +78,15 @@ def plot_ears(hrtf, hrtf_modified, n_bins=None, xlim=(1000, 18000),
     differently — a donor composite on one ear with an envelope or flat other
     ear looks fine in a single-ear plot and only shows its asymmetry here.
     All four panels share one colour scale so interaural level differences stay
-    visible; ``band`` (low, high) draws the scoring band if given.
+    visible; ``band`` (low, high) shades the scoring band if given.
+
+    Rendered as an image (pcolormesh) rather than filled contours: contour
+    bands quantise the spectrum into 20 steps, which is enough to hide a notch
+    that has moved by less than one step and to invent edges where the surface
+    is smooth. That matters here — what the manipulation does to the fine
+    structure IS the figure's subject. Each panel is annotated with the spread
+    of its own spectrum across elevation inside ``band``, which is the number
+    the monaural reduction has to drive to zero on the processed ear.
     """
     sources = hrtf.cone_sources(0)
     images = {}
@@ -58,20 +96,31 @@ def plot_ears(hrtf, hrtf_modified, n_bins=None, xlim=(1000, 18000),
         images[ear] = (freqs, elevations, original, modified)
 
     flat = [img for _, _, a, b in images.values() for img in (a, b)]
-    levels = numpy.linspace(float(min(i.min() for i in flat)),
-                            float(max(i.max() for i in flat)), 21)
+    vmin = float(min(i.min() for i in flat))
+    vmax = float(max(i.max() for i in flat))
 
     fig, axes = plt.subplots(2, 2, figsize=(11, 8), sharex=True, sharey=True)
-    contour = None
+    mesh = None
     for row, ear in enumerate(('left', 'right')):
         freqs, elevations, original, modified = images[ear]
         for column, (img, label) in enumerate(((original, 'original'),
                                                (modified, 'modified'))):
             axis = axes[row, column]
-            contour = axis.contourf(freqs, elevations, img.T, cmap='hot', levels=levels)
+            mesh = axis.pcolormesh(freqs, elevations, img.T, cmap='magma',
+                                   vmin=vmin, vmax=vmax, shading='gouraud',
+                                   rasterized=True)
             if band is not None:
+                axis.axvspan(band[0], band[1], color='#00c8ff', alpha=0.10, lw=0)
                 for edge in band:
-                    axis.axvline(edge, color='#00c8ff', lw=1.0, ls=':')
+                    axis.axvline(edge, color='#00c8ff', lw=0.9, ls=':')
+                # spread across elevation inside the band = the cue this ear
+                # still carries. Measured off the IRs, not off the image above
+                # -- see _band_spread_db for why.
+                source_of = hrtf if label == 'original' else hrtf_modified
+                spread = _band_spread_db(source_of, sources, ear, band)
+                axis.text(0.02, 0.04, f'{spread:.2f} dB', transform=axis.transAxes,
+                          fontsize=8, va='bottom', color='#1b1b1f',
+                          bbox=dict(fc='white', ec='#bbbbbb', lw=0.6, pad=2))
             axis.set_title(f'{ear} ear — {label}', fontsize=10)
             axis.set(xlim=xlim)
             axis.xaxis.set_major_formatter(
@@ -82,7 +131,7 @@ def plot_ears(hrtf, hrtf_modified, n_bins=None, xlim=(1000, 18000),
                 axis.set_ylabel('Elevation [°]')
             axis.tick_params('both', length=2, pad=2)
 
-    cbar = fig.colorbar(contour, ax=list(axes.ravel()), shrink=0.9, pad=0.02)
+    cbar = fig.colorbar(mesh, ax=list(axes.ravel()), shrink=0.9, pad=0.02)
     cbar.set_label('Magnitude [dB]')
     if suptitle:
         fig.suptitle(suptitle, fontsize=12)

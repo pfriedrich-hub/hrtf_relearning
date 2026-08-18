@@ -12,6 +12,7 @@ from hrtf_relearning.utils.paths import PATH as ROOT
 from hrtf_relearning.experiment.misc.system_volume import set_windows_volume
 from hrtf_relearning.experiment.misc import meta_motion
 from hrtf_relearning.experiment.training.training_helpers import game_ui
+from hrtf_relearning.experiment.training.training_helpers.pulse import distance_to_interval as _pulse_interval_ms
 from hrtf_relearning.experiment.misc.Subject import Subject
 from hrtf_relearning.experiment.training.training_helpers.training_targets import (
     set_target_probabilistic, set_target, find_last_matching_sequence)
@@ -152,17 +153,16 @@ def play_sound(osc_client, soundfile=None, duration=None, sleep=False):
         time.sleep(duration)
 
 def distance_to_interval(distance):
-    max_interval = 350
-    min_interval = 75
-    steepness = 5
-    max_distance = numpy.linalg.norm(numpy.subtract([0, 0], [settings["az_range"][0], settings["ele_range"][0]]))
-    if distance <= settings["target_size"]:
-        return 0
-    norm_dist = (distance - settings["target_size"]) / (max_distance - settings["target_size"])
-    norm_dist = numpy.clip(norm_dist, 0, 1)
-    scale = numpy.log1p(steepness * norm_dist) / numpy.log1p(steepness)
-    interval = (min_interval + (max_interval - min_interval) * scale).astype(int)
-    return int(interval) / 1000
+    """Pulse interval in seconds for a head-to-target distance in degrees.
+
+    The law itself lives in training_helpers.pulse, shared with Training_Dome so
+    both conditions ramp identically. Unchanged behaviour: the 'ar' mapping with
+    the same 75-350 ms bounds and log1p steepness, and 0 inside the target
+    window (the pulse worker reads 0 as "play the target sound continuously").
+    The truncation to whole milliseconds is kept so the value is bit-for-bit
+    what this function returned before the law was moved out.
+    """
+    return int(_pulse_interval_ms(distance, settings)) / 1000
 
 def plot_current_tf(filter_idx_shared, redraw_interval_s=0.05, kind=SHOW_TF):
     """

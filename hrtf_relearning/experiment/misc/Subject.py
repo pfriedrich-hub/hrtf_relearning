@@ -25,6 +25,15 @@ class Subject:
         Age, gender and when they were recorded. Empty for records created
         before demographics were collected; fill with
         ``protocol_helpers.collect_demographics(subject)``.
+    active_donor : dict
+        Which donor this participant's composite HRTF is currently built from
+        — ``{'donor', 'rank', 'tier', 'timestamp'}``, or ``{}`` if none has
+        been set. Written by the learning-transfer protocol on build and on
+        ``use_donor()``, and read back by ``load_existing_donor()`` so a later
+        session reloads the donor the participant was actually trained on
+        rather than whatever the selection rule ranks first today. The full
+        candidate ranking is not here — it is embedded in the composite SOFA
+        as ``GLOBAL_ModificationParams``.
     localization : dict[str, slab.Trialsequence]
         Localization runs keyed by filename ``<id>_<date>_<hrir>``, in
         insertion (chronological) order. Each value is the completed test
@@ -94,6 +103,7 @@ class Subject:
             self.last_sequence = None
             self.highscore = 0
             self.demographics = {}
+            self.active_donor = {}
 
     def _load(self):
         logging.info("Loading subject data.")
@@ -106,6 +116,9 @@ class Subject:
         self.highscore = data.get("highscore", 0)
         # {} for records created before demographics were collected
         self.demographics = data.get("demographics", {})
+        # {} for records created before the donor was tracked here (it used to
+        # live in a <id>_donor_log.csv next to the plots)
+        self.active_donor = data.get("active_donor", {})
 
     def write(self):
         logging.debug("Writing subject data.")
@@ -117,6 +130,7 @@ class Subject:
             "last_sequence": self.last_sequence,
             "highscore": self.highscore,
             "demographics": self.demographics,
+            "active_donor": self.active_donor,
         }
         with open(self.file_path, "wb") as f:
             pickle.dump(data, f)

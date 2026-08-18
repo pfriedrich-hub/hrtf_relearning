@@ -274,16 +274,5 @@ if __name__ == '__main__':
                                       'ridge_slope', 'eligible')} for row in rows])
     _embed_modification_params(out_path, params)
     print(f'wrote {out_path}')
-
-    # the full ranking next to the SOFA, for the supplement
-    import csv
-    csv_path = plot_dir / f'{stem}_donor_ranking.csv'
-    with open(csv_path, 'w', newline='') as handle:
-        fields = ['donor', 'vsi_dissimilarity', 'vsi', 'own_vsi', 'i_sim',
-                  'peak_r', 'ridge_slope', 'ridge_bias', 'distance',
-                  'eligible', 'fallback']
-        writer = csv.DictWriter(handle, fieldnames=fields)
-        writer.writeheader()
-        for row in rows:
-            writer.writerow({k: row.get(k) for k in fields})
-    print(f'wrote {csv_path}')
+    # The candidate ranking is embedded in the SOFA above (params['ranking']);
+    # it is deliberately not also dumped as a CSV next to the plots.

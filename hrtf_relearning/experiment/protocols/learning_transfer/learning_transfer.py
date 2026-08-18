@@ -36,10 +36,11 @@ DONOR SWAPS. The rule produces a ranked shortlist, not a single name, so a
 participant who is at floor with the first donor can be moved to the second
 without inventing a criterion on the spot. Stage the alternates before the
 session with prepare_donor_shortlist(), swap with use_donor(rank=1, reason=...).
-Every change is appended to <SUBJECT>_donor_log.csv. A swap is still a
-data-dependent decision — the discarded block was run, and both donors belong
-in the participant's record — so the log is not optional bookkeeping, it is
-what makes the decision reportable.
+The active donor is recorded in the subject pickle (subject.active_donor), so a
+later session reloads the donor the participant was actually trained on and not
+whatever the rule ranks first once the pool has grown. Only the current donor is
+kept there; the candidate ranking behind the choice is embedded in the composite
+SOFA as GLOBAL_ModificationParams.
 
 The monaural ear treatment is orthogonal and selectable via OTHER_EAR
 ('flat' | 'envelope' | 'native'); which one to use is still an open question,
@@ -301,28 +302,26 @@ def donor_shortlist(refresh=False, quiet=False):
     return _SHORTLIST
 
 
-def _log_donor_event(event, donor_id, rank, reason=""):
-    """Append to <SUBJECT>_donor_log.csv — the audit trail for a swap.
+def _set_active_donor(donor_id, rank, reason=""):
+    """Record the donor this participant is currently on, in their pickle.
 
-    Swapping donor mid-session is a DATA-DEPENDENT decision: it is made after
-    hearing how the participant performs. That is defensible only if what was
-    tried, in what order, and why is on record, so this is written every time
-    the active donor changes. The order itself is fixed by the rule before the
-    participant hears anything (see selection.shortlist), so the only free
-    parameter is how far down the list you went.
+    Stored as subject.active_donor so a later session can reload the donor the
+    participant was actually trained on rather than whatever the selection rule
+    ranks first today (the pool grows as subjects are added, so rank 0 is not
+    stable over time). Overwritten on each change — only the current donor is
+    kept; the candidate ranking behind the choice lives in the composite SOFA
+    as GLOBAL_ModificationParams.
     """
     import datetime
-    plot_dir = paths.subject_acoustic_dir(SUBJECT_ID)
-    plot_dir.mkdir(parents=True, exist_ok=True)
-    log_path = plot_dir / f"{SUBJECT_ID}_donor_log.csv"
-    new = not log_path.exists()
-    with open(log_path, "a", newline="") as handle:
-        writer = csv.writer(handle)
-        if new:
-            writer.writerow(["timestamp", "event", "donor", "rank", "reason"])
-        writer.writerow([datetime.datetime.now().isoformat(timespec="seconds"),
-                         event, donor_id, rank, reason])
-    return log_path
+    subject = hr.Subject(SUBJECT_ID)
+    subject.active_donor = {
+        "donor": donor_id,
+        "rank": rank,
+        "reason": reason,
+        "timestamp": datetime.datetime.now().isoformat(timespec="seconds"),
+    }
+    subject.write()
+    return subject.active_donor
 
 
 def build_donor_sofa(overwrite=False, show_qc=True, n_keep=None, rank=0,
@@ -385,7 +384,7 @@ def build_donor_sofa(overwrite=False, show_qc=True, n_keep=None, rank=0,
     name = _modified_name(donor_id, n_keep)
     if is_default and set_active:
         DONOR_ID, MODIFIED_SOFA = donor_id, name
-        _log_donor_event("build", donor_id, chosen["rank"], chosen["tier"])
+        _set_active_donor(donor_id, chosen["rank"], chosen["tier"])
     out_path = sofa_dir / f"{name}.sofa"
     if out_path.exists() and not overwrite:
         if not quiet:
@@ -466,15 +465,6 @@ def build_donor_sofa(overwrite=False, show_qc=True, n_keep=None, rank=0,
 
     plot_dir = paths.subject_acoustic_dir(SUBJECT_ID)
     plot_dir.mkdir(parents=True, exist_ok=True)
-    with open(plot_dir / f"{name}_donor_ranking.csv", "w", newline="") as handle:
-        fields = ['rank', 'donor', 'tier', 'donor_strength', 'vsi_dissimilarity',
-                  'vsi', 'own_vsi', 'i_sim', 'peak_r', 'ridge_slope',
-                  'ridge_bias', 'distance', 'eligible', 'in_band']
-        writer = csv.DictWriter(handle, fieldnames=fields)
-        writer.writeheader()
-        for row in rows:
-            writer.writerow({k: row.get(k) for k in fields})
-
     if show_qc:
         fig = plot_ears(own, modified, vsi_dis=chosen["vsi_dissimilarity"],
                         vsi_bw=selection.DEFAULT_BAND, band=selection.DEFAULT_BAND,
@@ -552,7 +542,80 @@ def prepare_donor_shortlist(n=3, mirrored=True, overwrite=False):
     print(f"\nstaged: {', '.join(staged)}")
     print(f"active: {DONOR_ID}  ({MODIFIED_SOFA})")
     print(f"swap with  use_donor(rank=1, reason='...')")
+    print(f"once the donor is settled: discard_unused_donors()")
     return staged
+
+
+def discard_unused_donors(dry_run=True, keep=None):
+    """Delete every staged donor for this subject except the active one.
+
+    Staging costs ~4 MB of SOFA plus two pyBinSim databases per candidate, and
+    after the day-1 baselines the choice is made — the alternates are dead
+    weight that also makes it ambiguous, months later, which composite the
+    participant actually heard. Run this once the donor is settled.
+
+    Keeps the active donor's SOFA and databases, and never touches the native
+    <SUBJECT_ID>.sofa. The discarded ones are reproducible at any time from
+    build_donor_sofa(donor_id=...), so nothing unrecoverable is lost — the
+    selection record stays in the surviving SOFA's GLOBAL_ModificationParams
+    and in subject.active_donor.
+
+    Defaults to ``dry_run=True``: it prints what it would remove and removes
+    nothing. Call again with ``dry_run=False`` to actually delete. Pass
+    ``keep=['XX']`` to spare extra donors (e.g. one you still mean to compare).
+    """
+    import shutil
+
+    active = DONOR_ID or _last_active_donor()
+    if active is None:
+        raise RuntimeError(
+            "no active donor for this subject — run build_donor_sofa() or "
+            "load_existing_donor() first, or this would delete everything.")
+
+    # Match on the exact composite name, not on the donor id appearing in the
+    # stem: '<SID>_donor_AS' is a PREFIX of '<SID>_donor_AS_n8', so a substring
+    # or startswith test would silently spare the n_keep=8 ladder build too.
+    # That build is a diagnostic, not what the participant was trained on, so
+    # it goes with the rest unless named in `keep`.
+    # The binsim directory name depends on OTHER_EAR, which may have been a
+    # different setting when a database was built than it is in the config
+    # block today. Spare every variant the active composite could have
+    # produced, so a since-changed setting can never make this delete the
+    # database the participant is actually being tested on.
+    global OTHER_EAR
+    spared_sofa, spared_binsim = set(), set()
+    for donor in {active, *(keep or [])}:
+        name = _modified_name(donor)
+        spared_sofa.add(name)
+        for other_ear in ("flat", "envelope", "native"):
+            OTHER_EAR, current = other_ear, OTHER_EAR
+            try:
+                spared_binsim.update(_binsim_names(name, m) for m in (False, True))
+            finally:
+                OTHER_EAR = current
+
+    sofa_dir = paths.SOFA_DIR / SUBJECT_ID
+    victims = [p for p in sorted(sofa_dir.glob(f"{SUBJECT_ID}_donor_*.sofa"))
+               if p.stem not in spared_sofa]
+    victims += [p for p in sorted(paths.BINSIM_DIR.glob(f"{SUBJECT_ID}_donor_*"))
+                if p.is_dir() and p.name not in spared_binsim]
+
+    if not victims:
+        print(f"{SUBJECT_ID}: nothing to discard (active donor {active})")
+        return []
+
+    total = sum(f.stat().st_size for v in victims
+                for f in ([v] if v.is_file() else v.rglob("*")) if f.is_file())
+    print(f"{SUBJECT_ID}: keeping {', '.join(sorted(spared))}; "
+          f"{'would remove' if dry_run else 'removing'} {len(victims)} item(s), "
+          f"{total / 1e6:.1f} MB")
+    for v in victims:
+        print(f"    {'[dry-run] ' if dry_run else ''}{v.relative_to(paths.DATA_DIR)}")
+        if not dry_run:
+            shutil.rmtree(v) if v.is_dir() else v.unlink()
+    if dry_run:
+        print("  nothing deleted — re-run with dry_run=False to apply")
+    return victims
 
 
 def use_donor(rank=None, donor_id=None, reason=""):
@@ -563,7 +626,7 @@ def use_donor(rank=None, donor_id=None, reason=""):
     degradation, not an abolished cue. ``rank=1`` moves to the next donor on
     the rule's list.
 
-    ``reason`` goes in <SUBJECT>_donor_log.csv and should say what was observed
+    ``reason`` is stored on subject.active_donor and should say what was observed
     ('EG 0.02 on baseline A, at floor'), because a swap made after seeing the
     data has to be reportable as such. It is NOT free: the discarded block was
     still run, and both the discarded and the replacement donor belong in the
@@ -610,8 +673,8 @@ def use_donor(rank=None, donor_id=None, reason=""):
                             overwrite=False, build=True)
 
     DONOR_ID, MODIFIED_SOFA = row["donor"], name
-    _log_donor_event("swap", row["donor"], row["rank"],
-                     reason or f"(no reason given; from {previous})")
+    _set_active_donor(row["donor"], row["rank"],
+                      reason or f"(no reason given; from {previous})")
     print(f"\nactive donor: {previous} -> {row['donor']}   (rank {row['rank']}, "
           f"{row['tier']}, VSI-dis {row['vsi_dissimilarity']:.3f}, ridge "
           f"{row['ridge_slope']:+.2f}, strength {row['donor_strength']:.1f} dB)")
@@ -619,33 +682,26 @@ def use_donor(rank=None, donor_id=None, reason=""):
     print(f"  !! set DONOR_ID = '{row['donor']}' in the config block at the top "
           f"so later sessions reload THIS donor, not the rank-0 one.")
     if not reason:
-        print("  !! no reason logged — edit the last row of "
-              f"{SUBJECT_ID}_donor_log.csv to say what was observed.")
+        print("  !! no reason recorded — re-run use_donor(..., reason=...) "
+              "to say what was observed.")
     return row
 
 
 def _last_active_donor():
-    """The donor most recently made active, from <SUBJECT>_donor_log.csv."""
-    log_path = paths.subject_acoustic_dir(SUBJECT_ID) / f"{SUBJECT_ID}_donor_log.csv"
-    if not log_path.exists():
-        return None
-    with open(log_path, newline="") as handle:
-        rows = [row for row in csv.DictReader(handle)
-                if row.get("event") in ("build", "swap")]
-    return rows[-1]["donor"] if rows else None
+    """The donor this participant is currently on, from their pickle."""
+    return (hr.Subject(SUBJECT_ID).active_donor or {}).get("donor")
 
 
 def show_donor_log():
-    """Every donor this participant was put on, in order. Read before analysis."""
-    log_path = paths.subject_acoustic_dir(SUBJECT_ID) / f"{SUBJECT_ID}_donor_log.csv"
-    if not log_path.exists():
-        print(f"no donor log for {SUBJECT_ID}")
+    """The donor this participant is on. Read before analysis."""
+    record = hr.Subject(SUBJECT_ID).active_donor or {}
+    if not record:
+        print(f"no donor recorded for {SUBJECT_ID}")
         return
-    print(f"{'when':>20} {'event':>6} {'donor':>12} {'rank':>4}  reason")
-    with open(log_path, newline="") as handle:
-        for row in csv.DictReader(handle):
-            print(f"{row['timestamp']:>20} {row['event']:>6} {row['donor']:>12} "
-                  f"{row['rank']:>4}  {row['reason']}")
+    print(f"{SUBJECT_ID}: donor {record.get('donor')} (rank {record.get('rank')}) "
+          f"set {record.get('timestamp')}")
+    if record.get("reason"):
+        print(f"  reason: {record['reason']}")
 
 
 def load_existing_donor():

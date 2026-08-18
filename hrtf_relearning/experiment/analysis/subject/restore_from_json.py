@@ -149,6 +149,44 @@ def main():
     print(f"\nResult: +{added} runs added, {skipped} skipped → "
           f"{len(merged_loc)} total runs")
 
+    # --- everything else the archive now carries ---------------------------
+    # Older archives hold only id/highscore/demographics/localization, so each
+    # of these is restored only when present AND when the target has nothing
+    # better. Trials are the important one: they used to be archived nowhere,
+    # so a rebuilt pickle silently came back with the training record empty.
+    with open(args.json_file, "r", encoding="utf-8") as f:
+        raw = json.load(f) or {}
+
+    json_trials = raw.get("trials")
+    if json_trials is None:
+        print("  [!] this archive predates trial backup — training data cannot "
+              "be restored from it (raw pose traces are gone either way)")
+    elif len(json_trials) > len(target.get("trials") or []):
+        n_before = len(target.get("trials") or [])
+        target["trials"] = json_trials
+        print(f"  trials: {n_before} → {len(json_trials)} restored from archive "
+              f"(pose_trace summarised as pose_metrics, raw samples not recoverable)")
+    else:
+        print(f"  trials: keeping target's {len(target.get('trials') or [])} "
+              f"(archive has {len(json_trials)})")
+
+    for field in ("demographics", "active_donor"):
+        if raw.get(field) and not target.get(field):
+            target[field] = raw[field]
+            print(f"  {field}: restored from archive")
+
+    if raw.get("highscore") and int(raw["highscore"]) > int(target.get("highscore") or 0):
+        target["highscore"] = int(raw["highscore"])
+        print(f"  highscore: restored {target['highscore']} from archive")
+
+    # last_sequence is archived as a key; repoint it at the reconstructed run
+    name = raw.get("last_sequence")
+    if name and not target.get("last_sequence"):
+        target["last_sequence"] = merged_loc.get(name)
+        print(f"  last_sequence: repointed at {name!r}"
+              if name in merged_loc else
+              f"  [!] last_sequence {name!r} not among the restored runs")
+
     if args.dry_run:
         print("\n[dry-run] Nothing written.")
         return
@@ -166,7 +204,13 @@ def main():
     json_out.parent.mkdir(parents=True, exist_ok=True)
     try:
         payload = {"id": target["id"], "highscore": int(target.get("highscore") or 0),
-                   "localization": _to_jsonable(target["localization"])}
+                   "demographics": target.get("demographics") or {},
+                   "active_donor": target.get("active_donor") or {},
+                   "last_sequence": getattr(target.get("last_sequence"), "name", None),
+                   "localization": _to_jsonable(target["localization"]),
+                   "trials": [_to_jsonable({k: v for k, v in (t or {}).items()
+                                            if k != "pose_trace"})
+                              for t in (target.get("trials") or [])]}
         tmp = json_out.with_suffix(".json.tmp")
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(payload, f, indent=2, ensure_ascii=False)

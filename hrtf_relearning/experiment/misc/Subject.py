@@ -107,8 +107,23 @@ class Subject:
 
     def _load(self):
         logging.info("Loading subject data.")
-        with open(self.file_path, "rb") as f:
-            data = pickle.load(f)
+        try:
+            with open(self.file_path, "rb") as f:
+                data = pickle.load(f)
+        except (pickle.UnpicklingError, EOFError, ValueError) as exc:
+            # 'invalid load key, \xef' is what a text-editor round-trip looks
+            # like from here, and it says nothing about what to do next.
+            from hrtf_relearning.utils.integrity import is_mangled_pickle
+            if is_mangled_pickle(self.file_path):
+                raise OSError(
+                    f"{self.file_path.name} was destroyed by a text editor: it "
+                    f"decodes as UTF-8 and is full of U+FFFD, so the original "
+                    f"bytes are gone. Recover from git history (git log --follow "
+                    f"-- {self.file_path}) or rebuild from {self.backup_path.name} "
+                    f"with experiment/analysis/subject/restore_from_json.py. See "
+                    f"hrtf_relearning/utils/integrity.py."
+                ) from exc
+            raise
         self.id = data.get("id", self.id)
         self.localization = data.get("localization", {})
         self.trials = data.get("trials", [])
@@ -135,6 +150,36 @@ class Subject:
         with open(self.file_path, "wb") as f:
             pickle.dump(data, f)
         self._write_backup()
+
+    def _archivable_trials(self):
+        """Training trials for the JSON archive: every field except pose_trace,
+        with the trace replaced by its summary metrics.
+
+        The raw ~48 Hz head trace is 97.6% of the volume of `trials` (IR: 7.9 MB
+        with it, 190 KB without), which is why trials were left out of the
+        archive entirely — and why a destroyed pickle used to take the whole
+        training record with it. Summarising the trace (see
+        analysis/training/pose_metrics.py) makes the archive complete at ~70x
+        less volume, at the cost of the raw samples, which stay in the pickle.
+
+        The metrics are also written back onto the in-memory trials, so they
+        land in the pickle too and analysis need not recompute them.
+        """
+        try:
+            from hrtf_relearning.experiment.analysis.training.pose_metrics import (
+                add_pose_metrics)
+            add_pose_metrics(self.trials)
+        except Exception:
+            logging.exception("Could not compute pose metrics for %s; archiving "
+                              "trials without them.", self.id)
+        out = []
+        for trial in self.trials or []:
+            if not trial:
+                out.append({})
+                continue
+            out.append(_to_jsonable({k: v for k, v in trial.items()
+                                     if k != "pose_trace"}))
+        return out
 
     def _backup_pickle(self):
         """Copy the authoritative pickle to <id>.pkl.bak before a destructive
@@ -390,7 +435,12 @@ class Subject:
                 "id": self.id,
                 "highscore": int(self.highscore) if self.highscore is not None else 0,
                 "demographics": dict(self.demographics or {}),
+                "active_donor": _to_jsonable(self.active_donor or {}),
+                # last_sequence is one of the localization runs; archive the key
+                # rather than a second copy of the whole run.
+                "last_sequence": getattr(self.last_sequence, "name", None),
                 "localization": merged,
+                "trials": self._archivable_trials(),
             }
             # Write via temp file + replace so a crash mid-write can't
             # leave a half-written backup on disk.

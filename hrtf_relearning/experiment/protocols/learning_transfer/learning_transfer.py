@@ -322,6 +322,41 @@ def _set_active_donor(donor_id, rank, reason=""):
     return subject.active_donor
 
 
+def _save_qc_figure(own, modified, name, chosen, n_keep, donor_id,
+                    show=True, quiet=False, overwrite=False):
+    """Write plots/acoustic/<name>.png — the before/after 2x2.
+
+    ALWAYS saved, `show` only decides whether it is displayed. It is provenance
+    in the same sense as the ranking CSV: the picture of what this participant
+    was actually given. Tying the save to a display flag is what left AS with
+    six donor SOFAs and no figures — staging builds pass show_qc=False, and by
+    the time the day-1 cell ran the files existed, so the build returned early
+    and never reached the plot.
+
+    ``modified`` may be a path, so this also works on the already-built path
+    where nothing is in memory.
+    """
+    plot_dir = paths.subject_acoustic_dir(SUBJECT_ID)
+    plot_dir.mkdir(parents=True, exist_ok=True)
+    out_png = plot_dir / f"{name}.png"
+    if out_png.exists() and not overwrite and not show:
+        return out_png
+    if not isinstance(modified, slab.HRTF):
+        modified = slab.HRTF(str(modified))
+        modified.name = name
+    fig = plot_ears(own, modified, vsi_dis=chosen["vsi_dissimilarity"],
+                    vsi_bw=selection.DEFAULT_BAND, band=selection.DEFAULT_BAND,
+                    suptitle=f"{SUBJECT_ID}  own envelope (n_keep={n_keep}) "
+                             f"+ {donor_id} detail", show=show)
+    fig.savefig(out_png, bbox_inches="tight")
+    if not show:
+        import matplotlib.pyplot as _plt
+        _plt.close(fig)
+    if not quiet:
+        print(f"QC figure: {out_png}")
+    return out_png
+
+
 def build_donor_sofa(overwrite=False, show_qc=True, n_keep=None, rank=0,
                      donor_id=None, set_active=True, quiet=False):
     """Build one composite, write it, return (path, donor_id).
@@ -387,6 +422,10 @@ def build_donor_sofa(overwrite=False, show_qc=True, n_keep=None, rank=0,
     if out_path.exists() and not overwrite:
         if not quiet:
             print(f"{out_path.name} already exists (overwrite=False) -- skipping build")
+        # self-healing: the SOFA may have been written by a staging build that
+        # never drew the figure. Re-read it rather than leave the record short.
+        _save_qc_figure(own, out_path, name, chosen, n_keep, donor_id,
+                        show=show_qc, quiet=quiet)
         return out_path, donor_id
 
     # extra provenance for whatever this build did beyond the donor step. The
@@ -461,15 +500,8 @@ def build_donor_sofa(overwrite=False, show_qc=True, n_keep=None, rank=0,
                        "QC reference for the _env file next to it"}))
         print(f"wrote {binaural_path}")
 
-    plot_dir = paths.subject_acoustic_dir(SUBJECT_ID)
-    plot_dir.mkdir(parents=True, exist_ok=True)
-    if show_qc:
-        fig = plot_ears(own, modified, vsi_dis=chosen["vsi_dissimilarity"],
-                        vsi_bw=selection.DEFAULT_BAND, band=selection.DEFAULT_BAND,
-                        suptitle=f"{SUBJECT_ID}  own envelope (n_keep={n_keep}) "
-                                 f"+ {donor_id} detail")
-        fig.savefig(plot_dir / f"{name}.png", bbox_inches="tight")
-        print(f"QC figure: {plot_dir / f'{name}.png'}")
+    _save_qc_figure(own, modified, name, chosen, n_keep, donor_id,
+                    show=show_qc, quiet=quiet)
     return out_path, donor_id
 
 
@@ -584,7 +616,12 @@ def discard_unused_donors(dry_run=True, keep=None):
     spared_sofa, spared_binsim = set(), set()
     for donor in {active, *(keep or [])}:
         name = _modified_name(donor)
-        spared_sofa.add(name)
+        # On v2 a donor has TWO files: the reduced one the blocks load
+        # (_modified_name, '<SID>_donor_<D>_env4_<ear>') and the binaural
+        # composite kept as its QC reference (_binaural_name, '<SID>_donor_<D>').
+        # Sparing only the first would delete the QC reference for the donor
+        # that was actually used. On v1 the two names coincide.
+        spared_sofa.update((name, _binaural_name(donor)))
         for other_ear in ("flat", "envelope", "native"):
             OTHER_EAR, current = other_ear, OTHER_EAR
             try:

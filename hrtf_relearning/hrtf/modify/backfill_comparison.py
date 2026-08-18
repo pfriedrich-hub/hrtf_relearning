@@ -81,8 +81,17 @@ def sofa_pairs(root=None, in_pilot_tree=False):
     return out
 
 
-def backfill(overwrite=False, only=None, band=DEFAULT_BAND, write=False):
-    """Write the 2x2 for every (native, modified) pair. Returns a report list."""
+def backfill(overwrite=False, only=None, band=DEFAULT_BAND, write=False,
+             allow_stale=False):
+    """Write the 2x2 for every (native, modified) pair. Returns a report list.
+
+    A modified SOFA older than the native beside it is skipped: the native has
+    been re-recorded since, so the two are not a before/after pair. AS is the
+    worked example — AS_shift.sofa (13 Jul) sits next to an AS.sofa re-recorded
+    on 18 Aug, same 475x512 grid and same rate, so it plots perfectly happily
+    and means nothing (0 of 475 directions bit-identical, waveform correlation
+    0.49). Matching grids are not evidence of a matching recording.
+    """
     report = []
     for results_id, native_path, modified_paths, from_pilot_tree in sofa_pairs():
         short = results_id.split('/')[-1]
@@ -100,6 +109,11 @@ def backfill(overwrite=False, only=None, band=DEFAULT_BAND, write=False):
             out_path = out_dir / f'{prefix}{modified_path.stem}.png'
             if out_path.exists() and not overwrite:
                 report.append((results_id, modified_path.stem, 'exists', ''))
+                continue
+            if (not allow_stale
+                    and modified_path.stat().st_mtime < native_path.stat().st_mtime):
+                report.append((results_id, modified_path.stem, 'STALE',
+                               'older than the native beside it — re-recorded since'))
                 continue
             if not write:
                 report.append((results_id, modified_path.stem, 'would write',
@@ -137,15 +151,18 @@ def main():
                         help='redo figures that already exist')
     parser.add_argument('--only', default=None, help='one subject id')
     parser.add_argument('--band', nargs=2, type=float, default=DEFAULT_BAND)
+    parser.add_argument('--allow-stale', action='store_true',
+                        help='plot pairs whose modified file predates the native')
     args = parser.parse_args()
 
     report = backfill(overwrite=args.overwrite, only=args.only,
-                      band=tuple(args.band), write=args.write)
+                      band=tuple(args.band), write=args.write,
+                      allow_stale=args.allow_stale)
     width = max((len(r[0]) for r in report), default=10)
     counts = {}
     for results_id, name, status, detail in report:
         counts[status] = counts.get(status, 0) + 1
-        note = f'   {detail}' if status == 'FAILED' else ''
+        note = f'   {detail}' if status in ('FAILED', 'STALE') else ''
         print(f'{results_id:<{width}}  {name:<28} {status}{note}')
     print('\n' + '  '.join(f'{k}: {v}' for k, v in sorted(counts.items())))
     if not args.write:

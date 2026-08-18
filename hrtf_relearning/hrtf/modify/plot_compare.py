@@ -71,7 +71,7 @@ def _build_tf_image(hrtf, sourceidx, ear, n_bins, xlim, floor_db=-25):
 
 
 def plot_ears(hrtf, hrtf_modified, n_bins=None, xlim=(1000, 18000),
-              vsi_dis=None, vsi_bw=None, band=None, suptitle=None):
+              vsi_dis=None, vsi_bw=None, band=None, suptitle=None, show=True):
     """2x2 before/after image: rows are the two ears, columns original/modified.
 
     The standard QC figure for any manipulation that touches both ears
@@ -141,8 +141,11 @@ def plot_ears(hrtf, hrtf_modified, n_bins=None, xlim=(1000, 18000),
         fig.text(0.5, 0.01,
                  f'VSI dissimilarity = {vsi_dis:.3f}   ({bandwidth}, Trapeau et al. 2016)',
                  ha='center', va='bottom', fontsize=9)
-    plt.show(block=False)
-    plt.pause(0.1)
+    # `show=False` returns the figure without displaying it, so a caller can
+    # save it as provenance without three windows opening during donor staging.
+    if show:
+        plt.show(block=False)
+        plt.pause(0.1)
     return fig
 
 

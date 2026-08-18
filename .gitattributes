@@ -1,0 +1,18 @@
+# Data files are binary. Git's own heuristic already detects these correctly
+# (they all carry a NUL within the first few bytes), so this is belt-and-braces
+# rather than a fix: it stops any client, GUI or merge driver that consults
+# .gitattributes instead of sniffing the content from treating them as text.
+#
+# The corruption this guards against is NOT introduced by git — see
+# .githooks/pre-commit and docs/data_integrity.md. It is an editor writing a
+# pickle back out after decoding it as UTF-8, which is silent and lossy.
+
+*.pkl   binary
+*.sofa  binary
+*.wav   binary
+*.mat   binary
+*.npy   binary
+*.npz   binary
+*.png   binary
+*.jpg   binary
+*.pdf   binary

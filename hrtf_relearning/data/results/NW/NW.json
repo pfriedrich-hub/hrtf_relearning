@@ -2,6 +2,8 @@
   "id": "NW",
   "highscore": 0,
   "demographics": {},
+  "active_donor": {},
+  "last_sequence": "NW_18.08_10-48_NW",
   "localization": {
     "NW_18.08_09-32_dome": {
       "__class__": "slab.psychoacoustics.Trialsequence",
@@ -4931,5 +4933,6 @@
         ]
       ]
     }
-  }
+  },
+  "trials": []
 }

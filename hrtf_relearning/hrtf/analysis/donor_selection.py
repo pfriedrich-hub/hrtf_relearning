@@ -325,6 +325,102 @@ def pairwise_reference(hrtfs, n_keep=DEFAULT_N_KEEP, bandwidth=DEFAULT_BAND,
     return numpy.array(sorted(pairs.values())), pairs
 
 
+# ---------------------------------------------------------------------------
+# Van Wanrooij & Van Opstal (2005) I_sim — J Neurosci 25(22):5413-5424
+#
+# THE REASON THIS IS HERE. Trapeau's VSI needs DTFs normalised by a grand
+# average over directions distributed AROUND the listener, which this rig
+# cannot produce: only the az=0 arc is measured. Van Opstal's DTF (their Eq. 1)
+# is normalised by the grand average across the elevations OF THE ARC, which is
+# exactly what is measured here. So this is the published measure whose
+# normalisation is actually available with this geometry, and it comes from the
+# monaural perturbation study this experiment is modelled on.
+#
+# Their band is 4-20 kHz. Use 4-18 kHz here: the recordings are equalised
+# against the reference only up to 18 kHz (record_hrir, inversion_range_hz).
+#
+# ANCHORS, and the scale correction they imply. Their Fig 7A gives I_sim = 0.5
+# for a normal listener's own left ear against their own right, and Fig 7C
+# gives 0.3 for their molds. Measured here with the same definition: own left
+# vs own right = 0.37 (n=31, range 0.18-0.51), between listeners same ear =
+# 0.25 (465 pairs). Both come out ~0.74x their values, which is expected --
+# I_sim is an SD across correlations and therefore scales with the elevation
+# sampling (19 elevations over +-37.5 deg here against their 25 over a wider
+# arc). Because the ratio is the same at both anchors, their numbers can be
+# carried over by scaling rather than used raw. DO NOT compare a raw I_sim
+# computed here against 0.3 or 0.5 without that correction.
+# ---------------------------------------------------------------------------
+
+VANOPSTAL_BAND = (4000.0, 18000.0)
+
+
+def vanopstal_dtfs(hrtf, bandwidth=VANOPSTAL_BAND):
+    """DTFs per their Eq. 1: spectrum / grand average across the arc elevations.
+
+    Returns ``({'left': (n_el, n_bin) dB, 'right': ...}, elevations)``. The
+    normalisation is the whole point -- it removes the component common to all
+    directions (microphone, canal, any residual room), which is what makes a
+    correlation between two DTF sets interpretable. Without it, correlations
+    are dominated by that shared component.
+    """
+    sources = vsi_module.median_plane_sources(hrtf)
+    elevations = numpy.asarray(hrtf.sources.vertical_polar[sources, 1], dtype=float)
+    n_taps = hrtf[0].data.shape[0]
+    freqs = numpy.fft.rfftfreq(n_taps, 1.0 / float(hrtf[0].samplerate))
+    in_band = numpy.logical_and(freqs >= bandwidth[0], freqs <= bandwidth[1])
+
+    out = {}
+    for channel, ear in ((0, 'left'), (1, 'right')):
+        magnitude = numpy.stack([
+            numpy.abs(numpy.fft.rfft(
+                numpy.asarray(hrtf[index].data, dtype=float)[:, channel], n_taps))
+            for index in sources])
+        grand = magnitude.mean(axis=0, keepdims=True)
+        ratio = magnitude / numpy.maximum(grand, 1e-20)
+        out[ear] = 20.0 * numpy.log10(numpy.maximum(ratio, 1e-12))[:, in_band]
+    return out, elevations
+
+
+def isim(own_dtfs, candidate_dtfs):
+    """Their similarity index, for one ear.
+
+    ``C(e1, e2)`` is the correlation between the own DTF at ``e1`` and the
+    candidate DTF at ``e2``. For each candidate elevation, take the SD of its
+    correlations with all own DTFs; ``I_sim`` is the mean of those SDs.
+
+    High means the candidate still discriminates elevation the way the
+    listener's own ear does (correlation concentrated on the diagonal); low
+    means no elevation is well matched by any. Deliberately blind to WHERE the
+    match sits, so it does not distinguish a map that moved from one that
+    vanished -- pair it with ``matrix_metrics(...)['ridge_slope']`` if that
+    distinction matters.
+
+    In their data I_sim predicted acute pre-adaptation elevation gain with
+    r^2 = 0.94 (n=6), which is why it is the natural quantity to target: it is
+    a proxy for the acute degradation the manipulation is supposed to produce.
+    """
+    return float(numpy.mean(numpy.std(_correlate(own_dtfs, candidate_dtfs), axis=0)))
+
+
+def composite_isim(own_hrtf, donor_hrtf, bandwidth=VANOPSTAL_BAND):
+    """I_sim of the own-envelope + donor-detail composite against the own ears.
+
+    Ear-averaged. Because the cepstral split is linear in log magnitude, the
+    composite's detail is the donor's detail, so this is very close to scoring
+    the donor directly; it is computed on the actual composite anyway so that
+    what is reported is what is delivered.
+    """
+    own, _ = vanopstal_dtfs(own_hrtf, bandwidth)
+    donor, _ = vanopstal_dtfs(donor_hrtf, bandwidth)
+    values = []
+    for ear in EARS:
+        # own envelope + donor detail, in the normalised dB domain
+        own_env, _ = split_log_magnitude(10.0 ** (own[ear].T / 20.0), n_keep=N_KEEP)
+        _, donor_det = split_log_magnitude(10.0 ** (donor[ear].T / 20.0), n_keep=N_KEEP)
+        values.append(isim(own[ear], (own_env + donor_det).T))
+    return float(numpy.mean(values))
+
+
 def detail_strength(split, bandwidth=DEFAULT_BAND, resolution=DEFAULT_RESOLUTION):
     """How strong ONE recording's own elevation cue is, in dB. Ear-averaged.
 

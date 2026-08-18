@@ -1,0 +1,69 @@
+#!/usr/bin/env python3
+"""Refuse to commit a pickle that a text editor has destroyed.
+
+Enable once per clone (do this on the VR Lab and fflab rigs too — the mangled
+files in this repo's history came from more than one machine):
+
+    git config core.hooksPath .githooks
+
+A subject pickle opened in an editor that decodes it as UTF-8 and saves it back
+loses every non-UTF-8 byte to U+FFFD. It is unrecoverable from the file itself,
+and without this hook it commits silently. See hrtf_relearning/utils/integrity.py.
+"""
+import subprocess
+import sys
+
+REPLACEMENT = b"\xef\xbf\xbd"
+
+
+def staged_pickles():
+    out = subprocess.run(["git", "diff", "--cached", "--name-only",
+                          "--diff-filter=ACM"],
+                         capture_output=True, text=True).stdout
+    return [p for p in out.splitlines() if p.endswith(".pkl")]
+
+
+def staged_blob(path):
+    """The bytes as they would be committed, not as they sit in the worktree."""
+    r = subprocess.run(["git", "show", f":{path}"], capture_output=True)
+    return r.stdout if r.returncode == 0 else None
+
+
+def main():
+    bad = []
+    for path in staged_pickles():
+        blob = staged_blob(path)
+        if not blob:
+            continue
+        try:
+            blob.decode("utf-8")
+        except UnicodeDecodeError:
+            continue          # healthy: a real pickle is not valid UTF-8
+        if REPLACEMENT in blob:
+            bad.append(path)
+
+    if not bad:
+        return 0
+
+    print("COMMIT REJECTED — mangled pickle(s) staged:", file=sys.stderr)
+    for p in bad:
+        print(f"    {p}", file=sys.stderr)
+    print(
+        "\nThese decode as UTF-8 and contain U+FFFD, which means they were opened\n"
+        "in a text editor and saved back. The original bytes are gone.\n"
+        "\nDo NOT commit. Recover first:\n"
+        "    git log --follow -- <path>      # find the last good blob\n"
+        "    git show <commit>:<path> > <path>\n"
+        "or rebuild from the JSON archive:\n"
+        "    python hrtf_relearning/experiment/analysis/subject/restore_from_json.py \\\n"
+        "           <id>.json <id>.pkl\n"
+        "\nThen stop the editor re-opening .pkl as text (PyCharm: Settings ->\n"
+        "Editor -> File Types -> add *.pkl to 'Files opened in associated\n"
+        "application', so a double-click never loads it into the text editor).\n"
+        "\nOverride only if you know what you are doing:  git commit --no-verify\n",
+        file=sys.stderr)
+    return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

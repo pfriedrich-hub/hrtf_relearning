@@ -29,6 +29,16 @@ from hrtf_relearning.utils import paths
 
 ROOT = hrtf_relearning.PATH
 
+# TDT playback rate. The stimulus helpers generate at slab's DEFAULT samplerate,
+# and slab's own default is 8000 Hz -- so a dome block run from a script that
+# never called slab.set_default_samplerate plays a stimulus synthesised at 8 kHz
+# out of a 48828 Hz converter: 6.1x upshift, 37 ms instead of 225 ms, nothing
+# below ~500 Hz. It is audible immediately (thin, no low end) but easy to
+# mistake for a change in the stimulus itself. Localization_AR sets the rate
+# from the HRIR in its __init__; the dome has no HRIR to take it from, so it is
+# pinned here.
+SAMPLERATE = 48828
+
 
 class LocalizationDome:
     """
@@ -76,6 +86,8 @@ class LocalizationDome:
             }
         self.stim_type = loc_settings.get('stim', 'noise')
         self.stim_settings = loc_settings.get('stim_settings', {}) or {}
+        # see SAMPLERATE -- must happen before any stimulus is synthesised
+        slab.set_default_samplerate(loc_settings.get('samplerate', SAMPLERATE))
 
         # Vertical midline speaker positions (hardcoded to match dome layout)
         midline = numpy.array([[  0. , -37.5],
@@ -170,6 +182,13 @@ class LocalizationDome:
         existing callers such as match_ar_dome_loudness are unaffected.
         """
         stim_settings = stim_settings or {}
+        # Guard against synthesising at slab's 8000 Hz module default -- see
+        # SAMPLERATE. 8000 is never a rate this experiment uses, so reaching
+        # here with it set means nobody configured slab in this session.
+        if slab.get_default_samplerate() != SAMPLERATE:
+            logging.warning('slab default samplerate was %d, forcing %d for the dome stimulus',
+                            slab.get_default_samplerate(), SAMPLERATE)
+            slab.set_default_samplerate(SAMPLERATE)
         if stim == 'noise':
             sound, params = make_gapped_pinknoise(), {'kind': 'noise'}
         elif stim == 'ripple':

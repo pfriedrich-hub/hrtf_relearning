@@ -472,7 +472,15 @@ print({k: v.name for k, v in self_runs.items()})
 # 7 midline speakers, so a block is short: TARGETS_PER_SPEAKER=4 gives 28
 # trials, ~3 min. Run the set twice with DOME_REVERSE flipped -- with three
 # blocks in a sitting, order is otherwise confounded with practice.
-from hrtf_relearning.experiment.localization.Localization_dome import LocalizationDome
+from hrtf_relearning.experiment.localization.Localization_dome import (
+    LocalizationDome, SAMPLERATE as DOME_FS)
+
+# The stimulus helpers synthesise at slab's DEFAULT samplerate, and slab's own
+# default is 8000 Hz. Cells 1 and 3 set it, but this cell must not depend on
+# having run them: at 8 kHz the train plays back 6.1x too fast with no energy
+# below ~500 Hz, which sounds like a broken stimulus rather than a wrong rate.
+# LocalizationDome pins it too; this is belt and braces for the cells above.
+slab.set_default_samplerate(DOME_FS)
 
 DOME_ID = SELF_ID
 DOME_CONDITIONS = [('noise', None), ('ripple', 3.0), ('ripple', 8.0)]

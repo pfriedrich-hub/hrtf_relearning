@@ -19,7 +19,8 @@ from pynput import keyboard
 
 import hrtf_relearning
 from hrtf_relearning.experiment.localization.localization_helpers.make_sequence import make_sequence
-from hrtf_relearning.experiment.localization.localization_helpers.stimulus import make_gapped_pinknoise
+from hrtf_relearning.experiment.localization.localization_helpers.stimulus import (
+    make_gapped_pinknoise, make_rippled_pinknoise, RMS_TILT, RMS_CUE, RIPPLE_CUE_MAX)
 from hrtf_relearning.experiment.misc import meta_motion
 from hrtf_relearning.experiment.analysis.localization.localization_analysis import (
     plot_localization, plot_elevation_response,
@@ -46,7 +47,21 @@ class LocalizationDome:
         headphone model). Used only for sequence metadata — no file is loaded.
     loc_settings : dict, optional
         Sequence and stimulus parameters. Keys: 'targets_per_speaker' (int),
-        'min_distance' (float), 'gain' (float). Stim is always 'pinknoise_burst'.
+        'min_distance' (float), 'gain' (float), 'stim' ('noise' | 'ripple'),
+        'stim_settings' (dict, envelope parameters when stim='ripple').
+
+    Notes
+    -----
+    The 'ripple' option is here to test the random source envelope in the
+    FREE FIELD, with the listener's own ears and no processing chain: no
+    headphone equalization, no binaural synthesis, no reverberation model, no
+    head-tracked convolution. If the envelope costs elevation gain here, it is
+    the envelope and nothing else. Read the result as an UPPER BOUND on
+    localizability: own ears give deeper, sharper spectral cues than the
+    cepstrally smoothed and donor-modified transfer functions used in the
+    learning experiment, so an envelope that leaves dome performance intact can
+    still be too deep for a modified HRTF. Confirm in AR before committing a
+    value to the learning-transfer protocol.
     """
 
     def __init__(self, subject, loc_settings=None):
@@ -59,6 +74,8 @@ class LocalizationDome:
                 'targets_per_speaker': 3,
                 'min_distance': 15,
             }
+        self.stim_type = loc_settings.get('stim', 'noise')
+        self.stim_settings = loc_settings.get('stim_settings', {}) or {}
 
         # Vertical midline speaker positions (hardcoded to match dome layout)
         midline = numpy.array([[  0. , -37.5],
@@ -71,7 +88,15 @@ class LocalizationDome:
         self.sequence = make_sequence({'kind': 'standard', **loc_settings}, midline)
         self.sequence.name = self.filename
         self.sequence.label = 'dome'
-        self.sequence.stim = 'pinknoise_burst'
+        # 'noise' | 'ripple', matching Localization_AR. Dome runs recorded before
+        # the ripple option was added carry the old label 'pinknoise_burst';
+        # treat that as 'noise'.
+        self.sequence.stim = self.stim_type
+        self.sequence.stim_settings = self.stim_settings
+        # per-trial source-spectrum recipe, appended by play_trial(). Empty for
+        # 'noise'; for 'ripple' it holds that trial's DCT coefficients, so the
+        # source spectrum of every trial is exactly reconstructible.
+        self.sequence.stim_params = []
         self.target = None
 
     def write(self):
@@ -99,7 +124,10 @@ class LocalizationDome:
             self.motion_sensor.halt()
 
     def play_trial(self):
-        stim = self.make_stim()
+        stim, params = self.make_stim(stim=self.stim_type,
+                                      stim_settings=self.stim_settings,
+                                      return_params=True)
+        self.sequence.stim_params.append(params)
         speaker = freefield.pick_speakers((float(self.target[0]), float(self.target[1])))[0]
         freefield.set_signal_and_speaker(signal=stim, speaker=speaker.index, equalize=True)
         freefield.play()
@@ -124,15 +152,36 @@ class LocalizationDome:
         return float(numpy.mean(stim.ramp(when='both', duration=0.01).level))
 
     @staticmethod
-    def make_stim(level=None):
+    def make_stim(level=None, stim='noise', stim_settings=None, return_params=False):
         """225 ms gapped pinknoise, synthesis IDENTICAL to the AR/VR condition
-        (localization_helpers.stimulus.make_gapped_pinknoise). Only the overall
-        loudness is dome-specific: `level=None` (default) preserves the loudness
-        of the old dome burst-train so the existing gain match holds; pass an
-        explicit dB value once you re-calibrate with KEMAR recordings."""
-        stim = make_gapped_pinknoise()
-        stim.level = LocalizationDome._legacy_burst_train_level() if level is None else level
-        return stim
+        (localization_helpers.stimulus). Only the overall loudness is
+        dome-specific: `level=None` (default) preserves the loudness of the old
+        dome burst-train so the existing gain match holds; pass an explicit dB
+        value once you re-calibrate with KEMAR recordings.
+
+        stim='ripple' recolours the train with a fresh random envelope on every
+        call, exactly as in the AR condition. The level is set AFTER filtering,
+        so both conditions play at the same overall rms -- note that equal rms
+        is not equal loudness for a recoloured stimulus, so expect ripple tokens
+        to differ slightly in loudness from each other. That is intrinsic to the
+        manipulation and is the same in AR.
+
+        `return_params=False` keeps the original signature (returns a Sound), so
+        existing callers such as match_ar_dome_loudness are unaffected.
+        """
+        stim_settings = stim_settings or {}
+        if stim == 'noise':
+            sound, params = make_gapped_pinknoise(), {'kind': 'noise'}
+        elif stim == 'ripple':
+            sound, params = make_rippled_pinknoise(
+                rms_tilt=stim_settings.get('rms_tilt', RMS_TILT),
+                rms_cue=stim_settings.get('rms_cue', RMS_CUE),
+                flat_rms=stim_settings.get('flat_rms', None),
+                ripple_max=stim_settings.get('ripple_max', RIPPLE_CUE_MAX))
+        else:
+            raise ValueError('stim must be "noise" or "ripple".')
+        sound.level = LocalizationDome._legacy_burst_train_level() if level is None else level
+        return (sound, params) if return_params else sound
 
     @staticmethod
     def _init_sensor():

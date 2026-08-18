@@ -83,7 +83,7 @@ from hrtf_relearning.experiment.localization.Localization_AR import Localization
 from hrtf_relearning.hrtf.analysis import donor_selection as selection
 from hrtf_relearning.hrtf.analysis.vsi import vsi as vsi_of
 from hrtf_relearning.hrtf.modify.donor_detail import donor_detail_dtf, modification_params
-from hrtf_relearning.hrtf.processing.envelope import envelope_dtf
+from hrtf_relearning.hrtf.processing.envelope import envelope_dtf, ENVELOPE_BAND
 from hrtf_relearning.hrtf.processing.midline import (midline_arc, expand_from_midline,
                                                      qc_midline, format_qc)
 from hrtf_relearning.hrtf.modify.edge_shift import (embed_modification_params,
@@ -152,14 +152,36 @@ ELEVATION_RANGE    = (-35, 35)
 TARGETS_PER_SECTOR = 3
 MIN_DISTANCE       = 20
 GAIN               = 0.2
-# Every block in this file inherits STIM. It is 'noise' for the whole protocol:
-# baselines, daily tests and the final 2x2 must all be measured with the same
-# stimulus or the change scores are meaningless. A variable-spectrum stimulus
-# ('ripple' | 'uso') belongs only in dedicated final-day comparison blocks, set
-# explicitly there -- NOT here.
+# Every block in this file inherits STIM, and that is the point: baselines,
+# daily tests and the final 2x2 must all be measured with the SAME stimulus or
+# the change scores are meaningless. What must never happen is a mixture within
+# a subject.
 #   !! TS (10.08) and IR (11.08) had their day-1 blocks run with STIM='uso'
 #      because this was left set to 'uso'. See docs/stimulus_spectral_variation.md.
-STIM               = "noise"
+#
+# 'ripple' since 2026-08-17. Plain noise has essentially no across-trial source
+# variation (0.4 dB SD at 1/6 oct against a ~3.3 dB elevation cue), so the sound
+# at the eardrum carries a fixed map from absolute spectrum to elevation and the
+# task can be solved by template matching, without ever separating source from
+# filter. That cannot distinguish a spectral-to-spatial recalibration from a
+# learned timbre->elevation lookup, which is what FS reported doing. The test
+# stimulus therefore varies its source spectrum on every trial, in EVERY block,
+# so the measure is source-invariant throughout rather than only on the last day.
+# Training stays on noise (SOUND_FILE=None -> pink noise).
+#
+# Subjects run before this date were tested on noise. They are pilots and are
+# not pooled with what follows.
+STIM               = "noise"      # -> "ripple" once the depth is settled, below
+# Envelope parameters for STIM='ripple'. Empty dict = inherit the defaults in
+# localization_helpers.stimulus (the single source of truth); set rms_tilt here
+# only to override for a specific cohort, and it is recorded per block in
+# sequence.stim_settings either way.
+#   !! Depth is NOT yet settled: the current default (8 dB rms, 27 dB median
+#      peak-to-trough) sits above the ~20 dB depth at which Macpherson &
+#      Middlebrooks report localization degradation. Run the free-field check
+#      (protocols/dev/stimulus_check.py cells 11-13) and the AR self-test
+#      (cells 7-9) BEFORE flipping STIM to 'ripple' for a participant.
+STIM_SETTINGS      = {}
 MIDLINE_TOL        = 1.0
 FULL_FIELD = (-35, 35)
 
@@ -236,6 +258,7 @@ def loc_settings(azimuth_range, exclude_midline=False):
         "min_distance": MIN_DISTANCE,
         "gain": GAIN,
         "stim": STIM,
+        "stim_settings": STIM_SETTINGS,
         "sector_size": SECTOR_SIZE,
         "replace": False,
         "exclude_midline": exclude_midline,
@@ -369,6 +392,12 @@ def build_donor_sofa(overwrite=False, show_qc=True, n_keep=None, rank=0,
             print(f"{out_path.name} already exists (overwrite=False) -- skipping build")
         return out_path, donor_id
 
+    # extra provenance for whatever this build did beyond the donor step. The
+    # file name says _env4_<ear>; the embedded record has to say the same, or
+    # it is another SOFA nobody can trace (see FD 12:13).
+    pipeline_params = {}
+    binaural_path = None
+
     if PIPELINE == "v1":
         modified = donor_detail_dtf(own, candidates[donor_id], n_keep=n_keep)
     else:
@@ -382,7 +411,8 @@ def build_donor_sofa(overwrite=False, show_qc=True, n_keep=None, rank=0,
         # binaural composite, kept as the QC reference and for the ladder
         binaural = expand_from_midline(arc)
         binaural.name = _binaural_name(donor_id, n_keep)
-        binaural.write_sofa(str(sofa_dir / f"{binaural.name}.sofa"))
+        binaural_path = sofa_dir / f"{binaural.name}.sofa"
+        binaural.write_sofa(str(binaural_path))
 
         arc = envelope_dtf(arc, ear=TRAINED_EAR, n_keep=ENV_NKEEP)
         report = qc_midline(own_arc, arc, processed_ear=UNTRAINED_EAR,
@@ -390,24 +420,49 @@ def build_donor_sofa(overwrite=False, show_qc=True, n_keep=None, rank=0,
         print(format_qc(report))
         modified = expand_from_midline(arc)
 
+        pipeline_params = {
+            "pipeline": "v2",
+            "chain": ("midline_arc -> donor_detail_dtf -> envelope_dtf -> "
+                      "qc_midline -> expand_azimuths_with_binaural_cues"),
+            "expansion": {"itd_method": "phase", "az_range": [-50, 50]},
+            "monaural": {"other_ear": "envelope", "ear_kept": TRAINED_EAR,
+                         "ear_processed": UNTRAINED_EAR, "env_n_keep": ENV_NKEEP,
+                         "env_band_hz": list(ENVELOPE_BAND),
+                         "elevation_average": True},
+            "midline_qc": {k: v for k, v in report.items()},
+        }
+
     modified.name = name
     own_vsi, modified_vsi = vsi_of(own), vsi_of(modified)
     print(f"VSI  own={own_vsi:.3f}  modified={modified_vsi:.3f}  "
           f"(diagnostic only -- not diffuse-field normalised, see vsi.py)")
 
+    def _params(**extra):
+        return modification_params(
+            SUBJECT_ID, donor_id, n_keep=n_keep,
+            target_dissimilarity=selection.TARGET_DISSIMILARITY,
+            band=selection.DEFAULT_BAND, resolution=selection.DEFAULT_RESOLUTION,
+            max_ridge_slope=selection.MAX_RIDGE_SLOPE, pool=list(candidates),
+            fallback=chosen["fallback"],
+            scores={k: chosen[k] for k in ('vsi_dissimilarity', 'vsi', 'own_vsi',
+                                           'i_sim', 'peak_r', 'ridge_slope')},
+            ranking=[{k: row[k] for k in ('donor', 'rank', 'tier', 'donor_strength',
+                                          'vsi_dissimilarity', 'vsi', 'ridge_slope',
+                                          'eligible', 'in_band')} for row in rows],
+            **extra)
+
     modified.write_sofa(str(out_path))
-    embed_modification_params(out_path, modification_params(
-        SUBJECT_ID, donor_id, n_keep=n_keep,
-        target_dissimilarity=selection.TARGET_DISSIMILARITY,
-        band=selection.DEFAULT_BAND, resolution=selection.DEFAULT_RESOLUTION,
-        max_ridge_slope=selection.MAX_RIDGE_SLOPE, pool=list(candidates),
-        fallback=chosen["fallback"],
-        scores={k: chosen[k] for k in ('vsi_dissimilarity', 'vsi', 'own_vsi',
-                                       'i_sim', 'peak_r', 'ridge_slope')},
-        ranking=[{k: row[k] for k in ('donor', 'rank', 'tier', 'donor_strength',
-                                      'vsi_dissimilarity', 'vsi', 'ridge_slope',
-                                      'eligible', 'in_band')} for row in rows]))
+    embed_modification_params(out_path, _params(**pipeline_params))
     print(f"wrote {out_path}")
+
+    # the binaural composite is a MODIFIED file too -- label it, or it is an
+    # unattributable SOFA sitting next to the native one
+    if binaural_path is not None:
+        embed_modification_params(binaural_path, _params(
+            **{**pipeline_params, "monaural": None,
+               "note": "binaural composite, before the monaural reduction; "
+                       "QC reference for the _env file next to it"}))
+        print(f"wrote {binaural_path}")
 
     plot_dir = paths.subject_acoustic_dir(SUBJECT_ID)
     plot_dir.mkdir(parents=True, exist_ok=True)

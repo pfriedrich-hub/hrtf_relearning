@@ -22,7 +22,7 @@ coloration, which the auditory system must discount in order to read the finer,
 elevation-dependent pattern imposed by the pinna; the envelope was built to
 impose exactly that kind of variation. It was a smooth random function of log
 frequency (0.5--16\,kHz), band-limited to ripple densities below 0.5 ripples
-per octave with an rms of 8\,dB (mean peak-to-trough depth 27\,dB), applied as
+per octave with an rms of 3\,dB (median peak-to-trough depth 10\,dB), applied as
 a zero-phase gain. The cutoff follows Macpherson and Middlebrooks
 % \citet{macpherson_vertical-plane_2003}
 , who found that localization was disrupted by spectral ripple at densities of
@@ -38,12 +38,67 @@ listener who had learned to read the preserved band would succeed under either
 account. Timing, bandwidth and level were unchanged, and the envelope of every
 trial was stored.
 
-Across 400 realizations the variable stimulus varied with an SD of 6.4\,dB,
+Across 400 realizations the variable stimulus varied with an SD of 2.4\,dB,
 against 0.4\,dB for the fixed-spectrum stimulus. Within the 0.5--2
 ripples/octave band the elevation-dependent variation of the participants'
 directional transfer functions (SD across elevation at fixed azimuth) exceeded
-the trial-to-trial variation of the source spectrum by a factor of 2.8; below
-0.5 ripples/octave the source dominated (factor 0.4).
+the trial-to-trial variation of the source spectrum by a factor of 7.5; below
+0.5 ripples/octave the two were comparable (factor 1.0).
+
+% NB: every number in this file scales linearly with the envelope rms, so
+% changing the depth is a proportional edit throughout. Values at the earlier
+% 8 dB setting, for reference: 27 dB median peak-to-trough, 6.4 dB stimulus SD,
+% 2.8 in the cue band, 0.4 below it. Settle this against the self-test
+% (protocols/dev/stimulus_check.py cells 7-9) before submission.
+
+\subsubsection*{Choice of envelope depth}
+
+Envelope depth is bounded from both sides, and the two bounds are what fixed
+it. It must be large enough that the coarse-scale coloration of the source is
+no longer a reliable guide to elevation, and small enough that the elevation
+cue itself survives. The upper bound is the more concrete of the two.
+Macpherson and Middlebrooks
+% \citet{macpherson_vertical-plane_2003}
+report degradation of vertical-plane localization at 1 ripple per octave only
+for peak-to-trough depths at or above 20\,dB, and at coarser densities even
+40\,dB left performance largely intact; we therefore treated 20\,dB
+peak-to-trough as a ceiling and stayed well below it. Two further
+considerations argue for the same direction. The band limit is not sharp---a
+function band-limited on a finite log-frequency axis has skirts---so a deeper
+envelope leaks into the 0.5--2 ripples/octave region even though no energy is
+assigned there, and the depth of the elevation cue itself varies between ears
+and listeners, so a setting chosen against one directional transfer function
+must leave headroom for shallower ones.
+
+The lower bound is set by the purpose of the manipulation. In the fixed-spectrum
+condition the sound at the eardrum carries a near one-to-one map from absolute
+spectrum to elevation, so a listener can in principle solve the task by
+matching the overall spectrum to a stored template, without separating source
+from filter. The envelope must make that route unreliable, which requires its
+trial-to-trial variation to be at least comparable to the elevation-dependent
+variation of the directional transfer function at the same spectral scales. At
+3\,dB rms the two are of the same magnitude below 0.5 ripples per octave
+(factor 1.0), so overall coloration no longer specifies elevation, while the
+cue band retains a 7.5:1 margin. Deeper envelopes would make the source
+dominate rather than merely match at coarse scales, but only at the cost of
+the margin in the cue band, and of exceeding the depth at which disruption has
+been reported.
+
+Variation was confined to the coarse band rather than spread across all
+spectral scales for the same reason: variation inside the cue band would
+contaminate the very structure being read, and contributes nothing to defeating
+a template-matching strategy that the coarse band does not already achieve. It
+was retained as an adjustable parameter and set to zero throughout, so that
+deliberately contaminating the cue band remains available as a manipulation
+check.
+
+Finally, the parameters were verified behaviorally rather than only
+acoustically. [PLACEHOLDER — self-test, cells 7-9: own unmodified HRTF,
+binaural, fixed-spectrum vs variable-spectrum blocks; report elevation gain for
+each and the difference. With intact ears and an unmodified transfer function,
+a drop in elevation gain can only reflect the envelope encroaching on the cue,
+so an absent or small drop is the direct evidence that the envelope is
+transparent to localization.]
 
 % --- supplement ------------------------------------------------------------
 % The envelope is a discrete cosine series in dB on a 128-point log-frequency
@@ -55,8 +110,12 @@ the trial-to-trial variation of the source spectrum by a factor of 2.8; below
 
 % --- what this manipulation can and cannot decide ---------------------------
 % Rules out: a mapping tied to the overall spectrum of the training stimulus
-%   ("this timbre = that elevation"), since gross coloration now varies by
-%   8 dB rms trial to trial and is uninformative.
+%   ("this timbre = that elevation"), since gross coloration now varies trial to
+%   trial by as much as elevation itself varies it. Note the strength of this
+%   claim depends on the depth: at 3 dB the source only MATCHES the cue at coarse
+%   scales, it does not swamp it, so the timbre route is made unreliable rather
+%   than uninformative. Phrase it that way in the Discussion; "uninformative"
+%   would need the deeper envelope, which M&M's depth threshold rules out.
 % Does NOT rule out: a lookup restricted to the preserved 0.5-2 rip/oct band.
 %   The pinna notch is a shape-within-band feature, so a remapping of that
 %   structure onto space and a learned association between that structure and a
@@ -100,12 +159,15 @@ the trial-to-trial variation of the source spectrum by a factor of 2.8; below
 %     Zakarauskas & Cynader (1993) JASA 94(3):1323-1331 -- spectral-derivative
 %       model, monaural source-spectrum invariance
 %     Middlebrooks (1992), Baumgartner et al. (2014) -- already cited in Intro
-% - Report ripple depth as peak-to-trough as well as rms, since Macpherson &
-%   Middlebrooks parameterise by depth (they saw degradation at 1 rip/oct only
-%   for depths >= 20 dB; ours is 27 dB but below 0.5 rip/oct, where even 40 dB
-%   did not strongly disrupt).
-% - Cue depth varies by ear and subject; the 2.8:1 figure is FS's modified left
-%   ear at az -20. Decide whether to report a group range instead.
+% - DONE: depth is now reported peak-to-trough as well as rms, and the depth
+%   bound is argued explicitly ("Choice of envelope depth").
+% - Cue depth varies by ear and subject; the band ratios are scaled from FS's
+%   modified left ear at az -20. Decide whether to report a group range instead
+%   -- with a shallow envelope the cue-band margin is comfortable everywhere, so
+%   a group minimum would be the more convincing number to give.
+% - The self-test paragraph is a placeholder until cells 7-9 have been run.
+%   If the fixed vs variable difference in elevation gain is not small, the
+%   depth argument above has to be rewritten around whatever value survives.
 % - FS's two "USO" blocks were run with the old generator (one fixed base
 %   texture per session, 0.8 dB variation). They are NOT a variable-spectrum
 %   test and should be reported as such, or dropped.

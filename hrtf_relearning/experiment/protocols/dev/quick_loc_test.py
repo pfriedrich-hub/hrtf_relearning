@@ -49,7 +49,11 @@ TARGETS_PER_SPEAKER = 3    # 'standard' only
 MIN_DISTANCE = 20          # deg between successive targets
 EXCLUDE_MIDLINE = False    # drop az ~= 0 sources (hemifield/ear contrasts)
 GAIN = 0.2
-STIM = "noise"             # 'noise' | 'ripple' | 'uso'
+# 'noise' | 'ripple' | 'uso'. Match whatever the real protocol is running --
+# a quick check on a different stimulus than the experiment is not a check of
+# the experiment. See learning_transfer.STIM.
+STIM = "noise"
+STIM_SETTINGS = {}         # empty = inherit localization_helpers.stimulus defaults
 
 SOFA_DIR = paths.SOFA_DIR / SUBJECT_ID
 
@@ -73,7 +77,7 @@ def loc_settings():
         "kind": KIND,
         "azimuth_range": AZ_RANGE, "elevation_range": EL_RANGE,
         "min_distance": MIN_DISTANCE, "exclude_midline": EXCLUDE_MIDLINE,
-        "gain": GAIN, "stim": STIM,
+        "gain": GAIN, "stim": STIM, "stim_settings": STIM_SETTINGS,
     }
     if KIND == "sectors":
         settings.update({"sector_size": SECTOR_SIZE, "replace": False,

@@ -146,18 +146,31 @@ logging.info('--- Step 2: HP calibration ---')
 # hp_filter = calibrate_headphones(SUBJECT_ID, 'MYSPHERE', N_REC_HP, SHOW, True)
 hp_filter = calibrate_headphones(SUBJECT_ID, 'DT990', N_REC_HP, SHOW, False, overwrite=True)
 
+# %% stimulus for every localization test in this file -------------------------
+# The test stimulus varies its source spectrum on every trial, so that
+# localization cannot be solved by matching an absolute spectrum to a stored
+# template -- see learning_transfer.STIM for the full reason. Set in one place
+# here so the dome reference and the virtual test are never run on different
+# stimuli, which is the comparison this session exists to make.
+#   !! Depth not yet settled -- see learning_transfer.STIM_SETTINGS. Verify with
+#      protocols/dev/stimulus_check.py (cells 11-13 dome, 7-9 AR) before use.
+STIM = 'noise'            # -> 'ripple' once the depth is settled
+STIM_SETTINGS = {}        # empty = inherit localization_helpers.stimulus defaults
+
 # %% step 4: dome localization ---------------------------------------------------
 # Real speakers, vertical midline. Each run gets a fresh timestamped filename
 # (see LocalizationDome.__init__), so repeats are stored as separate sequences
 # rather than overwriting one another -- rerun this cell to redo it.
 logging.info('--- Step 4: Dome localization ---')
-dome_loc = LocalizationDome(subject, {'targets_per_speaker': 3, 'min_distance': 15})
+dome_loc = LocalizationDome(subject, {'targets_per_speaker': 3, 'min_distance': 15,
+    'stim': STIM, 'stim_settings': STIM_SETTINGS})
 dome_loc.run()
 
 # %% step 5b: virtual localization -- DT990 ---------------------------------------
 logging.info('--- Step 5: HP localization (DT990) ---')
 ar_loc_settings = {'kind': 'standard', 'azimuth_range': (-1, 1), 'elevation_range': (-35, 35),
-    'targets_per_speaker': 2, 'min_distance': 15, 'gain': .2, 'stim': 'noise'}
+    'targets_per_speaker': 2, 'min_distance': 15, 'gain': .2, 'stim': STIM,
+    'stim_settings': STIM_SETTINGS}
 dt990_hrir_settings = dict(name=SUBJECT_ID, subject_id=SUBJECT_ID, ear=None, mirror=False,
     reverb=True, drr=20, hp_filter=True, hp='DT990', convolution='cpu', storage='cpu')
 ar_loc = Localization(subject, dt990_hrir_settings, ar_loc_settings)

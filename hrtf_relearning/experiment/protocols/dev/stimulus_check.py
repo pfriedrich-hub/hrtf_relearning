@@ -36,9 +36,13 @@ past some point it erodes the cue it was supposed to spare. Two steps:
            the largest value that still leaves the cue >= 3:1 above the source
            in the 0.5-2 rip/oct band. Narrows the field; proves nothing about
            whether the result is still localizable.
-  cells 7-9  behavioural check -- the surviving candidates plus a noise
-           reference, run on yourself, scored by elevation gain. This is what
-           decides it.
+  cells 11-13  DOME check -- real speakers, own ears, vertical midline, nothing
+           else in the chain. Cheapest way to rule a depth out, and the one to
+           run first. An upper bound: own ears are sharper than the modified
+           HRTFs participants hear, so a pass here is necessary, not sufficient.
+  cells 7-9  AR check -- the surviving candidates plus a noise reference, run on
+           yourself through the actual presentation chain, scored by elevation
+           gain. This is what decides it.
 """
 
 SUBJECT_ID = "PF"
@@ -452,3 +456,93 @@ for _name, _seq in _subject.localization.items():
     _tilt = (getattr(_seq, "stim_settings", None) or {}).get('rms_tilt', RMS_TILT)
     self_runs[block_label(_stim, _tilt)] = _seq     # dict order -> last wins
 print({k: v.name for k, v in self_runs.items()})
+
+# %% 11. DOME check — real speakers, own ears, no processing -----------------
+# The cheapest and cleanest localizability test, and the one to run BEFORE
+# committing a value to the learning-transfer protocol. Free field, own ears,
+# vertical midline: no headphone EQ, no binaural synthesis, no reverberation
+# model, no tracked convolution. If elevation gain drops from noise to ripple
+# here, it is the envelope, because nothing else in the chain differs.
+#
+# Read it as an UPPER BOUND. Own ears give deeper and sharper cues than the
+# cepstrally smoothed, donor-modified transfer functions participants are
+# tested on, so a setting that survives in the dome can still be too deep in
+# AR. A failure here is decisive; a pass here still needs cells 7-9.
+#
+# 7 midline speakers, so a block is short: TARGETS_PER_SPEAKER=4 gives 28
+# trials, ~3 min. Run the set twice with DOME_REVERSE flipped -- with three
+# blocks in a sitting, order is otherwise confounded with practice.
+from hrtf_relearning.experiment.localization.Localization_dome import LocalizationDome
+
+DOME_ID = SELF_ID
+DOME_CONDITIONS = [('noise', None), ('ripple', 3.0), ('ripple', 8.0)]
+DOME_REVERSE = False
+TARGETS_PER_SPEAKER = 4
+
+
+def dome_settings(stim, rms_tilt=None):
+    return {'targets_per_speaker': TARGETS_PER_SPEAKER, 'min_distance': 15,
+            'stim': stim,
+            'stim_settings': {'rms_tilt': RMS_TILT if rms_tilt is None else rms_tilt,
+                              'rms_cue': RMS_CUE}}
+
+
+def run_dome_block(stim, rms_tilt=None):
+    label = block_label(stim, rms_tilt)
+    print(f"\n{'=' * 60}\n  DOME {label.upper()}  — real speakers, own ears, "
+          f"midline\n{'=' * 60}")
+    subject = hr.Subject(DOME_ID)
+    test = LocalizationDome(subject, dome_settings(stim, rms_tilt))
+    test.run()
+    dome_runs[label] = subject.localization[test.filename]
+    return dome_runs[label]
+
+
+dome_runs = {}
+_dome_order = list(reversed(DOME_CONDITIONS)) if DOME_REVERSE else list(DOME_CONDITIONS)
+print(f"ready: dome, {DOME_ID}, {TARGETS_PER_SPEAKER * 7} trials/block, order "
+      f"{[block_label(*c) for c in _dome_order]} — run cell 12 to start")
+
+# %% 12. RUN the dome blocks --------------------------------------------------
+for _stim, _tilt in _dome_order:
+    run_dome_block(_stim, _tilt)
+
+# %% 12a. one dome block at a time --------------------------------------------
+run_dome_block('noise')
+
+# %% 12b. ----------------------------------------------------------------------
+run_dome_block('ripple', 3.0)
+
+# %% 12c. ----------------------------------------------------------------------
+run_dome_block('ripple', 8.0)
+
+# %% 13. dome result ----------------------------------------------------------
+# Own ears in the free field should give EG near 1. A ripple block that holds
+# within ~0.1 of the noise block is transparent to localization at that depth;
+# a clear drop rules the depth out without spending an AR session on it.
+print(f"{'block':12s} {'n':>4s} {'EG':>6s} {'RMSE_el':>8s} {'SD_el':>7s}")
+for _label, _seq in dome_runs.items():
+    eg, ele_rmse, ele_sd, *_ = localization_accuracy(_seq)
+    print(f"{_label:12s} {len(_seq.data):4d} {eg:6.2f} {ele_rmse:8.1f} {ele_sd:7.1f}")
+if 'noise' in dome_runs and len(dome_runs) > 1:
+    _ref = localization_accuracy(dome_runs['noise'])[0]
+    print(f"\nEG cost in the free field (vs noise, EG {_ref:.2f}):")
+    for _label, _seq in dome_runs.items():
+        if _label == 'noise':
+            continue
+        _eg = localization_accuracy(_seq)[0]
+        print(f"  {_label:12s} {_ref - _eg:+.2f}  ({_eg / _ref * 100:3.0f}% of the noise gain)")
+
+# %% 14. reload earlier dome blocks -------------------------------------------
+# Dome runs from before the ripple option carry stim='pinknoise_burst'; they are
+# noise blocks and are relabelled as such here.
+_subject = hr.Subject(DOME_ID)
+dome_runs = {}
+for _name, _seq in _subject.localization.items():
+    if getattr(_seq, "label", None) != 'dome':
+        continue
+    _stim = getattr(_seq, "stim", "noise")
+    _stim = 'noise' if _stim == 'pinknoise_burst' else _stim
+    _tilt = (getattr(_seq, "stim_settings", None) or {}).get('rms_tilt', RMS_TILT)
+    dome_runs[block_label(_stim, _tilt)] = _seq
+print({k: v.name for k, v in dome_runs.items()})

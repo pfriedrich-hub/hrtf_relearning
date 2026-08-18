@@ -68,16 +68,14 @@ EDIT THE CONFIG BLOCK BELOW PER PARTICIPANT.
 ------------------------------------------------------------------------------
 """
 
-SUBJECT_ID = ("IR")
+SUBJECT_ID = ("AS")
 
 # %% imports and config #------------------------------------------------------
 import csv
 import os
 import subprocess
 import sys
-
 import slab
-
 import hrtf_relearning as hr
 from hrtf_relearning.experiment.localization.Localization_AR import Localization
 from hrtf_relearning.hrtf.analysis import donor_selection as selection
@@ -179,7 +177,7 @@ STIM               = "noise"      # -> "ripple" once the depth is settled, below
 #   !! Depth is NOT yet settled: the current default (8 dB rms, 27 dB median
 #      peak-to-trough) sits above the ~20 dB depth at which Macpherson &
 #      Middlebrooks report localization degradation. Run the free-field check
-#      (protocols/dev/stimulus_check.py cells 11-13) and the AR self-test
+#     nm and the AR self-test
 #      (cells 7-9) BEFORE flipping STIM to 'ripple' for a participant.
 STIM_SETTINGS      = {}
 MIDLINE_TOL        = 1.0

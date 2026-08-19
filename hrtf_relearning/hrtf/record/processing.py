@@ -792,7 +792,7 @@ def _irs_to_pyfar(irs: ImpulseResponses):
         domain="sph",
         convention="top_elev",
         unit="deg",
-    )
+    )  # todo fix this for version 8.1.: TypeError: Coordinates.__init__() got an unexpected keyword argument 'domain'
     return data, coords, keys, fs
 
 

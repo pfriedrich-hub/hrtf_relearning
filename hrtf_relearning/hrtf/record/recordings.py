@@ -3,6 +3,7 @@ import matplotlib
 from hrtf_relearning.utils.mpl_backend import use_interactive
 use_interactive()
 import matplotlib.pyplot as plt
+import freefield  # rig-only dependency; see the note at the top  # todo this has to stay here so it is defined across functions
 import logging
 import copy
 from pathlib import Path
@@ -121,7 +122,6 @@ class Recordings(SpeakerGridBase):
         filt = slab.Filter.band("hp", frequency=hp_freq, samplerate=fs)
 
         # dome setup
-        import freefield  # rig-only dependency; see the note at the top
 
         if freefield.PROCESSORS.mode != "play_birec":
             freefield.initialize("dome", "play_birec")

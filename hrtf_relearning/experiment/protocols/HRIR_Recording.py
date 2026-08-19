@@ -38,9 +38,9 @@ from hrtf_relearning.hrtf.record.calibration.calibrate_headphones import calibra
 from hrtf_relearning.utils import paths
 import json
 
-SUBJECT_ID   = 'NW'          # edit per participant
+SUBJECT_ID   = 'Kemar_reseated_2'          # edit per participant
 HEAD_RADIUS  = 0.0725        # set from step 0 below; see the note there
-REFERENCE_ID = 'ref_03.04'
+REFERENCE_ID = 'ref_19.08'
 N_DIRECTIONS = 3              # directions for the HRIR recording
 N_RECORDINGS = 10
 FS           = 48828
@@ -59,23 +59,7 @@ freefield.set_logger('info')
 subject = hr.Subject(SUBJECT_ID)
 
 # %% step 0: acoustic head radius ----------------------------------------------
-# RUN THIS BEFORE STEP 1 -- the fitted radius is an input to the HRIR build.
-#
-# head_radius feeds spherical_head, which sets every off-midline ITD in the
-# azimuth expansion (and the low-frequency magnitude anchors in
-# lowfreq_extrapolate). It is an EFFECTIVE radius -- the sphere whose ITDs match
-# this listener's -- not an anatomical one. Half the ear-to-ear distance
-# underestimates it (the path round a real head is longer: elongated
-# front-to-back, ears behind and below the widest point); half the
-# inion-nasion depth overestimates it. Standard adult value is 0.0875 m and Kuhn
-# (1977) had to raise it to 0.093 m to match measured low-frequency ITDs.
-#
-# Nothing in the HRIR recording itself can check the value, because only the
-# az = 0 arc is measured and every azimuth cue is synthesised from the model.
-# This step closes that loop: with the mics already in the ears, sweep the
-# horizontal row and solve for the radius that reproduces the measured ITDs.
-# The excitation cancels in the interaural ratio, so no deconvolution is needed
-# and no reference is required.
+# todo build a wrapper here (like record hrir has)
 logging.info('--- Step 0: acoustic head radius ---')
 az_dir = paths.REC_DIR / f'{SUBJECT_ID}_azimuth'    # sibling of the HRIR folder
 if (az_dir / 'recordings.npz').exists():
@@ -119,8 +103,8 @@ hrir = record_hrir(
     hp_freq        = HP_FREQ,
     head_radius    = HEAD_RADIUS,
     show           = SHOW,
-    overwrite_rec  = False,
-    overwrite_hrir = False,
+    overwrite_rec  = True,
+    overwrite_hrir = True,
 )
 # todo fix center_key bug,
 #  fix head radius living in two places,
@@ -166,7 +150,7 @@ ar_loc.run()
 
 # # %% step 3: acoustic sanity check (optional) -----------------------------------
 # logging.info('--- Step 3: Acoustic test ---')
-# acoustic_test(hrir, hp_filter, subject_id=SUBJECT_ID, hp_id='DT990', show=SHOW)
+# hp_rec, dome_rec = acoustic_test(hrir, hp_filter, subject_id=SUBJECT_ID, hp_id='DT990', show=SHOW)
 
 # %% helper: acoustic_test (define before running the Step 3 cell) -----------
 def acoustic_test(hrir, hp_filter, subject_id, hp_id, show=True):
@@ -242,6 +226,7 @@ def acoustic_test(hrir, hp_filter, subject_id, hp_id, show=True):
         save_dir.mkdir(parents=True, exist_ok=True)
         fig.savefig(save_dir / f'acoustic_test_{hp_id}.svg')
         plt.show()
+    return hp_recordings, dome_recordings
 
 # %% step 5a: virtual localization -- MYSPHERE (optional) ------------------------
 # logging.info('--- Step 5: HP localization (MYSPHERE) ---')

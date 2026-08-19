@@ -235,13 +235,13 @@ if __name__ == '__main__':
     print(f'{len(candidates)} candidate donors: {", ".join(candidates)}')
 
     chosen, rows = selection.select_donor(own, candidates)
-    reference, _ = selection.pairwise_reference({SUB_ID: own, **candidates})
+    reference, _ = selection.pairwise_r_match({SUB_ID: own, **candidates})
     selection.report(rows, reference)
     print(f'\nchosen donor: {chosen["donor"]}  '
-          f'(VSI dissimilarity {chosen["vsi_dissimilarity"]:.3f}, target '
-          f'{selection.TARGET_DISSIMILARITY:.2f}, ridge slope '
-          f'{chosen["ridge_slope"]:+.2f}; VSI {chosen["vsi"]:.2f} vs own '
-          f'{chosen["own_vsi"]:.2f}, diagnostic only)')
+          f'(r_match {chosen["r_match"]:.2f}, target '
+          f'{selection.TARGET_R_MATCH:.2f}, ridge slope '
+          f'{chosen["ridge_slope"]:+.2f}, cue strength '
+          f'{chosen["donor_strength"]:.1f} dB)')
     if chosen['fallback']:
         print('  !! FALLBACK: no candidate reached the ridge criterion; this is '
               'the lowest slope available. Report it.')
@@ -266,11 +266,11 @@ if __name__ == '__main__':
     modified.write_sofa(str(out_path))
     params = modification_params(
         SUB_ID, chosen['donor'], n_keep=selection.N_KEEP,
-        target_dissimilarity=selection.TARGET_DISSIMILARITY,
+        target_r_match=selection.TARGET_R_MATCH,
         band=selection.DEFAULT_BAND, resolution=selection.DEFAULT_RESOLUTION,
-        scores={k: chosen[k] for k in ('vsi_dissimilarity', 'vsi', 'own_vsi',
-                                       'i_sim', 'peak_r', 'ridge_slope')},
-        ranking=[{k: row[k] for k in ('donor', 'vsi_dissimilarity', 'vsi',
+        scores={k: chosen[k] for k in ('r_match', 'ridge_slope',
+                                       'donor_strength')},
+        ranking=[{k: row[k] for k in ('donor', 'rank', 'tier', 'r_match',
                                       'ridge_slope', 'eligible')} for row in rows])
     _embed_modification_params(out_path, params)
     print(f'wrote {out_path}')

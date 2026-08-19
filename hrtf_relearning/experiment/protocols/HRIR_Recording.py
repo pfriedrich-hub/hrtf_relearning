@@ -31,11 +31,15 @@ import hrtf_relearning as hr
 from hrtf_relearning.experiment.localization.Localization_AR import Localization
 from hrtf_relearning.experiment.localization.Localization_dome import LocalizationDome
 from hrtf_relearning.hrtf.record.record_hrir import record_hrir
+from hrtf_relearning.hrtf.record.recordings import Recordings
+from hrtf_relearning.hrtf.record.fit_head_radius import (
+    fit_head_radius, itd_from_binaural, report)
 from hrtf_relearning.hrtf.record.calibration.calibrate_headphones import calibrate_headphones
 from hrtf_relearning.utils import paths
+import json
 
 SUBJECT_ID   = 'NW'          # edit per participant
-HEAD_RADIUS  = 0.0725
+HEAD_RADIUS  = 0.0725        # set from step 0 below; see the note there
 REFERENCE_ID = 'ref_03.04'
 N_DIRECTIONS = 3              # directions for the HRIR recording
 N_RECORDINGS = 10
@@ -44,10 +48,65 @@ HP_FREQ      = 120
 N_REC_HP     = 3
 SHOW         = True
 
+# step 0, acoustic head radius
+AZ_RANGE     = (-60, 60)      # lateral speakers to sweep, degrees
+AZ_ELEVATION = (-1, 1)        # horizontal row only
+N_REC_AZ     = 10
+
 ROOT = hr.PATH
 slab.set_default_samplerate(FS)
 freefield.set_logger('info')
 subject = hr.Subject(SUBJECT_ID)
+
+# %% step 0: acoustic head radius ----------------------------------------------
+# RUN THIS BEFORE STEP 1 -- the fitted radius is an input to the HRIR build.
+#
+# head_radius feeds spherical_head, which sets every off-midline ITD in the
+# azimuth expansion (and the low-frequency magnitude anchors in
+# lowfreq_extrapolate). It is an EFFECTIVE radius -- the sphere whose ITDs match
+# this listener's -- not an anatomical one. Half the ear-to-ear distance
+# underestimates it (the path round a real head is longer: elongated
+# front-to-back, ears behind and below the widest point); half the
+# inion-nasion depth overestimates it. Standard adult value is 0.0875 m and Kuhn
+# (1977) had to raise it to 0.093 m to match measured low-frequency ITDs.
+#
+# Nothing in the HRIR recording itself can check the value, because only the
+# az = 0 arc is measured and every azimuth cue is synthesised from the model.
+# This step closes that loop: with the mics already in the ears, sweep the
+# horizontal row and solve for the radius that reproduces the measured ITDs.
+# The excitation cancels in the interaural ratio, so no deconvolution is needed
+# and no reference is required.
+logging.info('--- Step 0: acoustic head radius ---')
+az_dir = paths.REC_DIR / f'{SUBJECT_ID}_azimuth'    # sibling of the HRIR folder
+if (az_dir / 'recordings.npz').exists():
+    az_rec = Recordings.load(az_dir)
+else:
+    az_rec = Recordings.record_dome(
+        id=f'{SUBJECT_ID}_azimuth', azimuth=AZ_RANGE, elevation=AZ_ELEVATION,
+        n_directions=1, n_recordings=N_REC_AZ, hp_freq=HP_FREQ, fs=FS,
+        equalize=False, key=True)
+    az_rec.to_npz(az_dir, overwrite=True)
+
+azimuths, itds = [], []
+for spk_key, repeats in az_rec.data.items():
+    _index, azimuth, elevation = spk_key.split('_')
+    if abs(float(azimuth)) < 5:      # ITD ~0 at the midline, no information there
+        continue
+    azimuths.append(float(azimuth))
+    itds.append(itd_from_binaural(numpy.mean([r.data.T for r in repeats], axis=0), FS))
+
+az_fit = fit_head_radius(azimuths, itds)
+report(az_fit, label=f'{SUBJECT_ID}: ')
+(az_dir / 'head_radius_fit.json').write_text(json.dumps(
+    {k: (v.tolist() if hasattr(v, 'tolist') else v) for k, v in az_fit.items()}, indent=2))
+
+# Then set HEAD_RADIUS from the fit and rerun the config cell before step 1.
+# Check residual_us first: a few tens of us RMS is normal, a head is not a
+# sphere and the ears are not at +-90 deg. A large residual, or one that grows
+# systematically with azimuth, means a single sphere does not describe this
+# listener and the number is a compromise rather than a measurement -- fall back
+# to 0.0875 and record that you did.
+# HEAD_RADIUS = az_fit['head_radius']
 
 # %% step 1: record / load HRIR ------------------------------------------------
 logging.info('--- Step 1: HRIR recording ---')

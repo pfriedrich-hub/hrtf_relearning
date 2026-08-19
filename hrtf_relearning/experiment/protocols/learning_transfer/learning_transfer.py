@@ -28,7 +28,7 @@ bias; a donor's detail collapses it.
 
 DONOR SELECTION is the only thing that varies between participants, and it is
 made by a fixed rule in hrtf.analysis.donor_selection — see
-DONOR_POOL / TARGET_DISSIMILARITY / TOLERANCE / MAX_RIDGE_SLOPE there, and
+DONOR_POOL / TARGET_R_MATCH / TOLERANCE / MAX_RIDGE_SLOPE there, and
 docs/methods_donor_detail.md for the paragraph this becomes in a paper.
 Everything else (n_keep, band, filter bank, target) is identical for everyone.
 
@@ -295,7 +295,7 @@ def donor_shortlist(refresh=False, quiet=False):
 
     _SHORTLIST = selection.shortlist(own, candidates)
     if not quiet:
-        reference, _ = selection.pairwise_reference({SUBJECT_ID: own, **candidates})
+        reference, _ = selection.pairwise_r_match({SUBJECT_ID: own, **candidates})
         selection.report(_SHORTLIST, reference)
     return _SHORTLIST
 
@@ -344,7 +344,7 @@ def _save_qc_figure(own, modified, name, chosen, n_keep, donor_id,
     if not isinstance(modified, slab.HRTF):
         modified = slab.HRTF(str(modified))
         modified.name = name
-    fig = plot_ears(own, modified, vsi_dis=chosen["vsi_dissimilarity"],
+    fig = plot_ears(own, modified, vsi_dis=chosen["r_match"],
                     vsi_bw=selection.DEFAULT_BAND, band=selection.DEFAULT_BAND,
                     suptitle=f"{SUBJECT_ID}  own envelope (n_keep={n_keep}) "
                              f"+ {donor_id} detail", show=show)
@@ -397,9 +397,9 @@ def build_donor_sofa(overwrite=False, show_qc=True, n_keep=None, rank=0,
         chosen = rows[rank]
 
     if not quiet:
-        print(f"\ndonor rank {chosen['rank']}: {chosen['donor']}   VSI dissimilarity "
-              f"{chosen['vsi_dissimilarity']:.3f} (target "
-              f"{selection.TARGET_DISSIMILARITY:.2f} ± {selection.TOLERANCE:.2f})"
+        print(f"\ndonor rank {chosen['rank']}: {chosen['donor']}   r_match "
+              f"{chosen['r_match']:.2f} (target "
+              f"{selection.TARGET_R_MATCH:.2f} ± {selection.TOLERANCE:.2f})"
               f"   ridge slope {chosen['ridge_slope']:+.2f}"
               f"   cue strength {chosen['donor_strength']:.1f} dB"
               f"   [{chosen['tier']}]")
@@ -476,14 +476,15 @@ def build_donor_sofa(overwrite=False, show_qc=True, n_keep=None, rank=0,
     def _params(**extra):
         return modification_params(
             SUBJECT_ID, donor_id, n_keep=n_keep,
-            target_dissimilarity=selection.TARGET_DISSIMILARITY,
+            target_r_match=selection.TARGET_R_MATCH,
+            tolerance=selection.TOLERANCE,
             band=selection.DEFAULT_BAND, resolution=selection.DEFAULT_RESOLUTION,
             max_ridge_slope=selection.MAX_RIDGE_SLOPE, pool=list(candidates),
             fallback=chosen["fallback"],
-            scores={k: chosen[k] for k in ('vsi_dissimilarity', 'vsi', 'own_vsi',
-                                           'i_sim', 'peak_r', 'ridge_slope')},
+            scores={k: chosen[k] for k in ('r_match', 'ridge_slope',
+                                           'donor_strength')},
             ranking=[{k: row[k] for k in ('donor', 'rank', 'tier', 'donor_strength',
-                                          'vsi_dissimilarity', 'vsi', 'ridge_slope',
+                                          'r_match', 'ridge_slope',
                                           'eligible', 'in_band')} for row in rows],
             **extra)
 
@@ -550,7 +551,7 @@ def prepare_donor_shortlist(n=3, mirrored=True, overwrite=False):
     for row in rows[:n]:
         donor = row["donor"]
         print(f"\n--- rank {row['rank']}: {donor} "
-              f"(VSI-dis {row['vsi_dissimilarity']:.3f}, ridge "
+              f"(r_match {row['r_match']:.2f}, ridge "
               f"{row['ridge_slope']:+.2f}, strength {row['donor_strength']:.1f} dB, "
               f"{row['tier']}) ---")
         # set_active=False: staging must not silently repoint the protocol
@@ -711,7 +712,7 @@ def use_donor(rank=None, donor_id=None, reason=""):
     _set_active_donor(row["donor"], row["rank"],
                       reason or f"(no reason given; from {previous})")
     print(f"\nactive donor: {previous} -> {row['donor']}   (rank {row['rank']}, "
-          f"{row['tier']}, VSI-dis {row['vsi_dissimilarity']:.3f}, ridge "
+          f"{row['tier']}, r_match {row['r_match']:.2f}, ridge "
           f"{row['ridge_slope']:+.2f}, strength {row['donor_strength']:.1f} dB)")
     print(f"MODIFIED_SOFA = {MODIFIED_SOFA}")
     print(f"  !! set DONOR_ID = '{row['donor']}' in the config block at the top "
@@ -799,8 +800,8 @@ def load_existing_donor():
 
     scores = params.get("scores", {})
     print(f"using {path.name}   donor={DONOR_ID}"
-          + (f"   VSI-dis {scores['vsi_dissimilarity']:.3f}, ridge "
-             f"{scores['ridge_slope']:+.2f}" if scores else "")
+          + (f"   r_match {scores['r_match']:.2f}, ridge "
+             f"{scores['ridge_slope']:+.2f}" if 'r_match' in scores else "")
           + ("   [built with FALLBACK donor]" if params.get("fallback") else ""))
     return path
 

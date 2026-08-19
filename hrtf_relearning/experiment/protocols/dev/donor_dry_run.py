@@ -73,18 +73,18 @@ check('conformance filter rejects non-matching recordings',
 
 # %% stage 2: selection -------------------------------------------------------
 chosen, rows = selection.select_donor(own, candidates)
-reference, _ = selection.pairwise_reference({SUBJECT_ID: own, **candidates})
+reference, _ = selection.pairwise_r_match({SUBJECT_ID: own, **candidates})
 selection.report(rows, reference)
 check('a donor was selected', chosen is not None,
-      f'{chosen["donor"]}  VSI-dis {chosen["vsi_dissimilarity"]:.3f}  '
+      f'{chosen["donor"]}  r_match {chosen["r_match"]:.2f}  '
       f'ridge {chosen["ridge_slope"]:+.2f}')
 check('selection is not a fallback', not chosen['fallback'],
       'lowest-slope donor used — report this if it persists')
 check('every candidate was scored', len(rows) == len(candidates),
       f'{len(rows)} rows')
-check('chosen dissimilarity inside the between-subject range',
-      reference.min() <= chosen['vsi_dissimilarity'] <= reference.max(),
-      f'{chosen["vsi_dissimilarity"]:.3f} in [{reference.min():.2f}, {reference.max():.2f}]')
+check('chosen r_match inside the between-subject range',
+      reference.min() <= chosen['r_match'] <= reference.max(),
+      f'{chosen["r_match"]:.2f} in [{reference.min():.2f}, {reference.max():.2f}]')
 
 # %% stage 3: build the composite and check the invariants --------------------
 donor = candidates[chosen['donor']]
@@ -132,12 +132,11 @@ check('SOFA written', out_path.exists(), str(out_path))
 
 params = modification_params(
     SUBJECT_ID, chosen['donor'], n_keep=selection.N_KEEP,
-    target_dissimilarity=selection.TARGET_DISSIMILARITY,
+    target_r_match=selection.TARGET_R_MATCH,
     band=selection.DEFAULT_BAND, resolution=selection.DEFAULT_RESOLUTION,
     max_ridge_slope=selection.MAX_RIDGE_SLOPE, pool=list(candidates),
     fallback=chosen['fallback'],
-    scores={k: chosen[k] for k in ('vsi_dissimilarity', 'vsi', 'own_vsi',
-                                   'i_sim', 'peak_r', 'ridge_slope')})
+    scores={k: chosen[k] for k in ('r_match', 'ridge_slope', 'donor_strength')})
 embed_modification_params(out_path, params)
 recovered = read_modification_params(out_path)
 check('modification params readable', recovered is not None)
@@ -156,7 +155,7 @@ check('reloaded source count matches', reloaded.n_sources == n)
 plot_dir = paths.subject_acoustic_dir(SUBJECT_ID)
 plot_dir.mkdir(parents=True, exist_ok=True)
 try:
-    fig = plot_ears(own, modified, vsi_dis=chosen['vsi_dissimilarity'],
+    fig = plot_ears(own, modified, vsi_dis=chosen['r_match'],
                     vsi_bw=selection.DEFAULT_BAND, band=selection.DEFAULT_BAND,
                     suptitle=f'{SUBJECT_ID}  + {chosen["donor"]} detail')
     fig.savefig(plot_dir / f'{modified.name}.png', bbox_inches='tight')

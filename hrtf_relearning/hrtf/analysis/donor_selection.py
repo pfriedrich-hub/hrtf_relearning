@@ -515,6 +515,39 @@ def detail_strength(split, bandwidth=DEFAULT_BAND, resolution=DEFAULT_RESOLUTION
     return float(numpy.mean(values))
 
 
+def pairwise_r_match(hrtfs, n_keep=DEFAULT_N_KEEP, bandwidth=DEFAULT_BAND,
+                     resolution=DEFAULT_RESOLUTION):
+    """``r_match`` between every pair of unmodified recordings — the scale.
+
+    This is the distribution :data:`TARGET_R_MATCH` is defined from, and the
+    yardstick a chosen donor should be read against: a composite whose r_match
+    sits inside it is no further from the listener's own cue than one real
+    person is from another. Replaces :func:`pairwise_reference` for donor work —
+    that one is on full spectra and is kept only as a diagnostic.
+
+    Returns ``(values, {(a, b): value})``.
+    """
+    splits = {name: median_plane_split(hrtf, n_keep=n_keep)
+              for name, hrtf in hrtfs.items()}
+    names = list(splits)
+    pairs = {}
+    for i, a in enumerate(names):
+        for b in names[i + 1:]:
+            try:
+                per_ear = []
+                for ear in EARS:
+                    first = _reduce(splits[a][ear]['detail'], splits[a]['freqs'],
+                                    bandwidth, resolution)
+                    second = _reduce(splits[b][ear]['detail'], splits[b]['freqs'],
+                                     bandwidth, resolution)
+                    per_ear.append(float(numpy.mean(numpy.diag(
+                        _correlate(first, second)))))
+                pairs[(a, b)] = float(numpy.mean(per_ear))
+            except Exception as exc:
+                logger.warning('skipping pair %s/%s: %s', a, b, exc)
+    return numpy.array(sorted(pairs.values())), pairs
+
+
 def own_vsi(split, bandwidth=DEFAULT_BAND, resolution=DEFAULT_RESOLUTION):
     """VSI of an unmodified set, in the same band/resolution as the scores."""
     values = [matrix_metrics(_reduce(split[ear]['full'], split['freqs'], bandwidth, resolution),

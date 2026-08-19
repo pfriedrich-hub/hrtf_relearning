@@ -1,50 +1,50 @@
 """
 donor_selection.py — pick the donor for a `donor_detail` composite.
 
-Scores every candidate donor by what the LISTENER WOULD ACTUALLY HEAR: the
-composite (own n_keep envelope + donor detail) against the listener's own
-unmodified HRTF, on the median-plane arc, in Trapeau's peak-VSI octave.
+TWO STAGES, and they answer different questions.
 
-Metrics, all from one pair of correlation matrices
---------------------------------------------------
-``vsi_dissimilarity``
-    Trapeau et al. (2016): RMS distance between the own-vs-composite
-    cross-correlation matrix and the own autocorrelation matrix. In their data
-    it predicted both the initial loss of elevation performance (RMSE R=0.52,
-    EG R=-0.53, n=30) and how much of that loss was still there after six days
-    of adaptation (26% of the variance). THE TARGET IS MID-RANGE, NOT MAXIMUM:
-    they found stronger disruption meant less or slower improvement, while Van
-    Wanrooij & Van Opstal (2005) found too-similar cues are absorbed as a bias
-    and never relearned. Use the between-participant distribution
-    (:func:`pairwise_reference`) as the scale — that is exactly the yardstick
-    Trapeau used to argue their molds were physiologically plausible.
+QUALIFICATION — who may be a donor at all — is BEHAVIOURAL: a candidate must
+have localized well with their own HRTF in the virtual environment. See the
+DONOR_POOL comment at the bottom for why every acoustic proxy tried for this
+failed (short version: detail strength predicts localization at rho = +0.09,
+and the recording with the deepest fine structure of all 31 belongs to someone
+with an elevation gain of 0.05).
 
-``vsi``
-    Of the composite. Must stay near the listener's own. Trapeau's molds moved
-    VSI from 0.76 to 0.81, i.e. they changed the cue without removing
-    information. A candidate that lowers VSI is a degraded map, not a new one.
+SELECTION — which qualified donor this listener gets — uses two pairing
+measures, both on the DETAIL domain (see :func:`pair_metrics` for why no other
+normalisation is available here):
 
-``i_sim`` and ``peak_r``
-    Van Wanrooij & Van Opstal's similarity index: for each composite DTF, the SD
-    (resp. maximum) of its correlations with all of the listener's own DTFs.
-    Deliberately blind to WHERE the match sits, so it answers the question VSI
-    dissimilarity cannot — is there still a consistent match the old map can use?
+``r_match``
+    How big the perturbation is. Mean over elevations of the correlation
+    between the listener's own in-band detail and the composite's detail at the
+    SAME elevation — the quantity Van Wanrooij & Van Opstal's proposed
+    mechanism, a correlation against a stored representation of the listener's
+    own ears, says should drive performance. Targeted mid-range, not minimised:
+    they found insufficiently perturbed listeners never reached stable
+    performance, while Trapeau et al. (2016) found stronger perturbation gave
+    slower and less complete recovery.
 
 ``ridge_slope``
-    Where the best match sits, regressed on true elevation. ~+1 means the old
-    map reads the composite as a coherent elevation (offset by ``ridge_bias``)
-    and can absorb the manipulation as a bias; ~0 means it cannot. This is the
-    guard against the one failure mode VSI dissimilarity is blind to: a
-    correlation ridge that MOVED and one that is GONE score the same there.
-    For real human donors the ridge normally collapses, but check rather than
-    assume.
+    Whether the perturbation is ABSORBABLE. Elevation of the best-matching own
+    detail regressed on true elevation; ~+1 means the old map can read the
+    composite as a coherent but displaced elevation and take up the change as a
+    constant bias, which is the case that never relearns.
 
-``detail_strength`` (see :func:`detail_strength`)
-    Not a pairing score — a property of ONE recording. The SD across directions
-    of its own in-band spectral detail, in dB. This is how strong the cue being
-    handed over actually is, and it is what ranks the pool and breaks ties
-    inside the tolerance band. It is NOT VSI; see the pool comment at the bottom
-    of this module for why VSI turned out to be the wrong quantity for this job.
+Neither substitutes for the other: across 1860 real donor pairings they
+correlate at rho = +0.14, and 31% of pairings with r_match <= 0.3 still have
+ridge_slope > 0.5.
+
+``detail_strength`` is still computed and reported, but it no longer qualifies
+or ranks anything.
+
+MEASURES KEPT ONLY AS DIAGNOSTICS: ``vsi``, ``vsi_dissimilarity``, ``i_sim``,
+``peak_r``. None of them may be reported as a similarity between the listener's
+own and modified transfer functions. VSI needs a reference built from
+directions other than those being correlated, which this geometry cannot
+supply; ``i_sim`` is the SD down each column of a correlation matrix, and SD is
+invariant to permuting the rows, so it scores a listener's own ear and their own
+ear relabelled by 17 degrees identically (measured: 0.542 for shifts of 0, 4, 8
+and 17 deg, while r_match falls 1.00 -> 0.69).
 
 Method
 ------
@@ -93,10 +93,19 @@ DEFAULT_RESOLUTION = 'filterbank'
 # the same for everyone, so the manipulation is one sentence in the methods.
 # ---------------------------------------------------------------------------
 N_KEEP = 4                    # envelope coefficients kept (Kulkarni & Colburn 1998)
-TARGET_DISSIMILARITY = 0.40   # aim, in this cohort's between-subject distribution
+TARGET_R_MATCH = 0.60         # perturbation size: the median r_match between
+                              # QUALIFIED donors, i.e. a typical difference
+                              # between two people whose own cue demonstrably
+                              # works (range over that pool: 0.49-0.77)
 MAX_RIDGE_SLOPE = 0.5         # above this the old map can read the composite as
                               # a coherent elevation and absorb it as a bias
 TOLERANCE = 0.05              # half-width of the band around the target
+
+TARGET_DISSIMILARITY = 0.40   # DEPRECATED — the old full-spectrum VSI-dissimilarity
+                              # target. Kept only so older embedded modification
+                              # params still parse. Do not use: see pair_metrics
+                              # for why a correlation on un-normalised spectra
+                              # cannot be interpreted here.
 
 # WHY THE TARGET MOVED FROM 0.50 TO 0.40 (2026-08-13). The rule has always been
 # "the median of this cohort's between-subject distribution" — 0.50 was that
@@ -421,6 +430,61 @@ def composite_isim(own_hrtf, donor_hrtf, bandwidth=VANOPSTAL_BAND):
     return float(numpy.mean(values))
 
 
+def pair_metrics(own_split, donor_split, bandwidth=DEFAULT_BAND,
+                 resolution=DEFAULT_RESOLUTION, donor_ear=None):
+    """The two quantities the selection rule uses, on the DETAIL domain.
+
+    ``r_match``
+        Mean over elevations of the correlation between the listener's own
+        in-band spectral detail at that elevation and the composite's detail at
+        the SAME elevation. This is the quantity Van Wanrooij & Van Opstal's
+        proposed mechanism -- correlation of the input against a stored
+        representation of the listener's own ears -- predicts should drive
+        performance. Low means strongly perturbed.
+
+    ``ridge_slope``
+        Elevation of the best-matching own detail regressed on true elevation.
+        Near 1 means the old map reads the composite as a coherent, merely
+        displaced elevation and can absorb it as a constant bias.
+
+    BOTH ARE NEEDED, and it is not obvious: across 1860 real donor pairings the
+    two correlate at only rho = +0.14, and among pairings with r_match <= 0.3 --
+    a strong perturbation by any reading -- 31% still have ridge_slope > 0.5.
+    A large perturbation can therefore still be absorbable, which is precisely
+    the case Van Wanrooij's insufficiently-perturbed listeners fell into.
+
+    WHY THE DETAIL DOMAIN. Correlating transfer functions requires the
+    component common to all directions to be removed, or every correlation is
+    inflated toward 1. The textbook remedy is a diffuse-field average, which
+    needs directions this rig does not sample. A mean over the median-plane arc
+    cannot substitute: it is the mean of the very spectra being correlated, so
+    the residuals sum to zero by construction and the resulting index is a
+    constant (measured: 1.02 +- 0.02 against 1.056 predicted for N=19). The
+    cepstral residual has no such problem -- the envelope subtracted from each
+    direction is a smoothed copy of THAT direction, so directions stay
+    independent and nothing is forced to sum to zero.
+    """
+    freqs = own_split['freqs']
+    elevations = own_split['elevations']
+    per_ear = {}
+    for ear in EARS:
+        source_ear = ear if donor_ear is None else donor_ear
+        own = _reduce(own_split[ear]['detail'], freqs, bandwidth, resolution)
+        # the composite's detail IS the donor's detail: the cepstral split is
+        # linear in log magnitude, so adding the listener's envelope leaves the
+        # residual untouched
+        donor = _reduce(donor_split[source_ear]['detail'], freqs, bandwidth,
+                        resolution)
+        per_ear[ear] = {
+            'r_match': float(numpy.mean(numpy.diag(_correlate(own, donor)))),
+            'ridge_slope': matrix_metrics(own, donor, elevations)['ridge_slope'],
+        }
+    scores = {k: float(numpy.mean([per_ear[e][k] for e in EARS]))
+              for k in ('r_match', 'ridge_slope')}
+    scores['per_ear'] = per_ear
+    return scores
+
+
 def detail_strength(split, bandwidth=DEFAULT_BAND, resolution=DEFAULT_RESOLUTION):
     """How strong ONE recording's own elevation cue is, in dB. Ear-averaged.
 
@@ -457,7 +521,7 @@ def own_vsi(split, bandwidth=DEFAULT_BAND, resolution=DEFAULT_RESOLUTION):
     return float(numpy.mean(values))
 
 
-def shortlist(subject_hrtf, candidates, target=TARGET_DISSIMILARITY,
+def shortlist(subject_hrtf, candidates, target=TARGET_R_MATCH,
               n_keep=N_KEEP, bandwidth=DEFAULT_BAND,
               resolution=DEFAULT_RESOLUTION, donor_ear=None,
               max_ridge_slope=MAX_RIDGE_SLOPE, tolerance=TOLERANCE):
@@ -489,16 +553,23 @@ def shortlist(subject_hrtf, candidates, target=TARGET_DISSIMILARITY,
     ``own_vsi``, so the whole table can go in a supplement.
     """
     own_split = median_plane_split(subject_hrtf, n_keep=n_keep)
-    reference_vsi = own_vsi(own_split, bandwidth, resolution)
 
-    rows = rank_donors(subject_hrtf, candidates, n_keep=n_keep,
-                       bandwidth=bandwidth, donor_ear=donor_ear,
-                       resolution=resolution)
+    rows = []
+    for name, donor in candidates.items():
+        try:
+            donor_split = median_plane_split(donor, n_keep=n_keep)
+            scores = pair_metrics(own_split, donor_split, bandwidth=bandwidth,
+                                  resolution=resolution, donor_ear=donor_ear)
+            strength = detail_strength(donor_split, bandwidth, resolution)
+        except Exception as exc:
+            logger.warning('skipping donor %s: %s', name, exc)
+            continue
+        scores.pop('per_ear')
+        rows.append({'donor': name, 'donor_strength': strength, **scores})
     if not rows:
         raise ValueError('no candidate donor could be scored')
     for row in rows:
-        row['own_vsi'] = reference_vsi
-        row['distance'] = abs(row['vsi_dissimilarity'] - target)
+        row['distance'] = abs(row['r_match'] - target)
         row['eligible'] = bool(row['ridge_slope'] <= max_ridge_slope)
         row['in_band'] = bool(row['eligible'] and row['distance'] <= tolerance)
 
@@ -507,7 +578,7 @@ def shortlist(subject_hrtf, candidates, target=TARGET_DISSIMILARITY,
     rejected = [row for row in rows if not row['eligible']]
 
     if band:
-        ordered = (sorted(band, key=lambda r: -r['donor_strength'])
+        ordered = (sorted(band, key=lambda r: r['distance'])
                    + sorted(ridge_only, key=lambda r: r['distance'])
                    + sorted(rejected, key=lambda r: r['ridge_slope']))
         tier = 'band'
@@ -535,7 +606,7 @@ def shortlist(subject_hrtf, candidates, target=TARGET_DISSIMILARITY,
     return ordered
 
 
-def select_donor(subject_hrtf, candidates, target=TARGET_DISSIMILARITY,
+def select_donor(subject_hrtf, candidates, target=TARGET_R_MATCH,
                  n_keep=N_KEEP, bandwidth=DEFAULT_BAND,
                  resolution=DEFAULT_RESOLUTION, donor_ear=None,
                  max_ridge_slope=MAX_RIDGE_SLOPE, tolerance=TOLERANCE,
@@ -618,9 +689,43 @@ def select_donor(subject_hrtf, candidates, target=TARGET_DISSIMILARITY,
 #   SS  2.4   IR  2.3   UG  2.3   SW* 2.3   IM  2.2   PC  2.2
 #   PFo* 2.2  LS  2.1   AGV 2.1   JR* 2.1   VG* 2.0   CZ* 1.7   JF  1.6
 # ---------------------------------------------------------------------------
-DONOR_POOL = ('pilot/MB', 'FD', 'pilot/NKa', 'pilot/MSc', 'GS', 'pilot/SK',
-              'CO', 'TS', 'AS', 'GLK', 'pilot/JP', 'pilot/VD', 'PF',
-              'pilot/NK', 'pilot/RK', 'pilot/AH', 'FS')
+#
+# QUALIFICATION IS BEHAVIOURAL, NOT ACOUSTIC (changed 2026-08-18).
+# A donor qualifies by having localized well with their OWN HRTF in the virtual
+# environment -- elevation gain from their first finished localization run with
+# their unmodified HRTF (experiment.analysis.database.vsi_rmse.baseline_run,
+# which already excludes *_dome runs, so what is scored is headphone rendering).
+#
+# WHY, and it is worth stating because the previous criterion was the opposite.
+# The pool used to be ranked by `detail_strength`. Measured against localization
+# on the 17 candidates that have both, detail strength does not predict it at
+# all: Spearman +0.09. The clearest case is MB -- the DEEPEST fine structure of
+# all 31 recordings, which a maximise-strength rule selected for 6 of 11
+# listeners -- whose own elevation gain is 0.05. AGV, near the BOTTOM on detail
+# strength, localizes at 0.96. An acoustic measure of how much structure a DTF
+# set contains says nothing about whether that structure works as a cue.
+#
+# This is an INCLUSION criterion and should not be read as an exclusion one.
+# Good localization proves the pattern is usable by a human auditory system,
+# which is exactly the guarantee wanted before handing it to someone else. Poor
+# localization is ambiguous -- a weak ear, a failed render, an inattentive
+# listener -- so a low-EG recording is "unproven", not "known bad".
+#
+# EG with own HRTF, virtual environment, |el| <= 30 deg:
+#   AGV .96   SW .93   VD .89   AH .86   FS .86   <- pool (EG >= 0.8)
+#   IR  .51   NKa .39  NK .31   PC .28   RK .21   JR .17   SK .10
+#   JP  .08   PFo .06  MB .05   VG .02   CZ .00
+# The distribution is bimodal with a cluster at ~0; whether that cluster is
+# weak ears or failed renders is UNRESOLVED, which is a further reason to treat
+# it as unproven rather than disqualified.
+#
+# Candidates with no localization run yet (FD, MSc, GS, CO, TS, AS, GLK, PF,
+# NW, IM, UG) cannot be qualified until one is run -- a single ~60-trial block
+# with their own HRTF is enough.
+DONOR_POOL = ('pilot/AGV', 'pilot/SW', 'pilot/VD', 'pilot/AH', 'FS')
+
+#: Elevation gain a donor must reach with their own HRTF to enter the pool.
+MIN_DONOR_ELEVATION_GAIN = 0.8
 
 # what a recording must match to be usable without resampling
 REQUIRED_TAPS = 512
@@ -799,16 +904,15 @@ def report(rows, reference=None):
     """
     tier = rows[0].get('tier') if rows else None
     if tier == 'band':
-        print(f'selection tier: BAND — within {TOLERANCE:.2f} of target '
-              f'{TARGET_DISSIMILARITY:.2f}, ranked by donor cue strength')
+        print(f'selection tier: BAND — ridge collapsed AND r_match within '
+              f'{TOLERANCE:.2f} of target {TARGET_R_MATCH:.2f}')
     elif tier == 'widened':
-        print(f'selection tier: WIDENED — nothing within {TOLERANCE:.2f} of '
-              f'target {TARGET_DISSIMILARITY:.2f}; ranked by distance to target')
+        print(f'selection tier: WIDENED — ridge collapsed but nothing within '
+              f'{TOLERANCE:.2f} of target r_match {TARGET_R_MATCH:.2f}')
     elif tier == 'fallback':
         print(f'selection tier: FALLBACK — no candidate collapsed the ridge '
               f'(<= {MAX_RIDGE_SLOPE:.2f}); ranked by ridge slope. REPORT THIS.')
-    print(f'{"":>4}{"donor":>14}  {"VSI-dis":>8} {"strength":>8} {"VSI":>6} '
-          f'{"I_sim":>7} {"peak r":>7} {"ridge":>7} {"bias":>7}  {"":>5}')
+    print(f'{"":>4}{"donor":>14}  {"r_match":>8} {"ridge":>8} {"strength":>9}  {"":>6}')
     for row in rows:
         if 'eligible' not in row:
             mark = ''
@@ -820,10 +924,9 @@ def report(rows, reference=None):
             mark = 'x'
         arrow = '-->' if row.get('rank') == 0 else (
             f'{row["rank"]}.' if 'rank' in row else '')
-        print(f'{arrow:>4}{row["donor"]:>14}  {row["vsi_dissimilarity"]:8.3f} '
-              f'{row.get("donor_strength", float("nan")):8.1f} {row["vsi"]:6.2f} '
-              f'{row["i_sim"]:7.3f} {row["peak_r"]:7.2f} {row["ridge_slope"]:+7.2f} '
-              f'{row["ridge_bias"]:+7.1f}  {mark:>5}')
+        print(f'{arrow:>4}{row["donor"]:>14}  {row["r_match"]:8.2f} '
+              f'{row["ridge_slope"]:+8.2f} {row.get("donor_strength", float("nan")):9.1f} '
+              f'{mark:>6}')
     if reference is not None and len(reference):
         quartiles = numpy.percentile(reference, [25, 50, 75])
         print(f'\nbetween-subject VSI dissimilarity (n={len(reference)} pairs): '

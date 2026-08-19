@@ -11,6 +11,7 @@ import hrtf_relearning
 from hrtf_relearning.utils import paths
 base_dir = paths.HRTF_DIR
 import logging
+from datetime import datetime
 
 subject_id = 'kemar_pir'
 head_radius = 0.0875
@@ -113,7 +114,16 @@ def record_hrir(
             fs=fs,
             equalize=equalize_dome,
             key=True)
-        subject_rec.to_npz(subj_dir, overwrite=overwrite)
+        # Fresh sweeps were just recorded, so they must be stored -- passing the
+        # caller's `overwrite` here silently discarded re-recordings of subjects
+        # who already had a recordings.npz. Any previous session is archived
+        # rather than replaced.
+        if npz_file.exists():
+            stamp = datetime.fromtimestamp(npz_file.stat().st_mtime).strftime("%Y%m%d_%H%M%S")
+            archived = npz_file.with_name(f"recordings_{stamp}.npz")
+            npz_file.rename(archived)
+            logging.warning(f"Archived previous recordings to {archived}")
+        subject_rec.to_npz(subj_dir, overwrite=True)
     else:
         logging.info("Loading subject recordings from disk")
         subject_rec = Recordings.load(subj_dir)
@@ -141,13 +151,17 @@ def record_hrir(
     # 3) Deconvolution: sweeps -> IRs
     # -----------------------------------------------------------------
     logging.info("Computing impulse responses")
+    # align_interaural is deliberately NOT passed here. Zeroing the frontal
+    # ITD/ILD on the subject and the reference separately happens before the
+    # division in equalize() and leaves a systematic interaural residual
+    # instead of removing one -- it is done post-equalization below.
     subject_ir = compute_ir(subject_rec, inversion_range_hz=(hp_freq, 20e3),
-                            onset_threshold_db=10, align_interaural=align_interaural)
+                            onset_threshold_db=10, align_interaural=False)
     reference_ir = compute_ir(reference_rec, inversion_range_hz=(hp_freq, 20e3),
-                              onset_threshold_db=10, align_interaural=align_interaural)
+                              onset_threshold_db=10, align_interaural=False)
 
     # -----------------------------------------------------------------
-    # 4) Equalization + windowing
+    # 4) Equalization + windowing (+ frontal ITD/ILD zeroing, post-division)
     # -----------------------------------------------------------------
     logging.info("Applying equalization")
     hrir_equalized = equalize(
@@ -156,6 +170,7 @@ def record_hrir(
         n_samples_out=n_samples_out,
         inversion_range_hz=(hp_freq, 18e3),
         onset_threshold_db=10,
+        align_interaural=align_interaural,
     )
 
     # -----------------------------------------------------------------

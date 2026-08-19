@@ -5,11 +5,11 @@
 %       hrtf/processing/midline.py        (applied to the measured arc)
 %       hrtf/analysis/donor_selection.py  (vanopstal_dtfs / isim / composite_isim)
 %
-% !! THE CODE'S ACTIVE RULE DOES NOT YET MATCH THIS TEXT. select_donor() still
-%    runs the older three-measure rule (ridge slope gate + dissimilarity target
-%    band + detail-strength tie-break, on un-normalised spectra). The I_sim
-%    functions this section describes are implemented and validated but are not
-%    yet what select_donor calls. Either switch the rule or rewrite this back.
+% Code and text now agree: shortlist()/select_donor() gate on ridge_slope <= 0.5
+% and rank by |r_match - TARGET_R_MATCH|, both from pair_metrics() on the detail
+% domain; DONOR_POOL holds the behaviourally qualified donors and
+% MIN_DONOR_ELEVATION_GAIN is the criterion. isim()/vanopstal_dtfs() remain in
+% the module as diagnostics and must NOT be reported as similarity.
 % ---------------------------------------------------------------------------
 
 \subsection{Spectral cue manipulation}
@@ -46,60 +46,82 @@ that native and modified sets share their interaural time differences exactly
 and the envelope is fitted to the pinna response rather than to the pinna
 response multiplied by the head shadow.
 
-\subsection{Donor selection}
+\subsection{Donor qualification}
 
 Donor transfer functions were taken from a pool of previously recorded
-participants. The donor was the only aspect of the manipulation that varied
-between participants, and was chosen before the participant heard any modified
-stimulus, by maximizing the correspondence between the intended and the
-obtained size of the spectral perturbation.
+participants. A recording qualified as a donor only if that participant had
+themselves localized accurately with their own unmodified transfer function in
+the same virtual environment, quantified as the elevation gain of their first
+completed localization block (criterion: gain $\geq 0.8$; targets within
+$\pm30^\circ$ elevation). The manipulation transplants one listener's spectral
+detail to another, and this criterion establishes that the pattern being
+transplanted is one a human auditory system demonstrably reads: it is evidence
+that the cue works, obtained from the only instrument that can supply it.
 
-Perturbation size was quantified with the similarity index of Van Wanrooij and
-Van Opstal
+The criterion is behavioral because the acoustic alternatives are not
+predictive. Among the recordings for which both were available, the depth and
+elevation dependence of a donor's own spectral detail---the natural acoustic
+index of how much cue it carries---was unrelated to how well that participant
+localized with it (Spearman $\rho = +0.09$, $n = 17$); the recording with the
+most pronounced fine structure of the entire set belonged to a participant whose
+elevation gain was $0.05$. Qualification is applied as an inclusion criterion
+only. Accurate localization shows that a pattern is usable; inaccurate
+localization is ambiguous between a weak cue, a rendering failure and an
+inattentive listener, so an unqualified recording is treated as unproven rather
+than as unsuitable.
+
+\subsection{Donor selection}
+
+Among qualified donors, the donor assigned to a participant was the one whose
+composite came closest to an intended perturbation size while remaining
+unabsorbable by that participant's existing spectral-to-spatial map. Both
+quantities were computed between the participant's own and the modified spectral
+detail on the median-plane arc, in the 5657--11314\,Hz band, averaged over ears.
+
+Perturbation size was quantified as $r_\mathrm{match}$, the mean over elevations
+of the correlation between the participant's own detail at that elevation and
+the modified detail at the same elevation. This is the quantity that the
+mechanism proposed by Van Wanrooij and Van Opstal
 % \citet{vanwanrooij_relearning_2005}
-, computed on directional transfer functions defined as in their Eq.~1: the
-amplitude spectrum at each elevation divided by the grand average across the
-elevations of the measured arc. Correlating every modified transfer function
-with every unmodified one gives a matrix $C(\epsilon_1,\epsilon_2)$; for each
-modified elevation the standard deviation of its correlations with all
-unmodified ones was taken, and $I_\mathrm{sim}$ is the mean of those standard
-deviations over elevations, computed between 4 and 18\,kHz and averaged over
-ears. A high value means the modified set still discriminates elevation as the
-listener's own ears do; a low value means no elevation is well matched by any.
-The donor whose composite gave an $I_\mathrm{sim}$ closest to the target was
-selected.
+---a correlation between the sensory input and a stored spectral representation
+of the listener's own ears---predicts should govern performance. It was targeted
+mid-range rather than minimized, because the perturbation is bounded from both
+sides: in their monaural experiment, listeners whose cues were not sufficiently
+perturbed never reached stable performance, while Trapeau et al.
+% \citet{trapeau_fast_2016}
+found that larger perturbations produced a greater initial loss and slower, less
+complete recovery. The target was set to the median $r_\mathrm{match}$ between
+qualified donors, so that the perturbation corresponds to a typical difference
+between two people whose own cue is known to work.
 
-This index was used in preference to the spectral variability index
+Absorbability was quantified as the slope of the regression of the
+best-matching own elevation on true elevation. A slope near unity means the
+existing map can still read the modified set as a coherent elevation, displaced
+rather than replaced, and can accommodate the manipulation as a constant
+response bias; this is the configuration that Van Wanrooij and Van Opstal's
+non-adapting listeners occupied. Candidates with a slope above $0.5$ were
+excluded, and among the remainder the donor closest to the target
+$r_\mathrm{match}$ was selected.
+
+Both measures are required. Across all donor--listener pairings available here
+they were nearly independent (Spearman $\rho = +0.14$), and of the pairings
+whose $r_\mathrm{match}$ indicated a strong perturbation ($\leq 0.3$), $31\%$
+nonetheless had a slope above the exclusion threshold---a large change in the
+spectral cue that the existing map could still absorb.
+
+Both were computed on the spectral detail rather than on whole transfer
+functions. Correlating transfer functions requires the component common to all
+directions to be removed by a reference derived from directions other than those
+being compared, which for the spectral variability index
 % \citep{trapeau_fast_2016}
-because of what each requires of the measurement geometry. The latter is
-defined on transfer functions normalized by an average over directions
-distributed around the listener, which the present recordings do not sample;
-the former is normalized by an average across the elevations of the median
-plane, which is exactly what was measured. It is also the measure obtained in
-the study whose paradigm is closest to the present one, and in that study it
-predicted acute pre-adaptation elevation gain with $r^2 = 0.94$, so it is a
-proxy for the acute degradation the manipulation is intended to produce.
-
-Absolute values of $I_\mathrm{sim}$ depend on the elevation sampling, since the
-index is a standard deviation across correlations, so the present values are
-not directly comparable with published ones and were placed on that scale using
-a common reference. Van Wanrooij and Van Opstal report $I_\mathrm{sim} = 0.5$
-between a listener's own left and right ears and $0.3$ for their earmolds; the
-same own-ear comparison gives $0.37$ here (31 recordings, range $0.18$--$0.51$),
-and a comparison between different listeners' corresponding ears gives $0.25$
-(465 pairs). The two scales therefore differ by a constant factor, and the
-perturbation produced by substituting a donor's spectral detail is of the same
-relative magnitude as the earmolds to which the majority of their listeners
-adapted.
-
-\subsubsection*{Donor substitution}
-
-Selection yields a ranked list rather than a single name, so a participant for
-whom the selected donor abolished rather than degraded performance could be
-moved to the next donor on that list. The ranking was fixed before the
-participant heard any stimulus, so the only experimenter decision was how far
-down the list to move. Any substitution, its rank and the observation prompting
-it were recorded, and both discarded and replacement blocks are reported.
+is a diffuse-field average that the present recordings do not sample. A
+reference formed from the median-plane arc itself cannot substitute, since it is
+the mean of the same spectra that are then correlated: the residuals sum to zero
+by construction, the mean pairwise correlation is fixed at $-1/(N-1)$, and the
+resulting index is a constant (measured: $1.02 \pm 0.02$ across 31 recordings,
+against $1.056$ predicted for $N = 19$ elevations). The cepstral residual is
+subject to no such constraint, because the envelope removed from each direction
+is a smoothed copy of that same direction and directions remain independent.
 
 % --- open items ------------------------------------------------------------
 % CITATIONS — verified 2026-08-18 unless marked:
@@ -113,27 +135,36 @@ it were recorded, and both discarded and replacement blocks are reported.
 %     All quoted from the full text, verified.
 %   Kulkarni & Colburn (1998) Nature -- cepstral smoothing, discrimination
 %     threshold near 16 coefficients. [volume/pages NOT VERIFIED]
-%   Trapeau et al. (2016) JASA -- VSI. Cited here only as the measure NOT used.
-%     [volume/pages NOT VERIFIED]
+%   Trapeau et al. (2016) JASA -- VSI. Cited only if the paragraph declining to
+%     use it names it. [volume/pages NOT VERIFIED]
 %
-% - THE TARGET VALUE IS NOT SET. The text says "closest to the target" without
-%   giving one, because it should be calibrated on our own acute elevation-gain
-%   data (the degradation ladder) rather than transferred from their figure --
-%   their r^2 = 0.94 regression is between-subject over 6 listeners with molds
-%   and on their elevation sampling, not ours. Fill in once the ladder has been
-%   run on enough participants. Until then this section is incomplete.
-% - Dropped from this draft at PF's direction: the donor pool is now described
-%   only as "a pool of previously recorded participants". The detail-strength
-%   floor, the pool membership list and the conformance/zero-padding of older
-%   recordings are all out. If a reviewer asks how donors were screened, the
-%   honest answer is that they were not screened on cue strength under this
-%   rule -- I_sim targeting already excludes donors that would remove the cue,
-%   because removing the cue drives I_sim to the bottom of the range.
-% - I_sim is blind to WHERE the correlation peak sits, so it does not separate a
-%   map that moved from one that vanished (Van Opstal note this: the maximum is
-%   not necessarily on the diagonal). The ridge slope is retained in the code as
-%   a reported check. Decide whether it appears in the paper or only as a
-%   supplementary QC figure.
+% - THE QUALIFIED POOL IS CURRENTLY 5 DONORS (AGV, SW, VD, AH, FS) because only
+%   17 of 31 conformable recordings have a localization block with their own
+%   HRTF, and the EG distribution is bimodal: 5 at 0.86-0.96, then IR at 0.51,
+%   then everything from 0.39 down to 0.00 with several at almost exactly zero.
+%   TWO THINGS FOLLOW. (a) The 0.8 criterion currently sits in the gap, so it is
+%   not doing fine discrimination -- say so rather than implying a graded scale.
+%   (b) The cluster at zero is unexplained and looks more like something failing
+%   than like a spread of ear quality; it is the same bimodality that blocked the
+%   VSI-vs-RMSE analysis. Resolve it before claiming those donors are unusable.
+% - ELEVEN candidates have no localization block at all (FD, MSc, GS, CO, TS,
+%   AS, GLK, PF, NW, IM, UG). One ~60-trial run with their own HRTF qualifies
+%   each of them and would roughly triple the pool. Cheapest available win.
+% - find_participants() prefers the PILOT pair when an id exists in both trees,
+%   so active AS and PF are currently shadowed by their 63-source pilot
+%   namesakes and never get scored. Fix before running the qualification again.
+% - WHY NO I_SIM. Van Opstal's index was tested and rejected for this role: it is
+%   the SD down each column of the correlation matrix, and SD is invariant to
+%   permutation of the rows, so it cannot distinguish a listener's own ear from
+%   their own ear relabelled by 17 deg (measured: identical value 0.542 for
+%   shifts of 0, 4, 8 and 17 deg, while the correlation at matching elevation
+%   fell 1.00 -> 0.08). It also scores a cue-REMOVED ear (own envelope only,
+%   0.395) as less perturbed than a real donor composite (0.272), so it does not
+%   separate replacement from removal. Keep this in the file; it is the answer if
+%   a reviewer asks why the obvious measure was not used.
+% - Detail strength has no repeatability estimate (every arc is measured once),
+%   so do not report it to more precision than the ranking requires, and do not
+%   claim a difference between adjacent donors.
 % - NO REPEATABILITY ESTIMATE exists for any of these measures: every arc is
 %   measured once. Re-recording one subject would fix this cheaply, and two
 %   recordings HAVE been remade (AS 2026-08-18, GS 2026-07-28) -- but as

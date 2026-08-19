@@ -204,15 +204,23 @@ class Recordings(SpeakerGridBase):
 
         Array shape: (n_locations, n_recordings, n_channels, n_datapoints).
         Speaker-location keys are stored alongside so the dict can be reconstructed.
+
+        params.txt is written only once the arrays have actually been stored, so
+        the two can never describe different recording sessions. Writing it
+        before the overwrite guard used to leave a folder whose params.txt
+        announced a new session while recordings.npz still held the old sweeps.
         """
         logging.info(f'Writing recordings to .npz: {path}.')
         path = Path(path)
         path.mkdir(exist_ok=True, parents=True)
-        self.write_params_file(path)
 
         fname = path / "recordings.npz"
         if fname.exists() and not overwrite:
-            logging.info(f"{fname} already exists – skipping (use overwrite=True to replace).")
+            logging.warning(
+                f"{fname} already exists – NOT saving these recordings "
+                f"(use overwrite=True to replace). params.txt is left describing "
+                f"the stored arrays."
+            )
             return
 
         keys = list(self.data.keys())
@@ -241,6 +249,7 @@ class Recordings(SpeakerGridBase):
             keys=numpy.array(keys),
             samplerate=numpy.array(samplerate),
         )
+        self.write_params_file(path)
 
     @classmethod
     def from_npz(cls, path):
@@ -248,7 +257,10 @@ class Recordings(SpeakerGridBase):
         path = Path(path)
         params = parse_params_file(path)
 
-        npz = numpy.load(path / "recordings.npz", allow_pickle=False)
+        npz_file = path / "recordings.npz"
+        _warn_if_params_newer_than_arrays(path, npz_file, params)
+
+        npz = numpy.load(npz_file, allow_pickle=False)
         arr        = npz["recordings"]          # (n_locs, n_recs, n_ch, n_samples)
         keys       = npz["keys"].tolist()
         samplerate = int(npz["samplerate"])
@@ -279,8 +291,8 @@ class Recordings(SpeakerGridBase):
         logging.info(f'Writing recordings to .wav: {path}.')
         path = Path(path)
         path.mkdir(exist_ok=True, parents=True)
-        self.write_params_file(path)
 
+        n_written = 0
         for key, recs in self.data.items():
             kdir = path / key
             kdir.mkdir(exist_ok=True)
@@ -289,6 +301,16 @@ class Recordings(SpeakerGridBase):
                 if fname.exists() and not overwrite:
                     continue
                 sf.write(fname, r.data.astype("float32"), r.samplerate, subtype="FLOAT")
+                n_written += 1
+
+        # same contract as to_npz: params.txt describes what is actually stored
+        if n_written:
+            self.write_params_file(path)
+        else:
+            logging.warning(
+                f"No .wav files written to {path} (all present, overwrite=False) – "
+                f"params.txt left untouched."
+            )
 
     @classmethod
     def from_wav(cls, path):
@@ -345,6 +367,31 @@ class Recordings(SpeakerGridBase):
 # ---------------------------------------------------------------------
 
 _VALID_CHIRP_KINDS = {"linear", "quadratic", "logarithmic", "hyperbolic"}
+
+
+def _warn_if_params_newer_than_arrays(path, npz_file, params, tolerance_s=3600):
+    """Warn when params.txt describes a later session than the stored arrays.
+
+    A folder written before the to_npz fix can hold a params.txt from a
+    re-recording next to the sweeps of the ORIGINAL session, in which case
+    everything loaded from here is silently mislabelled.
+    """
+    stamp = params.get("datetime") if isinstance(params, dict) else None
+    if not stamp:
+        return
+    try:
+        params_dt = datetime.fromisoformat(str(stamp))
+        npz_dt = datetime.fromtimestamp(npz_file.stat().st_mtime)
+    except (ValueError, OSError):
+        return
+    if (params_dt - npz_dt).total_seconds() > tolerance_s:
+        logging.warning(
+            f"{path}: params.txt is dated {params_dt.isoformat(timespec='seconds')} but "
+            f"recordings.npz was last written {npz_dt.isoformat(timespec='seconds')}. "
+            f"The sweeps are probably from an earlier session than params.txt claims – "
+            f"do not trust this folder's metadata."
+        )
+
 
 def _signal_from_params(params):
     """Reconstruct the excitation chirp from a params dict.

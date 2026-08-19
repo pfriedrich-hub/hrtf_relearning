@@ -98,12 +98,28 @@ def time_align_irs(
 
     Optional:
     - For frontal sources (az==0 across elevations): remove ITD and/or ILD.
+
+    DEPRECATED (2026-08-18): do NOT use align_itd/align_ild in the recording
+    path. `compute_ir` runs on the subject AND the reference, so zeroing here
+    happens BEFORE `equalize` divides one by the other, which leaves a
+    systematic interaural residual rather than removing one -- see
+    `zero_frontal_interaural`, which does the same job after the division and
+    is what `equalize(align_interaural=True)` calls. These two flags are kept
+    only to reproduce SOFAs built before that date.
     """
 
     fs = int(irs.params["fs"])
     keys = list(irs.data.keys())
     if len(keys) == 0:
         raise ValueError("time_align_irs_global: empty IR set")
+
+    if align_itd or align_ild:
+        logging.warning(
+            "time_align_irs: align_itd/align_ild run BEFORE reference "
+            "equalization and leave a systematic interaural residual. Use "
+            "equalize(align_interaural=True) instead; these flags are kept "
+            "only to reproduce pre-2026-08-18 SOFAs."
+        )
 
     # --- select reference direction ---
     if center_key is not None and center_key in irs.data:
@@ -320,6 +336,9 @@ def equalize(
     n_samples_out: int,
     inversion_range_hz,
     onset_threshold_db: float = 20.0,
+    align_interaural: bool = False,
+    ild_band: tuple[float, float] = (200.0, 16000.0),
+    itd_band: tuple[float, float] = (200.0, 1500.0),
 ) -> "ImpulseResponses":
     """
     Loudspeaker-wise equalization using reference IRs.
@@ -327,6 +346,13 @@ def equalize(
     Assumes:
     - measured and reference share speaker IDs
     - both already window-free IRs
+
+    align_interaural
+        Zero ITD and ILD on the frontal arc AFTER the division, via
+        `zero_frontal_interaural`. This is the only correct place for it --
+        see that function for why doing it in `compute_ir` (i.e. to the
+        subject and the reference separately, before dividing) leaves a
+        systematic residual instead of removing one.
     """
     fs = int(measured.params["fs"])
     signal_params = measured.params["signal"]
@@ -387,10 +413,22 @@ def equalize(
         "equalize": {
             "n_samples_out": n_samples_out,
             "date": datetime.now().isoformat(),
+            "align_interaural": bool(align_interaural),
         },
     }
 
-    return ImpulseResponses(data=out, params=params)
+    out_irs = ImpulseResponses(data=out, params=params)
+
+    if align_interaural:
+        out_irs = zero_frontal_interaural(
+            out_irs, align_itd=True, align_ild=True,
+            ild_band=ild_band, itd_band=itd_band,
+        )
+        params["equalize"]["ild_band"] = list(ild_band)
+        params["equalize"]["itd_band"] = list(itd_band)
+        out_irs.params = params
+
+    return out_irs
 
 
 # =====================================================================
@@ -777,6 +815,120 @@ def _interaural_delay_s(freq_bin, freqs, band=(200.0, 1500.0)):
     ipd = numpy.unwrap(numpy.angle(freq_bin[1] * numpy.conj(freq_bin[0])))
     mask = (freqs >= band[0]) & (freqs <= band[1])
     return -numpy.polyfit(2 * numpy.pi * freqs[mask], ipd[mask], 1)[0]
+
+
+def zero_frontal_interaural(
+    irs: "ImpulseResponses",
+    *,
+    align_itd: bool = True,
+    align_ild: bool = True,
+    ild_band: tuple[float, float] = (200.0, 16000.0),
+    itd_band: tuple[float, float] = (200.0, 1500.0),
+    frontal_az_deg: float = 0.0,
+    frontal_tol_deg: float = 1e-6,
+) -> "ImpulseResponses":
+    """Zero ITD and ILD on the frontal arc, AFTER reference equalization.
+
+    This must run on the equalized DTF, never on the subject and the reference
+    IRs separately before dividing them (which is what `time_align_irs`
+    align_itd/align_ild did until 2026-08-18). A broadband level match is an
+    energy measure and does not commute with the per-frequency division in
+    `equalize`: rms(S/R) != rms(S)/rms(R) unless |R| is flat. Normalising both
+    operands first therefore does not zero the quotient -- it discards the
+    cancellation the division would have performed on the reference's own
+    channel imbalance and leaves a residual in its place. Measured on NW
+    against ref_03.04 that residual was a flat -1.35 dB across 200 Hz-16 kHz,
+    with the same sign for every subject sharing a reference, and it accounted
+    for AS's +5.6 deg rightward localization bias. Done after the division the
+    criterion is satisfied exactly, by construction.
+
+    ILD criterion: broadband ENERGY interaural level difference over
+    `ild_band`, removed with an energy-preserving pair of gains. Energy rather
+    than a per-octave weighted log-mean because the two disagree by ~0.7 dB and
+    the one behavioural anchor available picks energy: AS's midline offset
+    predicts +5.93 deg of bias under the energy measure and +8.82 deg under the
+    log-mean (ILD-vs-azimuth slopes 0.212 vs 0.220 dB/deg, so the disagreement
+    is in the intercept, not the units), against +5.62 deg measured.
+    Lateralization of a broadband stimulus integrates energy across frequency.
+    ONE SCALAR PER DIRECTION, deliberately -- a per-frequency correction
+    would put both ears on the same magnitude spectrum and destroy the
+    elevation-dependent interaural spectral difference, which is real anatomy
+    and measures larger (SD 2.6-3.6 dB) than the elevation-invariant part it
+    would be removing.
+
+    ITD criterion: interaural phase slope over `itd_band`, removed as an exact
+    fractional frequency-domain delay -- same estimator, band and sign
+    convention as `expand_azimuths_with_binaural_cues` step 3a, which repeats
+    this operation when `itd_method='phase'`. The repeat is a no-op, and doing
+    it here means the frontal ITD is also zero when `expand_az=False` or under
+    the legacy `itd_method='onset'`.
+    """
+    eps = 1e-30
+
+    def _is_frontal(key: str) -> bool:
+        try:
+            az = float(key.split("_")[1])
+        except (IndexError, ValueError):
+            return False
+        az = float(numpy.mod(az, 360.0))
+        return (abs(az - frontal_az_deg) <= frontal_tol_deg
+                or abs(az - 360.0) <= frontal_tol_deg)
+
+    out = copy.deepcopy(irs)
+    n_frontal = 0
+
+    for key in list(out.data.keys()):
+        if not _is_frontal(key):
+            continue
+        sig = out.data[key]
+        freqs = sig.frequencies
+        spectrum = sig.freq.copy()
+
+        if align_itd:
+            tau = _interaural_delay_s(spectrum, freqs, band=itd_band)
+            spectrum[1] *= numpy.exp(1j * 2 * numpy.pi * freqs * tau)
+
+        if align_ild:
+            band = (freqs >= ild_band[0]) & (freqs <= ild_band[1])
+            if not band.any():
+                raise ValueError(f"ild_band {ild_band} selects no frequency bins")
+            ild_db = 10 * numpy.log10(
+                (numpy.mean(numpy.abs(spectrum[0, band]) ** 2) + eps)
+                / (numpy.mean(numpy.abs(spectrum[1, band]) ** 2) + eps))
+
+            ratio = 10 ** (-ild_db / 20.0)             # = gain_L / gain_R
+            p_l = float(numpy.mean(numpy.abs(spectrum[0]) ** 2))
+            p_r = float(numpy.mean(numpy.abs(spectrum[1]) ** 2))
+            gain_r = numpy.sqrt((p_l + p_r) / (ratio ** 2 * p_l + p_r))
+            spectrum[0] *= ratio * gain_r              # total power preserved
+            spectrum[1] *= gain_r
+
+        # DC and Nyquist must stay real for a real impulse response
+        spectrum[..., 0] = numpy.abs(spectrum[..., 0])
+        if sig.n_samples % 2 == 0:
+            spectrum[..., -1] = numpy.abs(spectrum[..., -1])
+
+        sig.freq = spectrum
+        n_frontal += 1
+
+    if n_frontal == 0:
+        logging.warning("zero_frontal_interaural: no frontal (az=0) directions found.")
+    else:
+        logging.info("zero_frontal_interaural: %d frontal directions zeroed "
+                     "(itd=%s, ild=%s).", n_frontal, align_itd, align_ild)
+
+    out.params.setdefault("frontal_interaural", {}).update({
+        "align_itd": bool(align_itd),
+        "align_ild": bool(align_ild),
+        "ild_band_hz": list(ild_band),
+        "ild_criterion": "broadband energy ILD, energy preserving",
+        "itd_band_hz": list(itd_band),
+        "itd_criterion": "interaural phase slope, fractional delay",
+        "applied": "post-equalization",
+        "n_frontal": int(n_frontal),
+        "date": datetime.now().isoformat(),
+    })
+    return out
 
 
 def expand_azimuths_with_binaural_cues(

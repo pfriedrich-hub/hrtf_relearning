@@ -975,6 +975,8 @@ def show_status(subject):
 
 
 
+
+
 # %% status check (rerun anytime) --------------------------------------------
 subject = hr.Subject(SUBJECT_ID)
 collect_demographics(subject)      # once per participant; skipped if on file
@@ -1017,7 +1019,7 @@ load_existing_donor()
 # use_donor(rank=1, reason="")
 
 # %% which donors this participant has been on ---------------------------------
-show_donor_log()
+show_donor_log()  # todo move this out of the way
 
 # %% day 1: baseline A -- trained ear, same loc (matches final A) -------------
 baseline_A = run_phase("baseline_A", subject)
@@ -1040,6 +1042,10 @@ collect_externalization_rating(baseline_D)
 # headphone seating / HP filter / OS volume rather than logging the day.
 subject = hr.Subject(SUBJECT_ID)
 run_anchor(subject)
+# todo im not going to run this every day, too expensive. if externalization is stable for modified ears the second day
+#  i trust it will stay so until the end of the experiment
+#  also, i dont need to collect externalization ratings beyond the baseline tests
+
 
 # %% adaptation day: 1. PRE-training test -------------------------------------
 subject = hr.Subject(SUBJECT_ID)

@@ -62,7 +62,7 @@ The criterion is behavioral because the acoustic alternatives are not
 predictive. Among the recordings for which both were available, the depth and
 elevation dependence of a donor's own spectral detail---the natural acoustic
 index of how much cue it carries---was unrelated to how well that participant
-localized with it (Spearman $\rho = +0.09$, $n = 17$); the recording with the
+localized with it (Spearman $\rho = +0.18$, $n = 24$); the recording with the
 most pronounced fine structure of the entire set belonged to a participant whose
 elevation gain was $0.05$. Qualification is applied as an inclusion criterion
 only. Accurate localization shows that a pattern is usable; inaccurate
@@ -138,21 +138,27 @@ is a smoothed copy of that same direction and directions remain independent.
 %   Trapeau et al. (2016) JASA -- VSI. Cited only if the paragraph declining to
 %     use it names it. [volume/pages NOT VERIFIED]
 %
-% - THE QUALIFIED POOL IS CURRENTLY 5 DONORS (AGV, SW, VD, AH, FS) because only
-%   17 of 31 conformable recordings have a localization block with their own
-%   HRTF, and the EG distribution is bimodal: 5 at 0.86-0.96, then IR at 0.51,
-%   then everything from 0.39 down to 0.00 with several at almost exactly zero.
-%   TWO THINGS FOLLOW. (a) The 0.8 criterion currently sits in the gap, so it is
-%   not doing fine discrimination -- say so rather than implying a graded scale.
-%   (b) The cluster at zero is unexplained and looks more like something failing
-%   than like a spread of ear quality; it is the same bimodality that blocked the
-%   VSI-vs-RMSE analysis. Resolve it before claiming those donors are unusable.
-% - ELEVEN candidates have no localization block at all (FD, MSc, GS, CO, TS,
-%   AS, GLK, PF, NW, IM, UG). One ~60-trial run with their own HRTF qualifies
-%   each of them and would roughly triple the pool. Cheapest available win.
-% - find_participants() prefers the PILOT pair when an id exists in both trees,
-%   so active AS and PF are currently shadowed by their 63-source pilot
-%   namesakes and never get scored. Fix before running the qualification again.
+% - QUALIFIED POOL = 7 (CO, AGV, SW, VD, AH, FS, FD), from 27 recordings with an
+%   own-HRTF block. Every one of the 12 listeners resolves to an admissible
+%   donor: 6 in band, 6 widened, no fallbacks. Target r_match 0.58 = median over
+%   the 21 qualified-donor pairs (min 0.32, Q1 0.51, Q3 0.66, max 0.77).
+%   RECOMPUTE THE TARGET WHENEVER THE POOL CHANGES -- it is defined from the pool.
+% - 0.8 falls in the gap between FD at 0.82 and AS at 0.63, so it is not making a
+%   fine distinction. State it as a cut in a gap, not as a graded criterion.
+% - GS IS A PROBLEM CASE: the only admissible qualified donor for GS is AGV at
+%   r_match 0.90, i.e. almost no perturbation. Either GS needs a donor that is
+%   not yet qualified, or GS cannot be run under this rule. Check before
+%   scheduling GS.
+% - Five candidates still have no own-HRTF block (GLK, IM, MSc, NW, UG) -- they
+%   have other runs, just none with their unmodified HRTF. One ~60-trial block
+%   each would qualify them and widen the pool.
+% - CORRECTED: an earlier version of this file called the EG distribution
+%   bimodal with a suspicious cluster at zero. That came from
+%   vsi_rmse.find_participants() missing 6 subjects (it searched only the flat
+%   results/pilot/<id>.pkl and not the nested results/pilot/<id>/<id>.pkl, and
+%   preferred the pilot pair where an id existed in both trees, which shadowed
+%   the active AS and PF). Both are fixed; with the fuller set the spread is
+%   closer to continuous. Do not repeat the bimodality claim.
 % - WHY NO I_SIM. Van Opstal's index was tested and rejected for this role: it is
 %   the SD down each column of the correlation matrix, and SD is invariant to
 %   permutation of the rows, so it cannot distinguish a listener's own ear from

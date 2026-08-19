@@ -9,7 +9,7 @@ requires-python = ">=3.10"
 dependencies = [
     "slab @ git+https://github.com/pfriedrich-hub/slab.git",
     "pybinsim @ git+https://github.com/pfriedrich-hub/pybinsim_tuil.git",
-"h5py", "h5netcdf", "netCDF4", "metawear", "pynput", "pyfar",
+"h5py", "h5netcdf", "netCDF4", "metawear", "pynput", "pyfar>=0.8.1",
     # Plots. matplotlib is declared explicitly rather than inherited from slab /
     # pyfar because the package now selects the backend itself; >=3.5 for the
     # 'QtAgg' backend name. Plot windows themselves use Tk, which ships with the

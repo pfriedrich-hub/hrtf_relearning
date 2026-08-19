@@ -34,7 +34,7 @@ from hrtf_relearning.hrtf.record.record_hrir import record_hrir
 from hrtf_relearning.hrtf.record.calibration.calibrate_headphones import calibrate_headphones
 from hrtf_relearning.utils import paths
 
-SUBJECT_ID   = 'AS'          # edit per participant
+SUBJECT_ID   = 'NW'          # edit per participant
 HEAD_RADIUS  = 0.0725
 REFERENCE_ID = 'ref_03.04'
 N_DIRECTIONS = 3              # directions for the HRIR recording
@@ -60,7 +60,7 @@ hrir = record_hrir(
     hp_freq        = HP_FREQ,
     head_radius    = HEAD_RADIUS,
     show           = SHOW,
-    overwrite_rec  = True,
+    overwrite_rec  = False,
     overwrite_hrir = True,
 )
 
@@ -77,7 +77,7 @@ hp_filter = calibrate_headphones(SUBJECT_ID, 'DT990', N_REC_HP, SHOW, False, ove
 # stimuli, which is the comparison this session exists to make.
 #   !! Depth not yet settled -- see learning_transfer.STIM_SETTINGS. Verify with
 #      protocols/dev/stimulus_check.py (cells 11-13 dome, 7-9 AR) before use.
-STIM = 'noise'            # -> 'ripple' once the depth is settled
+STIM = 'ripple'            # -> 'ripple' once the depth is settled
 STIM_SETTINGS = {'rms_tilt': 3}        # empty = inherit localization_helpers.stimulus defaults
 
 # %% step 4: dome localization ---------------------------------------------------

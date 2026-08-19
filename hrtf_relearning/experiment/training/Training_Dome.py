@@ -82,6 +82,10 @@ from pathlib import Path
 import numpy
 import slab
 import freefield
+# read_speaker_table() reads the module-level SETUP of freefield.freefield;
+# `import freefield` only exposes a copy of it (star import in __init__),
+# so the module itself is needed to select a table before initialize().
+from freefield import freefield as freefield_core
 from pynput import keyboard
 
 from hrtf_relearning.experiment.misc import meta_motion
@@ -92,8 +96,11 @@ from hrtf_relearning.experiment.training.training_helpers.training_targets impor
 from hrtf_relearning.utils import paths
 
 # ==================== quick config ====================
-SUBJECT_ID = os.environ.get('TRAINING_SUBJECT_ID', 'test')
-REGION = os.environ.get('TRAINING_REGION', 'dome')      # 'dome' | 'midline'
+# SUBJECT_ID = os.environ.get('TRAINING_SUBJECT_ID', 'test')
+# REGION = os.environ.get('TRAINING_REGION', 'dome')      # 'dome' | 'midline'
+# SETTINGS = {}       # e.g. {'game_time': 60, 'trial_time': 8, 'target_size': 5}
+SUBJECT_ID = 'NW'
+REGION = 'midline'      # 'dome' | 'midline'
 SETTINGS = {}       # e.g. {'game_time': 60, 'trial_time': 8, 'target_size': 5}
 # ======================================================
 
@@ -230,12 +237,12 @@ class TrainingDome:
         through `speaker.index`, so the equalization loaded into the global
         speaker list on initialize() is the one that gets applied.
         """
-        previous_setup = freefield.SETUP
-        freefield.SETUP = 'dome'          # read_speaker_table() reads the global
+        previous_setup = freefield_core.SETUP
+        freefield_core.SETUP = 'dome'     # read_speaker_table() reads the global
         try:
-            table = freefield.read_speaker_table()
+            table = freefield_core.read_speaker_table()
         finally:
-            freefield.SETUP = previous_setup
+            freefield_core.SETUP = previous_setup
         az_lo, az_hi = sorted(self.settings['azimuth_range'])
         el_lo, el_hi = sorted(self.settings['elevation_range'])
         speakers = [s for s in table

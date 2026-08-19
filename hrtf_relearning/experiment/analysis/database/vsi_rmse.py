@@ -73,10 +73,19 @@ def find_participants():
 
     Both cohorts are covered: active subjects (``sofa/<id>/<id>.sofa`` +
     ``results/<id>/<id>.pkl``) and the pilot archive (``sofa/pilot/<id>/`` +
-    the flat ``results/pilot/<id>.pkl``). A few ids exist in BOTH trees — these
+    a pickle under ``results/pilot/``). A few ids exist in BOTH trees — these
     are not necessarily the same person (same initials; cf. demerge_subject.py),
     so the SOFA is always paired with the pickle from the SAME cohort and a
-    warning is logged rather than silently crossing them. A
+    warning is logged rather than silently crossing them. THE ACTIVE PAIR WINS:
+    where an id has a current recording, that is the one being used in the
+    experiment, and pairing it with a pilot namesake's data would score the
+    wrong person (e.g. ``sofa/pilot/AS`` is a 63-source screening recording, not
+    the AS being run).
+
+    ``results/pilot/`` has TWO layouts and both must be searched: the original
+    flat ``<id>.pkl`` and the per-subject ``<id>/<id>.pkl`` that later subjects
+    were migrated into. Looking only for the flat form silently loses everyone
+    who was migrated — CO, FD, GLK, GS, JF, SS among them. A
     ``<id>_corrected.pkl`` wins over ``<id>.pkl`` (some pilot pickles are
     damaged).
     """
@@ -84,30 +93,52 @@ def find_participants():
            if sofa.stem == sofa.parent.name}          # base recordings only
     pilot_results = paths.RESULTS_DIR / 'pilot'
 
+    def _pilot_pkl(subject_id):
+        """First existing pilot pickle, corrected before plain, nested or flat."""
+        candidates = (
+            pilot_results / subject_id / f'{subject_id}_corrected.pkl',
+            pilot_results / subject_id / f'{subject_id}.pkl',
+            pilot_results / f'{subject_id}_corrected.pkl',
+            pilot_results / f'{subject_id}.pkl',
+        )
+        return next((p for p in candidates if p.exists()), candidates[-1])
+
     found = []
     for subject_id in sorted(ids):
-        cohorts = {
-            'active': (paths.SOFA_DIR / subject_id / f'{subject_id}.sofa',
-                       paths.subject_pkl(subject_id)),
-            'pilot': (paths.SOFA_DIR / 'pilot' / subject_id / f'{subject_id}.sofa',
-                      next((p for p in (pilot_results / f'{subject_id}_corrected.pkl',
-                                        pilot_results / f'{subject_id}.pkl')
-                            if p.exists()), pilot_results / f'{subject_id}.pkl')),
-        }
-        paired = {name: (sofa, pkl) for name, (sofa, pkl) in cohorts.items()
-                  if sofa.exists() and pkl.exists()}
-        if len(paired) > 1:
-            logger.warning('%s: exists in both the active and the pilot tree — '
-                           'using the pilot pair; check they are the same person',
-                           subject_id)
-            paired.pop('active')
-        if not paired:
-            have = [n for n, (s, _) in cohorts.items() if s.exists()]
-            logger.info('%s: SOFA (%s) but no matching localization pickle — '
-                        'skipped', subject_id, '/'.join(have) or 'none')
+        sofas = {'active': paths.SOFA_DIR / subject_id / f'{subject_id}.sofa',
+                 'pilot': paths.SOFA_DIR / 'pilot' / subject_id / f'{subject_id}.sofa'}
+        pkls = {'active': paths.subject_pkl(subject_id),
+                'pilot': _pilot_pkl(subject_id)}
+        have_sofa = [c for c in ('active', 'pilot') if sofas[c].exists()]
+        have_pkl = [c for c in ('active', 'pilot') if pkls[c].exists()]
+
+        if not have_sofa or not have_pkl:
+            logger.info('%s: SOFA (%s) / pickle (%s) — skipped', subject_id,
+                        '+'.join(have_sofa) or 'none', '+'.join(have_pkl) or 'none')
             continue
-        sofa, pkl = next(iter(paired.values()))
-        found.append((subject_id, sofa, pkl))
+
+        # active wins on both sides: where an id has a current recording, that is
+        # the one being run, and its results are the ones to score
+        sofa_cohort, pkl_cohort = have_sofa[0], have_pkl[0]
+        if len(have_sofa) > 1:
+            logger.warning('%s: a recording exists in BOTH trees — using the '
+                           'active one; confirm they are the same person',
+                           subject_id)
+            if sofa_cohort != pkl_cohort:
+                # genuinely ambiguous AND crossed: the pickle may belong to a
+                # different person with the same initials. Refuse rather than
+                # score the wrong one.
+                logger.warning('%s: two recordings but only a %s pickle — '
+                               'cannot tell which person it belongs to, skipped',
+                               subject_id, pkl_cohort)
+                continue
+        elif sofa_cohort != pkl_cohort:
+            # only one recording exists, so there is nothing to confuse it with;
+            # the pickle simply lives in the other tree (e.g. an active
+            # recording whose results were filed under results/pilot/<id>/)
+            logger.info('%s: %s recording paired with %s pickle (only one of '
+                        'each exists)', subject_id, sofa_cohort, pkl_cohort)
+        found.append((subject_id, sofas[sofa_cohort], pkls[pkl_cohort]))
     return found
 
 

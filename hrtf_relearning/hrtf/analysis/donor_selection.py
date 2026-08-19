@@ -93,10 +93,12 @@ DEFAULT_RESOLUTION = 'filterbank'
 # the same for everyone, so the manipulation is one sentence in the methods.
 # ---------------------------------------------------------------------------
 N_KEEP = 4                    # envelope coefficients kept (Kulkarni & Colburn 1998)
-TARGET_R_MATCH = 0.60         # perturbation size: the median r_match between
+TARGET_R_MATCH = 0.58         # perturbation size: the median r_match between
                               # QUALIFIED donors, i.e. a typical difference
                               # between two people whose own cue demonstrably
-                              # works (range over that pool: 0.49-0.77)
+                              # works. Over the 7-donor pool, 21 pairs:
+                              # min 0.32 | Q1 0.51 | median 0.58 | Q3 0.66 |
+                              # max 0.77. RECOMPUTE WHEN THE POOL CHANGES.
 MAX_RIDGE_SLOPE = 0.5         # above this the old map can read the composite as
                               # a coherent elevation and absorb it as a bias
 TOLERANCE = 0.05              # half-width of the band around the target
@@ -711,20 +713,31 @@ def select_donor(subject_hrtf, candidates, target=TARGET_R_MATCH,
 # localization is ambiguous -- a weak ear, a failed render, an inattentive
 # listener -- so a low-EG recording is "unproven", not "known bad".
 #
-# EG with own HRTF, virtual environment, |el| <= 30 deg:
-#   AGV .96   SW .93   VD .89   AH .86   FS .86   <- pool (EG >= 0.8)
-#   IR  .51   NKa .39  NK .31   PC .28   RK .21   JR .17   SK .10
-#   JP  .08   PFo .06  MB .05   VG .02   CZ .00
-# The distribution is bimodal with a cluster at ~0; whether that cluster is
-# weak ears or failed renders is UNRESOLVED, which is a further reason to treat
-# it as unproven rather than disqualified.
+# EG with own HRTF, virtual environment, |el| <= 30 deg, 27 recordings:
+#   CO  .98   AGV .96   SW  .93   VD  .89   AH  .86   FS  .86   FD  .82  <- pool
+#   AS  .63   TS  .54   IR  .51   NKa .39   SS  .32   NK  .31   PC  .28
+#   PF  .28   RK  .21   MD  .20*  JZ  .19*  JR  .17   JF  .16   OS  .11*
+#   SK  .10   JP  .08   PFo .06   MB  .05   VG  .02   CZ  .00
+#   (* off-grid recording, cannot be a donor regardless of EG)
+# No own-HRTF baseline run on file yet: GLK, IM, MSc, NW, UG -- each has other
+# runs, just none with their unmodified HRTF. One ~60-trial block qualifies them.
 #
-# Candidates with no localization run yet (FD, MSc, GS, CO, TS, AS, GLK, PF,
-# NW, IM, UG) cannot be qualified until one is run -- a single ~60-trial block
-# with their own HRTF is enough.
-DONOR_POOL = ('pilot/AGV', 'pilot/SW', 'pilot/VD', 'pilot/AH', 'FS')
+# The spread is closer to continuous than it first appeared: an earlier reading
+# of this as bimodal came from a lookup that silently dropped 6 subjects (see
+# vsi_rmse.find_participants). There is still a gap between 0.82 and 0.63 and a
+# lot of mass below 0.35, but the "suspicious cluster at zero" reading is not
+# supported by the fuller set.
+#
+# Detail strength STILL does not predict EG on the fuller set (Spearman +0.18,
+# n=24). MB remains the clearest case: deepest fine structure of all 31
+# recordings, EG 0.05. Note CO (.98/3.3 dB) and FD (.82/3.7 dB) show the two can
+# coincide -- the point is only that the acoustic measure cannot be relied on to
+# tell you so.
+DONOR_POOL = ('CO', 'pilot/AGV', 'pilot/SW', 'pilot/VD', 'pilot/AH', 'FS', 'FD')
 
 #: Elevation gain a donor must reach with their own HRTF to enter the pool.
+#: 0.8 currently falls in the gap between 0.82 and 0.63, so it is not making a
+#: fine distinction -- do not present it as a graded criterion.
 MIN_DONOR_ELEVATION_GAIN = 0.8
 
 # what a recording must match to be usable without resampling

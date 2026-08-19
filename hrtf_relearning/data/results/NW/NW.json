@@ -6416,5 +6416,146 @@
       ]
     }
   },
-  "trials": []
+  "trials": [
+    {
+      "trial_idx": 0,
+      "game_idx": 1,
+      "trial_in_game": 1,
+      "game_start_time": 1787126203.5480645,
+      "session_id": "19.08_09.56",
+      "t_start": 1787126213.7995071,
+      "t_end": 1787126223.807264,
+      "trial_duration": 10.00775694847107,
+      "game_clock": 10.00775694847107,
+      "duration": 10.00775694847107,
+      "target": [
+        0.0,
+        -37.5
+      ],
+      "score": 0,
+      "reached_target": false,
+      "condition": "dome",
+      "region": "midline",
+      "speaker": 26,
+      "settings": {
+        "target_size": 4,
+        "target_time": 0.5,
+        "trial_time": 10,
+        "game_time": 90,
+        "score_time": 3,
+        "min_dist": 25,
+        "pulse_map": "ar",
+        "max_pulse_interval": null,
+        "min_pulse_interval": null,
+        "equalize": false,
+        "stim_level": null,
+        "verbose": true,
+        "azimuth_range": [
+          0,
+          0
+        ],
+        "elevation_range": [
+          -37.5,
+          37.5
+        ],
+        "az_range": [
+          0,
+          0
+        ],
+        "ele_range": [
+          -37.5,
+          37.5
+        ],
+        "region": "midline"
+      },
+      "pose_metrics": {
+        "n_samples": 471,
+        "sample_rate": 46.98232633721951,
+        "duration": 10.003761768341064,
+        "start_az": 0.0,
+        "start_el": -0.1328125,
+        "latency": 6.374609708786011,
+        "initial_error": 135.76699707102026,
+        "initial_el_correct": 0.0,
+        "min_distance": 30.7534306791154,
+        "time_to_target": 10.003761768341064,
+        "path_length": 347.14387529064675,
+        "path_efficiency": 0.022912601088833973,
+        "peak_speed": 400.3994501708442,
+        "mean_speed": 34.70133369121744,
+        "el_excursion": 69.7265625,
+        "n_reversals": 7
+      }
+    },
+    {
+      "trial_idx": 1,
+      "game_idx": 1,
+      "trial_in_game": 2,
+      "game_start_time": 1787126203.5480645,
+      "session_id": "19.08_09.56",
+      "t_start": 1787126237.8572364,
+      "t_end": 1787126241.882232,
+      "trial_duration": 4.024995565414429,
+      "game_clock": 14.032752513885498,
+      "duration": 14.032752513885498,
+      "target": [
+        0.0,
+        12.5
+      ],
+      "score": 2,
+      "reached_target": true,
+      "condition": "dome",
+      "region": "midline",
+      "speaker": 22,
+      "settings": {
+        "target_size": 4,
+        "target_time": 0.5,
+        "trial_time": 10,
+        "game_time": 90,
+        "score_time": 3,
+        "min_dist": 25,
+        "pulse_map": "ar",
+        "max_pulse_interval": null,
+        "min_pulse_interval": null,
+        "equalize": false,
+        "stim_level": null,
+        "verbose": true,
+        "azimuth_range": [
+          0,
+          0
+        ],
+        "elevation_range": [
+          -37.5,
+          37.5
+        ],
+        "az_range": [
+          0,
+          0
+        ],
+        "ele_range": [
+          -37.5,
+          37.5
+        ],
+        "region": "midline"
+      },
+      "pose_metrics": {
+        "n_samples": 109,
+        "sample_rate": 46.70973854353746,
+        "duration": 2.3121516704559326,
+        "start_az": -0.25,
+        "start_el": 0.017578125,
+        "latency": 0.16774344444274902,
+        "initial_error": 178.90052334396285,
+        "initial_el_correct": 0.0,
+        "min_distance": 2.2543902480770717,
+        "time_to_target": 2.017857551574707,
+        "path_length": 36.92305969883259,
+        "path_efficiency": 0.3808180338182477,
+        "peak_speed": 65.25518816448457,
+        "mean_speed": 15.969133932961993,
+        "el_excursion": 20.15234375,
+        "n_reversals": 1
+      }
+    }
+  ]
 }

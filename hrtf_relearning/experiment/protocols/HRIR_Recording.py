@@ -61,8 +61,12 @@ hrir = record_hrir(
     head_radius    = HEAD_RADIUS,
     show           = SHOW,
     overwrite_rec  = False,
-    overwrite_hrir = True,
+    overwrite_hrir = False,
 )
+# todo fix center_key bug,
+#  fix head radius living in two places,
+#  fix overwrite rec: did not work for AS (recordings were made but npz remained unchanged)
+#  note to claude: woodworth style head radius of 0.0875 is not what i empirically measure when taking the distance between participants ears
 
 # %% step 2: headphone calibration ---------------------------------------------
 logging.info('--- Step 2: HP calibration ---')
@@ -81,6 +85,8 @@ STIM = 'ripple'            # -> 'ripple' once the depth is settled
 STIM_SETTINGS = {'rms_tilt': 3}        # empty = inherit localization_helpers.stimulus defaults
 
 # %% step 4: dome localization ---------------------------------------------------
+#todo add optional dome training here in case participants repeatedly fail to localize
+
 # Real speakers, vertical midline. Each run gets a fresh timestamped filename
 # (see LocalizationDome.__init__), so repeats are stored as separate sequences
 # rather than overwriting one another -- rerun this cell to redo it.

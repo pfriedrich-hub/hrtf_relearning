@@ -54,7 +54,7 @@ def make_hrtf(n_bins=128):
             # sf = linear_scaling_factor(azimuth, elevation, x=[(0, 50), (-40, 10)], y=(s * 6, s * .5))
             # tf = add_feature(tf, freq_bins=freq_bins, mu=mu, sigma=s, scaling=sf)
             #
-            # # notch 2        # todo use nonlinear width here
+            # # notch 2
             # mu = linear_notch_position(azimuth, elevation, x=[(0, 10), (-40, 25)], y=(15e3, 13e3))
             # s = linear_notch_width(azimuth, elevation, x=[(0, 50), (40, -40)], y=(800, 300))
             # sf = linear_scaling_factor(azimuth, elevation, x=[(0, 50), (-40, 25)], y=(s * -2, s * -2.3))

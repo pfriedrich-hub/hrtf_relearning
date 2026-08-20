@@ -7,6 +7,21 @@ scope for this pass.
 Nothing has been deleted or changed. This is the state of the pipeline as of
 commit `14a1af9` plus the findings, ranked.
 
+> **Status, 2026-08-19/20.** Findings A, B and D are closed in the code.
+> A: `record_dome`'s parameter is now `equalize_dome` (was `equalize`, which
+> silently defeated the first fix attempt and mis-recorded `ref_19.08`), the
+> default is `False`, and `record_reference()` — step 0b in
+> `HRIR_Recording.py` — records the reference with the same flag as the
+> subject, so the mismatch is closed by construction from `ref_20.08` on.
+> Data already on disk keeps the old reference and its residual **by decision
+> (Paul, 2026-08-19)**: subjects localized well, a rebuild is not warranted.
+> Do not re-raise A as blocking, and do not try to settle an EQ question
+> acoustically across sessions — read `params.txt` and trust the code path.
+> B: fixed (`overwrite=True` passed explicitly). D: fixed, along with a third
+> name-resolution bug of the same class (`center_key` never matched for
+> subjects — magnitude effect 0.016 dB rms, no rebuild owed).
+> The rest of the findings below stand as written.
+
 ---
 
 ## 1. What the pipeline actually does

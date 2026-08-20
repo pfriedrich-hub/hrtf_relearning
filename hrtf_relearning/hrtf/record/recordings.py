@@ -1,9 +1,7 @@
 # recordings.py
-import matplotlib
 from hrtf_relearning.utils.mpl_backend import use_interactive
 use_interactive()
 import matplotlib.pyplot as plt
-import freefield  # rig-only dependency; see the note at the top  # todo this has to stay here so it is defined across functions
 import logging
 import copy
 from pathlib import Path
@@ -13,11 +11,35 @@ import slab
 import soundfile as sf
 import pyfar
 
-# freefield is imported lazily, inside the one method that drives the rig.
-# Importing it here made every consumer of this module hardware-dependent --
-# including record.processing, whose own docstring promises "No I/O. No
-# hardware. No FreeField." — so the cue-editing install (and anything that only
-# wants to re-expand or modify an existing SOFA) could not import it at all.
+# freefield is a RIG-ONLY dependency. A bare `import freefield` here makes every
+# consumer of this module hardware-dependent -- including record.processing,
+# whose own docstring promises "No I/O. No hardware. No FreeField." -- so the
+# cue-editing install (and anything that only wants to re-expand or modify an
+# existing SOFA) could not import it at all. It was previously moved into the
+# one method that drives the rig and then pulled back out to module level
+# ("has to stay here so it is defined across functions"), which reintroduced
+# exactly that problem while the comment below still claimed otherwise.
+#
+# Bind it once, tolerating absence: module-level name for every function that
+# needs it, no import cost at call time, and a clear failure at the point of USE
+# rather than an ImportError at the point of import.
+try:
+    import freefield
+except ImportError:  # no TDT drivers on this machine -- processing still works
+    freefield = None
+    logging.info(
+        "recordings: freefield not available -- recording disabled, "
+        "processing and SOFA editing still work.")
+
+
+def _require_freefield():
+    """Raise a useful error if a rig-only code path is reached without freefield."""
+    if freefield is None:
+        raise RuntimeError(
+            "This function drives the loudspeaker dome and needs the `freefield` "
+            "package (and the TDT drivers) installed. It is not available on this "
+            "machine -- run it on the rig.")
+    return freefield
 
 # ---------------------------------------------------------------------
 # Base grid container
@@ -105,7 +127,36 @@ class Recordings(SpeakerGridBase):
     @classmethod
     def record_dome(cls, id=None, azimuth=(-1,1), elevation=(37.5, -37.5),
                     n_directions=3, n_recordings=10, hp_freq=120, fs=48828,
-                    equalize=True, key=True, button=False):
+                    equalize_dome=None, key=True, button=False, equalize=None):
+        """Record binaural sweeps from the dome.
+
+        `equalize_dome` pre-filters the emitted sweep with each speaker's
+        calibration filter (`freefield.play_and_record(equalize=...)`) and is
+        recorded verbatim in params.txt.
+
+        NAMING (2026-08-19). The parameter used to be called `equalize` while
+        every caller, every variable and params.txt itself called it
+        `equalize_dome`. Setting a local `equalize_dome = False` and calling
+        this method without passing it therefore left the default TRUE in
+        force, silently, with params.txt reporting True -- which is how
+        ref_19.08 and ref_19.08_swapped were recorded equalized when they were
+        meant not to be. `equalize_dome` is now the parameter name; `equalize`
+        still works and warns.
+
+        DEFAULT (2026-08-19). Now **False**, matching what every subject on
+        disk was recorded with. A reference recorded with the dome EQ on and a
+        subject with it off do not cancel in `equalize()` -- see
+        project_dome_eq_mismatch. Whichever you choose, choose the SAME for the
+        subject and its reference.
+        """
+        if equalize is not None:
+            if equalize_dome is not None:
+                raise TypeError("pass equalize_dome, not both equalize_dome and equalize")
+            logging.warning("record_dome: 'equalize' is deprecated, use 'equalize_dome'.")
+            equalize_dome = equalize
+        if equalize_dome is None:
+            equalize_dome = False
+        equalize = equalize_dome
 
         # excitation signal
         sig_params = dict(
@@ -123,11 +174,38 @@ class Recordings(SpeakerGridBase):
 
         # dome setup
 
+        _require_freefield()
         if freefield.PROCESSORS.mode != "play_birec":
             freefield.initialize("dome", "play_birec")
         speakers = cls._select_speakers(freefield.read_speaker_table(), azimuth, elevation)
         led_bits = ['1', '4', '16']
-        res = abs(speakers[0].elevation - speakers[1].elevation) / n_directions
+        if n_directions > len(led_bits):
+            raise ValueError(
+                f"record_dome: n_directions={n_directions} but only "
+                f"{len(led_bits)} LED bitmasks are defined {led_bits}. Add the "
+                "masks for the extra head positions before asking for them.")
+
+        # Interleaving step: the head is tilted by one FRACTION of the dome's
+        # own elevation spacing per direction, so `n_directions` passes fill in
+        # the gaps between physical speaker rows.
+        #
+        # This used to read `speakers[0].elevation - speakers[1].elevation`,
+        # which assumes the speaker table comes back sorted by elevation AND
+        # that its first two entries are adjacent rows -- neither is guaranteed
+        # by `read_speaker_table`. Derive it from the sorted unique elevations
+        # instead, and refuse to guess when the rows are not evenly spaced.
+        unique_el = sorted({round(spk.elevation, 3) for spk in speakers})
+        if len(unique_el) < 2:
+            raise ValueError(
+                "record_dome: need at least two distinct speaker elevations to "
+                f"derive the interleaving step, got {unique_el}.")
+        steps = numpy.diff(unique_el)
+        if not numpy.allclose(steps, steps[0], atol=1e-2):
+            raise ValueError(
+                "record_dome: speaker elevations are not evenly spaced "
+                f"({unique_el}), so a single interleaving step is undefined. "
+                "Select a uniform elevation range, or record one row at a time.")
+        res = float(abs(steps[0])) / n_directions
         min_el = min(spk.elevation for spk in speakers)
         data = {}
 
@@ -146,12 +224,16 @@ class Recordings(SpeakerGridBase):
                 if spk.elevation >= min_el:
                     logging.info(f"Recording from Speaker {spk.index} at {spk.azimuth:.1f}° azimuth"
                                  f" and {spk.elevation:.1f}° elevation")
-                    key = f"{spk.index}_{spk.azimuth:.2f}_{spk.elevation:.2f}"
+                    # NOT `key`: that is the caller's "prompt between directions"
+                    # flag. Overwriting it here made `if key:` above truthy from
+                    # the second direction on, so key=False still stopped for
+                    # Enter. Harmless at n_directions=1, wrong above it.
+                    spk_key = f"{spk.index}_{spk.azimuth:.2f}_{spk.elevation:.2f}"
                     recs = cls.record_speaker(spk, signal, n_recordings, fs, equalize)
                     processed = []
                     for r in recs:
                         processed.append(filt.apply(r))
-                    data[key] = processed
+                    data[spk_key] = processed
             freefield.write(tag='bitmask', value=0, processors='RX81')  # turn off LED
 
         # store parameters
@@ -199,7 +281,7 @@ class Recordings(SpeakerGridBase):
 
     # -------------------- NPZ I/O -------------------------------------
 
-    def to_npz(self, path, overwrite=False):
+    def to_npz(self, path, overwrite=False, filename="recordings.npz"):
         """Save recordings to a single .npz file.
 
         Array shape: (n_locations, n_recordings, n_channels, n_datapoints).
@@ -209,12 +291,17 @@ class Recordings(SpeakerGridBase):
         the two can never describe different recording sessions. Writing it
         before the overwrite guard used to leave a folder whose params.txt
         announced a new session while recordings.npz still held the old sweeps.
+
+        `filename` lets a second, different set of sweeps live in the SAME
+        subject folder rather than in a sibling one -- the head-radius azimuth
+        row is stored as `azimuth.npz` + `azimuth_params.txt` next to
+        `recordings.npz` + `params.txt`. See `params_filename`.
         """
         logging.info(f'Writing recordings to .npz: {path}.')
         path = Path(path)
         path.mkdir(exist_ok=True, parents=True)
 
-        fname = path / "recordings.npz"
+        fname = path / filename
         if fname.exists() and not overwrite:
             logging.warning(
                 f"{fname} already exists – NOT saving these recordings "
@@ -227,7 +314,7 @@ class Recordings(SpeakerGridBase):
         if not keys:
             raise ValueError(
                 "Recordings.data is empty – nothing to save. "
-                "Check that from_wav() found files in the expected layout."
+                "Nothing was recorded, or the recording loop never populated it."
             )
         sample_rec = self.data[keys[0]][0]
         n_channels  = sample_rec.n_channels
@@ -249,15 +336,15 @@ class Recordings(SpeakerGridBase):
             keys=numpy.array(keys),
             samplerate=numpy.array(samplerate),
         )
-        self.write_params_file(path)
+        self.write_params_file(path, filename=params_filename(filename))
 
     @classmethod
-    def from_npz(cls, path):
+    def from_npz(cls, path, filename="recordings.npz"):
         """Load recordings from a .npz file saved by to_npz()."""
         path = Path(path)
-        params = parse_params_file(path)
+        params = parse_params_file(path, filename=params_filename(filename))
 
-        npz_file = path / "recordings.npz"
+        npz_file = path / filename
         _warn_if_params_newer_than_arrays(path, npz_file, params)
 
         npz = numpy.load(npz_file, allow_pickle=False)
@@ -276,80 +363,32 @@ class Recordings(SpeakerGridBase):
         return cls(data=data, params=params, signal=_signal_from_params(params))
 
     @classmethod
-    def load(cls, path):
-        """Load recordings from *path*, preferring .npz and falling back to .wav."""
+    def load(cls, path, filename="recordings.npz"):
+        """Load recordings from *path*.
+
+        The pre-npz per-speaker .wav layout is gone (removed 2026-08-19); every
+        recording folder in the repo carries a .npz. If an archived wav folder
+        ever turns up, restore `from_wav`/`wav_to_npz` from git history and
+        convert it once rather than reviving the fallback.
+        """
         path = Path(path)
-        if (path / "recordings.npz").exists():
-            logging.info(f"Loading recordings from .npz: {path}")
-            return cls.from_npz(path)
-        logging.info(f"No .npz found – loading recordings from .wav: {path}")
-        return cls.from_wav(path)
+        if not (path / filename).exists():
+            raise FileNotFoundError(
+                f"{path / filename} not found. Recordings are stored as .npz; "
+                "there is no .wav fallback any more.")
+        logging.info(f"Loading recordings from .npz: {path / filename}")
+        return cls.from_npz(path, filename=filename)
 
-    # -------------------- WAV I/O (kept for backward compatibility) ----
-
-    def to_wav(self, path, overwrite=False):
-        logging.info(f'Writing recordings to .wav: {path}.')
-        path = Path(path)
-        path.mkdir(exist_ok=True, parents=True)
-
-        n_written = 0
-        for key, recs in self.data.items():
-            kdir = path / key
-            kdir.mkdir(exist_ok=True)
-            for i, r in enumerate(recs):
-                fname = kdir / f"rec_{i:03d}.wav"
-                if fname.exists() and not overwrite:
-                    continue
-                sf.write(fname, r.data.astype("float32"), r.samplerate, subtype="FLOAT")
-                n_written += 1
-
-        # same contract as to_npz: params.txt describes what is actually stored
-        if n_written:
-            self.write_params_file(path)
-        else:
-            logging.warning(
-                f"No .wav files written to {path} (all present, overwrite=False) – "
-                f"params.txt left untouched."
-            )
-
-    @classmethod
-    def from_wav(cls, path):
-        path = Path(path)
-        params = parse_params_file(path)
-        data = {}
-
-        for kdir in sorted(path.iterdir()):
-            if not kdir.is_dir():
-                continue
-            wav_files = sorted(kdir.glob("*.wav"))
-            rec_files = sorted(kdir.glob("rec_*.wav"))
-            logging.debug(
-                f"  {kdir.name}: {len(wav_files)} .wav files total, "
-                f"{len(rec_files)} matching rec_*.wav"
-            )
-            recs = []
-            for f in rec_files:
-                x, fs = sf.read(f, dtype="float32", always_2d=True)
-                recs.append(slab.Binaural(x, fs))
-            if recs:
-                data[kdir.name] = recs
-
-        if not data:
-            # Log what was actually found to help diagnose naming mismatches
-            subdirs = [d.name for d in path.iterdir() if d.is_dir()]
-            sample_wavs = []
-            for d in path.iterdir():
-                if d.is_dir():
-                    sample_wavs += [f.name for f in sorted(d.glob("*.wav"))[:3]]
-            logging.warning(
-                f"from_wav: no data loaded from '{path}'. "
-                f"Subdirectories found: {subdirs}. "
-                f"Example wav filenames: {sample_wavs}"
-            )
-
-        return cls(data=data, params=params, signal=_signal_from_params(params))
+    # WAV I/O (to_wav / from_wav) removed 2026-08-19 -- the pre-npz layout is
+    # gone and every recording folder carries a .npz. In git history if needed.
 
     def plot(self, speaker_idx=4):
+        """Overlay every repetition recorded at one speaker, both ears.
+
+        INTERACTIVE USE ONLY -- nothing in the pipeline calls this. Kept
+        deliberately for eyeballing a set in a console; do not assume it is
+        exercised by any run.
+        """
         plt.figure(figsize=(12, 8))
         fs = self.params["fs"]
         for r in self[speaker_idx]:
@@ -367,6 +406,17 @@ class Recordings(SpeakerGridBase):
 # ---------------------------------------------------------------------
 
 _VALID_CHIRP_KINDS = {"linear", "quadratic", "logarithmic", "hyperbolic"}
+
+
+def params_filename(npz_filename):
+    """Name of the params file that belongs to an .npz in the same folder.
+
+    'recordings.npz' -> 'params.txt' (the historical name, unchanged, so every
+    existing folder keeps loading). Anything else -> '<stem>_params.txt', e.g.
+    'azimuth.npz' -> 'azimuth_params.txt'.
+    """
+    stem = Path(npz_filename).stem
+    return "params.txt" if stem == "recordings" else f"{stem}_params.txt"
 
 
 def _warn_if_params_newer_than_arrays(path, npz_file, params, tolerance_s=3600):
@@ -451,33 +501,3 @@ def _parse_value(v):
     if v.lower() in ("true", "false"):
         return v.lower() == "true"
     return v
-
-
-# ---------------------------------------------------------------------
-# Conversion utility
-# ---------------------------------------------------------------------
-
-def wav_to_npz(wav_path, npz_path=None, overwrite=False):
-    """Convert an existing per-speaker wav folder to a single recordings.npz.
-
-    Parameters
-    ----------
-    wav_path : path-like
-        Folder that was previously written by ``Recordings.to_wav()``.
-    npz_path : path-like, optional
-        Destination folder for the .npz file.  Defaults to *wav_path*
-        (i.e. the .npz lands next to the existing wav sub-folders).
-    overwrite : bool
-        Passed through to ``Recordings.to_npz()``.
-
-    Returns
-    -------
-    Recordings
-        The loaded object (also saved to disk as a side-effect).
-    """
-    wav_path = Path(wav_path)
-    npz_path = Path(npz_path) if npz_path is not None else wav_path
-    logging.info(f"Converting wav folder '{wav_path}' → npz at '{npz_path}'")
-    rec = Recordings.from_wav(wav_path)
-    rec.to_npz(npz_path, overwrite=overwrite)
-    return rec

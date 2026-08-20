@@ -31,7 +31,6 @@ HP_FILTER = False
 # Sound
 SOUND_FILE = None         # None -> pink noise pulses; or 'uso_225ms_9_.wav', etc.
 # Graphics
-show_ui = True  # todo
 SHOW_TF = 'TF'  # set to TF or IR to spawn live filter plot
 
 # Game settings

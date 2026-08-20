@@ -72,7 +72,8 @@ EDIT THE CONFIG BLOCK BELOW PER PARTICIPANT.
 SUBJECT_ID = ("AS")
 
 # %% imports and config #------------------------------------------------------
-import csv
+import csv  # only for the block-order table below; the modification
+            # workflow now lives in donor_modification.py next door
 import os
 import subprocess
 import sys
@@ -80,18 +81,12 @@ import slab
 import hrtf_relearning as hr
 from hrtf_relearning.experiment.localization.Localization_AR import Localization
 from hrtf_relearning.hrtf.analysis import donor_selection as selection
-from hrtf_relearning.hrtf.analysis.vsi import vsi as vsi_of
-from hrtf_relearning.hrtf.modify.donor_detail import donor_detail_dtf, modification_params
-from hrtf_relearning.hrtf.processing.envelope import envelope_dtf, ENVELOPE_BAND
-from hrtf_relearning.hrtf.processing.midline import (midline_arc, expand_from_midline,
-                                                     qc_midline, format_qc)
-from hrtf_relearning.hrtf.modify.edge_shift import (embed_modification_params,
-                                                    read_modification_params)
 from hrtf_relearning.experiment.protocols.protocol_helpers import (
     collect_demographics, collect_externalization_rating, externalization_check,
     externalization_ladder)
 from hrtf_relearning.experiment.misc.system_volume import set_windows_volume
-from hrtf_relearning.hrtf.modify.plot_compare import plot_ears, plot_split_qc
+from hrtf_relearning.experiment.protocols.learning_transfer.donor_modification import DonorModification
+from hrtf_relearning.hrtf.modify.plot_compare import plot_split_qc
 from hrtf_relearning.utils import paths
 
 CSV_PATH = (hr.PATH / "experiment" / "protocols" / "learning_transfer"
@@ -198,55 +193,6 @@ else:
 LADDER_N_KEEP = (4, 8)
 
 
-def _modified_name(donor_id, n_keep=None):
-    """The SOFA the protocol's blocks load.
-
-    On v2 the monaural reduction is already inside the file, so it is part of
-    the name -- there is no longer a render-time switch that could be set
-    differently between two runs of the same block.
-    """
-    n_keep = selection.N_KEEP if n_keep is None else n_keep
-    stem = f"{SUBJECT_ID}_donor_{donor_id.split('/')[-1]}"
-    if n_keep != selection.N_KEEP:
-        stem = f"{stem}_n{n_keep}"
-    if PIPELINE == "v2":
-        stem = f"{stem}_env{ENV_NKEEP}_{TRAINED_EAR}"
-    return stem
-
-
-def _binaural_name(donor_id, n_keep=None):
-    """v2 only: the composite BEFORE the monaural reduction. QC reference."""
-    n_keep = selection.N_KEEP if n_keep is None else n_keep
-    stem = f"{SUBJECT_ID}_donor_{donor_id.split('/')[-1]}"
-    return stem if n_keep == selection.N_KEEP else f"{stem}_n{n_keep}"
-
-
-def hrir_settings(sofa_name, ear=None, mirror=False, other_ear=None):
-    # v2 bakes the monaural reduction into the SOFA, so hrtf2binsim must NOT
-    # apply it a second time -- ear=None means "take the file as it is".
-    # `mirror` still happens at render time: it is a channel/source swap and
-    # commutes with everything above it, so blocks C and D come off this file.
-    baked = PIPELINE == "v2" and f"_env{ENV_NKEEP}_" in sofa_name
-    return {
-        "name": sofa_name,
-        "subject_id": SUBJECT_ID,
-        "ear": None if baked else ear,
-        "other_ear": OTHER_EAR if other_ear is None else other_ear,
-        # pins the v1 render-time envelope to its historical behaviour; unused
-        # when `baked`. See hrtf2binsim and hrtf.processing.envelope.
-        "env_elevation_average": False,
-        "env_n_keep": ENV_NKEEP,
-        "native_sofa": NATIVE_SOFA,
-        "mirror": mirror,
-        "reverb": True,
-        "drr": 20,
-        "hp_filter": True,
-        "hp": HP,
-        "convolution": "cpu",
-        "storage": "cpu",
-    }
-
-
 def loc_settings(azimuth_range, exclude_midline=False):
     return {
         "kind": "sectors",
@@ -264,546 +210,87 @@ def loc_settings(azimuth_range, exclude_midline=False):
         "midline_tol": MIDLINE_TOL,
     }
 
-
 # ---------------------------------------------------------------------------
-# Build
+# Donor manipulation
+#
+# The machinery moved to donor_modification.DonorModification (next door) on
+# 2026-08-19 -- it was ~550 lines of module-level functions reading nine module
+# globals and writing three of them back with `global`, which is state that
+# belongs to a participant, not to a module.
+#
+# The thin wrappers below exist so every cell in this file, and every habit
+# built around them, keep working unchanged. `donor` is the object; reach for
+# it directly (donor.shortlist(), donor.build(), donor.discard_unused()) in
+# anything new.
 # ---------------------------------------------------------------------------
 
-_SHORTLIST = None      # cached rows from selection.shortlist(), rule order
+donor = DonorModification(
+    SUBJECT_ID,
+    trained_ear=TRAINED_EAR,
+    native_sofa=NATIVE_SOFA,
+    other_ear=OTHER_EAR,
+    env_n_keep=ENV_NKEEP,
+    pipeline=PIPELINE,
+    donor_id=DONOR_ID,
+    hp=HP,
+)
+
+
+def _sync():
+    """Mirror the object's active donor back onto the module globals.
+
+    DONOR_ID / MODIFIED_SOFA are read by phases() and printed in status lines,
+    and re-running the config cell resets them. `donor` is the authority; these
+    two follow it.
+    """
+    global DONOR_ID, MODIFIED_SOFA
+    DONOR_ID, MODIFIED_SOFA = donor.donor_id, donor.modified_sofa
+
+
+def hrir_settings(sofa_name, ear=None, mirror=False, other_ear=None):
+    return donor.hrir_settings(sofa_name, ear=ear, mirror=mirror,
+                               other_ear=other_ear)
 
 
 def donor_shortlist(refresh=False, quiet=False):
-    """This subject's candidate donors in rule order — cached.
-
-    ``[0]`` is the protocol pick, ``[1]`` and ``[2]`` are the alternates
-    ``use_donor(rank=...)`` swaps to. Scoring the pool takes ~20 s, so it is
-    computed once and reused; pass ``refresh=True`` after editing
-    selection.DONOR_POOL.
-    """
-    global _SHORTLIST
-    if _SHORTLIST is not None and not refresh:
-        return _SHORTLIST
-
-    sofa_dir = paths.SOFA_DIR / SUBJECT_ID
-    own = slab.HRTF(str(sofa_dir / f"{NATIVE_SOFA}.sofa"))
-    own.name = SUBJECT_ID
-    candidates = selection.load_candidates(SUBJECT_ID)
-    if not candidates:
-        raise RuntimeError("empty donor pool — check selection.DONOR_POOL")
-    if not quiet:
-        print(f"donor pool ({len(candidates)}): {', '.join(candidates)}")
-
-    _SHORTLIST = selection.shortlist(own, candidates)
-    if not quiet:
-        reference, _ = selection.pairwise_r_match({SUBJECT_ID: own, **candidates})
-        selection.report(_SHORTLIST, reference)
-    return _SHORTLIST
-
-
-def _set_active_donor(donor_id, rank, reason=""):
-    """Record the donor this participant is currently on, in their pickle.
-
-    Stored as subject.active_donor so a later session can reload the donor the
-    participant was actually trained on rather than whatever the selection rule
-    ranks first today (the pool grows as subjects are added, so rank 0 is not
-    stable over time). Overwritten on each change — only the current donor is
-    kept; the candidate ranking behind the choice lives in the composite SOFA
-    as GLOBAL_ModificationParams.
-    """
-    import datetime
-    subject = hr.Subject(SUBJECT_ID)
-    subject.active_donor = {
-        "donor": donor_id,
-        "rank": rank,
-        "reason": reason,
-        "timestamp": datetime.datetime.now().isoformat(timespec="seconds"),
-    }
-    subject.write()
-    return subject.active_donor
-
-
-def _save_qc_figure(own, modified, name, chosen, n_keep, donor_id,
-                    show=True, quiet=False, overwrite=False):
-    """Write plots/acoustic/<name>.png — the before/after 2x2.
-
-    ALWAYS saved, `show` only decides whether it is displayed. It is provenance
-    in the same sense as the ranking CSV: the picture of what this participant
-    was actually given. Tying the save to a display flag is what left AS with
-    six donor SOFAs and no figures — staging builds pass show_qc=False, and by
-    the time the day-1 cell ran the files existed, so the build returned early
-    and never reached the plot.
-
-    ``modified`` may be a path, so this also works on the already-built path
-    where nothing is in memory.
-    """
-    plot_dir = paths.subject_acoustic_dir(SUBJECT_ID)
-    plot_dir.mkdir(parents=True, exist_ok=True)
-    out_png = plot_dir / f"{name}.png"
-    if out_png.exists() and not overwrite and not show:
-        return out_png
-    if not isinstance(modified, slab.HRTF):
-        modified = slab.HRTF(str(modified))
-        modified.name = name
-    fig = plot_ears(own, modified, vsi_dis=chosen["r_match"],
-                    vsi_bw=selection.DEFAULT_BAND, band=selection.DEFAULT_BAND,
-                    suptitle=f"{SUBJECT_ID}  own envelope (n_keep={n_keep}) "
-                             f"+ {donor_id} detail", show=show)
-    fig.savefig(out_png, bbox_inches="tight")
-    if not show:
-        import matplotlib.pyplot as _plt
-        _plt.close(fig)
-    if not quiet:
-        print(f"QC figure: {out_png}")
-    return out_png
+    return donor.shortlist(refresh=refresh, quiet=quiet)
 
 
 def build_donor_sofa(overwrite=False, show_qc=True, n_keep=None, rank=0,
                      donor_id=None, set_active=True, quiet=False):
-    """Build one composite, write it, return (path, donor_id).
-
-    Writes <SUBJECT_ID>_donor_<DONOR>.sofa next to the native one, embeds the
-    full selection record as GLOBAL_ModificationParams, and saves the candidate
-    ranking as a CSV for the supplement.
-
-    ``rank`` picks which entry of :func:`donor_shortlist` to build — 0 is the
-    protocol choice, 1 and 2 are the alternates. ``donor_id`` overrides the rank
-    and names a donor directly (use only to rebuild something already run).
-    ``set_active=False`` builds without repointing the protocol, which is what
-    :func:`prepare_donor_shortlist` uses to stage the alternates.
-    """
-    global DONOR_ID, MODIFIED_SOFA
-
-    n_keep = selection.N_KEEP if n_keep is None else n_keep
-    is_default = n_keep == selection.N_KEEP
-    sofa_dir = paths.SOFA_DIR / SUBJECT_ID
-    own = slab.HRTF(str(sofa_dir / f"{NATIVE_SOFA}.sofa"))
-    own.name = SUBJECT_ID
-
-    candidates = selection.load_candidates(SUBJECT_ID)
-    if not candidates:
-        raise RuntimeError("empty donor pool — check selection.DONOR_POOL")
-
-    rows = donor_shortlist(quiet=quiet)
-    if donor_id is not None:
-        matches = [row for row in rows if row["donor"] == donor_id]
-        if not matches:
-            raise ValueError(f"{donor_id} is not in this subject's pool: "
-                             f"{', '.join(r['donor'] for r in rows)}")
-        chosen = matches[0]
-    else:
-        if rank >= len(rows):
-            raise IndexError(f"requested rank {rank} but only {len(rows)} "
-                             f"candidates were scored")
-        chosen = rows[rank]
-
-    if not quiet:
-        print(f"\ndonor rank {chosen['rank']}: {chosen['donor']}   r_match "
-              f"{chosen['r_match']:.2f} (target "
-              f"{selection.TARGET_R_MATCH:.2f} ± {selection.TOLERANCE:.2f})"
-              f"   ridge slope {chosen['ridge_slope']:+.2f}"
-              f"   cue strength {chosen['donor_strength']:.1f} dB"
-              f"   [{chosen['tier']}]")
-    if chosen["fallback"]:
-        print("  !! FALLBACK: no candidate met the ridge criterion; lowest slope "
-              "used. This must be reported.")
-    elif chosen["tier"] == "widened" and not quiet:
-        print(f"  !  no candidate landed within {selection.TOLERANCE:.2f} of the "
-              f"target; nearest-to-target used. Report the tier.")
-
-    # The donor is always selected at the protocol n_keep, so the two ladder
-    # strengths differ ONLY in how much of the cue is handed over -- not in
-    # whose cue it is.
-    donor_id = chosen["donor"]
-    name = _modified_name(donor_id, n_keep)
-    if is_default and set_active:
-        DONOR_ID, MODIFIED_SOFA = donor_id, name
-        _set_active_donor(donor_id, chosen["rank"], chosen["tier"])
-    out_path = sofa_dir / f"{name}.sofa"
-    if out_path.exists() and not overwrite:
-        if not quiet:
-            print(f"{out_path.name} already exists (overwrite=False) -- skipping build")
-        # self-healing: the SOFA may have been written by a staging build that
-        # never drew the figure. Re-read it rather than leave the record short.
-        _save_qc_figure(own, out_path, name, chosen, n_keep, donor_id,
-                        show=show_qc, quiet=quiet)
-        return out_path, donor_id
-
-    # extra provenance for whatever this build did beyond the donor step. The
-    # file name says _env4_<ear>; the embedded record has to say the same, or
-    # it is another SOFA nobody can trace (see FD 12:13).
-    pipeline_params = {}
-    binaural_path = None
-
-    if PIPELINE == "v1":
-        modified = donor_detail_dtf(own, candidates[donor_id], n_keep=n_keep)
-    else:
-        # --- v2: modify the 19 MEASURED directions, then re-expand -----------
-        # The az=0 arc in the finished SOFA is magnitude-identical to what went
-        # into the expansion (step 2 skips az=0), so it is read back from there
-        # rather than replayed from the npz -- no reference recording needed.
-        own_arc = midline_arc(own)
-        donor_arc = midline_arc(candidates[donor_id])
-        arc = donor_detail_dtf(own_arc, donor_arc, n_keep=n_keep)
-        # binaural composite, kept as the QC reference and for the ladder
-        binaural = expand_from_midline(arc)
-        binaural.name = _binaural_name(donor_id, n_keep)
-        binaural_path = sofa_dir / f"{binaural.name}.sofa"
-        binaural.write_sofa(str(binaural_path))
-
-        arc = envelope_dtf(arc, ear=TRAINED_EAR, n_keep=ENV_NKEEP)
-        report = qc_midline(own_arc, arc, processed_ear=UNTRAINED_EAR,
-                            raise_on_fail=True)
-        print(format_qc(report))
-        modified = expand_from_midline(arc)
-
-        pipeline_params = {
-            "pipeline": "v2",
-            "chain": ("midline_arc -> donor_detail_dtf -> envelope_dtf -> "
-                      "qc_midline -> expand_azimuths_with_binaural_cues"),
-            "expansion": {"itd_method": "phase", "az_range": [-50, 50]},
-            "monaural": {"other_ear": "envelope", "ear_kept": TRAINED_EAR,
-                         "ear_processed": UNTRAINED_EAR, "env_n_keep": ENV_NKEEP,
-                         "env_band_hz": list(ENVELOPE_BAND),
-                         "elevation_average": True},
-            "midline_qc": {k: v for k, v in report.items()},
-        }
-
-    modified.name = name
-    own_vsi, modified_vsi = vsi_of(own), vsi_of(modified)
-    print(f"VSI  own={own_vsi:.3f}  modified={modified_vsi:.3f}  "
-          f"(diagnostic only -- not diffuse-field normalised, see vsi.py)")
-
-    def _params(**extra):
-        return modification_params(
-            SUBJECT_ID, donor_id, n_keep=n_keep,
-            target_r_match=selection.TARGET_R_MATCH,
-            tolerance=selection.TOLERANCE,
-            band=selection.DEFAULT_BAND, resolution=selection.DEFAULT_RESOLUTION,
-            max_ridge_slope=selection.MAX_RIDGE_SLOPE, pool=list(candidates),
-            fallback=chosen["fallback"],
-            scores={k: chosen[k] for k in ('r_match', 'ridge_slope',
-                                           'donor_strength')},
-            ranking=[{k: row[k] for k in ('donor', 'rank', 'tier', 'donor_strength',
-                                          'r_match', 'ridge_slope',
-                                          'eligible', 'in_band')} for row in rows],
-            **extra)
-
-    modified.write_sofa(str(out_path))
-    embed_modification_params(out_path, _params(**pipeline_params))
-    print(f"wrote {out_path}")
-
-    # the binaural composite is a MODIFIED file too -- label it, or it is an
-    # unattributable SOFA sitting next to the native one
-    if binaural_path is not None:
-        embed_modification_params(binaural_path, _params(
-            **{**pipeline_params, "monaural": None,
-               "note": "binaural composite, before the monaural reduction; "
-                       "QC reference for the _env file next to it"}))
-        print(f"wrote {binaural_path}")
-
-    _save_qc_figure(own, modified, name, chosen, n_keep, donor_id,
-                    show=show_qc, quiet=quiet)
-    return out_path, donor_id
-
-
-def _binsim_names(sofa_name, mirror):
-    """The binsim database directory name hrtf2binsim would produce."""
-    name = sofa_name
-    # v2 carries the reduction in the SOFA name already, so hrtf2binsim adds
-    # nothing here -- see hrir_settings, which passes ear=None for those files.
-    baked = PIPELINE == "v2" and f"_env{ENV_NKEEP}_" in sofa_name
-    if TRAINED_EAR and not baked:
-        if OTHER_EAR == "flat":
-            name += f"_{TRAINED_EAR}"
-        elif OTHER_EAR == "envelope":
-            name += f"_{TRAINED_EAR}_env{ENV_NKEEP}"
-        elif OTHER_EAR == "native":
-            name += f"_{TRAINED_EAR}_nat"
-    if mirror:
-        name += "_mirrored"
-    return name
+    out = donor.build(overwrite=overwrite, show_qc=show_qc, n_keep=n_keep,
+                      rank=rank, donor_id=donor_id, set_active=set_active,
+                      quiet=quiet)
+    _sync()
+    return out
 
 
 def prepare_donor_shortlist(n=3, mirrored=True, overwrite=False):
-    """Stage the top ``n`` donors so a mid-session swap costs seconds.
-
-    Builds, for each of the first ``n`` entries of :func:`donor_shortlist`, the
-    composite SOFA and the pyBinSim filter databases the protocol actually
-    plays: trained ear + OTHER_EAR, un-mirrored (day-1 baseline A, the daily
-    test, training) and mirrored (baseline D and the final C/D blocks).
-
-    RUN THIS BEFORE THE PARTICIPANT ARRIVES. write_filters passes over all 475
-    directions, so a database is minutes, not seconds; doing it with someone in
-    the chair is what makes a donor swap expensive. Once staged,
-    :func:`use_donor` is instant.
-
-    Only the rank-0 donor is left active — the alternates are built but not
-    selected, so nothing about the default path changes.
-    """
-    rows = donor_shortlist()
-    n = min(n, len(rows))
-    print(f"\nstaging {n} donors for {SUBJECT_ID}: "
-          f"{', '.join(r['donor'] for r in rows[:n])}")
-
-    from hrtf_relearning.hrtf.binsim.hrtf2binsim import hrtf2binsim
-
-    staged = []
-    for row in rows[:n]:
-        donor = row["donor"]
-        print(f"\n--- rank {row['rank']}: {donor} "
-              f"(r_match {row['r_match']:.2f}, ridge "
-              f"{row['ridge_slope']:+.2f}, strength {row['donor_strength']:.1f} dB, "
-              f"{row['tier']}) ---")
-        # set_active=False: staging must not silently repoint the protocol
-        build_donor_sofa(overwrite=overwrite, show_qc=False,
-                         donor_id=donor, set_active=False, quiet=True)
-        name = _modified_name(donor)
-        for mirror in ((False, True) if mirrored else (False,)):
-            db = paths.BINSIM_DIR / _binsim_names(name, mirror)
-            if db.exists() and not overwrite:
-                print(f"    binsim {db.name} exists — skipping")
-                continue
-            print(f"    building binsim {db.name} ...")
-            hrtf2binsim(hrir_settings(name, ear=TRAINED_EAR, mirror=mirror),
-                        overwrite=overwrite, build=True)
-        staged.append(donor)
-
-    # rank 0 is the protocol donor; make it the active one
-    build_donor_sofa(overwrite=False, show_qc=False, rank=0, quiet=True)
-    print(f"\nstaged: {', '.join(staged)}")
-    print(f"active: {DONOR_ID}  ({MODIFIED_SOFA})")
-    print(f"swap with  use_donor(rank=1, reason='...')")
-    print(f"once the donor is settled: discard_unused_donors()")
-    return staged
-
-
-def discard_unused_donors(dry_run=True, keep=None):
-    """Delete every staged donor for this subject except the active one.
-
-    Staging costs ~4 MB of SOFA plus two pyBinSim databases per candidate, and
-    after the day-1 baselines the choice is made — the alternates are dead
-    weight that also makes it ambiguous, months later, which composite the
-    participant actually heard. Run this once the donor is settled.
-
-    Keeps the active donor's SOFA and databases, and never touches the native
-    <SUBJECT_ID>.sofa. The discarded ones are reproducible at any time from
-    build_donor_sofa(donor_id=...), so nothing unrecoverable is lost — the
-    selection record stays in the surviving SOFA's GLOBAL_ModificationParams
-    and in subject.active_donor.
-
-    Defaults to ``dry_run=True``: it prints what it would remove and removes
-    nothing. Call again with ``dry_run=False`` to actually delete. Pass
-    ``keep=['XX']`` to spare extra donors (e.g. one you still mean to compare).
-    """
-    import shutil
-
-    active = DONOR_ID or _last_active_donor()
-    if active is None:
-        raise RuntimeError(
-            "no active donor for this subject — run build_donor_sofa() or "
-            "load_existing_donor() first, or this would delete everything.")
-
-    # Match on the exact composite name, not on the donor id appearing in the
-    # stem: '<SID>_donor_AS' is a PREFIX of '<SID>_donor_AS_n8', so a substring
-    # or startswith test would silently spare the n_keep=8 ladder build too.
-    # That build is a diagnostic, not what the participant was trained on, so
-    # it goes with the rest unless named in `keep`.
-    # The binsim directory name depends on OTHER_EAR, which may have been a
-    # different setting when a database was built than it is in the config
-    # block today. Spare every variant the active composite could have
-    # produced, so a since-changed setting can never make this delete the
-    # database the participant is actually being tested on.
-    global OTHER_EAR
-    spared_sofa, spared_binsim = set(), set()
-    for donor in {active, *(keep or [])}:
-        name = _modified_name(donor)
-        # On v2 a donor has TWO files: the reduced one the blocks load
-        # (_modified_name, '<SID>_donor_<D>_env4_<ear>') and the binaural
-        # composite kept as its QC reference (_binaural_name, '<SID>_donor_<D>').
-        # Sparing only the first would delete the QC reference for the donor
-        # that was actually used. On v1 the two names coincide.
-        spared_sofa.update((name, _binaural_name(donor)))
-        for other_ear in ("flat", "envelope", "native"):
-            OTHER_EAR, current = other_ear, OTHER_EAR
-            try:
-                spared_binsim.update(_binsim_names(name, m) for m in (False, True))
-            finally:
-                OTHER_EAR = current
-
-    sofa_dir = paths.SOFA_DIR / SUBJECT_ID
-    victims = [p for p in sorted(sofa_dir.glob(f"{SUBJECT_ID}_donor_*.sofa"))
-               if p.stem not in spared_sofa]
-    victims += [p for p in sorted(paths.BINSIM_DIR.glob(f"{SUBJECT_ID}_donor_*"))
-                if p.is_dir() and p.name not in spared_binsim]
-
-    if not victims:
-        print(f"{SUBJECT_ID}: nothing to discard (active donor {active})")
-        return []
-
-    total = sum(f.stat().st_size for v in victims
-                for f in ([v] if v.is_file() else v.rglob("*")) if f.is_file())
-    print(f"{SUBJECT_ID}: keeping {', '.join(sorted(spared))}; "
-          f"{'would remove' if dry_run else 'removing'} {len(victims)} item(s), "
-          f"{total / 1e6:.1f} MB")
-    for v in victims:
-        print(f"    {'[dry-run] ' if dry_run else ''}{v.relative_to(paths.DATA_DIR)}")
-        if not dry_run:
-            shutil.rmtree(v) if v.is_dir() else v.unlink()
-    if dry_run:
-        print("  nothing deleted — re-run with dry_run=False to apply")
-    return victims
+    out = donor.prepare_shortlist(n=n, mirrored=mirrored, overwrite=overwrite)
+    _sync()
+    return out
 
 
 def use_donor(rank=None, donor_id=None, reason=""):
-    """Switch the active donor mid-session. Instant if pre-staged.
-
-    Use when a participant cannot localize at all with the current composite —
-    a floor-level block is uninformative, and the design needs an acute
-    degradation, not an abolished cue. ``rank=1`` moves to the next donor on
-    the rule's list.
-
-    ``reason`` is stored on subject.active_donor and should say what was observed
-    ('EG 0.02 on baseline A, at floor'), because a swap made after seeing the
-    data has to be reportable as such. It is NOT free: the discarded block was
-    still run, and both the discarded and the replacement donor belong in the
-    participant's record.
-
-    Refuses to swap if the replacement's binsim database has not been built,
-    rather than silently starting a multi-minute build with someone in the rig
-    — pass ``build=True`` to override that by hand if you really want to wait.
-    """
-    global DONOR_ID, MODIFIED_SOFA
-
-    rows = donor_shortlist(quiet=True)
-    if donor_id is not None:
-        matches = [row for row in rows if row["donor"] == donor_id]
-        if not matches:
-            raise ValueError(f"{donor_id} is not in this subject's pool")
-        row = matches[0]
-    elif rank is not None:
-        if rank >= len(rows):
-            raise IndexError(f"rank {rank} but only {len(rows)} candidates")
-        row = rows[rank]
-    else:
-        raise ValueError("pass rank= or donor_id=")
-
-    previous = DONOR_ID
-    name = _modified_name(row["donor"])
-    sofa_path = paths.SOFA_DIR / SUBJECT_ID / f"{name}.sofa"
-    if not sofa_path.exists():
-        raise FileNotFoundError(
-            f"{sofa_path.name} has not been built — run "
-            f"prepare_donor_shortlist() before the session, or "
-            f"build_donor_sofa(rank={row['rank']}) now (slow).")
-
-    missing = [_binsim_names(name, m) for m in (False, True)
-               if not (paths.BINSIM_DIR / _binsim_names(name, m)).exists()]
-    if missing:
-        print(f"  [!] binsim database(s) not staged: {', '.join(missing)}")
-        print(f"      building now — this takes minutes. Ctrl-C and run "
-              f"prepare_donor_shortlist() before the next session.")
-        from hrtf_relearning.hrtf.binsim.hrtf2binsim import hrtf2binsim
-        for mirror in (False, True):
-            if _binsim_names(name, mirror) in missing:
-                hrtf2binsim(hrir_settings(name, ear=TRAINED_EAR, mirror=mirror),
-                            overwrite=False, build=True)
-
-    DONOR_ID, MODIFIED_SOFA = row["donor"], name
-    _set_active_donor(row["donor"], row["rank"],
-                      reason or f"(no reason given; from {previous})")
-    print(f"\nactive donor: {previous} -> {row['donor']}   (rank {row['rank']}, "
-          f"{row['tier']}, r_match {row['r_match']:.2f}, ridge "
-          f"{row['ridge_slope']:+.2f}, strength {row['donor_strength']:.1f} dB)")
-    print(f"MODIFIED_SOFA = {MODIFIED_SOFA}")
-    print(f"  !! set DONOR_ID = '{row['donor']}' in the config block at the top "
-          f"so later sessions reload THIS donor, not the rank-0 one.")
-    if not reason:
-        print("  !! no reason recorded — re-run use_donor(..., reason=...) "
-              "to say what was observed.")
-    return row
-
-
-def _last_active_donor():
-    """The donor this participant is currently on, from their pickle."""
-    return (hr.Subject(SUBJECT_ID).active_donor or {}).get("donor")
-
-
-def show_donor_log():
-    """The donor this participant is on. Read before analysis."""
-    record = hr.Subject(SUBJECT_ID).active_donor or {}
-    if not record:
-        print(f"no donor recorded for {SUBJECT_ID}")
-        return
-    print(f"{SUBJECT_ID}: donor {record.get('donor')} (rank {record.get('rank')}) "
-          f"set {record.get('timestamp')}")
-    if record.get("reason"):
-        print(f"  reason: {record['reason']}")
+    out = donor.use_donor(rank=rank, donor_id=donor_id, reason=reason)
+    _sync()
+    return out
 
 
 def load_existing_donor():
-    """Point the protocol at this subject's already-built donor SOFA.
+    out = donor.load_existing()
+    _sync()
+    return out
 
-    Recovers the donor from disk rather than from a variable that resets every
-    time the config cell is re-run, which is how a subject could silently end up
-    trained on one stimulus and tested on another. The donor id is read back
-    from the SOFA's embedded modification params, so what is loaded is what was
-    built. Refuses to guess if there is more than one candidate file.
-    """
-    global DONOR_ID, MODIFIED_SOFA
 
-    sofa_dir = paths.SOFA_DIR / SUBJECT_ID
-    if DONOR_ID is not None:
-        matches = [sofa_dir / f"{_modified_name(DONOR_ID)}.sofa"]
-    else:
-        # The ladder writes extra strengths as <name>_n<k>.sofa; those are
-        # diagnostics, never the training/testing stimulus, so they must not
-        # make this look ambiguous.
-        import re
-        matches = [path for path in sorted(sofa_dir.glob(f"{SUBJECT_ID}_donor_*.sofa"))
-                   if not re.search(r"_n\d+$", path.stem)]
+def discard_unused_donors(dry_run=True, keep=None):
+    return donor.discard_unused(dry_run=dry_run, keep=keep)
 
-    if not matches:
-        raise FileNotFoundError(
-            f"no {SUBJECT_ID}_donor_*.sofa in {sofa_dir} — run build_donor_sofa() first")
-    if len(matches) > 1:
-        # prepare_donor_shortlist() stages alternates, so several composites
-        # existing is now NORMAL and must not be read as ambiguity. The donor
-        # log says which one was last made active; that is the authority.
-        active = _last_active_donor()
-        if active is None:
-            raise RuntimeError(
-                f"several donor SOFAs for {SUBJECT_ID}: "
-                f"{', '.join(p.name for p in matches)}, and no donor log to say "
-                f"which is active. Set DONOR_ID in the config block to the one "
-                f"this subject was trained on.")
-        wanted = sofa_dir / f"{_modified_name(active)}.sofa"
-        if wanted not in matches:
-            raise RuntimeError(
-                f"donor log says the active donor is {active} but "
-                f"{wanted.name} is not on disk")
-        print(f"  {len(matches)} composites on disk (staged alternates); donor "
-              f"log says {active} is active")
-        matches = [wanted]
 
-    path = matches[0]
-    if not path.exists():
-        raise FileNotFoundError(f"{path} not found — run build_donor_sofa() first")
+def show_donor_log():
+    return donor.show_log()
 
-    params = read_modification_params(path) or {}
-    embedded = params.get("donor_id")
-    if embedded is None:
-        print(f"  [warn] {path.name} carries no modification params — donor id "
-              f"taken from the filename, which is not authoritative")
-        embedded = path.stem.replace(f"{SUBJECT_ID}_donor_", "")
-    DONOR_ID = embedded
-    MODIFIED_SOFA = path.stem
 
-    scores = params.get("scores", {})
-    print(f"using {path.name}   donor={DONOR_ID}"
-          + (f"   r_match {scores['r_match']:.2f}, ridge "
-             f"{scores['ridge_slope']:+.2f}" if 'r_match' in scores else "")
-          + ("   [built with FALLBACK donor]" if params.get("fallback") else ""))
-    return path
 
 
 # ---------------------------------------------------------------------------
@@ -886,11 +373,19 @@ def run_anchor(subject):
     binaurally: the ceiling of the whole delivery chain, and the closest thing
     to a 10 the setup can produce. ~10 trials, about a minute.
 
-    Run it once per day, before that day's first test, so ratings are comparable
-    within a day AND across days -- a rating of 6 on day 1 and 6 on day 4 only
-    means the same thing if the anchor also came out the same. If the anchor
-    itself drifts, that is a delivery-chain problem (headphone seat, HP filter,
-    OS volume), not adaptation, and it is worth catching before the day's data.
+    DAY 1 ONLY as of 2026-08-19. It used to run every day so ratings stayed
+    comparable across days; the protocol now takes only the day-1 ratings
+    (native reference + the two baselines), so there is nothing left on the
+    later days for a same-day anchor to make comparable. Paul's call: if
+    externalization holds for the modified ears on day 2 it holds to the end,
+    and a daily ~1-minute block plus rating is not worth what it buys.
+
+    On day 1 the `native` phase serves this purpose -- same own-HRTF binaural
+    block, more trials -- so this function is no longer called by the protocol
+    proper. Kept, and reachable from MISC, for the case it was also good at:
+    if you suspect the delivery chain (headphone seat, HP filter, OS volume)
+    has moved mid-experiment, run it and compare against day 1. A drop there is
+    a chain problem, not adaptation.
     """
     settings = loc_settings(FULL_FIELD)
     settings.update(sector_size=(14, 14), targets_per_sector=1)   # ~10 trials
@@ -914,7 +409,7 @@ def ladder_settings(rung):
         # composite STRENGTH: same donor, same other-ear treatment, only n_keep
         # differs. Lower n_keep hands over more of the cue.
         n_keep = int(rung.split("_n")[1])
-        return (hrir_settings(_modified_name(DONOR_ID, n_keep), ear=TRAINED_EAR),
+        return (hrir_settings(donor.modified_name(DONOR_ID, n_keep), ear=TRAINED_EAR),
                 settings)
     # ear TREATMENT: n_keep=4 composite on the trained ear, other ear varies
     return hrir_settings(MODIFIED_SOFA, ear=TRAINED_EAR, other_ear=rung), settings
@@ -1019,9 +514,6 @@ load_existing_donor()
 #   ="EG 0.03 on baseline A, responses at chance")
 # use_donor(rank=1, reason="")
 
-# %% which donors this participant has been on ---------------------------------
-show_donor_log()  # todo move this out of the way
-
 # %% day 1: baseline A -- trained ear, same loc (matches final A) -------------
 baseline_A = run_phase("baseline_A", subject)
 collect_externalization_rating(baseline_A)
@@ -1029,6 +521,9 @@ collect_externalization_rating(baseline_A)
 # %% day 1: baseline D -- untrained ear, mirrored loc (matches final D) -------
 baseline_D = run_phase("baseline_D", subject)
 collect_externalization_rating(baseline_D)
+# Condition identity (ear / mirror / hemifield) is carried into the sequence
+# name by run_phase(), so every figure titled from it says which cell it is --
+# see `_condition_tag`.
 
 # ---------------------------------------------------------------------------
 # ADAPTATION DAYS
@@ -1037,21 +532,9 @@ collect_externalization_rating(baseline_D)
 # Run the four cells in order.
 # ---------------------------------------------------------------------------
 
-# %% adaptation day: 0. ANCHOR (~10 trials, own HRTF) -------------------------
-# Re-tops the 0-10 scale for today and checks the delivery chain before any
-# data is collected. If this rating is well below yesterday's, stop and check
-# headphone seating / HP filter / OS volume rather than logging the day.
-subject = hr.Subject(SUBJECT_ID)
-run_anchor(subject)
-# todo im not going to run this every day, too expensive. if externalization is stable for modified ears the second day
-#  i trust it will stay so until the end of the experiment
-#  also, i dont need to collect externalization ratings beyond the baseline tests
-
-
 # %% adaptation day: 1. PRE-training test -------------------------------------
 subject = hr.Subject(SUBJECT_ID)
 daily_pre = run_phase("daily", subject)
-collect_externalization_rating(daily_pre)
 
 # %% adaptation day: 2. TRAIN --------------------------------------------------
 run_training()
@@ -1059,32 +542,24 @@ run_training()
 # %% adaptation day: 3. POST-training test ------------------------------------
 subject = hr.Subject(SUBJECT_ID)
 daily_post = run_phase("daily", subject)
-collect_externalization_rating(daily_post)
-
-# %% final day: 0. ANCHOR (run before the 2x2) --------------------------------
-# Same-day top of the scale. The four final ratings are compared against each
-# other and against the day-1 baselines, so both need an anchor from their own
-# day; four days of headphone re-seating is enough to move the scale on its own.
-subject = hr.Subject(SUBJECT_ID)
-run_anchor(subject)
 
 # %% final day: all 4 conditions in this subject's counterbalanced order -------
 subject = hr.Subject(SUBJECT_ID)
 print(f"Running final tests in order: {FINAL_ORDER}")
 for key in FINAL_ORDER:
-    collect_externalization_rating(run_phase(key, subject))
+    run_phase(key, subject)
 
 # %% final day: A -- trained ear, same locations (redo individually) -----------
-collect_externalization_rating(run_phase("A", subject))
+run_phase("A", subject)
 
 # %% final day: B -- trained ear, mirrored locations (redo individually) -------
-collect_externalization_rating(run_phase("B", subject))
+run_phase("B", subject)
 
 # %% final day: C -- untrained ear, same locations (redo individually) ---------
-collect_externalization_rating(run_phase("C", subject))
+run_phase("C", subject)
 
 # %% final day: D -- untrained ear, mirrored locations [MAIN] -----------------
-collect_externalization_rating(run_phase("D", subject))
+run_phase("D", subject)
 
 
 # ===========================================================================
@@ -1149,6 +624,22 @@ for _name, _seq in subject.localization.items():
     _tag = " <- anchor" if (_n <= 12 and getattr(_seq, "hrir", "") == NATIVE_SOFA) else ""
     print(f"{_name:46s} {_n:4d} {str(getattr(_seq, 'ear', None)):6s} "
           f"{str(getattr(_seq, 'mirrored', None)):5s} {_rating:6.1f}{_tag}")
+
+# %% misc: which donors this participant has been on --------------------------
+# The full swap history from the subject pickle: every donor this participant
+# was on, when, and the reason recorded at the time. Read it before comparing
+# blocks across days -- a swap mid-experiment means the two are not the same
+# manipulation.
+show_donor_log()
+
+# %% misc: re-anchor the externalization scale mid-experiment -----------------
+# ~10 trials of the participant's own HRTF, binaural, plus a rating. NOT part
+# of the protocol any more (day-1 ratings only). Use it if you suspect the
+# delivery chain has drifted -- headphone seating, HP filter, OS volume -- and
+# compare the number against day 1. A drop here is a chain problem, not
+# adaptation.
+subject = hr.Subject(SUBJECT_ID)
+run_anchor(subject)
 
 # %% misc: force the OS output level on its own -------------------------------
 # run_phase() and run_training() already do this. Use it when checking levels

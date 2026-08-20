@@ -10,6 +10,29 @@ Responsibilities:
 - azimuth expansion & binaural cue imposition
 
 No I/O. No hardware. No FreeField.
+
+Azimuth convention
+------------------
+ONE convention holds everywhere in this module and in every SOFA it writes:
+
+    azimuth in [0, 360), COUNTERCLOCKWISE-positive seen from above
+    (pyfar 'sph/top_elev'):  0 = front, 90 = LEFT, 270 = right.
+    elevation in [-90, 90], positive up.
+
+Measured dome keys arrive on the frontal arc (azimuth 0.00), which is the same
+number under either sign convention. `expand_azimuths_with_binaural_cues` wraps
+the expanded grid with `_wrap_az_deg_ccw` and deliberately does NOT re-emit the
+frontal column, so 0 and 360 never both appear. `validate_source_grid` enforces
+that at the point of conversion to `slab.HRTF`: a negative azimuth, an azimuth
+at or past 360, or two sources at the same (az, el) is a bug here, not something
+downstream should be asked to tolerate.
+
+Consumers convert explicitly and must keep doing so:
+  * `Localization_AR` / `Localization_VR` mirror the head-tracker azimuth, which
+    is CLOCKWISE-positive, via ``(-az + 360) % 360``.
+  * `make_sequence` works in signed ``[-180, 180)``.
+  * `hrir2mat.frontal_index` folds ``az > 180`` to negative to find straight
+    ahead; `write_filters` passes the [0, 360) value to pyBinSim unchanged.
 """
 from __future__ import annotations
 import copy
@@ -20,8 +43,54 @@ import warnings
 import logging
 warnings.filterwarnings("ignore", category=pyfar._utils.PyfarDeprecationWarning)
 from .recordings import Recordings, SpeakerGridBase
-import logging
 import slab
+
+# =====================================================================
+# Pipeline constants
+# =====================================================================
+# --- spectrum inversion ----------------------------------------------
+# TWO different signals get inverted in this pipeline, which is why there are
+# two upper bounds. They are not an inconsistency waiting to be reconciled:
+#
+#   compute_ir  inverts the EXCITATION SWEEP -- analytic, known, full-band
+#               (120 Hz to `signal['to_frequency']`, currently 22 kHz, against a
+#               Nyquist of ~24.4 kHz). Nothing about the sweep is unreliable, so
+#               the only reason to stop below its own top edge is to stay clear
+#               of Nyquist. This bound sets where the finished DTFs fall off a
+#               cliff: measured across the 14 subject SOFAs, level holds near
+#               0 dB through 18-20 kHz and then drops to -26 dB at 20-22 kHz.
+#
+#   equalize    inverts the measured REFERENCE IR -- band-limited by speaker,
+#               microphone and room, sitting on a noise floor. Above the
+#               speaker's usable band 1/R asks for unbounded boost, so the top
+#               must be set where the reference stops being trustworthy. That
+#               is a judgement call about the rig, not a property of a signal.
+#
+# On whether 18 kHz is low enough: the three KEMAR re-seats give a
+# reproducibility floor of 3.0-3.9 dB rms in 16-20 kHz against an
+# across-direction spread of 6.3-8.9 dB, i.e. a cue-to-noise ratio near 2.0 --
+# the SAME ratio as 1-4 kHz. So the data do NOT show a frequency above which the
+# DTF collapses into noise, and there is no measurement-driven case for pulling
+# either bound down. The separate argument for a lower top is perceptual, not
+# acoustic: the elevation cues this project manipulates live in 4-15 kHz, and
+# broadband measures are band-limited to 16 kHz for exactly that reason (see
+# `equalize`'s `ild_band`). Changing either bound re-scales every SOFA, so treat
+# it as an experiment-wide decision, not a tuning knob.
+EXCITATION_INVERSION_TOP_HZ = 20e3
+REFERENCE_INVERSION_TOP_HZ = 18e3
+
+# --- post-division time window ---------------------------------------
+# Applied in `equalize` to the equalized IR, relative to its detected onset:
+# fade in, plateau, fade out. Total pass band onset-0.25 ms .. onset+2.5 ms.
+#
+# 2.5 ms after the direct sound is ~0.86 m of extra path, so this keeps the
+# direct sound and the earliest pinna/torso detail and rejects the first room
+# boundary (floor and the dome frame both arrive later than that). The previous
+# setting was 4.8/5.8 ms -- kept commented at the call site -- which let the
+# first floor reflection into the DTF.
+WINDOW_FADE_IN_S = 0.00025
+WINDOW_PLATEAU_S = 0.0015
+WINDOW_FADE_OUT_S = 0.0010
 
 # =====================================================================
 # Deconvolution: Lists of Recordings -> ImpulseResponses
@@ -46,6 +115,16 @@ def compute_ir(
     """
     fs = int(recordings.params["fs"])
     sig_params = recordings.params["signal"]
+
+    # Default to the sweep's own band, capped at EXCITATION_INVERSION_TOP_HZ.
+    # Previously this defaulted to None and then crashed on list(None); every
+    # caller passed the range explicitly, which is why nobody noticed.
+    if inversion_range_hz is None:
+        inversion_range_hz = (
+            float(sig_params["from_frequency"]),
+            min(float(sig_params["to_frequency"]), EXCITATION_INVERSION_TOP_HZ),
+        )
+
     params = copy.deepcopy(recordings.params)
     params.update({
         "fs": fs,
@@ -76,6 +155,41 @@ def compute_ir(
     irs = time_align_irs(irs, center_key='23_0.0_0.0', desired_onset_s=.001, onset_threshold_db=onset_threshold_db,
                          align_itd=align_interaural, align_ild=align_interaural)
     return irs
+
+def _match_direction_key(data, center_key, tol_deg=1e-3):
+    """Find the key of `data` that names the same DIRECTION as `center_key`.
+
+    Speaker-grid keys are 'index_azimuth_elevation' formatted with a varying
+    number of decimals -- `record_dome` writes two ('23_0.00_0.00'), older
+    reference folders one ('23_0.0_0.0'). Comparing them as strings is a silent
+    trap, so compare the parsed azimuth/elevation instead, and fall back to the
+    speaker index if the angles do not match anything.
+
+    Returns the matching key, or None.
+    """
+    if center_key is None:
+        return None
+    if center_key in data:
+        return center_key
+    try:
+        index, azimuth, elevation = center_key.split("_")
+        index, azimuth, elevation = int(index), float(azimuth), float(elevation)
+    except (ValueError, AttributeError):
+        return None
+
+    by_index = None
+    for key in data:
+        try:
+            k_index, k_azimuth, k_elevation = key.split("_")
+            k_index, k_azimuth, k_elevation = int(k_index), float(k_azimuth), float(k_elevation)
+        except ValueError:
+            continue
+        if abs(k_azimuth - azimuth) <= tol_deg and abs(k_elevation - elevation) <= tol_deg:
+            return key
+        if k_index == index and by_index is None:
+            by_index = key
+    return by_index
+
 
 def time_align_irs(
     irs,
@@ -122,12 +236,32 @@ def time_align_irs(
         )
 
     # --- select reference direction ---
-    if center_key is not None and center_key in irs.data:
-        ref_key = center_key
-    else:
-        if center_key is not None:
-            logging.warning("Center key '%s' not found; using '%s' instead.", center_key, keys[0])  # CHANGED (safer)
+    # Match by DIRECTION, not by string. Subject keys are written with two
+    # decimals ('23_0.00_0.00') and reference keys with one ('23_0.0_0.0'), so
+    # the plain `center_key in irs.data` test succeeded for references and
+    # silently failed for every subject, anchoring subjects on keys[0] -- the
+    # TOP ELEVATION -- while their reference was anchored on the frontal
+    # direction. Fixed 2026-08-19.
+    #
+    # A MISS IS NOW FATAL. It used to fall back to keys[0] with a warning, which
+    # is how the two-decimals bug survived months of recordings: the fallback is
+    # silent in every practical sense (a log line in a long session) and it
+    # anchors subject and reference independently, which shifts the DTF in time
+    # relative to its own reference. Pass center_key=None to anchor on the first
+    # key deliberately.
+    if center_key is None:
         ref_key = keys[0]
+    else:
+        ref_key = _match_direction_key(irs.data, center_key)
+        if ref_key is None:
+            raise ValueError(
+                f"time_align_irs: anchor '{center_key}' matches no direction in "
+                f"this set (neither by azimuth/elevation nor by speaker index). "
+                f"Available: {keys[:6]}{' ...' if len(keys) > 6 else ''}. "
+                "Anchoring elsewhere would shift this set in time relative to "
+                "the reference it will be divided by, so this is not recoverable "
+                "here -- fix the anchor, or pass center_key=None if you really "
+                "mean 'use the first key'.")
 
     ref_sig = irs.data[ref_key]
     if ref_sig.cshape != (2,):
@@ -386,10 +520,10 @@ def equalize(
         #          onset_min,  # end if fade-in
         #          onset_min + .0048,  # start of fade_out
         #          onset_min + .0058)  # end of_fade_out
-        times = (onset_min - .00025,  # start of fade-in
-                 onset_min,  # end if fade-in
-                 onset_min + .0015,  # start of fade_out
-                 onset_min + .0025)  # end of_fade_out
+        times = (onset_min - WINDOW_FADE_IN_S,                    # start of fade-in
+                 onset_min,                                       # end of fade-in
+                 onset_min + WINDOW_PLATEAU_S,                    # start of fade-out
+                 onset_min + WINDOW_PLATEAU_S + WINDOW_FADE_OUT_S)  # end of fade-out
         H_windowed, window = pyfar.dsp.time_window(
             H_aligned, times, 'hann', unit='s', crop='none', return_window=True)
         # print('win')
@@ -543,8 +677,10 @@ class ImpulseResponses(SpeakerGridBase):
         data = numpy.stack([self.data[k].time for k in keys], axis=0)
 
         # sources: (n_positions, 3) -> [az, el, r]
-        # uses the same internal order as self.data, so things stay aligned
-        sources = self.get_sources()
+        # uses the same internal order as self.data, so things stay aligned.
+        # Validated here because this is the single gate every SOFA passes
+        # through -- see the module docstring's "Azimuth convention".
+        sources = validate_source_grid(self.get_sources())
 
         hrir = slab.HRTF(
             data=data,
@@ -563,6 +699,10 @@ class ImpulseResponses(SpeakerGridBase):
         Waterfall plot of left + right ear spectra from in-ear impulse responses.
         Elevations determine vertical offset (one curve per elevation).
         Left ear = dark gray, right = lighter gray.
+        
+        INTERACTIVE USE ONLY -- nothing in the pipeline calls this. Kept
+        deliberately for eyeballing a set in a console; do not assume it is
+        exercised by any run.
         """
 
         import numpy
@@ -792,7 +932,16 @@ def _irs_to_pyfar(irs: ImpulseResponses):
         domain="sph",
         convention="top_elev",
         unit="deg",
-    )  # todo fix this for version 8.1.: TypeError: Coordinates.__init__() got an unexpected keyword argument 'domain'
+    )
+    # pyfar 0.8 dropped this constructor: it raises
+    #   TypeError: Coordinates.__init__() got an unexpected keyword argument 'domain'
+    # RESOLVED 2026-08-19 by pinning `pyfar>=0.7.5,<0.8` in pyproject.toml
+    # rather than porting, because 0.7.5 is not merely a version that works --
+    # it is the version the SOFAs on disk were built with. Rebuilding
+    # Kemar_reseated_2 from raw sweeps reproduces the shipped file's magnitude
+    # to 0.000000 dB rms under 0.7.5 and 0.001204 dB rms under 0.6.8.
+    # If you ever do port this to the 0.8 API, treat it as a change to measured
+    # data: rebuild an existing subject and diff before trusting it.
     return data, coords, keys, fs
 
 
@@ -1258,223 +1407,10 @@ def expand_azimuths_with_binaural_cues(
     }
     return out_final
 
-# def expand_azimuths_with_binaural_cues(
-#     hrir,
-#     az_range: tuple[float, float] = (-50, 50),
-#     head_radius: float | None = None,
-#     onset_threshold_db: float = 15.0,
-#     show: bool = False,
-#     probe_az: float = 45.0,
-# ):
-#     """
-#      Extend vertical-arc HRIRs across azimuths and impose binaural cues.
-#
-#      This combines three processing steps:
-#        1) **Azimuth expansion** – Duplicates all IRs near `center_az` across
-#           a grid within `az_range`, spaced by the mean elevation step.
-#        2) **Full-band ILD shaping** – Applies spherical-head ILDs to all
-#           off-midline sources while preserving per-frequency power and phase.
-#        3) **ITD alignment** – Shifts the right-ear IR so measured ITDs match
-#           those predicted by the spherical-head model.
-#
-#      If `show=True`, plots one example (closest to `probe_az`) using
-#      `pyfar.plot.time_freq` to visualize ITD and ILD.
-#
-#      Parameters
-#      ----------
-#      irs : ImpulseResponses
-#          Binaural input (2 ch) in pyfar spherical coordinates
-#          (`domain="sph"`, `convention="top_elev"`).
-#      az_range : (float, float)
-#          Azimuth range (deg) for duplication, e.g. (-35, 35).
-#      head_radius : float or None
-#          Sphere radius in meters; default uses model internal value.
-#      center_az : float
-#          Midline azimuth (deg), typically 0.
-#      show : bool
-#          Plot diagnostic time/freq view at `probe_az`.
-#
-#      Returns
-#      -------
-#      ImpulseResponses
-#          New object with expanded azimuths, spherical-head ILDs,
-#          and ITD-aligned IRs.
-#
-#      Notes
-#      -----
-#      ILDs are applied per frequency bin via R/L magnitude ratios from the
-#      spherical-head model; ITDs are adjusted by time-shifting the right ear.
-#      """
-#
-#     # ---------------------------------------------------------------------
-#     # STEP 2: AZIMUTH EXPANSION
-#     # ---------------------------------------------------------------------
-#     # We start from a vertical arc at center_az (e.g., 0°). We’ll duplicate
-#     # those IRs across an azimuth grid covering az_range. The azimuth grid
-#     # step equals the mean *elevation* step in your existing arc, so the
-#     # az grid density matches your vertical sampling density.
-#     # New entries are deep-copied so later edits won’t affect originals.
-#     # ---------------------------------------------------------------------
-#     sources0 = hrir.get_sources()  # shape (n_pos, 3): [az, el, r]
-#     elevations = numpy.unique(sources0[:, 1])
-#     if len(elevations) > 1:
-#         vertical_res = float(numpy.mean(numpy.diff(numpy.sort(elevations))))
-#     else:
-#         # Fallback (single elevation present): create a single az step
-#         vertical_res = az_range[1] - az_range[0]
-#
-#     # --- build azimuth grid based on vertical spacing ---
-#     azimuths = numpy.arange(az_range[0], az_range[1] + vertical_res / 2, vertical_res)
-#     # wrap to [0, 360) for pyfar convention (0°=front, 90°=left)
-#     azimuths_wrapped = _wrap_az_deg_ccw(azimuths)
-#
-#     # --- duplicate midline IRs across azimuth grid, inserting wrapped az into keys ---
-#     out = copy.deepcopy(hrir)
-#     new_entries = {}
-#
-#     for key in hrir.data.keys():
-#         spk, _az_str, el_str = key.split("_")
-#         for az_w in azimuths_wrapped:
-#             az_canonical = float(numpy.mod(az_w, 360.0))
-#             # do not duplicate the frontal source: keep the original 0° IRs, skip grid values at 0/360
-#             if numpy.isclose(az_canonical, 0.0, atol=1e-6) or numpy.isclose(az_canonical, 360.0, atol=1e-6):
-#                 continue
-#             az_s = f"{az_canonical:.1f}"
-#             new_key = f"{spk}_{az_s}_{el_str}"
-#             if new_key not in out.data and new_key not in new_entries:
-#                 new_entries[new_key] = copy.deepcopy(out.data[key])
-#     # --- update and sort dictionary for stable downstream behavior ---
-#     out.data.update(new_entries)
-#
-#     try:
-#         from collections import OrderedDict
-#         def _parse_key_triple(k):
-#             spk, az_s, el_s = k.split("_")
-#             return (float(az_s), float(el_s), spk)
-#
-#         out.data = OrderedDict(sorted(out.data.items(), key=lambda kv: _parse_key_triple(kv[0])))
-#     except Exception:
-#         pass  # sorting is optional
-#
-#     # --- convert to pyfar + compute spherical-head reference ---
-#     hrir, coords, keys, fs = _irs_to_pyfar(out)
-#     shtf = _spherical_head_for(coords, hrir.n_samples, fs, head_radius)
-#
-#     # ---------------------------------------------------------------------
-#     # STEP 3: FULL-BAND ILD SHAPING (OFF-MIDLINE ONLY)
-#     # ---------------------------------------------------------------------
-#     # For each synthesized direction, we impose the spherical-head ILD per
-#     # frequency bin. We preserve the measured *power average* per bin:
-#     #   r(f)  = H_R_head / H_L_head    (magnitude ratio)
-#     #   A(f)  = sqrt((|H_L|^2 + |H_R|^2) / 2)
-#     #   mL'   = A * sqrt(2/(1+r^2))
-#     #   mR'   = r * mL'
-#     # Phases are preserved (ILD affects magnitudes only).
-#     # Midline (≈ center_az) directions are left untouched.
-#     # ---------------------------------------------------------------------
-#     H_meas = hrir.freq  # complex spectrum, shape (n_pos, 2, n_bins)
-#     mag_meas = numpy.abs(H_meas)
-#     phase_meas = numpy.angle(H_meas)
-#     mag_head = numpy.abs(shtf.freq)
-#
-#     n_pos, n_ears, _ = mag_meas.shape
-#     if n_ears != 2:
-#         raise ValueError("Binaural data expected (2 ears).")
-#
-#     sources = out.get_sources()
-#     az_all = sources[:, 0]
-#     is_midline = sources[:, 0] == 0
-#
-#     # Copy magnitudes; we will overwrite off-midline entries
-#     mag_new = mag_meas.copy()
-#
-#     for i in range(n_pos):
-#         if is_midline[i]:
-#             # Keep measured magnitudes on the midline as-is
-#             continue
-#
-#         # Head-model ILD ratio r(f) = R/L
-#         mL_h = mag_head[i, 0, :]
-#         mR_h = mag_head[i, 1, :]
-#         r = mR_h / numpy.maximum(mL_h, 1e-12)  # protect division
-#
-#         # Measured magnitudes and power average
-#         mL = mag_meas[i, 0, :]
-#         mR = mag_meas[i, 1, :]
-#         A = numpy.sqrt((mL**2 + mR**2) / 2.0)
-#
-#         # Apply ILD while preserving A and phases
-#         mL_new = A * numpy.sqrt(2.0 / (1.0 + r**2))
-#         mR_new = r * mL_new
-#
-#         mag_new[i, 0, :] = mL_new
-#         mag_new[i, 1, :] = mR_new
-#
-#     # Recombine with original phases
-#     H_new = mag_new * numpy.exp(1j * phase_meas)
-#     hrir.freq = H_new  # pyfar will update time on demand
-#
-#     # ---------------------------------------------------------------------
-#     # STEP 4: ITD ALIGNMENT (GLOBAL TIME SHIFT OF RIGHT EAR)
-#     # ---------------------------------------------------------------------
-#     # We want the *onset difference* (right minus left) to match the model
-#     # in the *time domain*. Compute onsets for both (model & processed),
-#     # then time-shift the *entire* right ear by ΔITD per direction.
-#     # ---------------------------------------------------------------------
-#     _ = hrir.time  # ensure time cache
-#     _ = shtf.time
-#
-#     on_mod = pyfar.dsp.find_impulse_response_start(shtf, threshold=onset_threshold_db)
-#     on_mea = pyfar.dsp.find_impulse_response_start(hrir, threshold=onset_threshold_db)
-#
-#     time_data = hrir.time  # shape (n_pos, 2, n_samples)
-#     out_time = numpy.empty_like(time_data)
-#
-#     for i in range(time_data.shape[0]):
-#         # Convert sample offsets to seconds
-#         itd_model = (on_mod[i, 1] - on_mod[i, 0]) / fs
-#         itd_meas  = (on_mea[i, 1] - on_mea[i, 0]) / fs
-#         delta_itd = itd_model - itd_meas  # desired additional shift for right ear
-#
-#         # Left ear unchanged
-#         out_time[i, 0, :] = time_data[i, 0, :]
-#
-#         # Shift right ear in time using pyfar; preserves spectrum consistency
-#         sig_r = pyfar.Signal(time_data[i, 1:2, :], fs)
-#         sig_rs = pyfar.dsp.time_shift(sig_r, delta_itd, unit="s")
-#         out_time[i, 1, :] = sig_rs.time[0]
-#
-#     # ---------------------------------------------------------------------
-#     # OPTIONAL: Quick diagnostic plot at ~probe_az
-#     # ---------------------------------------------------------------------
-#     if show:
-#         idx = int(numpy.argmin(numpy.abs(az_all - float(probe_az))))
-#         import matplotlib.pyplot as plt
-#         plt.figure(figsize=(7,10))
-#         ax_t, ax_f = pyfar.plot.time_freq(pyfar.Signal(out_time[idx], fs))
-#         ax_t.get_lines()[0].set_label('left')
-#         ax_t.get_lines()[1].set_label('right')
-#         ax_t.legend()
-#         ax_f.get_lines()[0].set_label('left')
-#         ax_f.get_lines()[1].set_label('right')
-#         ax_f.legend()
-#         ax_t.set_title('time')
-#         ax_f.set_title("magnitude")
-#         plt.suptitle(f"Result @ az≈{az_all[idx]:.1f}°")
-#         plt.show()
-#
-#     # ---------------------------------------------------------------------
-#     # Return as a fresh ImpulseResponses object with provenance
-#     # ---------------------------------------------------------------------
-#     out_final = _pyfar_to_irs(out, keys, out_time, fs)
-#     out_final.params.setdefault("processing", {})
-#     out_final.params["processing"]["expand_azimuths_with_binaural_cues"] = {
-#         "az_range": [float(az_range[0]), float(az_range[1])],
-#         "head_radius": float(head_radius) if head_radius is not None else None,
-#         "onset_threshold_db": float(onset_threshold_db),
-#         "date": datetime.now().isoformat(),
-#     }
-#     return out_final
+# The previous absolute-ILD version of expand_azimuths_with_binaural_cues used
+# to sit here, commented out (217 lines). Removed 2026-08-19 -- it is in git
+# history if it is ever needed; the live version imposes ILD relative to the
+# frontal direction instead.
 
 def _wrap_az_deg_ccw(az):
     """Wrap azimuth(s) to [0, 360) with CCW-positive (pyfar 'sph/top_elev')."""
@@ -1482,3 +1418,70 @@ def _wrap_az_deg_ccw(az):
     az = numpy.mod(az, 360.0)
     az[az < 0] += 360.0
     return az
+
+
+def validate_source_grid(sources, tol_deg=1e-3):
+    """
+    Assert the source grid obeys the module's single azimuth convention.
+
+    See the "Azimuth convention" section of the module docstring. Checks, in
+    order of how much damage each would do downstream:
+
+    1. azimuth in [0, 360) -- a negative azimuth means an unwrapped measured key
+       leaked past `expand_azimuths_with_binaural_cues`, so the SOFA would carry
+       two conventions at once and `hrir2mat.frontal_index` (which folds
+       ``az > 180`` to negative) would mislabel straight ahead.
+    2. no duplicate (az, el) within `tol_deg` -- most likely the frontal column
+       emitted twice, once as the measured 0 and once as a wrapped 360. Two
+       filters at one direction is silently wasteful in pyBinSim and makes
+       "the frontal DTF" ambiguous for every analysis that looks one up.
+    3. elevation in [-90, 90].
+
+    Parameters
+    ----------
+    sources : array_like, shape (n, 3)
+        [azimuth, elevation, distance] rows, degrees.
+    tol_deg : float
+        Two directions closer than this in BOTH coordinates count as duplicates.
+
+    Raises
+    ------
+    ValueError
+        On any violation, naming the offending directions.
+    """
+    src = numpy.asarray(sources, dtype=float)
+    if src.ndim != 2 or src.shape[1] != 3:
+        raise ValueError(
+            f"validate_source_grid: expected (n, 3) [az, el, r], got {src.shape}")
+
+    az, el = src[:, 0], src[:, 1]
+
+    bad = numpy.flatnonzero((az < 0.0) | (az >= 360.0))
+    if bad.size:
+        raise ValueError(
+            "validate_source_grid: azimuth must be in [0, 360) CCW-positive "
+            f"(0=front, 90=left); {bad.size} source(s) violate it, e.g. "
+            f"{[float(a) for a in az[bad[:5]]]}. An unwrapped measured azimuth "
+            "has leaked through -- wrap it with _wrap_az_deg_ccw before the "
+            "grid is assembled, do not fix it downstream.")
+
+    bad = numpy.flatnonzero(numpy.abs(el) > 90.0)
+    if bad.size:
+        raise ValueError(
+            "validate_source_grid: elevation must be in [-90, 90]; "
+            f"offending values {[float(e) for e in el[bad[:5]]]}")
+
+    # duplicates: quantize to the tolerance so 0.0 and 360.0-after-wrap collide
+    quantized = numpy.round(src[:, :2] / max(tol_deg, 1e-12)).astype(numpy.int64)
+    _, first, counts = numpy.unique(
+        quantized, axis=0, return_index=True, return_counts=True)
+    if numpy.any(counts > 1):
+        dupes = [(float(az[i]), float(el[i]))
+                 for i in first[counts > 1][:5]]
+        raise ValueError(
+            f"validate_source_grid: {int((counts - 1).sum())} duplicate "
+            f"direction(s), e.g. (az, el) = {dupes}. The usual cause is the "
+            "frontal column being emitted twice -- once as the measured 0 and "
+            "once as a wrapped 360.")
+
+    return src

@@ -44,7 +44,9 @@ AZ_RANGE   = tuple(int(x) for x in os.environ.get("TRAINING_AZ_RANGE", "-35,0").
 # Sound
 SOUND_FILE = None         # None -> pink noise pulses; or 'uso_225ms_9_.wav', etc.
 # Graphics
-show_ui = True  # todo
+# (the game UI process starts unconditionally below -- there is no flag for
+#  it; add one at the mp.Process(target=game_ui.run_ui) call if you want
+#  to be able to turn it off)
 SHOW_TF = 'TF'  # set to TF or IR to spawn live filter plot
 
 # Game settings

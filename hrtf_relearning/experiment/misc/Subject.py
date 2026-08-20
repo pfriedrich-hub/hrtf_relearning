@@ -34,6 +34,14 @@ class Subject:
         rather than whatever the selection rule ranks first today. The full
         candidate ranking is not here — it is embedded in the composite SOFA
         as ``GLOBAL_ModificationParams``.
+    head_radius : float or None
+        Effective head radius in metres, fitted acoustically from this
+        participant's lateral ITDs by ``fit_head_radius.record_head_radius``
+        (step 0 of the recording protocol) and passed to ``record_hrir`` as
+        ``head_radius=``. ``None`` for records made before it was measured —
+        those HRIRs used the pipeline default. The full fit (residual, both
+        estimators, per-direction ITDs) is not kept here; it is logged when
+        measured, and can be recovered from any SOFA with ``fit_from_sofa``.
     localization : dict[str, slab.Trialsequence]
         Localization runs keyed by filename ``<id>_<date>_<hrir>``, in
         insertion (chronological) order. Each value is the completed test
@@ -104,6 +112,7 @@ class Subject:
             self.highscore = 0
             self.demographics = {}
             self.active_donor = {}
+            self.head_radius = None
 
     def _load(self):
         logging.info("Loading subject data.")
@@ -134,6 +143,9 @@ class Subject:
         # {} for records created before the donor was tracked here (it used to
         # live in a <id>_donor_log.csv next to the plots)
         self.active_donor = data.get("active_donor", {})
+        # None for records made before the head radius was fitted acoustically
+        # (those HRIRs were built with the pipeline default, 0.0875 m).
+        self.head_radius = data.get("head_radius", None)
 
     def write(self):
         logging.debug("Writing subject data.")
@@ -146,6 +158,7 @@ class Subject:
             "highscore": self.highscore,
             "demographics": self.demographics,
             "active_donor": self.active_donor,
+            "head_radius": self.head_radius,
         }
         with open(self.file_path, "wb") as f:
             pickle.dump(data, f)
@@ -436,6 +449,7 @@ class Subject:
                 "highscore": int(self.highscore) if self.highscore is not None else 0,
                 "demographics": dict(self.demographics or {}),
                 "active_donor": _to_jsonable(self.active_donor or {}),
+                "head_radius": _to_jsonable(self.head_radius),
                 # last_sequence is one of the localization runs; archive the key
                 # rather than a second copy of the whole run.
                 "last_sequence": getattr(self.last_sequence, "name", None),

@@ -35,8 +35,16 @@ each test's real stim (ecologically valid), or 'dome' to play the identical
 dome-style burst train through BOTH paths for a cleaner apples-to-apples match.
 """
 
-#todo implement this with kemar using bi rec rcx
-# also check stimulus generation across conditions
+# TO DO, next time KEMAR is in the chair: replace this by-ear match with an
+# objective one -- KEMAR in the rig, in-ear mics, bi-rec RCX, measure the
+# dome and the headphone path and take the difference. Also check stimulus
+# generation across conditions while the manikin is set up.
+#
+# Do not write it from scratch first: `equalize_loudness()` in
+# _to_delete/dead_code_20260819/record/test_hrir_recording.py already does
+# the objective dome-vs-headphone match through the in-ear mics, via
+# freefield.play_and_record_headphones, and carries a measured result
+# ('diff is about 19 on both channels'). Salvage that before it is deleted.
 
 # %% SETUP -------------------------------------------------------------------
 import multiprocessing as mp

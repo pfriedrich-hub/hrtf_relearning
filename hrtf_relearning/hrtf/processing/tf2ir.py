@@ -204,7 +204,6 @@ def tf2ir(tf):
 
 
 
-    # todo add option for complex valued TFs
     input = copy.deepcopy(hrtf)
     tf_data = numpy.zeros((hrtf.n_sources, hrtf[0].n_samples, 2))
     for src_idx, tf in enumerate(input.data):

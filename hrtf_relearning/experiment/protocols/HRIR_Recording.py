@@ -14,6 +14,7 @@ Steps:
     2. Calibrate headphones       (mics still in)
     3. Acoustic sanity check      (dome speaker vs HRIR rendering, spectrum comparison)  [optional]
     4. Dome localization          (real speakers, vertical midline)
+    4b. Dome training             (only if step 4 is at floor)                 [optional]
     5. Virtual localization       (pybinsim, same locations, independent randomisation)
 """
 
@@ -30,17 +31,32 @@ import slab
 import hrtf_relearning as hr
 from hrtf_relearning.experiment.localization.Localization_AR import Localization
 from hrtf_relearning.experiment.localization.Localization_dome import LocalizationDome
-from hrtf_relearning.hrtf.record.record_hrir import record_hrir
+from hrtf_relearning.experiment.training.Training_Dome import TrainingDome
+from hrtf_relearning.hrtf.record.record_hrir import record_hrir, record_reference
 from hrtf_relearning.hrtf.record.recordings import Recordings
-from hrtf_relearning.hrtf.record.fit_head_radius import (
-    fit_head_radius, itd_from_binaural, report)
+from hrtf_relearning.hrtf.record.fit_head_radius import record_head_radius
 from hrtf_relearning.hrtf.record.calibration.calibrate_headphones import calibrate_headphones
 from hrtf_relearning.utils import paths
 import json
 
 SUBJECT_ID   = 'Kemar_reseated_2'          # edit per participant
-HEAD_RADIUS  = 0.0725        # set from step 0 below; see the note there
-REFERENCE_ID = 'ref_19.08'
+REFERENCE_ID = 'ref_20.08'   # fresh id -> step 0b records it; reused id -> loaded
+EQUALIZE_DOME = False        # subject AND reference; they must match. See step 0b.
+
+# The dome EQ mismatch (project_dome_eq_mismatch): every reference recorded
+# before 2026-08-20 -- ref_03.04, kemar_reference, ref_19.08, ref_19.08_swapped
+# -- has equalize_dome=True while every subject has False. record_dome passes
+# this to freefield.play_and_record(equalize=...), which pre-filters the emitted
+# sweep per speaker; processing.equalize() then divides subject by reference PER
+# SPEAKER, so the dome EQ does not cancel and leaves HRTF / E_k. Each midline
+# elevation is a different speaker (20..26), so the residual is
+# elevation-dependent -- roughly 1.1 dB rms at 200-1000 Hz, 1.5 dB 1-4 kHz,
+# 2.5 dB 4-16 kHz.
+#   To stop inheriting it: give REFERENCE_ID a FRESH name and run step 0b once.
+#   Everything recorded from then on is internally consistent, at the cost of
+#   about two minutes on the first session of the day. Subjects already on disk
+#   keep the old reference and the old residual; that is a separate decision.
+
 N_DIRECTIONS = 3              # directions for the HRIR recording
 N_RECORDINGS = 10
 FS           = 48828
@@ -59,38 +75,30 @@ freefield.set_logger('info')
 subject = hr.Subject(SUBJECT_ID)
 
 # %% step 0: acoustic head radius ----------------------------------------------
-# todo build a wrapper here (like record hrir has)
+# Mics already in the ears. Records the horizontal row, fits the sphere whose
+# ITDs match this listener, and returns the radius in metres -- also stored as
+# subject.head_radius (<ID>.pkl + .json). Re-running loads instead of
+# re-recording. If the fit is not usable it warns and returns the 0.0875 m
+# fallback; details in fit_head_radius.py. KEMAR: 0.0722 m.
 logging.info('--- Step 0: acoustic head radius ---')
-az_dir = paths.REC_DIR / f'{SUBJECT_ID}_azimuth'    # sibling of the HRIR folder
-if (az_dir / 'recordings.npz').exists():
-    az_rec = Recordings.load(az_dir)
-else:
-    az_rec = Recordings.record_dome(
-        id=f'{SUBJECT_ID}_azimuth', azimuth=AZ_RANGE, elevation=AZ_ELEVATION,
-        n_directions=1, n_recordings=N_REC_AZ, hp_freq=HP_FREQ, fs=FS,
-        equalize=False, key=True)
-    az_rec.to_npz(az_dir, overwrite=True)
+HEAD_RADIUS = record_head_radius(
+    SUBJECT_ID, azimuth_range=AZ_RANGE, elevation=AZ_ELEVATION,
+    n_recordings=N_REC_AZ, hp_freq=HP_FREQ, fs=FS, show=SHOW, save=subject)
 
-azimuths, itds = [], []
-for spk_key, repeats in az_rec.data.items():
-    _index, azimuth, elevation = spk_key.split('_')
-    if abs(float(azimuth)) < 5:      # ITD ~0 at the midline, no information there
-        continue
-    azimuths.append(float(azimuth))
-    itds.append(itd_from_binaural(numpy.mean([r.data.T for r in repeats], axis=0), FS))
-
-az_fit = fit_head_radius(azimuths, itds)
-report(az_fit, label=f'{SUBJECT_ID}: ')
-(az_dir / 'head_radius_fit.json').write_text(json.dumps(
-    {k: (v.tolist() if hasattr(v, 'tolist') else v) for k, v in az_fit.items()}, indent=2))
-
-# Then set HEAD_RADIUS from the fit and rerun the config cell before step 1.
-# Check residual_us first: a few tens of us RMS is normal, a head is not a
-# sphere and the ears are not at +-90 deg. A large residual, or one that grows
-# systematically with azimuth, means a single sphere does not describe this
-# listener and the number is a compromise rather than a measurement -- fall back
-# to 0.0875 and record that you did.
-# HEAD_RADIUS = az_fit['head_radius']
+# %% step 0b: reference (ONCE per reference id -- skip if REFERENCE_ID exists) ---
+# Mics on the STAND at the listening position, no listener in the chair. Two
+# minutes. Refuses to overwrite an existing id, so it is safe to leave this cell
+# in place and just run it when REFERENCE_ID is new -- rerunning it with an old
+# id raises rather than silently replacing the sweeps.
+#
+# You can also skip this cell entirely: record_hrir() below records the
+# reference itself if REFERENCE_ID does not exist yet, with the same
+# EQUALIZE_DOME as the subject. The only reason to do it here is ordering --
+# record_hrir does the SUBJECT first, so you would have to move the mics from
+# the ears to the stand in the middle of the call.
+logging.info('--- Step 0b: reference ---')
+reference_rec = record_reference(REFERENCE_ID, n_recordings=N_RECORDINGS, fs=FS,
+                                 hp_freq=HP_FREQ, equalize_dome=EQUALIZE_DOME)
 
 # %% step 1: record / load HRIR ------------------------------------------------
 logging.info('--- Step 1: HRIR recording ---')
@@ -101,15 +109,12 @@ hrir = record_hrir(
     n_recordings   = N_RECORDINGS,
     fs             = FS,
     hp_freq        = HP_FREQ,
+    equalize_dome  = EQUALIZE_DOME,
     head_radius    = HEAD_RADIUS,
     show           = SHOW,
     overwrite_rec  = True,
     overwrite_hrir = True,
 )
-# todo fix center_key bug,
-#  fix head radius living in two places,
-#  fix overwrite rec: did not work for AS (recordings were made but npz remained unchanged)
-#  note to claude: woodworth style head radius of 0.0875 is not what i empirically measure when taking the distance between participants ears
 
 # %% step 2: headphone calibration ---------------------------------------------
 logging.info('--- Step 2: HP calibration ---')
@@ -128,8 +133,6 @@ STIM = 'ripple'            # -> 'ripple' once the depth is settled
 STIM_SETTINGS = {'rms_tilt': 3}        # empty = inherit localization_helpers.stimulus defaults
 
 # %% step 4: dome localization ---------------------------------------------------
-#todo add optional dome training here in case participants repeatedly fail to localize
-
 # Real speakers, vertical midline. Each run gets a fresh timestamped filename
 # (see LocalizationDome.__init__), so repeats are stored as separate sequences
 # rather than overwriting one another -- rerun this cell to redo it.
@@ -137,6 +140,35 @@ logging.info('--- Step 4: Dome localization ---')
 dome_loc = LocalizationDome(subject, {'targets_per_speaker': 3, 'min_distance': 15,
     'stim': STIM, 'stim_settings': STIM_SETTINGS})
 dome_loc.run()
+
+# %% step 4b: OPTIONAL dome training -- only if step 4 is at floor ---------------
+# NOT part of the standard session. Run it when a participant cannot do the task
+# on REAL SPEAKERS -- repeated step-4 runs at chance, elevation gain near zero,
+# responses that ignore elevation entirely. That is a participant who has not
+# understood the task or is not attending to the spectral cue, and it is worth
+# separating from a participant whose HRIR is bad: the dome is the ceiling
+# condition, so if they cannot localize HERE, nothing measured over headphones
+# afterwards means anything.
+#
+# The coin game on the vertical midline, same speakers step 4 tests. Targets are
+# weighted by the per-sector error of their last matching localization run
+# (find_last_matching_sequence), so it trains where they are actually wrong --
+# which is why this must run AFTER at least one step-4 block, not before.
+#
+# One or two games (~90 s each) is the intended dose; this is a task-comprehension
+# rescue, not adaptation training, and every game played is exposure that a naive
+# baseline no longer has. RECORD IN THE SUBJECT NOTES that training was given,
+# and re-run step 4 afterwards rather than reusing the pre-training block.
+#
+# Processor modes take care of themselves: TrainingDome switches the RX8s to the
+# pulse circuit and LocalizationDome.run() switches them back to 'play_rec', each
+# guarding on freefield.PROCESSORS.mode. So step 4 can simply be re-run.
+#
+# Esc at the "play again" prompt ends the session.
+training = TrainingDome(subject, region='midline')
+training.run(n_games=1)
+
+# ...then re-run the step 4 cell above to see whether it took.
 
 # %% step 5b: virtual localization -- DT990 ---------------------------------------
 logging.info('--- Step 5: HP localization (DT990) ---')

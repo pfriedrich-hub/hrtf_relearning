@@ -219,6 +219,52 @@ def _azimuth_span(sequence):
     return float(target_az.max() - target_az.min())
 
 
+def condition_tag(sequence):
+    """One-line 'which condition is this' tag: listening ear, mirroring, hemifield.
+
+    `sequence.name` is `<subject>_<date>_<hrir name>`, which does not say
+    whether the block was monaural, whether the HRIR was mirrored, or which
+    half of the field was sampled. In a design where ONE modified SOFA serves
+    four different cells (trained/untrained ear x same/mirrored locations),
+    two figures can therefore carry near-identical titles and be completely
+    different conditions -- and a MIRRORED block's azimuth axis is in the
+    mirrored frame, which reads as a real leftward or rightward bias if you
+    forget.
+
+    Everything is read off the stored sequence, so this also applies to blocks
+    recorded before the tag existed. Returns '' if the sequence carries none of
+    the attributes.
+
+    Example: ``left ear (other: envelope)  |  MIRRORED hrir  |  left hemifield (-35, 0)``
+    """
+    parts = []
+
+    ear = getattr(sequence, 'ear', None)
+    if ear:
+        other = getattr(sequence, 'other_ear', None)
+        parts.append(f"{ear} ear" + (f" (other: {other})" if other else ""))
+    elif hasattr(sequence, 'ear'):
+        parts.append("binaural")
+
+    if getattr(sequence, 'mirrored', False):
+        parts.append("MIRRORED hrir")
+
+    az_range = (getattr(sequence, 'settings', None) or {}).get('azimuth_range', None)
+    if az_range is not None:
+        lo, hi = float(min(az_range)), float(max(az_range))
+        # Negative azimuth is the left side: the protocol sets the trained
+        # hemifield to (-35, 0) for a left-trained ear and (0, 35) for a right.
+        if lo < 0 < hi:
+            where = "full field"
+        elif hi <= 0:
+            where = "left hemifield"
+        else:
+            where = "right hemifield"
+        parts.append(f"{where} ({lo:g}, {hi:g})")
+
+    return "  |  ".join(parts)
+
+
 def plot_localization(sequence, report_stats=['elevation', 'azimuth'], axis=None, filepath=None):
     """
     Plots representative mean responses by aligning targets,
@@ -306,6 +352,9 @@ def plot_localization(sequence, report_stats=['elevation', 'azimuth'], axis=None
     ax.set_yticks(el_ticks)
 
     title = sequence.name
+    _cond = condition_tag(sequence)
+    if _cond:
+        title += f"\n{_cond}"
     if 'elevation' in report_stats:
         title += f"\nEG: {eg:.2f}, RMSE: {ele_rmse:.1f}°, SD: {ele_sd:.1f}°"
     if 'azimuth' in report_stats and ag:
@@ -440,8 +489,10 @@ def plot_elevation_response(sequence, axis=None, add_fit=True, filepath=None, n_
     axis.set_xlabel('Target Elevations (deg)')
     axis.set_ylabel('Response Elevations (deg)')
 
-    title = (getattr(sequence, 'name', 'Localization') +
-             f"\nEG: {eg:.2f}, RMSE={ele_rmse:.1f}°, SD={ele_sd:.1f}°")
+    _cond = condition_tag(sequence)
+    title = (getattr(sequence, 'name', 'Localization')
+             + (f"\n{_cond}" if _cond else "")
+             + f"\nEG: {eg:.2f}, RMSE={ele_rmse:.1f}°, SD={ele_sd:.1f}°")
     axis.set_title(title, fontsize=fs)
 
     # Legend: EG only

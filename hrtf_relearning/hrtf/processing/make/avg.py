@@ -33,8 +33,6 @@ def get_hrtf_list(database_name='aachen_database'):
 #
 #     data = numpy.asarray(data)
 #     threshold = numpy.percentile(data, 25), numpy.percentile(data, 75)
-#     #todo find a better measure than thresholding,
-#     # for example take the jnd spectral notch width and depth in dB
 #     print(f"Thresholds; lower: {threshold[0]}, upper: {threshold[1]}")
 #     # compute probability map of spectral peaks and notches across frequencies and sources
 #         print(f"Retrieving TF data from database: {i / len(hrtf_list) * 100:.2f} %")

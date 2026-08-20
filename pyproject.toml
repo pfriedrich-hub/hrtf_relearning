@@ -9,7 +9,20 @@ requires-python = ">=3.10"
 dependencies = [
     "slab @ git+https://github.com/pfriedrich-hub/slab.git",
     "pybinsim @ git+https://github.com/pfriedrich-hub/pybinsim_tuil.git",
-"h5py", "h5netcdf", "netCDF4", "metawear", "pynput", "pyfar>=0.8.1",
+    "h5py", "h5netcdf", "netCDF4", "metawear", "pynput",
+    # pyfar is CAPPED BELOW 0.8. 0.8 changed the Coordinates constructor and
+    # `processing._irs_to_pyfar` dies on it with
+    #   TypeError: Coordinates.__init__() got an unexpected keyword argument 'domain'
+    # so the previous `>=0.8.1` declared a version the pipeline cannot run --
+    # a clean `pip install -e .` produced a broken install.
+    #
+    # 0.7.5 is also the version the data on disk was built with, not just one
+    # that happens to work: rebuilding Kemar_reseated_2 from raw sweeps under
+    # 0.7.5 reproduces the shipped SOFA's magnitude EXACTLY (0.000000 dB rms,
+    # max 0.000000 dB), while 0.6.8 lands 0.0012 dB rms away. Treat the cap as
+    # protecting reproducibility of measured HRTFs, not just importability --
+    # lift it only together with a rebuild-and-compare against an existing SOFA.
+    "pyfar>=0.7.5,<0.8",
     # Plots. matplotlib is declared explicitly rather than inherited from slab /
     # pyfar because the package now selects the backend itself; >=3.5 for the
     # 'QtAgg' backend name. Plot windows themselves use Tk, which ships with the

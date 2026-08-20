@@ -497,6 +497,7 @@ prepare_donor_shortlist(n=3)
 # CSV and before/after figures. Note the donor id -- put it in DONOR_ID at the
 # top so later sessions can skip straight to load_existing_donor().
 # Redundant if prepare_donor_shortlist() was run; harmless to run anyway.
+
 build_donor_sofa(overwrite=False)
 subject = hr.Subject(SUBJECT_ID)
 

@@ -39,23 +39,9 @@ from hrtf_relearning.hrtf.record.calibration.calibrate_headphones import calibra
 from hrtf_relearning.utils import paths
 import json
 
-SUBJECT_ID   = 'Kemar_reseated_2'          # edit per participant
+SUBJECT_ID   = 'test'          # edit per participant
 REFERENCE_ID = 'ref_20.08'   # fresh id -> step 0b records it; reused id -> loaded
 EQUALIZE_DOME = False        # subject AND reference; they must match. See step 0b.
-
-# The dome EQ mismatch (project_dome_eq_mismatch): every reference recorded
-# before 2026-08-20 -- ref_03.04, kemar_reference, ref_19.08, ref_19.08_swapped
-# -- has equalize_dome=True while every subject has False. record_dome passes
-# this to freefield.play_and_record(equalize=...), which pre-filters the emitted
-# sweep per speaker; processing.equalize() then divides subject by reference PER
-# SPEAKER, so the dome EQ does not cancel and leaves HRTF / E_k. Each midline
-# elevation is a different speaker (20..26), so the residual is
-# elevation-dependent -- roughly 1.1 dB rms at 200-1000 Hz, 1.5 dB 1-4 kHz,
-# 2.5 dB 4-16 kHz.
-#   To stop inheriting it: give REFERENCE_ID a FRESH name and run step 0b once.
-#   Everything recorded from then on is internally consistent, at the cost of
-#   about two minutes on the first session of the day. Subjects already on disk
-#   keep the old reference and the old residual; that is a separate decision.
 
 N_DIRECTIONS = 3              # directions for the HRIR recording
 N_RECORDINGS = 10

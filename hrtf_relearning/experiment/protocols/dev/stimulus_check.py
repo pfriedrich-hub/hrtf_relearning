@@ -45,8 +45,8 @@ past some point it erodes the cue it was supposed to spare. Two steps:
            gain. This is what decides it.
 """
 
-SUBJECT_ID = "PF"
-SOFA_NAME = "PF_donor_VD"      # the modified HRTF the subject is tested on
+SUBJECT_ID = "AS"
+SOFA_NAME = "AS_donor_GS"      # the modified HRTF the subject is tested on
 EAR = "left"                    # ear whose DTF carries the cue
 AZIMUTH = -20.0                 # audition azimuth, experiment convention (neg = left)
 
@@ -161,7 +161,7 @@ print(f"wrote to {OUT_DIR}")
 # externalization. Do it for 'noise' first to hear what the cue sounds like when
 # the source spectrum is fixed, then for 'ripple': the elevation percept should
 # survive, the timbre should not.
-KIND = 'noise'          # 'noise' | 'ripple' | 'uso'
+KIND = 'ripple'          # 'noise' | 'ripple' | 'uso'
 ELEVATIONS = (-30, -15, 0, 15, 30)
 
 _, hrtf, idx = cue_spectra()

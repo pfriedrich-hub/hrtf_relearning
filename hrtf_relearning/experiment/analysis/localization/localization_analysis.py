@@ -99,6 +99,88 @@ def _wrap_diff_deg(a, b):
     return (numpy.asarray(a) - numpy.asarray(b) + 180.0) % 360.0 - 180.0
 
 
+def is_degenerate(sequence, min_unique=2):
+    """True when a finished run's responses never moved — a dead pointer.
+
+    ``_no_usable_data`` catches runs that were never finished or are ragged; it
+    cannot catch a run that completed with the SAME response on every trial.
+    That happens when the head tracker stops updating: the pose is sampled
+    once, every trial records it, and the run looks perfectly well formed.
+    Scored, it yields elevation gain exactly 0.00 and residual SD exactly 0.00,
+    which is a plausible-looking "learned nothing" rather than an obvious
+    failure — IR's two dome blocks on 18.08 are both this, 21 trials each with
+    the response frozen at (az 0.000, el 0.047).
+
+    Deliberately NOT folded into ``_no_usable_data``: that would silently
+    change what every existing figure and analysis includes. Call it explicitly
+    where runs are selected.
+    """
+    if _no_usable_data(sequence):
+        return False                       # already excluded by the other gate
+    loc_data = numpy.asarray(sequence.data)
+    loc_data = loc_data.reshape(loc_data.shape[0], 2, 2)
+    responses = loc_data[:, 0]
+    if responses.shape[0] < 2:
+        return True
+    return len(numpy.unique(responses, axis=0)) < int(min_unique)
+
+
+def _interaural_polar(azimuth, elevation):
+    """(lateral, polar) in degrees from vertical-polar (azimuth, elevation).
+
+    The spectral elevation cue is constant along a cone of confusion, so the
+    coordinate the manipulation acts on is the POLAR angle around the
+    interaural axis, not elevation. On the midline the two coincide; they
+    diverge as soon as azimuth spreads, which every ±35° sector block does.
+    """
+    azimuth = numpy.radians(numpy.asarray(azimuth, dtype=float))
+    elevation = numpy.radians(numpy.asarray(elevation, dtype=float))
+    x = numpy.cos(elevation) * numpy.cos(azimuth)
+    y = numpy.cos(elevation) * numpy.sin(azimuth)
+    z = numpy.sin(elevation)
+    return numpy.degrees(numpy.arcsin(numpy.clip(y, -1.0, 1.0))), \
+        numpy.degrees(numpy.arctan2(z, x))
+
+
+def polar_error(sequence, quadrant_threshold=90.0):
+    """Polar-angle accuracy of one localization run — the primary outcome.
+
+    Elevation gain is a slope: it can look healthy while absolute accuracy is
+    poor, and the fitted intercept absorbs any constant bias. The polar error
+    is the quantity the experiment itself optimises — ``target_p`` weights the
+    training targets by per-sector polar error — so report this first and use
+    gain, RMSE and residual SD as secondary.
+
+    Responses more than ``quadrant_threshold`` degrees away in polar angle are
+    front-back / up-down confusions rather than imprecision, and averaging them
+    in swamps everything else. They are split off and reported as a rate, and
+    the LOCAL mean is taken over the rest (Middlebrooks' convention).
+
+    Returns
+    -------
+    (local_mean, local_rmse, quadrant_rate) : tuple of float
+        Mean absolute local polar error in degrees, its RMS, and the fraction
+        of trials counted as quadrant errors. ``(nan, nan, nan)`` for a run with
+        nothing analysable.
+    """
+    if _no_usable_data(sequence):
+        return numpy.nan, numpy.nan, numpy.nan
+    loc_data = numpy.asarray(sequence.data)
+    loc_data = loc_data.reshape(loc_data.shape[0], 2, 2)
+    responses, targets = loc_data[:, 0], loc_data[:, 1]
+
+    _, target_polar = _interaural_polar(targets[:, 0], targets[:, 1])
+    _, response_polar = _interaural_polar(responses[:, 0], responses[:, 1])
+    error = _wrap_diff_deg(target_polar, response_polar)
+
+    quadrant = numpy.abs(error) > float(quadrant_threshold)
+    local = numpy.abs(error[~quadrant])
+    if local.size == 0:
+        return numpy.nan, numpy.nan, float(quadrant.mean())
+    return (float(local.mean()), float(numpy.sqrt(numpy.mean(local ** 2))),
+            float(quadrant.mean()))
+
+
 def target_p(sequence, show=False, axis=None):
     """
     Compute per-sector error and target probabilities from a localization run.

@@ -8,10 +8,10 @@
     "recorded": "2026-08-24T14:58:12"
   },
   "active_donor": {
-    "donor": "FS",
-    "rank": 0,
-    "reason": "band",
-    "timestamp": "2026-08-24T15:21:13"
+    "donor": "pilot/AH",
+    "rank": 1,
+    "reason": "FS EG at 0",
+    "timestamp": "2026-08-24T16:49:16"
   },
   "head_radius": null,
   "last_sequence": "FP_24.08_15-37_FP_donor_AH_env4_left_mirrored",

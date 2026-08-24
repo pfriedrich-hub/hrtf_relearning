@@ -36,11 +36,17 @@ DONOR SWAPS. The rule produces a ranked shortlist, not a single name, so a
 participant who is at floor with the first donor can be moved to the second
 without inventing a criterion on the spot. Stage the alternates before the
 session with prepare_donor_shortlist(), swap with use_donor(rank=1, reason=...).
-The active donor is recorded in the subject pickle (subject.active_donor), so a
-later session reloads the donor the participant was actually trained on and not
-whatever the rule ranks first once the pool has grown. Only the current donor is
-kept there; the candidate ranking behind the choice is embedded in the composite
-SOFA as GLOBAL_ModificationParams.
+
+WHICH DONOR A PARTICIPANT IS ON is pinned in PINNED_DONORS in the config block
+below -- one line per subject, written by hand after the donor is chosen or
+swapped. That table is the authority for every later session: the rule ranks a
+pool that grows as subjects are added, so rank 0 is not stable over time and
+must never be what a session falls back to. The same fact is written
+automatically into the subject pickle (subject.active_donor) by build() and
+use_donor(); the config cell compares the two and refuses to run if they
+disagree. Only the current donor is kept in the pickle; the candidate ranking
+behind the choice is embedded in the composite SOFA as
+GLOBAL_ModificationParams.
 
 The monaural ear treatment is orthogonal and selectable via OTHER_EAR
 ('flat' | 'envelope' | 'native'); which one to use is still an open question,
@@ -109,8 +115,28 @@ def _load_subject_params(subject_id, csv_path=CSV_PATH):
 TRAINED_EAR, FINAL_ORDER = _load_subject_params(SUBJECT_ID)
 
 NATIVE_SOFA = f"{SUBJECT_ID}"      # individual measured HRTF
-DONOR_ID = None                    # filled in by the build cell (or set by hand
-                                   # to re-use a previously chosen donor)
+
+# --- the donor each participant is on, pinned --------------------------------
+# The selection rule ranks a pool that GROWS as subjects are added, so rank 0 is
+# not stable over time and "just rebuild with the rule" is not a way back to the
+# donor someone was actually trained on. Once a participant is on a donor, it is
+# written down HERE, by hand, and every later session for that subject loads
+# that one -- no rank, no glob, no inference.
+#
+# subject.active_donor in the pickle carries the same fact, written for you by
+# build()/use_donor(). This table is the copy that lives in version control,
+# survives a lost or rebuilt pickle, and puts the choice in front of you in the
+# protocol. _check_donor_pin() below refuses to start if the two disagree.
+#
+# After ANY use_donor()/build() swap: update the line here in the same session.
+PINNED_DONORS = {
+    # subject : donor id       when and why
+    "FP": "pilot/AH",        # 24.08, swapped from FS -- EG at floor with FS.
+                             # rank 1, band, r_match 0.61, ridge +0.27,
+                             # strength 2.7 dB
+}
+
+DONOR_ID = PINNED_DONORS.get(SUBJECT_ID)   # None until this subject has one
 MODIFIED_SOFA = None               # <SUBJECT_ID>_donor_<DONOR_ID>, set below
 
 HP = "DT990"
@@ -274,6 +300,10 @@ def prepare_donor_shortlist(n=3, mirrored=True, overwrite=False):
 def use_donor(rank=None, donor_id=None, reason=""):
     out = donor.use_donor(rank=rank, donor_id=donor_id, reason=reason)
     _sync()
+    print(f'  !! write   "{SUBJECT_ID}": "{DONOR_ID}",   into PINNED_DONORS at '
+          f'the top of this file now.\n'
+          f'     Until you do, the next session will stop with a donor '
+          f'mismatch rather than load {DONOR_ID}.')
     return out
 
 
@@ -291,6 +321,37 @@ def show_donor_log():
     return donor.show_log()
 
 
+def _check_donor_pin():
+    """Refuse to start if PINNED_DONORS and this subject's pickle disagree.
+
+    The two can only diverge by a swap that happened but was never written down
+    (or was written down against the wrong subject id). Either way the next
+    block would be rendered with a donor nobody chose, and that is not visible
+    from inside the block. Read-only -- the pickle is not touched.
+    """
+    logged = donor.last_active_donor()
+    if DONOR_ID and logged and logged != DONOR_ID:
+        raise RuntimeError(
+            f"donor mismatch for {SUBJECT_ID}: PINNED_DONORS says {DONOR_ID}, "
+            f"the subject pickle says {logged} was made active last.\n"
+            f"  if the swap to {logged} was intended -> update PINNED_DONORS\n"
+            f"  if it was not                        -> use_donor("
+            f"donor_id='{DONOR_ID}', reason='...') to put the pinned donor back")
+    if DONOR_ID and not logged:
+        print(f"[warn] {SUBJECT_ID} is pinned to {DONOR_ID} but has no "
+              f"active_donor in their pickle -- the build/swap was never "
+              f"recorded there. Harmless for loading; check before analysis.")
+    if logged and not DONOR_ID:
+        print(f"[warn] {SUBJECT_ID} is on donor {logged} (subject pickle) but "
+              f"has no line in PINNED_DONORS -- add one now.")
+
+
+# Run at config time, so the pin is in force before any cell below can load a
+# SOFA. _sync() is what puts the pinned DONOR_ID into MODIFIED_SOFA.
+_sync()
+_check_donor_pin()
+if DONOR_ID:
+    print(f"donor pinned: {SUBJECT_ID} -> {DONOR_ID}   ({MODIFIED_SOFA})")
 
 
 # ---------------------------------------------------------------------------
@@ -494,8 +555,8 @@ prepare_donor_shortlist(n=3)
 # %% day 1: select the donor and build the modified HRTF -- run ONCE ----------
 # Prints the full candidate ranking, the chosen donor and why, writes
 # <SUBJECT_ID>_donor_<DONOR>.sofa with the selection embedded, plus a ranking
-# CSV and before/after figures. Note the donor id -- put it in DONOR_ID at the
-# top so later sessions can skip straight to load_existing_donor().
+# CSV and before/after figures. Note the donor id -- put it in PINNED_DONORS at
+# the top so later sessions can skip straight to load_existing_donor().
 # Redundant if prepare_donor_shortlist() was run; harmless to run anyway.
 
 build_donor_sofa(overwrite=False)
@@ -509,8 +570,9 @@ load_existing_donor()
 # block at chance tells you nothing). Moves down the rule's ranked list, which
 # was fixed before the participant heard anything -- see selection.shortlist.
 # WRITE WHAT YOU SAW in reason=: the swap is a data-dependent decision and has
-# to be reportable as one. Then set DONOR_ID at the top of this file so later
-# sessions reload the donor you switched TO.
+# to be reportable as one. Then add the subject's line to PINNED_DONORS at the
+# top of this file so later sessions reload the donor you switched TO -- until
+# you do, the next run of the config cell stops on a donor mismatch.
 #   use_donor(rank=1, reason
 #   ="EG 0.03 on baseline A, responses at chance")
 # use_donor(rank=1, reason="")

@@ -1,0 +1,15 @@
+{
+  "id": "FP",
+  "highscore": 0,
+  "demographics": {
+    "age": 41,
+    "gender": "female",
+    "gender_input": "f",
+    "recorded": "2026-08-24T14:58:12"
+  },
+  "active_donor": {},
+  "head_radius": null,
+  "last_sequence": null,
+  "localization": {},
+  "trials": []
+}

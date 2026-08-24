@@ -40,11 +40,11 @@ from hrtf_relearning.hrtf.record.calibration.calibrate_headphones import calibra
 from hrtf_relearning.utils import paths
 import json
 
-SUBJECT_ID   = 'test'          # edit per participant
+SUBJECT_ID   = 'kemar_test_24.08'          # edit per participant
 REFERENCE_ID = 'ref_20.08'   # fresh id -> step 0b records it; reused id -> loaded
 EQUALIZE_DOME = False        # subject AND reference; they must match. See step 0b.
-
-N_DIRECTIONS = 3              # directions for the HRIR recording
+HEAD_RADIUS = 0.075          # fallback
+N_DIRECTIONS = 1              # directions for the HRIR recording
 N_RECORDINGS = 10
 FS           = 48828
 HP_FREQ      = 120
@@ -120,7 +120,7 @@ ar_loc.run()
 
 # # %% step 3: acoustic sanity check (optional) -----------------------------------
 # logging.info('--- Step 3: Acoustic test ---')
-# hp_rec, dome_rec = acoustic_test(hrir, hp_filter, subject_id=SUBJECT_ID, hp_id='DT990', show=SHOW)
+hp_rec, dome_rec = acoustic_test(hrir, hp_filter, subject_id=SUBJECT_ID, hp_id='DT990', show=SHOW)
 
 # %% helper: acoustic_test (define before running the Step 3 cell) -----------
 def acoustic_test(hrir, hp_filter, subject_id, hp_id, show=True):

@@ -34,15 +34,16 @@ from hrtf_relearning.experiment.localization.Localization_dome import Localizati
 from hrtf_relearning.experiment.training.Training_Dome import TrainingDome
 from hrtf_relearning.hrtf.record.record_hrir import record_hrir, record_reference
 from hrtf_relearning.hrtf.record.recordings import Recordings
-from hrtf_relearning.hrtf.record.fit_head_radius import record_head_radius
+from hrtf_relearning.hrtf.record.fit_head_radius import (
+    record_head_radius, usable_radius, fit_from_sofa, FALLBACK_RADIUS_M)
 from hrtf_relearning.hrtf.record.calibration.calibrate_headphones import calibrate_headphones
 from hrtf_relearning.utils import paths
 import json
 
-SUBJECT_ID   = 'test'          # edit per participant
+SUBJECT_ID   = 'FP'          # edit per participant
 REFERENCE_ID = 'ref_20.08'   # fresh id -> step 0b records it; reused id -> loaded
 EQUALIZE_DOME = False        # subject AND reference; they must match. See step 0b.
-
+HEAD_RADIUS = 0.071          # fallback
 N_DIRECTIONS = 3              # directions for the HRIR recording
 N_RECORDINGS = 10
 FS           = 48828
@@ -63,9 +64,13 @@ subject = hr.Subject(SUBJECT_ID)
 # %% step 0: acoustic head radius ----------------------------------------------
 # Mics already in the ears. Records the horizontal row, fits the sphere whose ITDs match this listener
 logging.info('--- Step 0: acoustic head radius ---')
-HEAD_RADIUS = record_head_radius(
+az_fit = record_head_radius(
     SUBJECT_ID, azimuth_range=AZ_RANGE, elevation=AZ_ELEVATION,
     n_recordings=N_REC_AZ, hp_freq=HP_FREQ, fs=FS, show=SHOW, save=subject)
+# usable_radius returns the fitted value, or falls back to 0.0875 with a loud
+# error if the fit hit a bound / has a huge residual / the two ITD estimators
+# disagree. Read the printed table anyway: KEMAR gives 0.0722 m, residual 27 us.
+HEAD_RADIUS = usable_radius(az_fit)
 
 
 # %% step 1: record / load HRIR ------------------------------------------------
@@ -115,7 +120,7 @@ ar_loc.run()
 
 # # %% step 3: acoustic sanity check (optional) -----------------------------------
 # logging.info('--- Step 3: Acoustic test ---')
-# hp_rec, dome_rec = acoustic_test(hrir, hp_filter, subject_id=SUBJECT_ID, hp_id='DT990', show=SHOW)
+hp_rec, dome_rec = acoustic_test(hrir, hp_filter, subject_id=SUBJECT_ID, hp_id='DT990', show=SHOW)
 
 # %% helper: acoustic_test (define before running the Step 3 cell) -----------
 def acoustic_test(hrir, hp_filter, subject_id, hp_id, show=True):

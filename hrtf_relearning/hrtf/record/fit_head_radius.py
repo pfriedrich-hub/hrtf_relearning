@@ -40,13 +40,9 @@ Two things this module has to get right, both of which it got WRONG before
 
 How to get the measurements
 ---------------------------
-`record_head_radius` does the whole thing and returns ONE NUMBER, the radius in
-metres: record (or load) the horizontal row with the in-ear mics already in
-place, deconvolve, window, measure, convert the azimuth convention, fit, check
-the fit against the caveats below, and store it on the participant record
-(`Subject.head_radius` -> <id>.pkl + <id>.json). If the fit fails those checks
-it warns and returns FALLBACK_RADIUS_M rather than a plausible-looking wrong
-number, and stores nothing. `Recordings.record_dome` filters the dome
+`record_head_radius` does the whole thing: record (or load) the horizontal row
+with the in-ear mics already in place, deconvolve, window, measure, convert the
+azimuth convention, fit, and save. `Recordings.record_dome` filters the dome
 down to the vertical arc with `azimuth=(-1, 1)`; widening that to lateral
 speakers at el 0 is all the extra measurement needs.
 
@@ -77,6 +73,7 @@ systematically with azimuth, or `at_bound`, means a single sphere does not
 describe this listener and the fitted number is a compromise rather than a
 measurement.
 """
+import json
 import logging
 from pathlib import Path
 
@@ -91,9 +88,6 @@ DEFAULT_DISTANCE_M = 1.4
 RADIUS_BOUNDS_M = (0.055, 0.115)
 WINDOW_SAMPLES = 512
 FALLBACK_RADIUS_M = 0.0875
-# usability thresholds for the one-number wrapper (`record_head_radius`)
-MAX_RESIDUAL_US = 80.0        # KEMAR: 27 us. A head is not a sphere, but not this
-MAX_ESTIMATOR_GAP_M = 0.020   # phase vs xcorr; ~10 mm is expected (Kuhn 1977)
 
 
 # ---------------------------------------------------------------------
@@ -393,29 +387,22 @@ def record_head_radius(subject_id, azimuth_range=(-60, 60), elevation=(-1, 1),
                        n_recordings=10, hp_freq=120, fs=48828,
                        estimator="phase", band=ITD_BAND_HZ,
                        distance_m=DEFAULT_DISTANCE_M, base_dir=None,
-                       overwrite=False, show=True, save=True, return_fit=False):
+                       overwrite=False, show=True, save=None):
     """Measure the horizontal row and fit this listener's effective head radius.
 
     Records lateral speakers at el 0 with the in-ear mics already in place,
     deconvolves, windows to the direct sound, converts the azimuth convention
     and fits. Re-running loads the stored sweeps instead of re-recording.
 
-    RETURNS ONE NUMBER: the radius in metres, ready to hand to `record_hrir`.
-    It is also stored on the participant record (`Subject.head_radius`, so
-    <id>.pkl and <id>.json) unless save=False -- pass save=<your Subject> if you
-    already hold one, so it doesn't go stale. The sweeps stay in the subject's
-    recording folder as `azimuth.npz` + `azimuth_params.txt`.
+    Everything lands INSIDE the subject's own recording folder -- `azimuth.npz`,
+    `azimuth_params.txt` and `head_radius_fit.json` next to `recordings.npz`.
+    The earlier version wrote a whole sibling `rec/<id>_azimuth/` folder, which
+    doubled the number of entries in `rec/` for no benefit.
 
-    The fit checks itself: if it hits the bound, if the RMS residual exceeds
-    MAX_RESIDUAL_US, or if the two ITD estimators disagree by more than
-    MAX_ESTIMATOR_GAP_M, it WARNS and returns FALLBACK_RADIUS_M instead of a
-    number that
-    only looks like a measurement. Nothing is stored in that case. Pass
-    show=True (default) to also print the per-direction table.
-
-    return_fit=True gives the full fit dict instead (`head_radius`,
-    `residual_us`, `at_bound`, per-direction `measured_us`/`model_us`, and
-    `cross_check` = the same data fitted with the other estimator).
+    Returns the fit dict from `fit_head_radius`, with `fit['cross_check']`
+    holding the same fit made with the other estimator. If the two disagree by
+    much more than ~10 mm, something is wrong with the measurement rather than
+    with the choice of estimator.
     """
     from hrtf_relearning.hrtf.record.recordings import Recordings
     from hrtf_relearning.hrtf.record import processing
@@ -444,10 +431,8 @@ def record_head_radius(subject_id, azimuth_range=(-60, 60), elevation=(-1, 1),
         subject_dir.mkdir(parents=True, exist_ok=True)
         recordings.to_npz(subject_dir, overwrite=True, filename="azimuth.npz")
 
-    irs = processing.compute_ir(
-        recordings,
-        inversion_range_hz=(hp_freq, processing.EXCITATION_INVERSION_TOP_HZ),
-        onset_threshold_db=10, align_interaural=False)
+    irs = processing.compute_ir(recordings, inversion_range_hz=(hp_freq, 20e3),
+                                onset_threshold_db=10, align_interaural=False)
 
     dome_azimuths, itds, cross = [], [], []
     other = "xcorr" if estimator == "phase" else "phase"
@@ -476,59 +461,69 @@ def record_head_radius(subject_id, azimuth_range=(-60, 60), elevation=(-1, 1),
         report(fit, label=f"{subject_id}: ")
         report(fit["cross_check"], label=f"{subject_id} cross-check: ")
 
-    fit["usable"], problems = _usable(fit)
-    if fit["usable"]:
-        radius = float(fit["head_radius"])
-        logging.info("%s: head_radius = %.4f m (residual %.1f us, %s)",
-                     subject_id, radius, fit["residual_us"], estimator)
-        if save is not False:
-            _save_to_subject(subject_id, radius,
-                             subject=None if save is True else save)
-    else:
-        radius = FALLBACK_RADIUS_M
-        logging.warning(
-            "%s: the head-radius fit is not usable (%s). Using the fallback "
-            "%.4f m and NOT storing it on the subject -- check the recording "
-            "before trusting anything built with it.",
-            subject_id, "; ".join(problems), radius)
+    out = subject_dir / "head_radius_fit.json"
+    out.write_text(json.dumps(_jsonable(fit), indent=2))
+    logging.info(f"Wrote {out}")
 
-    return fit if return_fit else radius
+    # `save` also files the fit with the subject's results, so the radius a SOFA
+    # was built with travels with the behavioural data. Accepts a Subject, or an
+    # id string, or True to reuse subject_id.
+    if save is not None and save is not False:
+        save_id = (getattr(save, "id", None) or getattr(save, "subject_id", None)
+                   or (subject_id if save is True else str(save)))
+        try:
+            results = paths.subject_dir(save_id)
+            results.mkdir(parents=True, exist_ok=True)
+            copy = results / "head_radius_fit.json"
+            copy.write_text(json.dumps(_jsonable(fit), indent=2))
+            logging.info(f"Wrote {copy}")
+        except Exception as error:      # never lose a recording over bookkeeping
+            logging.warning(f"Could not file the fit with subject '{save_id}': {error}")
+
+    return fit
 
 
-def _usable(fit):
-    """Is this fit a measurement or a compromise? -> (bool, [reasons])."""
-    problems = []
-    if fit["at_bound"]:
-        problems.append(f"fit sits on the bound ({fit['head_radius']:.4f} m)")
-    if fit["residual_us"] > MAX_RESIDUAL_US:
-        problems.append(f"residual {fit['residual_us']:.0f} us "
-                        f"> {MAX_RESIDUAL_US:.0f}")
+def usable_radius(fit, fallback=FALLBACK_RADIUS_M, max_residual_us=150.0,
+                  max_cross_check_m=0.025):
+    """The fitted radius if the fit is trustworthy, else `fallback`, loudly.
+
+    Use this rather than `fit['head_radius']` when the value feeds straight into
+    a build, so a bad measurement cannot silently set every synthesised ITD in
+    the SOFA. Rejects a solution that hit the bounds, one whose residual is far
+    above the ~30 us a real head gives, and one the other ITD estimator
+    disagrees with by more than `max_cross_check_m`.
+
+    For scale: KEMAR returns 0.0722 m with a 27 us residual and a 10 mm
+    cross-check gap. The pre-2026-08-19 sign bug returned 0.055 m AT BOUND with
+    a 1104 us residual.
+    """
+    reasons = []
+    if fit.get("at_bound"):
+        reasons.append(f"solution sits on the bound ({fit['head_radius']:.4f} m)")
+    if fit.get("residual_us", 0) > max_residual_us:
+        reasons.append(f"residual {fit['residual_us']:.0f} us > {max_residual_us:.0f}")
     cross = fit.get("cross_check")
     if cross is not None:
         gap = abs(cross["head_radius"] - fit["head_radius"])
-        if gap > MAX_ESTIMATOR_GAP_M:
-            problems.append(f"{fit['estimator']} and {cross['estimator']} "
-                            f"disagree by {gap * 1e3:.0f} mm")
-    return (not problems), problems
+        if gap > max_cross_check_m:
+            reasons.append(f"the two ITD estimators disagree by {gap*1000:.0f} mm")
+    if reasons:
+        logging.error(
+            "head-radius fit is NOT usable (%s) -- falling back to %.4f m. "
+            "Record that the radius was not measured for this subject.",
+            "; ".join(reasons), fallback)
+        return fallback
+    logging.info("head-radius fit accepted: %.4f m (residual %.0f us)",
+                 fit["head_radius"], fit["residual_us"])
+    return fit["head_radius"]
 
 
-def _save_to_subject(subject_id, radius, subject=None):
-    """Store the radius on the participant record (<id>.pkl + <id>.json).
-
-    Pass the Subject you already hold (save=subject) so the in-memory object
-    carries the new value too -- otherwise a later write() from that stale
-    object puts head_radius back to None.
-    """
-    try:
-        if subject is None:
-            from hrtf_relearning.experiment.misc.Subject import Subject
-            subject = Subject(subject_id)
-        subject.head_radius = float(radius)
-        subject.write()
-        logging.info("Stored head_radius on subject %s.", subject_id)
-    except Exception:
-        logging.exception("Could not store head_radius on subject %s; the "
-                          "returned value is still valid.", subject_id)
+def _jsonable(obj):
+    if isinstance(obj, dict):
+        return {k: _jsonable(v) for k, v in obj.items()}
+    if hasattr(obj, "tolist"):
+        return obj.tolist()
+    return obj
 
 
 # %% recover the radius an existing SOFA was built with

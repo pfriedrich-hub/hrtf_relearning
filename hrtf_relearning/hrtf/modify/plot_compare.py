@@ -149,6 +149,92 @@ def plot_ears(hrtf, hrtf_modified, n_bins=None, xlim=(1000, 18000),
     return fig
 
 
+def plot_stages(stages, n_bins=None, xlim=(1000, 18000), band=None,
+                suptitle=None, ear_labels=None, figsize=None, show=True,
+                annotate_spread=True):
+    """Rows are the two ears, columns are the successive stages of a chain.
+
+    The n-column generalisation of :func:`plot_ears`: pass an ordered sequence
+    of ``(label, slab.HRTF)`` and every panel is drawn on ONE colour scale, so a
+    level change between stages is visible rather than renormalised away. Use it
+    when a manipulation is built in steps and the point of the figure is what
+    each step does — ``plot_ears`` is the two-column special case and stays the
+    right call for a plain before/after.
+
+    ``band`` shades the scoring band and, with ``annotate_spread``, labels each
+    panel with that ear's spread across elevation inside it (:func:`_band_spread_db`) —
+    the one number that says how much elevation cue the ear still carries at
+    that stage. ``ear_labels`` overrides the row headings, e.g.
+    ``{'left': 'left ear (trained)'}``.
+    """
+    stages = list(stages)
+    if len(stages) < 2:
+        raise ValueError('plot_stages needs at least two stages')
+    ear_labels = dict(ear_labels or {})
+
+    # The source grid is taken from the FIRST stage and reused for all of them:
+    # every stage is built from the same measured arc, so a differing grid means
+    # the wrong file was passed, not a resampling to paper over.
+    sources = stages[0][1].cone_sources(0)
+    images = {}
+    for ear in ('left', 'right'):
+        per_stage = []
+        for _label, hrtf in stages:
+            freqs, elevations, img = _build_tf_image(hrtf, sources, ear, n_bins, xlim)
+            per_stage.append(img)
+        images[ear] = (freqs, elevations, per_stage)
+
+    flat = [img for _f, _e, imgs in images.values() for img in imgs]
+    vmin = float(min(i.min() for i in flat))
+    vmax = float(max(i.max() for i in flat))
+
+    n_columns = len(stages)
+    figsize = figsize or (3.6 * n_columns + 1.2, 7.2)
+    fig, axes = plt.subplots(2, n_columns, figsize=figsize, sharex=True, sharey=True,
+                             squeeze=False)
+    mesh = None
+    for row, ear in enumerate(('left', 'right')):
+        freqs, elevations, per_stage = images[ear]
+        for column, ((label, hrtf), img) in enumerate(zip(stages, per_stage)):
+            axis = axes[row, column]
+            mesh = axis.pcolormesh(freqs, elevations, img.T, cmap='magma',
+                                   vmin=vmin, vmax=vmax, shading='gouraud',
+                                   rasterized=True)
+            if band is not None:
+                axis.axvspan(band[0], band[1], color='#00c8ff', alpha=0.10, lw=0)
+                for edge in band:
+                    axis.axvline(edge, color='#00c8ff', lw=0.9, ls=':')
+                if annotate_spread:
+                    spread = _band_spread_db(hrtf, sources, ear, band)
+                    axis.text(0.02, 0.04, f'{spread:.2f} dB', transform=axis.transAxes,
+                              fontsize=8, va='bottom', color='#1b1b1f',
+                              bbox=dict(fc='white', ec='#bbbbbb', lw=0.6, pad=2))
+            if row == 0:
+                axis.set_title(label, fontsize=10)
+            axis.set(xlim=xlim)
+            axis.xaxis.set_major_formatter(
+                matplotlib.ticker.FuncFormatter(lambda x, pos: str(int(x / 1000))))
+            if row == 1:
+                axis.set_xlabel('Frequency [kHz]')
+            if column == 0:
+                axis.set_ylabel('Elevation [°]')
+                # Row heading outside the ylabel: two rotated lines of text on
+                # one axis crowd the tick labels and read as one string.
+                axis.text(-0.30, 0.5, ear_labels.get(ear, f'{ear} ear'),
+                          transform=axis.transAxes, rotation=90, va='center',
+                          ha='center', fontsize=11)
+            axis.tick_params('both', length=2, pad=2)
+
+    cbar = fig.colorbar(mesh, ax=list(axes.ravel()), shrink=0.9, pad=0.02)
+    cbar.set_label('Magnitude [dB]')
+    if suptitle:
+        fig.suptitle(suptitle, fontsize=12)
+    if show:
+        plt.show(block=False)
+        plt.pause(0.1)
+    return fig
+
+
 def plot(hrtf, hrtf_modified, kind='image', ear='left', n_bins=None, xlim=(1000, 18000),
          vsi_orig=None, vsi_mod=None, vsi_dis=None, vsi_bw=None):
     """Native vs modified median-plane transfer function, side by side."""

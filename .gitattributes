@@ -16,3 +16,15 @@
 *.png   binary
 *.jpg   binary
 *.pdf   binary
+
+# Files git parses itself must keep LF in the working tree. Git for Windows
+# defaults core.autocrlf=true, which checks these out as CRLF; a blank line
+# then becomes the literal pattern "\r", and git reports EVERY directory
+# (any path queried with a trailing slash) as ignored. PyCharm asks git
+# exactly that question, so "Add to VCS" silently greys out for every newly
+# created folder. Non-blank patterns are unaffected -- git strips their
+# trailing CR -- which is why the breakage looks arbitrary.
+.gitignore     text eol=lf
+.gitattributes text eol=lf
+.gitmodules    text eol=lf
+.mailmap       text eol=lf

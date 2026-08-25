@@ -12,11 +12,21 @@ committed and shows the available keys.
 
     {
       "torch_device": "cuda",
-      "mpl_backend": "TkAgg"
+      "mpl_backend": "TkAgg",
+      "audio_output": "Sound Blaster",
+      "audio_volume": 50
     }
 
 ``mpl_backend`` is read by :mod:`hrtf_relearning.utils.mpl_backend` and is only
 needed on a machine where the auto-detected plot backend is wrong.
+
+``audio_output`` / ``audio_volume`` are read by
+:mod:`hrtf_relearning.experiment.misc.audio_device`. Set them on a machine with a
+fixed audio interface and the training and localization scripts refuse to start
+unless that device is the default output at that volume. Omit them and the check
+is a no-op, so the same commit runs on a laptop with no interface attached.
+See that module for the optional ``audio_strict``, ``audio_autofix`` and
+``soundvolumeview`` keys.
 
 Resolution order for ``torch_device()`` (first hit wins):
 

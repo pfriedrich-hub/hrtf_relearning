@@ -36,17 +36,16 @@ DONOR SWAPS. The rule produces a ranked shortlist, not a single name, so a
 participant who is at floor with the first donor can be moved to the second
 without inventing a criterion on the spot. Stage the alternates before the
 session with prepare_donor_shortlist(), swap with use_donor(rank=1, reason=...).
-
-WHICH DONOR A PARTICIPANT IS ON is pinned in PINNED_DONORS in the config block
-below -- one line per subject, written by hand after the donor is chosen or
-swapped. That table is the authority for every later session: the rule ranks a
-pool that grows as subjects are added, so rank 0 is not stable over time and
-must never be what a session falls back to. The same fact is written
-automatically into the subject pickle (subject.active_donor) by build() and
-use_donor(); the config cell compares the two and refuses to run if they
-disagree. Only the current donor is kept in the pickle; the candidate ranking
-behind the choice is embedded in the composite SOFA as
-GLOBAL_ModificationParams.
+WHERE THE DONOR LIVES. The choice is made once, on day 1, and written into the
+participant's own file as subject.active_donor (data/results/<id>/<id>.pkl, and
+<id>.json alongside it) -- by prepare_donor_shortlist() and build_donor_sofa(),
+which leave rank 0 active, or by use_donor() when it is deliberately changed.
+Every later session reads it back from there when the config cell runs, so the
+participant is always on the donor they were actually trained on rather than
+whatever the rule ranks first once the pool has grown. Nothing in this file has
+to be edited between sessions and nothing has to be remembered. Only the current
+donor is kept in the record; the candidate ranking behind the choice is embedded
+in the composite SOFA as GLOBAL_ModificationParams.
 
 The monaural ear treatment is orthogonal and selectable via OTHER_EAR
 ('flat' | 'envelope' | 'native'); which one to use is still an open question,
@@ -116,27 +115,18 @@ TRAINED_EAR, FINAL_ORDER = _load_subject_params(SUBJECT_ID)
 
 NATIVE_SOFA = f"{SUBJECT_ID}"      # individual measured HRTF
 
-# --- the donor each participant is on, pinned --------------------------------
-# The selection rule ranks a pool that GROWS as subjects are added, so rank 0 is
-# not stable over time and "just rebuild with the rule" is not a way back to the
-# donor someone was actually trained on. Once a participant is on a donor, it is
-# written down HERE, by hand, and every later session for that subject loads
-# that one -- no rank, no glob, no inference.
+# The donor is chosen ONCE, on day 1, by prepare_donor_shortlist() or
+# build_donor_sofa() -- rank 0 unless use_donor() is called deliberately -- and
+# written into the participant's own file (subject.active_donor in
+# data/results/<id>/<id>.pkl, mirrored into <id>.json). Every later session
+# reads it back from there when `donor` is constructed a few cells down. There
+# is nothing to set here and nothing to remember between sessions.
 #
-# subject.active_donor in the pickle carries the same fact, written for you by
-# build()/use_donor(). This table is the copy that lives in version control,
-# survives a lost or rebuilt pickle, and puts the choice in front of you in the
-# protocol. _check_donor_pin() below refuses to start if the two disagree.
-#
-# After ANY use_donor()/build() swap: update the line here in the same session.
-PINNED_DONORS = {
-    # subject : donor id       when and why
-    "FP": "pilot/AH",        # 24.08, swapped from FS -- EG at floor with FS.
-                             # rank 1, band, r_match 0.61, ridge +0.27,
-                             # strength 2.7 dB
-}
-
-DONOR_ID = PINNED_DONORS.get(SUBJECT_ID)   # None until this subject has one
+# DONOR_OVERRIDE is an escape hatch for rebuilding a subject whose record was
+# lost, or for re-deriving an old composite in analysis. Leave it None to run
+# the experiment.
+DONOR_OVERRIDE = None
+DONOR_ID = None                    # resolved from the subject file below
 MODIFIED_SOFA = None               # <SUBJECT_ID>_donor_<DONOR_ID>, set below
 
 HP = "DT990"
@@ -257,7 +247,7 @@ donor = DonorModification(
     other_ear=OTHER_EAR,
     env_n_keep=ENV_NKEEP,
     pipeline=PIPELINE,
-    donor_id=DONOR_ID,
+    donor_id=DONOR_OVERRIDE,
     hp=HP,
 )
 
@@ -300,10 +290,6 @@ def prepare_donor_shortlist(n=3, mirrored=True, overwrite=False):
 def use_donor(rank=None, donor_id=None, reason=""):
     out = donor.use_donor(rank=rank, donor_id=donor_id, reason=reason)
     _sync()
-    print(f'  !! write   "{SUBJECT_ID}": "{DONOR_ID}",   into PINNED_DONORS at '
-          f'the top of this file now.\n'
-          f'     Until you do, the next session will stop with a donor '
-          f'mismatch rather than load {DONOR_ID}.')
     return out
 
 
@@ -321,37 +307,20 @@ def show_donor_log():
     return donor.show_log()
 
 
-def _check_donor_pin():
-    """Refuse to start if PINNED_DONORS and this subject's pickle disagree.
-
-    The two can only diverge by a swap that happened but was never written down
-    (or was written down against the wrong subject id). Either way the next
-    block would be rendered with a donor nobody chose, and that is not visible
-    from inside the block. Read-only -- the pickle is not touched.
-    """
-    logged = donor.last_active_donor()
-    if DONOR_ID and logged and logged != DONOR_ID:
-        raise RuntimeError(
-            f"donor mismatch for {SUBJECT_ID}: PINNED_DONORS says {DONOR_ID}, "
-            f"the subject pickle says {logged} was made active last.\n"
-            f"  if the swap to {logged} was intended -> update PINNED_DONORS\n"
-            f"  if it was not                        -> use_donor("
-            f"donor_id='{DONOR_ID}', reason='...') to put the pinned donor back")
-    if DONOR_ID and not logged:
-        print(f"[warn] {SUBJECT_ID} is pinned to {DONOR_ID} but has no "
-              f"active_donor in their pickle -- the build/swap was never "
-              f"recorded there. Harmless for loading; check before analysis.")
-    if logged and not DONOR_ID:
-        print(f"[warn] {SUBJECT_ID} is on donor {logged} (subject pickle) but "
-              f"has no line in PINNED_DONORS -- add one now.")
-
-
-# Run at config time, so the pin is in force before any cell below can load a
-# SOFA. _sync() is what puts the pinned DONOR_ID into MODIFIED_SOFA.
+# Take whatever the participant's file says into the module globals, so every
+# cell below is on this subject's donor the moment the config cell has run --
+# no build, no load_existing_donor(), no DONOR_ID to remember. Before day 1
+# there is nothing recorded yet and both stay None, which is what the build
+# cell is for.
 _sync()
-_check_donor_pin()
-if DONOR_ID:
-    print(f"donor pinned: {SUBJECT_ID} -> {DONOR_ID}   ({MODIFIED_SOFA})")
+if DONOR_ID and donor.donor_from_record:
+    _sofa = paths.SOFA_DIR / SUBJECT_ID / f"{MODIFIED_SOFA}.sofa"
+    print(f"donor {DONOR_ID} (from {SUBJECT_ID}'s subject file) -> "
+          f"{MODIFIED_SOFA}" + ("" if _sofa.exists() else "   [!] SOFA MISSING"))
+elif DONOR_ID:
+    print(f"donor {DONOR_ID} (DONOR_OVERRIDE) -> {MODIFIED_SOFA}")
+else:
+    print(f"no donor recorded for {SUBJECT_ID} yet -- run the day-1 build cell")
 
 
 # ---------------------------------------------------------------------------
@@ -555,14 +524,18 @@ prepare_donor_shortlist(n=3)
 # %% day 1: select the donor and build the modified HRTF -- run ONCE ----------
 # Prints the full candidate ranking, the chosen donor and why, writes
 # <SUBJECT_ID>_donor_<DONOR>.sofa with the selection embedded, plus a ranking
-# CSV and before/after figures. Note the donor id -- put it in PINNED_DONORS at
-# the top so later sessions can skip straight to load_existing_donor().
+# CSV and before/after figures, and records the donor in the subject file --
+# from here on every session picks it up automatically.
 # Redundant if prepare_donor_shortlist() was run; harmless to run anyway.
 
 build_donor_sofa(overwrite=False)
 subject = hr.Subject(SUBJECT_ID)
 
-# %% later sessions: reload the modified HRTF without rebuilding --------------
+# %% later sessions: confirm which composite is loaded ------------------------
+# NOT required -- the config cell already resolved the donor from the subject
+# file. This re-reads the SOFA's embedded params and prints them, so you can see
+# that what is on disk is what was built (donor, r_match, ridge, fallback flag)
+# before running a block on it.
 load_existing_donor()
 
 # %% IN SESSION: participant is at floor -- swap to the next donor ------------
@@ -570,9 +543,8 @@ load_existing_donor()
 # block at chance tells you nothing). Moves down the rule's ranked list, which
 # was fixed before the participant heard anything -- see selection.shortlist.
 # WRITE WHAT YOU SAW in reason=: the swap is a data-dependent decision and has
-# to be reportable as one. Then add the subject's line to PINNED_DONORS at the
-# top of this file so later sessions reload the donor you switched TO -- until
-# you do, the next run of the config cell stops on a donor mismatch.
+# to be reportable as one. The new donor replaces the old one in the subject
+# file, so later sessions follow the swap on their own.
 #   use_donor(rank=1, reason
 #   ="EG 0.03 on baseline A, responses at chance")
 # use_donor(rank=1, reason="")

@@ -1,0 +1,13 @@
+{
+  "_comment": "Copy to local_config.json (gitignored) and keep only the keys this machine needs. See hrtf_relearning/utils/local_config.py.",
+
+  "torch_device": "cuda",
+  "mpl_backend": "TkAgg",
+
+  "_audio_comment": "Playback-route check, see hrtf_relearning/experiment/misc/audio_device.py. Omit audio_output entirely on machines with no fixed interface — the check is then a no-op.",
+  "audio_output": "Sound Blaster",
+  "audio_volume": 50,
+  "audio_strict": true,
+  "audio_autofix": true,
+  "soundvolumeview": "C:/Tools/SoundVolumeView/SoundVolumeView.exe"
+}

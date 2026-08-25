@@ -9,6 +9,7 @@ from hrtf_relearning.experiment.localization.localization_helpers.stimulus impor
     make_gapped_pinknoise, make_rippled_pinknoise, RMS_TILT, RMS_CUE, RIPPLE_CUE_MAX)
 from hrtf_relearning.experiment.localization.localization_helpers.make_sequence import make_sequence
 from pythonosc import udp_client
+from hrtf_relearning.experiment.misc import audio_device
 from hrtf_relearning.experiment.misc import meta_motion
 from hrtf_relearning.hrtf.binsim.hrtf2binsim import hrtf2binsim
 from pynput import keyboard
@@ -239,6 +240,11 @@ class Localization:
             listener.join()  # block until listener.stop() is called
 
 if __name__ == "__main__":
+
+    # Refuse to start on the wrong playback route. No-op unless this machine
+    # names a required device in local_config.json ("audio_output") -- see
+    # misc/audio_device.
+    audio_device.preflight_or_exit("Localization")
 
     # --- SETTINGS ---
     _SUBJECT_ID = "CO"

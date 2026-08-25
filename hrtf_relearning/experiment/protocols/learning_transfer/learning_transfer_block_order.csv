@@ -3,7 +3,7 @@ participant_id,subject,trained_ear,latin_order,block_order,block_1,block_2,block
 2,FP,left,2,B-C-A-D,B: trained-ear / mirrored-loc,C: untrained-ear / same-loc,A: trained-ear / same-loc (baseline),D: untrained-ear / mirrored-loc (main)
 3,AS,left,3,C-D-B-A,C: untrained-ear / same-loc,D: untrained-ear / mirrored-loc (main),B: trained-ear / mirrored-loc,A: trained-ear / same-loc (baseline)
 4,IR,left,4,D-A-C-B,D: untrained-ear / mirrored-loc (main),A: trained-ear / same-loc (baseline),C: untrained-ear / same-loc,B: trained-ear / mirrored-loc
-5,(assign),right,1,A-B-D-C,A: trained-ear / same-loc (baseline),B: trained-ear / mirrored-loc,D: untrained-ear / mirrored-loc (main),C: untrained-ear / same-loc
+5,LS,right,1,A-B-D-C,A: trained-ear / same-loc (baseline),B: trained-ear / mirrored-loc,D: untrained-ear / mirrored-loc (main),C: untrained-ear / same-loc
 6,(assign),right,2,B-C-A-D,B: trained-ear / mirrored-loc,C: untrained-ear / same-loc,A: trained-ear / same-loc (baseline),D: untrained-ear / mirrored-loc (main)
 7,(assign),right,3,C-D-B-A,C: untrained-ear / same-loc,D: untrained-ear / mirrored-loc (main),B: trained-ear / mirrored-loc,A: trained-ear / same-loc (baseline)
 8,PF,right,4,D-A-C-B,D: untrained-ear / mirrored-loc (main),A: trained-ear / same-loc (baseline),C: untrained-ear / same-loc,B: trained-ear / mirrored-loc

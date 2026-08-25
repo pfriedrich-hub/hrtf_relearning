@@ -74,7 +74,7 @@ EDIT THE CONFIG BLOCK BELOW PER PARTICIPANT.
 ------------------------------------------------------------------------------
 """
 
-SUBJECT_ID = ("LS")
+SUBJECT_ID = ("NR")
 
 # %% imports and config #------------------------------------------------------
 import csv  # only for the block-order table below; the modification
@@ -531,7 +531,7 @@ prepare_donor_shortlist(n=3)
 build_donor_sofa(overwrite=False)
 subject = hr.Subject(SUBJECT_ID)
 
-# %% later sessions: confirm which composite is loaded ------------------------
+# %% later sessions: confirm which composite is loaded ------------------------bjm
 # NOT required -- the config cell already resolved the donor from the subject
 # file. This re-reads the SOFA's embedded params and prints them, so you can see
 # that what is on disk is what was built (donor, r_match, ridge, fallback flag)

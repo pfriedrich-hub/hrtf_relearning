@@ -40,7 +40,7 @@ from hrtf_relearning.hrtf.record.calibration.calibrate_headphones import calibra
 from hrtf_relearning.utils import paths
 import json
 
-SUBJECT_ID   = 'FP'          # edit per participant
+SUBJECT_ID   = 'LS'          # edit per participant
 REFERENCE_ID = 'ref_20.08'   # fresh id -> step 0b records it; reused id -> loaded
 EQUALIZE_DOME = False        # subject AND reference; they must match. See step 0b.
 HEAD_RADIUS = 0.071          # fallback
@@ -85,8 +85,8 @@ hrir = record_hrir(
     equalize_dome  = EQUALIZE_DOME,
     head_radius    = HEAD_RADIUS,
     show           = SHOW,
-    overwrite_rec  = True,
-    overwrite_hrir = True,
+    overwrite_rec  = False,
+    overwrite_hrir = False,
 )
 
 # %% step 2: headphone calibration ---------------------------------------------
@@ -107,6 +107,7 @@ dome_loc.run()
 # %% step 4b: OPTIONAL dome training -- only if step 4 is at floor ---------------
 training = TrainingDome(subject, region='midline')
 training.run(n_games=1)
+
 
 # %% step 5b: virtual localization -- DT990 ---------------------------------------
 logging.info('--- Step 5: HP localization (DT990) ---')

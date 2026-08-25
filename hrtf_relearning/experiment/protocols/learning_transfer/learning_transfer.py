@@ -36,11 +36,16 @@ DONOR SWAPS. The rule produces a ranked shortlist, not a single name, so a
 participant who is at floor with the first donor can be moved to the second
 without inventing a criterion on the spot. Stage the alternates before the
 session with prepare_donor_shortlist(), swap with use_donor(rank=1, reason=...).
-The active donor is recorded in the subject pickle (subject.active_donor), so a
-later session reloads the donor the participant was actually trained on and not
-whatever the rule ranks first once the pool has grown. Only the current donor is
-kept there; the candidate ranking behind the choice is embedded in the composite
-SOFA as GLOBAL_ModificationParams.
+WHERE THE DONOR LIVES. The choice is made once, on day 1, and written into the
+participant's own file as subject.active_donor (data/results/<id>/<id>.pkl, and
+<id>.json alongside it) -- by prepare_donor_shortlist() and build_donor_sofa(),
+which leave rank 0 active, or by use_donor() when it is deliberately changed.
+Every later session reads it back from there when the config cell runs, so the
+participant is always on the donor they were actually trained on rather than
+whatever the rule ranks first once the pool has grown. Nothing in this file has
+to be edited between sessions and nothing has to be remembered. Only the current
+donor is kept in the record; the candidate ranking behind the choice is embedded
+in the composite SOFA as GLOBAL_ModificationParams.
 
 The monaural ear treatment is orthogonal and selectable via OTHER_EAR
 ('flat' | 'envelope' | 'native'); which one to use is still an open question,
@@ -69,7 +74,7 @@ EDIT THE CONFIG BLOCK BELOW PER PARTICIPANT.
 ------------------------------------------------------------------------------
 """
 
-SUBJECT_ID = ("AS")
+SUBJECT_ID = ("FP")
 
 # %% imports and config #------------------------------------------------------
 import csv  # only for the block-order table below; the modification
@@ -109,8 +114,19 @@ def _load_subject_params(subject_id, csv_path=CSV_PATH):
 TRAINED_EAR, FINAL_ORDER = _load_subject_params(SUBJECT_ID)
 
 NATIVE_SOFA = f"{SUBJECT_ID}"      # individual measured HRTF
-DONOR_ID = None                    # filled in by the build cell (or set by hand
-                                   # to re-use a previously chosen donor)
+
+# The donor is chosen ONCE, on day 1, by prepare_donor_shortlist() or
+# build_donor_sofa() -- rank 0 unless use_donor() is called deliberately -- and
+# written into the participant's own file (subject.active_donor in
+# data/results/<id>/<id>.pkl, mirrored into <id>.json). Every later session
+# reads it back from there when `donor` is constructed a few cells down. There
+# is nothing to set here and nothing to remember between sessions.
+#
+# DONOR_OVERRIDE is an escape hatch for rebuilding a subject whose record was
+# lost, or for re-deriving an old composite in analysis. Leave it None to run
+# the experiment.
+DONOR_OVERRIDE = None
+DONOR_ID = None                    # resolved from the subject file below
 MODIFIED_SOFA = None               # <SUBJECT_ID>_donor_<DONOR_ID>, set below
 
 HP = "DT990"
@@ -231,7 +247,7 @@ donor = DonorModification(
     other_ear=OTHER_EAR,
     env_n_keep=ENV_NKEEP,
     pipeline=PIPELINE,
-    donor_id=DONOR_ID,
+    donor_id=DONOR_OVERRIDE,
     hp=HP,
 )
 
@@ -291,6 +307,20 @@ def show_donor_log():
     return donor.show_log()
 
 
+# Take whatever the participant's file says into the module globals, so every
+# cell below is on this subject's donor the moment the config cell has run --
+# no build, no load_existing_donor(), no DONOR_ID to remember. Before day 1
+# there is nothing recorded yet and both stay None, which is what the build
+# cell is for.
+_sync()
+if DONOR_ID and donor.donor_from_record:
+    _sofa = paths.SOFA_DIR / SUBJECT_ID / f"{MODIFIED_SOFA}.sofa"
+    print(f"donor {DONOR_ID} (from {SUBJECT_ID}'s subject file) -> "
+          f"{MODIFIED_SOFA}" + ("" if _sofa.exists() else "   [!] SOFA MISSING"))
+elif DONOR_ID:
+    print(f"donor {DONOR_ID} (DONOR_OVERRIDE) -> {MODIFIED_SOFA}")
+else:
+    print(f"no donor recorded for {SUBJECT_ID} yet -- run the day-1 build cell")
 
 
 # ---------------------------------------------------------------------------
@@ -494,14 +524,18 @@ prepare_donor_shortlist(n=3)
 # %% day 1: select the donor and build the modified HRTF -- run ONCE ----------
 # Prints the full candidate ranking, the chosen donor and why, writes
 # <SUBJECT_ID>_donor_<DONOR>.sofa with the selection embedded, plus a ranking
-# CSV and before/after figures. Note the donor id -- put it in DONOR_ID at the
-# top so later sessions can skip straight to load_existing_donor().
+# CSV and before/after figures, and records the donor in the subject file --
+# from here on every session picks it up automatically.
 # Redundant if prepare_donor_shortlist() was run; harmless to run anyway.
 
 build_donor_sofa(overwrite=False)
 subject = hr.Subject(SUBJECT_ID)
 
-# %% later sessions: reload the modified HRTF without rebuilding --------------
+# %% later sessions: confirm which composite is loaded ------------------------
+# NOT required -- the config cell already resolved the donor from the subject
+# file. This re-reads the SOFA's embedded params and prints them, so you can see
+# that what is on disk is what was built (donor, r_match, ridge, fallback flag)
+# before running a block on it.
 load_existing_donor()
 
 # %% IN SESSION: participant is at floor -- swap to the next donor ------------
@@ -509,8 +543,8 @@ load_existing_donor()
 # block at chance tells you nothing). Moves down the rule's ranked list, which
 # was fixed before the participant heard anything -- see selection.shortlist.
 # WRITE WHAT YOU SAW in reason=: the swap is a data-dependent decision and has
-# to be reportable as one. Then set DONOR_ID at the top of this file so later
-# sessions reload the donor you switched TO.
+# to be reportable as one. The new donor replaces the old one in the subject
+# file, so later sessions follow the swap on their own.
 #   use_donor(rank=1, reason
 #   ="EG 0.03 on baseline A, responses at chance")
 # use_donor(rank=1, reason="")

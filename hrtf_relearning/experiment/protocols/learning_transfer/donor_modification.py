@@ -35,7 +35,13 @@ Typical use, one participant:
     donor.prepare_shortlist(n=3)      # before the session, ~minutes
     donor.build()                     # day 1, picks rank 0
     donor.use_donor(rank=1, reason="EG 0.03 on baseline A, at chance")
-    donor.load_existing()             # later sessions
+
+Day 1 is where the donor is decided; the rest of the study just uses it. The
+choice is recorded on the participant (subject.active_donor), and constructing
+this object for that subject reads it back, so a session on day 3 is
+
+    donor = DonorModification("AS", trained_ear="left")   # already on rank 1
+    donor.load_existing()             # optional: confirm against the SOFA
 """
 from __future__ import annotations
 
@@ -111,11 +117,37 @@ class DonorModification:
         self.reverb, self.drr = reverb, drr
         self.convolution, self.storage = convolution, storage
 
-        # active state -- what the protocol's blocks will load
+        # active state -- what the protocol's blocks will load.
+        #
+        # With no donor_id passed, it is read back from the participant's own
+        # record (subject.active_donor in <id>.pkl, mirrored into <id>.json),
+        # which build()/prepare_shortlist()/use_donor() wrote on day 1. That is
+        # the whole point: the donor is chosen ONCE, per participant, and every
+        # later session picks it up from their file without anyone having to
+        # remember it or edit the protocol. Passing donor_id= overrides it and
+        # is for rebuilding something already run, not for daily use.
+        self.donor_from_record = False
+        if donor_id is None:
+            donor_id = self._recorded_donor()
+            self.donor_from_record = donor_id is not None
         self.donor_id = donor_id
         self.modified_sofa = self.modified_name(donor_id) if donor_id else None
 
         self._shortlist = None
+
+    def _recorded_donor(self):
+        """The participant's donor from their pickle, or None -- never raises.
+
+        Called from __init__, so a subject file that cannot be read must not
+        stop the object being built: without it there is no way to run build()
+        and create the record in the first place.
+        """
+        try:
+            return self.last_active_donor()
+        except Exception as exc:                       # noqa: BLE001
+            print(f"  [warn] could not read the donor from "
+                  f"{self.subject_id}'s subject file: {exc}")
+            return None
 
     def __repr__(self):
         return (f"<DonorModification {self.subject_id} "
@@ -150,6 +182,25 @@ class DonorModification:
         if self.pipeline == "v2":
             stem = f"{stem}_env{self.env_n_keep}_{self.trained_ear}"
         return stem
+
+    def is_training_sofa(self, stem):
+        """True if ``stem`` is a composite the protocol would actually PLAY.
+
+        Two kinds of file share the <subject>_donor_<D> prefix and must never
+        be mistaken for it: the ladder's extra strengths (_n<k>, diagnostics
+        only) and, on v2, the binaural pre-reduction QC file, which lacks the
+        _env<k>_<ear> tail precisely because the monaural reduction is not in
+        it yet. Getting this wrong means testing someone binaurally for a day.
+        """
+        prefix = f"{self.subject_id}_donor_"
+        if not stem.startswith(prefix):
+            return False
+        rest = stem[len(prefix):]
+        if re.search(r"_n\d+(_|$)", rest):     # ladder strength, not the protocol's
+            return False
+        if self.pipeline == "v2":
+            return rest.endswith(f"_env{self.env_n_keep}_{self.trained_ear}")
+        return not re.search(r"_env\d+_(left|right)$", rest)
 
     def binaural_name(self, donor_id, n_keep=None):
         """v2 only: the composite BEFORE the monaural reduction. QC reference."""
@@ -576,8 +627,8 @@ class DonorModification:
               f"{row['ridge_slope']:+.2f}, strength "
               f"{row['donor_strength']:.1f} dB)")
         print(f"modified_sofa = {self.modified_sofa}")
-        print(f"  !! set DONOR_ID = '{row['donor']}' in the protocol's config "
-              f"block so later sessions reload THIS donor, not the rank-0 one.")
+        print(f"  recorded in {self.subject_id}'s subject file -- later "
+              f"sessions load {row['donor']} automatically; nothing to edit.")
         if not reason:
             print("  !! no reason recorded -- re-run use_donor(..., reason=...) "
                   "to say what was observed.")
@@ -586,48 +637,36 @@ class DonorModification:
     def load_existing(self):
         """Point this object at the already-built donor SOFA on disk.
 
-        Recovers the donor from disk rather than from a variable that resets
-        every time the config cell is re-run, which is how a subject could
-        silently end up trained on one stimulus and tested on another. The
-        donor id is read back from the SOFA's embedded modification params, so
-        what is loaded is what was built. Refuses to guess if there is more
-        than one candidate file and no log to break the tie.
+        Normally a no-op confirmation: __init__ already took the donor from the
+        participant's record, and this re-reads the SOFA's embedded params to
+        show that what is on disk is what was built. It still stands alone for
+        a subject whose record predates active_donor, where the donor has to
+        come off the filesystem.
         """
         if self.donor_id is not None:
             matches = [self.sofa_dir / f"{self.modified_name(self.donor_id)}.sofa"]
         else:
-            # The ladder writes extra strengths as <name>_n<k>.sofa; those are
-            # diagnostics, never the training/testing stimulus, so they must
-            # not make this look ambiguous.
             matches = [path for path
                        in sorted(self.sofa_dir.glob(f"{self.subject_id}_donor_*.sofa"))
-                       if not re.search(r"_n\d+$", path.stem)]
+                       if self.is_training_sofa(path.stem)]
 
         if not matches:
             raise FileNotFoundError(
                 f"no {self.subject_id}_donor_*.sofa in {self.sofa_dir} "
                 f"-- run build() first")
         if len(matches) > 1:
-            # prepare_shortlist() stages alternates, so several composites
-            # existing is now NORMAL and must not be read as ambiguity. The
-            # donor log says which one was last made active; that is the
-            # authority.
-            active = self.last_active_donor()
-            if active is None:
-                raise RuntimeError(
-                    f"several donor SOFAs for {self.subject_id}: "
-                    f"{', '.join(p.name for p in matches)}, and no donor log to "
-                    f"say which is active. Pass donor_id= to the constructor "
-                    f"(or set DONOR_ID in the protocol) to name the one this "
-                    f"subject was trained on.")
-            wanted = self.sofa_dir / f"{self.modified_name(active)}.sofa"
-            if wanted not in matches:
-                raise RuntimeError(
-                    f"donor log says the active donor is {active} but "
-                    f"{wanted.name} is not on disk")
-            print(f"  {len(matches)} composites on disk (staged alternates); "
-                  f"donor log says {active} is active")
-            matches = [wanted]
+            # Only reachable with no donor in the subject's record -- otherwise
+            # __init__ resolved it and the single-file branch above was taken.
+            # prepare_shortlist() stages alternates, so several composites on
+            # disk is NORMAL; the filesystem cannot say which one was chosen.
+            raise RuntimeError(
+                f"several donor SOFAs for {self.subject_id}: "
+                f"{', '.join(p.name for p in matches)}, and no donor recorded "
+                f"in their subject file to say which is active. Pass "
+                f"donor_id= to the constructor to name the one this subject "
+                f"was trained on -- and re-run use_donor(donor_id=..., "
+                f"reason='reconstructing the record') so the next session "
+                f"does not have to ask again.")
 
         path = matches[0]
         if not path.exists():

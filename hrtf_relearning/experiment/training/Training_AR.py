@@ -10,6 +10,7 @@ date = datetime.datetime.now()
 from hrtf_relearning.utils.paths import PATH as ROOT
 
 from hrtf_relearning.experiment.misc.system_volume import set_windows_volume
+from hrtf_relearning.experiment.misc import audio_device
 from hrtf_relearning.experiment.misc import meta_motion
 from hrtf_relearning.experiment.training.training_helpers import game_ui
 from hrtf_relearning.experiment.training.training_helpers.pulse import distance_to_interval as _pulse_interval_ms
@@ -85,6 +86,15 @@ hrir_settings = dict(
     convolution="cuda",
     storage="cuda"
 )
+
+# -------------------- Playback route --------------------
+
+# Before the binsim build, not after: a session sent through the wrong output is
+# wasted, and there is no point spending minutes on the database first. No-op
+# unless this machine names a required device in local_config.json
+# ("audio_output") -- see misc/audio_device.
+if __name__ == "__main__":
+    audio_device.preflight_or_exit("Training")
 
 # -------------------- Global HRIR/Sequence --------------------
 

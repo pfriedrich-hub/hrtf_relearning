@@ -35,16 +35,16 @@ each test's real stim (ecologically valid), or 'dome' to play the identical
 dome-style burst train through BOTH paths for a cleaner apples-to-apples match.
 """
 
-# TO DO, next time KEMAR is in the chair: replace this by-ear match with an
-# objective one -- KEMAR in the rig, in-ear mics, bi-rec RCX, measure the
-# dome and the headphone path and take the difference. Also check stimulus
-# generation across conditions while the manikin is set up.
+# DONE 2026-08-24 (untested on hardware): the objective version lives in
+# localization_helpers/ar_level_match.py and is wired up as the OBJECTIVE cell
+# below -- KEMAR in the chair, in-ear mics, dome in play_birec, measured through
+# the real pybinsim chain rather than freefield's headphone path. The by-ear
+# loop below is kept as the fallback for when KEMAR is not available, and as a
+# cross-check on the first objective run.
 #
-# Do not write it from scratch first: `equalize_loudness()` in
-# _to_delete/dead_code_20260819/record/test_hrir_recording.py already does
-# the objective dome-vs-headphone match through the in-ear mics, via
-# freefield.play_and_record_headphones, and carries a measured result
-# ('diff is about 19 on both channels'). Salvage that before it is deleted.
+# Still open: check stimulus generation across conditions while the manikin is
+# set up. (The salvage note that used to live here is done -- the freefield-path
+# version is in protocols/dev/hp_vs_dome_check.py.)
 
 # %% SETUP -------------------------------------------------------------------
 import multiprocessing as mp
@@ -94,9 +94,12 @@ _rel = numpy.array((_rel_az, REF_SOURCE[1], loc.hrir_sources[0, 2]))
 FILTER_IDX = int(numpy.argmin(numpy.linalg.norm(_rel - loc.hrir_sources, axis=1)))
 print(f"pybinsim reference filter -> {loc.hrir_sources[FILTER_IDX]}")
 
-# dome for the loudspeaker reference
-if freefield.PROCESSORS is None or freefield.PROCESSORS.mode != 'play_rec':
-    freefield.initialize('dome', default='play_rec', sensor_tracking=False)
+# dome for the loudspeaker reference.
+# 'play_birec' (both in-ear mics) rather than 'play_rec': the by-ear loop does
+# not record at all, but the OBJECTIVE cell below needs two channels, and
+# switching modes mid-session would mean re-initialising between cells.
+if freefield.PROCESSORS is None or freefield.PROCESSORS.mode != 'play_birec':
+    freefield.initialize('dome', default='play_birec', sensor_tracking=False)
 
 
 def _make_pybinsim_stim():
@@ -143,7 +146,35 @@ def play_binsim(gain):
     print(f"  PYBINSIM @ gain = {gain}")
 
 
+GAIN = _loc_settings['gain']   # starting gain, used by both cells below
+
 print("Setup done. MATCH_STIM =", MATCH_STIM)
+
+
+# %% OBJECTIVE -- measure the gain instead of matching it by ear ---------------
+# Needs KEMAR (or a participant) in the chair with the in-ear mics IN, and the
+# headphones fed by the SOUNDCARD, not the TDT. Prompts once for headphones on
+# (pybinsim leg) and once for headphones off (dome leg).
+#
+# Read `result['gain_suggested']` -- that is the value for loc_settings['gain'],
+# valid only at OS_VOLUME. `result['offset_db_spread']` tells you whether any
+# single elevation is rendered at the wrong level; SOURCES below decides how
+# many elevations are checked.
+from hrtf_relearning.experiment.localization.localization_helpers.ar_level_match import (
+    measure_ar_dome_level, probe_binsim_capture)
+
+SOURCES = [REF_SOURCE]                      # e.g. [(0., -25.), (0., 0.), (0., 25.)]
+
+# Routing check on its own first, if this rig has not run one before:
+#   probe_binsim_capture(loc, osc_filter, osc_play, gain=GAIN, source=REF_SOURCE)
+result = measure_ar_dome_level(loc, osc_filter, osc_play, sources=SOURCES, gain=GAIN)
+
+print(f"\nMeasured: dome - pybinsim = {result['offset_db_mean']:+.2f} dB "
+      f"(spread {result['offset_db_spread']:.2f} dB across directions/ears)\n"
+      f"loc_settings['gain'] = {result['gain_suggested']:.4f}   (was {result['gain_used']:.4f})\n"
+      f"(subject={SUBJECT_ID}, hrir={HRIR_NAME}, hp={HP}, os_volume={OS_VOLUME})")
+for w in result['warnings']:
+    print('  warning:', w)
 
 
 # %% MATCH LOOP -- interactively enter gains until the two sound equally loud --
@@ -153,7 +184,7 @@ print("Setup done. MATCH_STIM =", MATCH_STIM)
 #   b         (re)play pybinsim at current gain
 #   <Enter>   A/B: play dome then pybinsim
 #   q         quit the loop (keeps current gain)
-GAIN = 0.20   # starting gain
+# GAIN comes from the SETUP cell; edit it there or reassign it here.
 
 play_dome()
 play_binsim(GAIN)

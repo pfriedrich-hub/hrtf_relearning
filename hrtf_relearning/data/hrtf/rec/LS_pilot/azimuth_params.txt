@@ -1,7 +1,7 @@
-id: LS
+id: LS_azimuth
 fs: 48828
 n_recordings: 10
-n_directions: 3
+n_directions: 1
 signal:
   kind: logarithmic
   duration: 0.2
@@ -11,4 +11,4 @@ signal:
   samplerate: 48828
 highpass_frequency: 120
 equalize_dome: False
-datetime: 2026-08-25T09:19:08.401583
+datetime: 2026-08-25T09:16:21.739727

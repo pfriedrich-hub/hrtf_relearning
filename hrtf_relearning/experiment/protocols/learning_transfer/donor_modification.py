@@ -452,14 +452,18 @@ class DonorModification:
             # recording needed.
             own_arc = midline_arc(own)
             donor_arc = midline_arc(candidates[donor_id])
-            arc = donor_detail_dtf(own_arc, donor_arc, n_keep=n_keep)
-            # binaural composite, kept as the QC reference and for the ladder
-            binaural = expand_from_midline(arc)
-            binaural.name = self.binaural_name(donor_id, n_keep)
-            binaural_path = self.sofa_dir / f"{binaural.name}.sofa"
-            binaural.write_sofa(str(binaural_path))
+            detail_arc = donor_detail_dtf(own_arc, donor_arc, n_keep=n_keep)
+            # The binaural composite (QC reference, and the ladder's input) is
+            # this arc expanded. It is NAMED here and built and written further
+            # down, next to its embed_modification_params call: qc_midline
+            # below raises, and writing the file here put an unlabelled SOFA
+            # next to the native one every time it did -- precisely the
+            # unattributable file the embed exists to prevent. envelope_dtf
+            # deep-copies, so detail_arc is still the pre-reduction arc there.
+            binaural_path = self.sofa_dir / f"{self.binaural_name(donor_id, n_keep)}.sofa"
 
-            arc = envelope_dtf(arc, ear=self.trained_ear, n_keep=self.env_n_keep)
+            arc = envelope_dtf(detail_arc, ear=self.trained_ear,
+                               n_keep=self.env_n_keep)
             report = qc_midline(own_arc, arc, processed_ear=self.untrained_ear,
                                 raise_on_fail=True)
             print(format_qc(report))
@@ -506,9 +510,13 @@ class DonorModification:
         embed_modification_params(out_path, _params(**pipeline_params))
         print(f"wrote {out_path}")
 
-        # the binaural composite is a MODIFIED file too -- label it, or it is
-        # an unattributable SOFA sitting next to the native one
+        # the binaural composite is a MODIFIED file too -- write and label it in
+        # one place, or it is an unattributable SOFA sitting next to the native
+        # one whenever anything between the two steps raises
         if binaural_path is not None:
+            binaural = expand_from_midline(detail_arc)
+            binaural.name = binaural_path.stem
+            binaural.write_sofa(str(binaural_path))
             embed_modification_params(binaural_path, _params(
                 **{**pipeline_params, "monaural": None,
                    "note": "binaural composite, before the monaural reduction; "

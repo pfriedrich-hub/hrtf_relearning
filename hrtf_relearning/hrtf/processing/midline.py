@@ -43,9 +43,11 @@ logger = logging.getLogger(__name__)
 
 MIDLINE_TOL_DEG = 1e-2
 
-#: Bands qc_midline reports the ILD in, and the tolerance on each. The
-#: broadband figure is exact by construction (both match_level rescales), so a
-#: non-zero value there means something upstream stopped preserving energy.
+#: Bands qc_midline reports the ILD in, and the tolerance on each. Every figure
+#: is an energy ratio in its band (see :func:`_ild_db`), so they are the same
+#: quantity at three resolutions. The broadband one is exact by construction
+#: (both match_level rescales), so a non-zero value there means something
+#: upstream stopped preserving energy.
 QC_BANDS = {'broadband': (None, None), 'low': (200.0, 2000.0),
             'high': (2000.0, 16000.0)}
 
@@ -58,6 +60,15 @@ QC_BANDS = {'broadband': (None, None), 'low': (200.0, 2000.0),
 #: the ITD -- which is forced to exactly zero at the midline -- disagree by more
 #: than the whole physical range of the azimuth axis, which is the in-head
 #: localization configuration.
+#:
+#: The high-band figure has no such derivation yet. It was set while the band
+#: ILD was a mean of per-bin dB ratios, i.e. against a quantity that moved with
+#: notch depth rather than with level, so it is not a criterion -- it is a
+#: number that happened to sit above the composites of the day. Now that the
+#: band ILD is an energy ratio the measured deviations are ~0.5-0.6 dB, so 2.0
+#: is loose rather than wrong, but it needs the same treatment as the low band
+#: (what deviation makes az=0 look more lateral than any real direction in
+#: 2-16 kHz?) before it can be reported as a criterion.
 QC_TOLERANCE_DB = {'broadband': 0.05, 'low': 5.0, 'high': 2.0}
 QC_ITD_TOLERANCE_US = 1.0
 
@@ -160,7 +171,25 @@ def expand_from_midline(arc, az_range=(-50, 50), head_radius=0.0875,
 # ---------------------------------------------------------------------------
 
 def _ild_db(hrtf, band):
-    """Per-direction ILD (left minus right) in dB. ``band=(None, None)`` -> broadband L2."""
+    """Per-direction ILD (left minus right) in dB, as a RATIO OF ENERGIES.
+
+    ``band=(None, None)`` is the broadband L2 ratio; a band is the same
+    quantity restricted to the band's bins. The two cases are one definition:
+    ``20log10(||L||/||R||) == 10log10(sum|L|^2 / sum|R|^2)``.
+
+    WHY NOT THE MEAN OF THE PER-BIN dB RATIO. That was the band branch until
+    2026-08, and it is not an ILD: a mean of log ratios is dominated by the
+    DEPTH OF THE SPECTRAL NULLS, which carry almost no energy. Filling in the
+    untrained ear's notches -- which is exactly what ``envelope_dtf`` is for --
+    moved that number by 1-3 dB in 2-16 kHz while the energy ratio between the
+    ears did not move at all. Measured on NR: the processed ear's mean-of-dB
+    went 4.91 -> 5.87 dB while its band power went 6.67 -> 6.36 dB, so the
+    high-band check was reading the manipulation as a binaural error and its
+    value tracked how notchy the listener happened to be (NR/AH 1.81 dB pass,
+    NR/AGV 2.21 dB fail; 0.60 and 0.50 dB respectively once measured as
+    energy). Below 2 kHz there are no deep nulls and the two agree to ~0.1 dB,
+    so the 200-2000 Hz criterion QC_TOLERANCE_DB derives is unaffected.
+    """
     low, high = band
     out = []
     for i in range(hrtf.n_sources):
@@ -173,8 +202,8 @@ def _ild_db(hrtf, band):
         mask = (freqs >= low) & (freqs <= high)
         left = numpy.abs(numpy.fft.rfft(data[:, 0]))[mask]
         right = numpy.abs(numpy.fft.rfft(data[:, 1]))[mask]
-        out.append(float(numpy.mean(20.0 * numpy.log10(
-            numpy.maximum(left, 1e-30) / numpy.maximum(right, 1e-30)))))
+        out.append(float(10.0 * numpy.log10(
+            numpy.sum(left ** 2) / max(float(numpy.sum(right ** 2)), 1e-60))))
     return numpy.asarray(out)
 
 
@@ -247,9 +276,9 @@ def qc_midline(native_arc, modified_arc, processed_ear=None, raise_on_fail=True,
         deviation = numpy.abs(_ild_db(modified_arc, band) - _ild_db(native_arc, band))
         report[f'ild_{name}_mean'] = float(deviation.mean())
         report[f'ild_{name}_max'] = float(deviation.max())
-        # if deviation.mean() > tolerance_db[name]:
-        #     failures.append(f'ILD {name}: {deviation.mean():.2f} dB mean '
-        #                     f'(tolerance {tolerance_db[name]:.2f})')
+        if deviation.mean() > tolerance_db[name]:
+            failures.append(f'ILD {name}: {deviation.mean():.2f} dB mean '
+                            f'(tolerance {tolerance_db[name]:.2f})')
 
     itd_deviation = numpy.abs(_itd_us(modified_arc) - _itd_us(native_arc))
     report['itd_mean_us'] = float(itd_deviation.mean())

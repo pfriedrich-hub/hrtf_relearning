@@ -13,6 +13,12 @@ def make_sequence(settings, hrir_sources):
         return sector_targets(settings, hrir_sources)
     elif settings['kind'] == 'columns':
         return column_targets(settings, hrir_sources)
+    elif settings['kind'] == 'midline_filler':
+        return midline_filler_targets(settings, hrir_sources)
+    else:
+        raise ValueError(
+            f"kind must be 'standard', 'sectors', 'columns' or 'midline_filler', "
+            f"got {settings['kind']!r}")
 
 def az_el_distance(p, q):
     """Euclidean distance in az/el with circular azimuth."""
@@ -406,6 +412,100 @@ def std_targets(settings, hrir_sources, max_tries=1000):
         f"Could not construct sequence with min_distance={min_distance}° "
         f"after {max_tries} attempts."
     )
+
+def midline_filler_targets(settings, hrir_sources):
+    """Vertical-midline arc plus a minority of off-midline filler trials.
+
+    A midline-only block makes the response space effectively 1-D, and a
+    listener who notices can restrict responses to the arc, which inflates
+    apparent gain for a reason that has nothing to do with the manipulation.
+    A minority of off-midline targets keeps the task 2-D. They are NOT a
+    condition and must be dropped before analysis -- filter on
+    ``sequence.target_set``, which tags every trial 'midline' or 'filler'.
+
+    Note for the AR/pyBinSim path specifically: azimuth in a subject SOFA is
+    synthesised (only the az=0 arc is measured, see processing/midline.py), so
+    an off-midline filler is the same arc with a level and time offset and
+    carries no independent spectral information. It is a response-strategy
+    control, nothing more.
+
+    Required settings
+    -----------------
+    elevation_range, targets_per_speaker, min_distance : as for 'standard'
+    n_filler : int, number of filler trials to add (0 disables them)
+
+    Optional settings
+    -----------------
+    midline_tol : float, default 1.0 -- half-width of the midline column
+    filler_azimuth_range : (lo, hi), default (-35, 35)
+
+    Returns a Trialsequence whose `target_set` attribute is a per-trial list of
+    'midline' / 'filler', in trial order.
+    """
+    base = dict(settings)
+    base['kind'] = 'standard'
+    tol = float(settings.get('midline_tol', 1.0))
+    min_distance = settings['min_distance']
+
+    midline = std_targets({**base, 'azimuth_range': (-tol, tol),
+                           'exclude_midline': False}, hrir_sources)
+    midline_points = numpy.asarray(midline.conditions, dtype=float)
+
+    n_filler = int(settings['n_filler'])
+    filler_points = numpy.empty((0, 2))
+    if n_filler > 0:
+        # one draw per off-midline source, then subsample -- keeps the fillers
+        # spread over the whole off-midline grid instead of clustering
+        filler = std_targets({**base,
+                              'azimuth_range': settings.get('filler_azimuth_range', (-35, 35)),
+                              'exclude_midline': True, 'midline_tol': tol,
+                              'targets_per_speaker': 1}, hrir_sources)
+        candidates = numpy.asarray(filler.conditions, dtype=float)
+        if len(candidates) < n_filler:
+            raise ValueError(
+                f"n_filler={n_filler} but only {len(candidates)} off-midline "
+                f"sources are available in "
+                f"{settings.get('filler_azimuth_range', (-35, 35))}.")
+        filler_points = candidates[
+            numpy.random.choice(len(candidates), n_filler, replace=False)]
+
+    points = numpy.vstack([midline_points, filler_points])
+    target_set = numpy.array(['midline'] * len(midline_points)
+                             + ['filler'] * len(filler_points))
+
+    order = order_with_min_distance(points, min_distance)
+    points, target_set = points[order], target_set[order]
+    points = numpy.round(points, 2)
+    points[:, 0] = (points[:, 0] + 180) % 360 - 180
+
+    # virtual sector grid for target_p/plotting: the midline grid's cell size,
+    # but one column of centers per azimuth actually present, so a filler is not
+    # silently binned into a midline sector
+    az_step, el_step = midline.settings['sector_size']
+    el_centers = numpy.unique([c[1] for c in midline.settings['sector_centers']])
+    sector_centers = [(float(az), float(el))
+                      for az in numpy.unique(points[:, 0]) for el in el_centers]
+
+    sequence = slab.Trialsequence(points)
+    sequence.trials = numpy.arange(1, len(points) + 1)
+    sequence.target_set = [str(t) for t in target_set]   # per-trial, JSON-safe
+    settings_out = dict(settings)
+    settings_out.update({
+        'kind': 'midline_filler',
+        'mode': 'midline_all_sources_repeated_plus_filler',
+        'repeats': settings['targets_per_speaker'],
+        'min_distance': min_distance,
+        'midline_tol': tol,
+        'n_midline': int(len(midline_points)),
+        'n_filler': int(len(filler_points)),
+        'azimuth_range': (float(points[:, 0].min()), float(points[:, 0].max())),
+        'elevation_range': midline.settings['elevation_range'],
+        'sector_size': (az_step, el_step),
+        'sector_centers': sector_centers,
+    })
+    sequence.settings = settings_out
+    return sequence
+
 
 def plot_sequence_targets(sequence, title="Recorded targets over sectors"):
     """

@@ -1,8 +1,84 @@
+% ---------------------------------------------------------------------------
+% METHODS — section master file.
+% \input by main/Manuscript.tex. Each \subsection lives in its own file in this
+% folder; this file holds only the section header, the opening paragraph, and
+% the running order. Add new subsections as files and \input them below.
+%
+% ORDER follows the earmold paper (Friedrich & Schoenwiesner 2025): behavioral
+% methods first, acoustic methods after Statistical analysis.
+%
+% WARNING (2026-08-26): main/Manuscript.tex \inputs this file AND still carries
+% a full inline copy of the old earmold Methods further down. Until that inline
+% block is removed, the section renders TWICE and \label{sec:2} is defined
+% twice. See the note at the bottom of this file.
+% ---------------------------------------------------------------------------
+
 \section{\label{sec:2} Methods}
 
-Participants had their individual HRTF recorded and trained to localize sounds with one ear only in a virtual auditory environment (VAE) for 4 consecutive days. To capture the trajectories of participants' adaptation to the HRTFs presented in the VAE, participants completed daily localization tests.
-During training and testing, DTFs were presented to one ear only
+Participants had their individual HRTF recorded and trained to localize sounds
+with one ear only in a virtual auditory environment (VAE) for 4 consecutive
+days. To capture the trajectories of participants' adaptation to the HRTFs
+presented in the VAE, participants completed daily localization tests. During
+training and testing, DTFs were presented to one ear only.
 
-Participants wore two distinct sets of binaural earmolds consecutively (denoted as mold 1 and mold 2), each over the course of a five-day adaptation period. The acoustical and behavioral impact of the molds were measured, and the trajectories of participants’ adaptation were recorded to capture the occurrence of meta-adaptation. To test whether learning a new set of spectral cues interferes with a previously learned mapping, the persistence of adaptation to the first earmolds was measured after participants adapted to the second molds. This measurement was repeated for the second molds after five days without earmolds for comparison.
+% --- behavioral methods ----------------------------------------------------
 
 \subsection{Participants}
+% TODO — n, age range, ethics approval, compensation. Recruitment ran on
+% 18-40 years / normal hearing / 4 consecutive days. Planned n = 8, raised to
+% 16 if the statistics require it.
+
+\subsection{Experimental procedure}
+% TODO — the 4-day timeline. Day 1: native binaural reference, donor build,
+% baseline A and baseline D. Adaptation days: PRE test, training, POST test.
+% Final day: counterbalanced 2x2 (Ear x Side), Williams Latin square.
+
+\input{../Methods/methods_setup.tex}
+
+\subsection{Localization task}
+% TODO — sector grid (7 deg az, 14 deg el), el +-35, 3 targets per sector,
+% min separation 20 deg, midline excluded from one-sided blocks; 75 trials per
+% one-sided block, 150 for the binaural full-field reference. Also the
+% free-field control: same task as Friedrich & Schoenwiesner (2025) but
+% restricted to the seven midline loudspeakers, 3 targets each (21 trials),
+% because the midline is the only direction at which the virtual rendering
+% reproduces the measurement rather than the spherical-head model.
+
+\input{../Methods/methods_stimuli.tex}
+
+\input{../Methods/methods_donor_selection.tex}
+
+\subsection{Statistical analysis}
+% TODO — polar error as the primary metric, elevation gain / RMSE / residual
+% SD secondary. Transfer measured as within-ear pre-post CHANGE SCORES, not
+% the post-only A-vs-D contrast (the mirrored filter carries a foreign-base
+% disadvantage that cancels in the change score). Report simple effects of Ear
+% within laterality rather than interpreting the Ear x Location interaction.
+
+% --- acoustic methods ------------------------------------------------------
+
+\input{../Methods/methods_hrtf_measurement.tex}
+
+\subsection{Training}
+% TODO — cite the training game from Friedrich & Schoenwiesner (2025) (pulse
+% rate and inter-pulse delay as feedback, 90 s rounds, scoring, leaderboard)
+% and describe only the delta: rendered over headphones through the VAE, one
+% ear, and whatever changed in the region sampling.
+
+% ---------------------------------------------------------------------------
+% REMOVED 2026-08-26: the second paragraph of the old skeleton, which was still
+% about mold 1 / mold 2 and five-day adaptation periods, i.e. the earmold
+% paper. Kept here so nothing is lost:
+%
+%   Participants wore two distinct sets of binaural earmolds consecutively
+%   (denoted as mold 1 and mold 2), each over the course of a five-day
+%   adaptation period. The acoustical and behavioral impact of the molds were
+%   measured, and the trajectories of participants' adaptation were recorded to
+%   capture the occurrence of meta-adaptation. To test whether learning a new
+%   set of spectral cues interferes with a previously learned mapping, the
+%   persistence of adaptation to the first earmolds was measured after
+%   participants adapted to the second molds. This measurement was repeated for
+%   the second molds after five days without earmolds for comparison.
+%
+% The previous version of this file is saved as methods.tex.bak_20260826.
+% ---------------------------------------------------------------------------

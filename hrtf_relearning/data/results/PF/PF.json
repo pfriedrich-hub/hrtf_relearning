@@ -7,7 +7,13 @@
     "gender_input": "m",
     "recorded": "2026-08-10T11:55:49"
   },
-  "active_donor": {},
+  "active_donor": {
+    "donor": "pilot/VD",
+    "rank": 0,
+    "reason": "widened",
+    "timestamp": "2026-08-26T13:57:37"
+  },
+  "head_radius": null,
   "last_sequence": "PF_27.07_11-21_PF",
   "localization": {
     "PF_27.07_11-21_PF": {

@@ -1,0 +1,58 @@
+% ---------------------------------------------------------------------------
+% DRAFT SEGMENT — experimental setup
+% Standalone; not \input anywhere yet. Stitch into Methods later.
+% Code: experiment/localization/Localization_AR.py   (rendering + response)
+%       hrtf/binsim/hrtf2binsim.py                   (settings, reverb, hp filter)
+%       hrtf/binsim/hrir2mat.py                      (level normalization)
+% Room / array / response apparatus are cited to the earmold paper rather than
+% re-described — they are unchanged, and every reported recording came through
+% record_dome on the existing speaker table (params.txt, all subjects).
+% ---------------------------------------------------------------------------
+
+\subsection{Experimental setup}
+
+Recordings, localization tests and training were carried out in the
+hemi-anechoic room and 45-loudspeaker array described previously
+% \citep{friedrich_adaptation_2025}
+, using the same head-mounted laser and electromagnetic motion sensor
+(MetaMotionRL, Mbientlab, San Francisco, USA) for visual feedback of head
+orientation and for the response. Acoustic measurements used the vertical
+midline column of seven loudspeakers, spanning $\pm37.5^\circ$ elevation at
+$12.5^\circ$ spacing. Signals were generated and acquired with TDT System 3
+hardware (Tucker Davis Technologies, Alachua, USA) at a sampling rate of
+48.8\,kHz.
+
+Virtual sound sources were rendered over headphones (DT 990 Pro,
+beyerdynamic, Heilbronn, Germany) by real-time convolution in pyBinSim
+% \citep{neidhardt_pybinsim_2017}
+, which selected the impulse response pair for the listener's current head
+orientation and crossfaded between successive filters. Convolution ran in
+blocks of 256 samples on a 512-tap direct-sound filter, followed in series by a
+late reverberation tail at a direct-to-reverberant ratio of 20\,dB and the
+participant's own headphone equalization filter. Impulse responses derived
+from directional transfer functions carry no absolute scale, so each database
+was scaled by a single broadband factor to a common chain gain; presentation
+level was thereby made identical across participants, conditions and days,
+while interaural and between-direction level differences, being ratios within
+a database, were unaffected. Overall level was matched by ear to the
+free-field array and the system volume held fixed thereafter.
+
+% --- open items ------------------------------------------------------------
+% - SELF-CITATION verified: Friedrich, P., and Schoenwiesner, M. (2025).
+%   "Adaptation rate and persistence across multiple sets of spectral cues for
+%   sound localization," J. Acoust. Soc. Am. 157(3), 1543-1553,
+%   doi:10.1121/10.0036056. Key friedrich_adaptation_2025; still needs adding
+%   to the .bib, which does not yet exist for this manuscript.
+% - pyBinSim citation not verified. Neidhardt et al., pyBinSim, is the usual
+%   one; check what the pfriedrich-hub/pybinsim_tuil fork should be cited as,
+%   and whether the fork's deviations need a sentence.
+% - The late reverberation tail: where does it come from? Generic or measured?
+%   One clause is owed, a reviewer will ask whether it is individual.
+% - End-to-end latency of the rendering chain is NOT stated. One block is
+%   5.24 ms at 48.8 kHz, but total motion-to-sound latency includes the sensor
+%   rate and buffering and has not been measured. Either measure it and give a
+%   number, or say nothing -- do not quote the block period as the latency.
+% - Headphone model: DT 990 Pro confirmed for all reported participants
+%   (MYSPHERE appears in the code as an alternative, unused here).
+% - Room dimensions deliberately not repeated; if a reviewer wants the paper
+%   standalone, restore "6.4 x 4.4 x 2.3 m" to the first sentence.

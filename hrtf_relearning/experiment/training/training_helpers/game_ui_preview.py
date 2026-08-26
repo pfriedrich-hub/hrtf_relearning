@@ -10,21 +10,32 @@ ui_state through a fake session on a QTimer, so a full cycle
 play-again prompt) loops automatically every ~15 seconds. Press Enter/
 Space or click the button same as in a real session.
 
-By default the scoreboard is populated with fake demo rows in an isolated
-temp directory, so this never touches real participant data in
-data/results/<id>/<id>.json. Pass --live to read the actual current
-scoreboard.
+The scoreboard is always populated in an isolated temp directory, so this
+never touches real participant data -- including the frozen peer set the UI
+writes to results/<id>/scoreboard_peers.json. --live snapshots the real
+current scores into that temp dir rather than pointing the window at
+data/results/ itself.
 
-The scoreboard only appears once the current subject_id has an entry in the
-backup data (day-1 beginners just see their own score instead, so they're
-not immediately compared to established participants). Pass --new-player
-to preview that path.
+The board is a window around the current subject (the few above, a couple
+below), not the global top N, so where they sit in the field is what the
+preview flags vary:
+
+    (default)     mid-field -- people above AND below, the normal case
+    --top         top of the field, window fills downwards
+    --bottom      last place, window fills upwards
+    --new-player  no entry at all and scores nothing -- no board shown
 
 Usage:
     python -m hrtf_relearning.experiment.training.training_helpers.game_ui_preview
     python -m hrtf_relearning.experiment.training.training_helpers.game_ui_preview CA
     python -m hrtf_relearning.experiment.training.training_helpers.game_ui_preview CA --live
+    python -m hrtf_relearning.experiment.training.training_helpers.game_ui_preview --bottom
     python -m hrtf_relearning.experiment.training.training_helpers.game_ui_preview --new-player
+
+Because the peer set is frozen on first display, the demo run keeps the
+same names across its repeated fake games -- watch the subject climb PAST
+them rather than the cast changing. Each launch starts from a clean temp
+dir, so the set is re-picked per launch.
 
 To A/B test the retro pixel font (see game_ui._PIXEL_FONT_CHOICES), set
 HRTF_PIXEL_FONT before launching, e.g.:
@@ -45,12 +56,14 @@ from pathlib import Path
 from PyQt5 import QtCore, QtWidgets
 
 from hrtf_relearning.experiment.training.training_helpers import game_ui
+from hrtf_relearning.utils.paths import RESULTS_DIR as SUBJECT_RESULTS_DIR
 
 FAKE_GAME_TIME = 12.0    # seconds per fake "game" (real sessions use settings['game_time'], usually 90s)
 FAKE_TRIAL_TIME = 1.6    # seconds between fake scoring events
 
 
-def _make_fake_backup_dir(subject_id: str, include_current_player: bool = True) -> Path:
+def _make_fake_backup_dir(subject_id: str, include_current_player: bool = True,
+                          placement: str = "middle", live: bool = False) -> Path:
     """Populate an isolated temp dir with fake per-participant JSON backups,
     mirroring the real RESULTS_DIR/<id>/<id>.json layout, so the scoreboard has
     something to show without touching real data/results/.
@@ -62,19 +75,37 @@ def _make_fake_backup_dir(subject_id: str, include_current_player: bool = True) 
 
     include_current_player=False leaves subject_id out of the fake data
     entirely, previewing the "new participant, not listed yet" path (see
-    --new-player) — GameWindow should then just show the plain score with
-    no scoreboard.
+    --new-player) — with a dummy score of 0 GameWindow should then just show
+    the plain score and no scoreboard.
 
-    When included, the current player's fake highscore is deliberately set
-    above every demo row (not just given a mid-range random value), so they
-    always land in the visible top of the table regardless of whatever
-    score they end up with in a given dummy run — no relying on the "..."
-    fallback for an out-of-range row.
+    `placement` decides where in the field the current player starts, which
+    is what determines the shape of the window drawn around them:
+    "middle" (default) puts them mid-field, "top" above everyone, "bottom"
+    below everyone.
+
+    There are deliberately more demo participants than fit on the board, so
+    the window really is a window in the default preview.
+
+    live=True seeds the temp dir from the REAL current scores instead of
+    demo numbers. It is still a temp copy: the UI writes a frozen peer set
+    into the subject folder it is given, and a preview run has no business
+    creating that for a real participant.
     """
     tmp = Path(tempfile.mkdtemp(prefix="hrtf_scoreboard_preview_"))
-    fake_rows = {"DEMO-A": 142, "DEMO-B": 165, "DEMO-C": 88, "DEMO-D": 97, "DEMO-E": 58, "DEMO-F": 133}
-    if include_current_player and subject_id not in fake_rows:
-        fake_rows[subject_id] = max(fake_rows.values()) + random.randint(10, 50)
+    if live:
+        fake_rows = dict(game_ui.read_scoreboard(SUBJECT_RESULTS_DIR))
+    else:
+        fake_rows = {"DEMO-A": 142, "DEMO-B": 165, "DEMO-C": 88, "DEMO-D": 97, "DEMO-E": 58,
+                     "DEMO-F": 133, "DEMO-G": 121, "DEMO-H": 110, "DEMO-I": 75,
+                     "DEMO-J": 152, "DEMO-K": 66, "DEMO-L": 104}
+    if include_current_player and subject_id not in fake_rows and fake_rows:
+        lo, hi = min(fake_rows.values()), max(fake_rows.values())
+        if placement == "top":
+            fake_rows[subject_id] = hi + random.randint(10, 50)
+        elif placement == "bottom":
+            fake_rows[subject_id] = max(1, lo - random.randint(5, 20))
+        else:
+            fake_rows[subject_id] = (lo + hi) // 2
     for sid, score in fake_rows.items():
         payload = {"id": sid, "highscore": score, "localization": {}}
         sub = tmp / sid
@@ -155,9 +186,13 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("subject_id", nargs="?", default="PREVIEW", help="Subject id to preview as (default: PREVIEW)")
     parser.add_argument("--live", action="store_true",
-                        help="Read the real data/results scoreboard instead of fake demo data")
+                        help="Seed the preview from the real data/results scores (still a temp copy)")
     parser.add_argument("--new-player", action="store_true",
                         help="Preview the day-1 path: subject_id has no entry yet, so no scoreboard is shown")
+    parser.add_argument("--top", action="store_true",
+                        help="Preview a participant at the top of the field (window fills downwards)")
+    parser.add_argument("--bottom", action="store_true",
+                        help="Preview a participant in last place (window fills upwards)")
     args = parser.parse_args()
 
     app = QtWidgets.QApplication(sys.argv)
@@ -173,10 +208,10 @@ def main():
         highscore=mp.Value("i", 0),
     )
 
-    if args.live:
-        backup_dir = None
-    else:
-        backup_dir = _make_fake_backup_dir(args.subject_id, include_current_player=not args.new_player)
+    placement = "top" if args.top else "bottom" if args.bottom else "middle"
+    backup_dir = _make_fake_backup_dir(args.subject_id,
+                                       include_current_player=not args.new_player,
+                                       placement=placement, live=args.live)
     window = game_ui.GameWindow(shared, subject_id=args.subject_id, backup_dir=backup_dir)
     window.show()
 

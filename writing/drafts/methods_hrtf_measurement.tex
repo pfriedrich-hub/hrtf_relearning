@@ -1,0 +1,128 @@
+% ---------------------------------------------------------------------------
+% DRAFT SEGMENT — HRTF measurement and the virtual HRTF set
+% Standalone; not \input anywhere yet. Stitch into Methods later.
+% Two \subsection{} blocks. Placed LATE in Methods, where the earmold paper put
+% "Binaural recordings" and "Directional transfer functions".
+% Code: hrtf/record/recordings.py::record_dome        (acquisition, head tilts)
+%       hrtf/record/record_hrir.py                    (orchestration)
+%       hrtf/record/processing.py                     (deconvolve, equalize,
+%                                                      lowfreq, expand_azimuths)
+%       hrtf/record/fit_head_radius.py                (acoustic radius fit)
+%       hrtf/record/calibration/calibrate_headphones.py
+% Parameters below are read off the code and the recorded params.txt, not the
+% module-level interactive defaults (which differ -- head_radius in particular).
+% \label{sec:hrir} resolves the placeholder reference in
+% methods_donor_selection.tex.
+% ---------------------------------------------------------------------------
+
+\subsection{HRTF measurement}\label{sec:hrir}
+
+Head-related impulse responses were measured at the blocked entrance of each
+ear canal with microphones mounted in anthropometric earplugs of the PIRATE
+design
+% \citep{denk_pirate_2019}
+. Logarithmic sweeps of 200\,ms duration (120\,Hz to 22\,kHz, 85\,dB SPL) were
+presented ten times from each loudspeaker of the midline column and averaged
+after alignment. Seven loudspeakers at $12.5^\circ$ spacing sample elevation
+too coarsely to resolve the spectral cue, so the arc was recorded three times,
+the participant being cued to tilt the head by one third of the loudspeaker
+spacing between passes. Interleaving the physical positions in this way yields
+19 elevations from $-37.5^\circ$ to $37.5^\circ$ in steps of $4.17^\circ$. A reference recording was then made with the microphones mounted
+on a stand at the position the head had occupied and with no listener present,
+using identical settings; it captures the response of loudspeakers,
+microphones and room in situ. Emitted sweeps were pre-filtered per loudspeaker
+with inverse filters obtained from a flat probe microphone, which equalizes
+each loudspeaker in level and magnitude response rather than merely matching
+them to one another.
+
+Impulse responses were recovered by regularized inversion of the sweep and
+each was divided by the reference response of the same loudspeaker, leaving
+the directional transfer function (DTF). This differs from our earlier work
+% \citep{friedrich_adaptation_2025}
+, in which the non-directional component was estimated as the average over all
+measured transfer functions. A dedicated reference is used here because only
+the midline is measured: an average over the measured set would be an average
+over the very directions that are subsequently compared, and would remove
+part of the elevation dependence it is meant to preserve. The quotient was
+onset-aligned, windowed with a 2.5\,ms Hann window and truncated to 512
+samples.
+
+\subsection{Virtual HRTF set}
+
+Because only the midline arc was measured, the remaining directions were
+synthesized with a rigid-sphere model of the head
+% \citep{duda_range_1998}
+. The radius of the sphere was fitted for each participant to interaural time
+differences measured from a horizontal row of loudspeakers, taken from the
+slope of the interaural phase between 200 and 1500\,Hz. The measured arc was then replicated
+across azimuth in 25 steps of $4.17^\circ$ from $-50^\circ$ to $50^\circ$,
+giving 475 directions, each carrying the spherical-head magnitude shading and
+interaural phase difference relative to the frontal direction at the same
+elevation. Below 800\,Hz, where the measurement is limited by the sweep
+bandwidth and the room, magnitude was replaced by spherical-head values.
+
+One consequence of this construction should be stated plainly. Spectral detail
+in the delivered set is measured on the midline and is identical at every
+azimuth; azimuth is carried by broadband interaural level and time differences
+alone, and the rendering is acoustically faithful to the measurement only at
+$0^\circ$ azimuth. Three considerations make this acceptable here. The
+elevation-dependent spectral pattern, which is what the manipulation alters
+and what the analysis measures, is measured rather than modeled. Every
+condition in the design is rendered through the identical expansion, so no
+comparison rests on the synthesized component. And because a magnitude-only
+edit cannot move a modeled interaural time difference, the native and modified
+sets share their interaural cues exactly, which would not be guaranteed had
+both been measured. The design accordingly contrasts hemifields rather than
+azimuthal acuity, and no claim is made about localization in azimuth.
+
+Two residual corrections were applied. Division by the reference leaves a
+small interaural difference at frontal directions, where none should exist;
+this was removed by equating broadband energy between the ears over 200\,Hz to
+16\,kHz, one scalar per direction, which on the manikin left a frontal
+interaural level difference of $0.000 \pm 0.003$\,dB. Headphone equalization
+was measured for each participant from three re-seatings of the headphones,
+averaged, and inverted as a regularized minimum-phase filter of 256 taps.
+
+% --- open items ------------------------------------------------------------
+% - CITATIONS:
+%     friedrich_adaptation_2025 -- VERIFIED: Friedrich, P., and Schoenwiesner,
+%       M. (2025). J. Acoust. Soc. Am. 157(3), 1543-1553,
+%       doi:10.1121/10.0036056.
+%     denk_pirate_2019 -- VERIFIED (Zenodo record 2574395). NOTE THE AUTHOR
+%       ORDER: Denk, F., Brinkmann, F., Stirnemann, S., and Kollmeier, B.
+%       (2019). "The PIRATE: an anthropometric earPlug with exchangeable
+%       microphones for Individual Reliable Acquisition of Transfer functions
+%       at the Ear canal entrance," Fortschritte der Akustik -- DAGA, Rostock,
+%       doi:10.5281/zenodo.2574395. Denk is first author, not Brinkmann.
+%     Duda & Martens (1998) JASA 104(5) -- "Range dependence of the response of
+%       a spherical head model". CHECK this is the right one for the model as
+%       implemented; if processing.py follows a different formulation, cite
+%       that instead. [NOT VERIFIED]
+% - MICROPHONE MODEL IS A PLACEHOLDER. The PIRATE cite covers the earplug, not
+%   the transducer. State the actual microphone (make, model, manufacturer) and
+%   whether the plugs are individually fitted or come from a size series. The
+%   old PUM-3046L-R sentence has been REMOVED -- do not let it drift back in if
+%   the current mics are different.
+% - PER-SUBJECT RADII ARE NOT REPORTED. Give the group mean and range once the
+%   cohort is closed. Also state what happens on a failed fit (the code falls
+%   back to 0.0875 m and stores nothing) -- if any reported participant hit the
+%   fallback, that must be said.
+% - The head-radius paragraph is now bare by decision (Paul, 2026-08-26): no
+%   manikin validation, no Woodworth comparison. If a reviewer asks why the
+%   fitted radii (~0.072 m) fall below the Woodworth 0.0875 m, the answer is
+%   that the low-frequency phase delay of a real head exceeds its onset delay
+%   (Kuhn 1977) and 0.0875 m is the ONSET-delay standard, inappropriate for a
+%   phase-based ITD. The fit uses the same estimator the model then imposes.
+%   Keep this note; it is the rebuttal, held out of the text on purpose.
+% - "limited by the sweep bandwidth and the room" is my reading of why 800 Hz;
+%   confirm the actual reason before submission.
+% - The 19 elevations come from 7 + 6 + 6 across the three tilt passes (the
+%   outermost speaker drops out of the two tilted passes). Not stated in the
+%   text -- add if a reviewer queries the count.
+% - record_mesm (the newer 7-speaker path) was NOT used for any reported
+%   subject. If later participants are recorded on it, this subsection needs a
+%   variant, and the two cohorts cannot be pooled without checking.
+% - Dome loudspeaker equalization was OFF for subject and reference alike
+%   (equalize_dome: False in every params.txt), which is what makes the
+%   reference division a clean in-situ calibration. Not stated; probably does
+%   not need to be, but it is the answer if asked why no dome EQ is mentioned.

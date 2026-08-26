@@ -594,17 +594,23 @@ def play_session():
                     break
 
             # end
-            ui_state.value = 3
             pulse_state.value = 1  # idle
 
-            # update high score live; persist to Subject
-            if session_total.value > highscore.value:
-                play_sound(osc_client, soundfile='hi_score.wav', duration=None, sleep=True)
+            # Update the high score and persist it BEFORE flipping the UI to
+            # the game-over state (ui_state 3). The UI's scoreboard is built
+            # from the per-subject JSON backups Subject.write() maintains, so
+            # with the write happening after the state flip the board could
+            # still be showing the standings from before this game -- the run
+            # the participant had just played was missing from it.
+            new_high = session_total.value > highscore.value
+            if new_high:
                 highscore.value = int(session_total.value)
                 setattr(subject, "highscore", int(highscore.value))
-                subject.write()  # your Subject.write() persists object
-            else:
-                play_sound(osc_client, soundfile='buzzer.wav', duration=None, sleep=True)
+            subject.write()  # your Subject.write() persists object
+            ui_state.value = 3
+            play_sound(osc_client,
+                       soundfile='hi_score.wav' if new_high else 'buzzer.wav',
+                       duration=None, sleep=True)
             logging.info(f"Game {games_played} Over! Total Score: {int(session_total.value)}")
 
             # Show play-again prompt (same big overlay, different text).

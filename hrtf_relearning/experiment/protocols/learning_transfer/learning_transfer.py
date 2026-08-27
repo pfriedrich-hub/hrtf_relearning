@@ -74,7 +74,7 @@ EDIT THE CONFIG BLOCK BELOW PER PARTICIPANT.
 ------------------------------------------------------------------------------
 """
 
-SUBJECT_ID = ("LS")
+SUBJECT_ID = ("PF")
 
 # %% imports and config #------------------------------------------------------
 import csv  # only for the block-order table below; the modification

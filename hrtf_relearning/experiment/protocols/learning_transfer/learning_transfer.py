@@ -131,6 +131,13 @@ MODIFIED_SOFA = None               # <SUBJECT_ID>_donor_<DONOR_ID>, set below
 
 HP = "DT990"
 
+# --- training breaks ---------------------------------------------------------
+# Games per block within one training run. After every BREAK_EVERY-th game the
+# game UI shows the scoreboard as usual and then asks for a short break before
+# the next block, so a long sitting is not left to the participant to pace.
+# 0 disables it.
+BREAK_EVERY = 5
+
 # --- what the non-listening ear gets in monaural blocks ----------------------
 # 'flat' | 'envelope' | 'native' -- hrtf.processing.{flatten,envelope,native}
 OTHER_EAR = "envelope"
@@ -464,6 +471,8 @@ def run_training(hrir_name=None, ear=None, az_range=None):
     print(f"TRAINING   subject={SUBJECT_ID}   ear={ear}   az_range={az_range}")
     print(f"           HRIR={hrir_name}.sofa   HP={HP}")
     print(f"           other ear={OTHER_EAR} (n_keep={ENV_NKEEP})")
+    if BREAK_EVERY:
+        print(f"           break prompt after every {BREAK_EVERY} games")
     print("-" * 64)
     _fix_output_level()
 
@@ -475,7 +484,8 @@ def run_training(hrir_name=None, ear=None, az_range=None):
                TRAINING_ENV_NKEEP=str(ENV_NKEEP),
                TRAINING_NATIVE_SOFA=NATIVE_SOFA,
                TRAINING_AZ_RANGE=f"{az_range[0]},{az_range[1]}",
-               TRAINING_HP=HP)
+               TRAINING_HP=HP,
+               TRAINING_BREAK_EVERY=str(BREAK_EVERY))
     subprocess.run(
         [sys.executable, "-m", "hrtf_relearning.experiment.training.Training_AR"],
         env=env, cwd=str(hr.PATH.parent), check=False)

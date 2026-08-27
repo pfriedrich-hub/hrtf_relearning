@@ -40,6 +40,11 @@ ENV_NKEEP  = int(os.environ.get("TRAINING_ENV_NKEEP", "4"))
 NATIVE_SOFA = os.environ.get("TRAINING_NATIVE_SOFA", SUBJECT_ID)
 
 STIM       = os.environ.get("TRAINING_STIM", "noise")  # 'noise' or 'uso'
+# Games per block: after every BREAK_EVERY-th game the game-over screen asks
+# for a short break (scoreboard first, then the break banner + a "ready?"
+# prompt). 0 disables it, which is the default when the script is run
+# directly; the learning_transfer protocol sets it to 5.
+BREAK_EVERY = int(os.environ.get("TRAINING_BREAK_EVERY", "0"))
 AZ_RANGE   = tuple(int(x) for x in os.environ.get("TRAINING_AZ_RANGE", "-35,0").split(","))
 
 # Sound
@@ -491,6 +496,7 @@ def play_session():
     enter_pressed    = mp.Value("i", 0)  # UI sets to 1 when user presses Enter
     ui_state         = mp.Value("i", 0)  # 0 idle, 1 awaiting enter, 2 running, 3 over
     quit_pressed     = mp.Value("i", 0)  # UI sets to 1 on ESC at the game-over prompt
+    break_due        = mp.Value("i", 0)  # 1 -> game-over screen asks for a break
 
     # Highscore persistence via Subject
     prev_high = int(getattr(subject, "highscore", 0))
@@ -506,7 +512,8 @@ def play_session():
         enter_pressed=enter_pressed,
         ui_state=ui_state,
         highscore=highscore,
-        quit_pressed=quit_pressed)
+        quit_pressed=quit_pressed,
+        break_due=break_due)
     ui_proc = mp.Process(target=game_ui.run_ui, args=(shared, SUBJECT_ID))
     ui_proc.start()
 
@@ -538,6 +545,7 @@ def play_session():
             last_goal_points.value = 0
             game_time_left.value = float(settings["game_time"])
             enter_pressed.value = 0
+            break_due.value = 0
 
             # --- PRE-GAME PROMPT ---
             ui_state.value = 1  # waiting to start
@@ -607,6 +615,13 @@ def play_session():
                 highscore.value = int(session_total.value)
                 setattr(subject, "highscore", int(highscore.value))
             subject.write()  # your Subject.write() persists object
+            # Flag a block break BEFORE the state flip: the UI reads this once,
+            # when it reveals the scoreboard, so setting it afterwards could
+            # miss that read.
+            break_due.value = 1 if (BREAK_EVERY and games_played % BREAK_EVERY == 0) else 0
+            if break_due.value:
+                logging.info(f"Break due after game {games_played} "
+                             f"(every {BREAK_EVERY} games).")
             ui_state.value = 3
             play_sound(osc_client,
                        soundfile='hi_score.wav' if new_high else 'buzzer.wav',

@@ -38,6 +38,11 @@ class UIShared:
     ui_state: Any    # 0=idle, 1=waiting to start trial, 2=running, 3=session over/prompt
     highscore: Any
     quit_pressed: Any = None  # UI sets to 1 on ESC at the game-over prompt (optional)
+    # Parent sets to 1 BEFORE flipping ui_state to 3 when the game that just
+    # finished completes a block (Training_AR.BREAK_EVERY, set by the
+    # learning_transfer protocol). The game-over screen then asks for a short
+    # break alongside the scoreboard. Optional: None -> breaks never shown.
+    break_due: Any = None
 
 
 def fmt_time(seconds: float) -> str:
@@ -633,6 +638,7 @@ class GameWindow(QtWidgets.QMainWindow):
     ROOT_MARGIN_V = 32
     ROOT_SPACING = 24
     BUTTON_H = 140
+    BREAK_H = 150            # height of the break banner while it is shown
     # Base sizes of the "THIS GAME <score>" block above the scoreboard.
     REVEAL_CAP_PX = 32
     REVEAL_SCORE_PX = 110
@@ -647,6 +653,7 @@ class GameWindow(QtWidgets.QMainWindow):
         self._session_over_since: Optional[float] = None
         self._reveal_ready = False       # past the SCORE_REVEAL_DELAY_S gate (button becomes available)
         self._show_scoreboard = False    # reveal happened AND the player made the top N
+        self._break_due = False          # reveal happened AND the parent flagged a break
         self._scoreboard_cache: List[Tuple[str, int]] = []
         self.coin_asset = CoinGraphic(find_coin_path() or Path())
         self.coinpop: Optional[CoinPopGraphic] = None
@@ -757,6 +764,41 @@ class GameWindow(QtWidgets.QMainWindow):
         center_holder = QtWidgets.QWidget()
         center_holder.setLayout(self.center_stack)
         root.addWidget(center_holder, 1)
+
+        # Break banner. Sits between the scoreboard and the continue prompt and
+        # is revealed together with the scoreboard when the parent flags the
+        # finished game as the end of a block (shared.break_due). It gives up
+        # its slot entirely while hidden, so nothing shifts during play; when
+        # it is shown, _fit_scoreboard accounts for the room it takes.
+        # QFrame + WA_StyledBackground: a plain QWidget does not paint a
+        # stylesheet background at all, and the rule is scoped by object name
+        # so it cannot leak onto the labels inside.
+        self.break_banner = QtWidgets.QFrame()
+        self.break_banner.setObjectName("breakBanner")
+        self.break_banner.setAttribute(QtCore.Qt.WA_StyledBackground, True)
+        self.break_banner.setFixedHeight(self.BREAK_H)
+        self.break_banner.setStyleSheet("""
+            QFrame#breakBanner {
+                background: rgba(255,255,255,0.32);
+                border: 2px solid rgba(255,255,255,0.7);
+                border-radius: 24px;
+            }
+            QFrame#breakBanner QLabel { background: transparent; border: none; }
+        """)
+        bb = QtWidgets.QVBoxLayout(self.break_banner)
+        bb.setContentsMargins(48, 14, 48, 14)
+        bb.setSpacing(10)
+        self.lblBreakTitle = QtWidgets.QLabel("TIME FOR A SHORT BREAK")
+        self.lblBreakTitle.setAlignment(QtCore.Qt.AlignCenter)
+        self.lblBreakTitle.setStyleSheet(
+            f"font: 52px {pf}; color: #003e9f; letter-spacing: 3px;")
+        self.lblBreakSub = QtWidgets.QLabel("REST FOR A FEW MINUTES BEFORE THE NEXT BLOCK")
+        self.lblBreakSub.setAlignment(QtCore.Qt.AlignCenter)
+        self.lblBreakSub.setStyleSheet(f"font: 28px {pf}; color: #083c74;")
+        bb.addWidget(self.lblBreakTitle)
+        bb.addWidget(self.lblBreakSub)
+        self.break_banner.setVisible(False)
+        root.addWidget(self.break_banner, 0, QtCore.Qt.AlignHCenter)
 
         # Overlay (used for both start AND play-again)
         self.start_stack = QtWidgets.QStackedLayout()
@@ -896,6 +938,10 @@ class GameWindow(QtWidgets.QMainWindow):
                  - self.top_widget.sizeHint().height()
                  - 2 * self.ROOT_SPACING
                  - self.BUTTON_H)
+        if self.break_banner.isVisible():
+            # The banner only claims a slot while it is shown, so it is only
+            # then that the game-over block has less room to fit into.
+            avail -= self.BREAK_H + self.ROOT_SPACING
         if avail <= 0:
             return
         self._apply_reveal_scale(1.0)
@@ -1041,6 +1087,13 @@ class GameWindow(QtWidgets.QMainWindow):
             elapsed = time.monotonic() - self._session_over_since
             if not self._reveal_ready and elapsed >= self.SCORE_REVEAL_DELAY_S:
                 self._reveal_ready = True
+                # Read the break flag at reveal time, like the board below:
+                # the parent sets it as the game ends, together with the
+                # state flip that got us here.
+                brk = getattr(self.shared, "break_due", None)
+                self._break_due = brk is not None and int(brk.value) == 1
+                # Shown before _fit_scoreboard so the fit sees the room it takes.
+                self.break_banner.setVisible(self._break_due)
                 # Read the board HERE, at reveal time, rather than the
                 # moment the game ended: the parent persists this game's
                 # high score as it ends, and read_scoreboard() sources those
@@ -1060,12 +1113,17 @@ class GameWindow(QtWidgets.QMainWindow):
             self._session_over_since = None
             self._reveal_ready = False
             self._show_scoreboard = False
+            if self._break_due:
+                self._break_due = False
+                self.break_banner.setVisible(False)
 
         show_prompt = (state == 1) or (state == 3 and self._reveal_ready)
         if show_prompt:
             self.start_stack.setCurrentIndex(0)
             if state == 1:
                 self.overlay_btn.setText("PRESS ENTER TO START")
+            elif self._break_due:
+                self.overlay_btn.setText("ENTER WHEN YOU'RE READY  ·  ESC: QUIT")
             else:
                 self.overlay_btn.setText("GAME OVER — ENTER: PLAY AGAIN  ·  ESC: QUIT")
         else:

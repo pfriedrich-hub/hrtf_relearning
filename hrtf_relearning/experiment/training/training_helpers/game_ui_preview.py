@@ -60,6 +60,7 @@ from hrtf_relearning.utils.paths import RESULTS_DIR as SUBJECT_RESULTS_DIR
 
 FAKE_GAME_TIME = 12.0    # seconds per fake "game" (real sessions use settings['game_time'], usually 90s)
 FAKE_TRIAL_TIME = 1.6    # seconds between fake scoring events
+FAKE_BREAK_EVERY = 2     # games per block in the preview (protocol uses 5)
 
 
 def _make_fake_backup_dir(subject_id: str, include_current_player: bool = True,
@@ -135,6 +136,7 @@ class FakeSessionDriver(QtCore.QObject):
         self._next_phase = None
 
         self._game_elapsed = 0.0
+        self._games_played = 0
         self._start_prompt()
 
     def _wait_for_enter(self, next_phase):
@@ -156,6 +158,8 @@ class FakeSessionDriver(QtCore.QObject):
         self.shared.game_time_left.value = FAKE_GAME_TIME
         self.shared.ui_state.value = 1  # waiting to start
         self.shared.enter_pressed.value = 0
+        if self.shared.break_due is not None:
+            self.shared.break_due.value = 0
         self._game_elapsed = 0.0
         self._wait_for_enter(self._run_game)
 
@@ -178,6 +182,12 @@ class FakeSessionDriver(QtCore.QObject):
         total = int(self.shared.session_total.value)
         if total > int(self.shared.highscore.value):
             self.shared.highscore.value = total
+        # Same rule as Training_AR.play_session, on a shorter cycle so the
+        # break screen actually turns up in a preview run.
+        self._games_played += 1
+        if self.shared.break_due is not None:
+            self.shared.break_due.value = int(
+                FAKE_BREAK_EVERY and self._games_played % FAKE_BREAK_EVERY == 0)
         self.shared.ui_state.value = 3  # session over -> GameWindow handles the reveal delay
         self._wait_for_enter(self._start_prompt)
 
@@ -206,6 +216,7 @@ def main():
         enter_pressed=mp.Value("i", 0),
         ui_state=mp.Value("i", 0),
         highscore=mp.Value("i", 0),
+        break_due=mp.Value("i", 0),
     )
 
     placement = "top" if args.top else "bottom" if args.bottom else "middle"

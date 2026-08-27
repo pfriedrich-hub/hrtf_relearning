@@ -241,26 +241,61 @@ def binsim_stream():
     binsim = pybinsim.BinSim(HRIR_DIR / f"{hrir.name}_training_settings.txt")
     binsim.stream_start()
 
+def _sleep_while(pulse_state, want, seconds):
+    """Sleep `seconds`, but in short slices, aborting as soon as pulse_state
+    leaves `want`. Returns False if it aborted early.
+
+    The worker used to block for up to 2x the pulse interval (~0.7 s) inside a
+    single pulse. During that block it could neither see a state change nor
+    keep its hands off /pyBinSimFile, so a game-over or goal sound set by the
+    main process was liable to be overwritten by the next pulse.
+    """
+    end = time.time() + seconds
+    while time.time() < end:
+        if pulse_state.value != want:
+            return False
+        time.sleep(0.005)
+    return True
+
 def pulse_maker(pulse_interval, pulse_state):
-    """state: 0 mute, 1 idle, 2 play pulses; interval in seconds (0 => continuous target sound)"""
+    """state: 0 mute, 1 idle (audible, no pulses -- the main process owns the
+    sound file and plays SFX), 2 play pulses; interval in seconds
+    (0 => continuous target sound)"""
     osc = make_osc_client(port=10003)
     target_sound = False
+    last_state = None
     while True:
-        if pulse_state.value == 0:
+        state = pulse_state.value
+        if state == 0:
             osc.send_message("/pyBinSimLoudness", 0)
             target_sound = False
-        elif pulse_state.value == 1:
+        elif state == 1:
+            # "idle but don't mute": the goal SFX and the game-over buzzer are
+            # played by the main process in this state, and the last loudness
+            # this worker sent (while muting at the end of a trial) was a 0.
+            # Bring the gain back on entering the state -- without this the
+            # buzzer was played into a muted stream whenever the worker had
+            # caught the transient state 0, which is why it was only audible in
+            # some sessions. Edge-triggered so we do not fight the main
+            # process, which may set its own level for an SFX.
+            if last_state != 1:
+                osc.send_message("/pyBinSimLoudness", settings["gain"])
             target_sound = False
-        elif pulse_state.value == 2:
+        elif state == 2:
             osc.send_message("/pyBinSimLoudness", settings["gain"])
             interval = pulse_interval.value
             if interval == 0 and not target_sound:
                 play_sound(osc, soundfile=SOUND_FILE, duration=float(settings["target_time"]), sleep=False)
                 target_sound = True
             elif interval != 0:
-                play_sound(osc, soundfile=SOUND_FILE, duration=float(interval), sleep=True)
-                time.sleep(interval)
+                # pulse on for `interval`, silent for `interval` -- same cadence
+                # as before, but interruptible (see _sleep_while).
+                play_sound(osc, soundfile=SOUND_FILE, duration=float(interval), sleep=False)
+                if not (_sleep_while(pulse_state, 2, interval)
+                        and _sleep_while(pulse_state, 2, interval)):
+                    continue  # state changed -- re-dispatch, keep last_state
                 target_sound = False
+        last_state = state
         time.sleep(0.02)
 
 def head_tracker(distance, target, sensor_state, pose_queue, current_trial, plot_filter_idx):
@@ -623,6 +658,13 @@ def play_session():
                 logging.info(f"Break due after game {games_played} "
                              f"(every {BREAK_EVERY} games).")
             ui_state.value = 3
+            # Assert the playback level here as well as in the pulse worker:
+            # the worker mutes pyBinSim at the end of every trial (state 0) and
+            # its state-1 unmute can lag by an iteration, so relying on it alone
+            # would still leave the odd game-over sound inaudible. The short
+            # sleep lets any in-flight pulse finish before we take over the file.
+            time.sleep(0.05)
+            osc_client.send_message('/pyBinSimLoudness', settings['gain'])
             play_sound(osc_client,
                        soundfile='hi_score.wav' if new_high else 'buzzer.wav',
                        duration=None, sleep=True)

@@ -638,7 +638,12 @@ class GameWindow(QtWidgets.QMainWindow):
     ROOT_MARGIN_V = 32
     ROOT_SPACING = 24
     BUTTON_H = 140
-    BREAK_H = 150            # height of the break banner while it is shown
+    MIN_BUTTON_H = 84        # floor for the prompt on a short screen
+    # Base sizes of the break banner. Like the block above it, these are
+    # multiplied by the scale _fit_scoreboard works out, so the banner costs
+    # the layout no fixed height of its own.
+    BREAK_TITLE_PX = 52
+    BREAK_SUB_PX = 28
     # Base sizes of the "THIS GAME <score>" block above the scoreboard.
     REVEAL_CAP_PX = 32
     REVEAL_SCORE_PX = 110
@@ -653,7 +658,18 @@ class GameWindow(QtWidgets.QMainWindow):
         self._session_over_since: Optional[float] = None
         self._reveal_ready = False       # past the SCORE_REVEAL_DELAY_S gate (button becomes available)
         self._show_scoreboard = False    # reveal happened AND the player made the top N
-        self._break_due = False          # reveal happened AND the parent flagged a break
+        self._break_due = False          # parent flagged this game as ending a block
+        self._button_h = self.BUTTON_H   # shrunk on short screens (_fit_prompt_height)
+        # Chrome scale: 1.0 on a 1080-tall screen, less on a shorter one. The
+        # whole layout was drawn at fixed pixel sizes that assumed ~1080, so on
+        # the 1024x768 second display the window's MINIMUM height (947 px at
+        # game over, more with the break banner) exceeded the panel and
+        # showFullScreen() produced a window taller than the screen -- the
+        # prompt, and anything below it, sat off the bottom edge.
+        self._cs = 1.0
+        self._root_margin_v = self.ROOT_MARGIN_V
+        self._root_spacing = self.ROOT_SPACING
+        self._warned_no_break_channel = False
         self._scoreboard_cache: List[Tuple[str, int]] = []
         self.coin_asset = CoinGraphic(find_coin_path() or Path())
         self.coinpop: Optional[CoinPopGraphic] = None
@@ -667,7 +683,20 @@ class GameWindow(QtWidgets.QMainWindow):
         self.showFullScreen()
 
         cw = QtWidgets.QWidget(self); self.setCentralWidget(cw)
-        root = QtWidgets.QVBoxLayout(cw)
+        root = self.root = QtWidgets.QVBoxLayout(cw)
+        # Without this, Qt hands the layout's minimum size to the window as a
+        # hard floor, and a full-screen window grows past the screen rather
+        # than clipping -- see minimumSizeHint below. With SetNoConstraint the
+        # window stays screen-sized and _apply_chrome_scale / _fit_scoreboard
+        # size the contents to it.
+        root.setSizeConstraint(QtWidgets.QLayout.SetNoConstraint)
+        # SetNoConstraint alone is not enough: QMainWindow's layout falls back
+        # to the central widget's minimumSizeHint (the layout's minimum) when
+        # no minimum is set explicitly. A 1x1 explicit minimum is what makes
+        # that fallback stop applying -- 0x0 does not, Qt treats a zero as
+        # "not set".
+        cw.setMinimumSize(1, 1)
+        self.setMinimumSize(1, 1)
         root.setContentsMargins(40, self.ROOT_MARGIN_V, 40, self.ROOT_MARGIN_V)
         root.setSpacing(self.ROOT_SPACING)
 
@@ -752,6 +781,33 @@ class GameWindow(QtWidgets.QMainWindow):
 
         self.scoreboard = ScoreboardPanel()
         self.scl.addWidget(self.scoreboard, 0, QtCore.Qt.AlignHCenter)
+
+        # Break banner. It lives INSIDE the game-over block rather than in a
+        # slot of its own, so _fit_scoreboard scales it along with the score
+        # and the table and it can never push the prompt off the bottom of a
+        # short screen (which is exactly what a fixed-height banner in the
+        # root layout did: it took the block's minimum height from 774 to 912
+        # px, more than a 1366x768 display has).
+        self.break_gap = QtWidgets.QSpacerItem(
+            0, 18, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Fixed)
+        self.scl.addSpacerItem(self.break_gap)
+
+        # QFrame + WA_StyledBackground: a plain QWidget does not paint a
+        # stylesheet background at all, and the rule is scoped by object name
+        # so it cannot leak onto the labels inside.
+        self.break_banner = QtWidgets.QFrame()
+        self.break_banner.setObjectName("breakBanner")
+        self.break_banner.setAttribute(QtCore.Qt.WA_StyledBackground, True)
+        self.break_bb = QtWidgets.QVBoxLayout(self.break_banner)
+        self.lblBreakTitle = QtWidgets.QLabel("TIME FOR A SHORT BREAK")
+        self.lblBreakTitle.setAlignment(QtCore.Qt.AlignCenter)
+        self.lblBreakSub = QtWidgets.QLabel("REST FOR A FEW MINUTES BEFORE THE NEXT BLOCK")
+        self.lblBreakSub.setAlignment(QtCore.Qt.AlignCenter)
+        self.break_bb.addWidget(self.lblBreakTitle)
+        self.break_bb.addWidget(self.lblBreakSub)
+        self.break_banner.setVisible(False)
+        self.scl.addWidget(self.break_banner, 0, QtCore.Qt.AlignHCenter)
+
         self.scl.addStretch(1)
 
         # Sizes/fonts of the block above come from _apply_reveal_scale so
@@ -765,40 +821,6 @@ class GameWindow(QtWidgets.QMainWindow):
         center_holder.setLayout(self.center_stack)
         root.addWidget(center_holder, 1)
 
-        # Break banner. Sits between the scoreboard and the continue prompt and
-        # is revealed together with the scoreboard when the parent flags the
-        # finished game as the end of a block (shared.break_due). It gives up
-        # its slot entirely while hidden, so nothing shifts during play; when
-        # it is shown, _fit_scoreboard accounts for the room it takes.
-        # QFrame + WA_StyledBackground: a plain QWidget does not paint a
-        # stylesheet background at all, and the rule is scoped by object name
-        # so it cannot leak onto the labels inside.
-        self.break_banner = QtWidgets.QFrame()
-        self.break_banner.setObjectName("breakBanner")
-        self.break_banner.setAttribute(QtCore.Qt.WA_StyledBackground, True)
-        self.break_banner.setFixedHeight(self.BREAK_H)
-        self.break_banner.setStyleSheet("""
-            QFrame#breakBanner {
-                background: rgba(255,255,255,0.32);
-                border: 2px solid rgba(255,255,255,0.7);
-                border-radius: 24px;
-            }
-            QFrame#breakBanner QLabel { background: transparent; border: none; }
-        """)
-        bb = QtWidgets.QVBoxLayout(self.break_banner)
-        bb.setContentsMargins(48, 14, 48, 14)
-        bb.setSpacing(10)
-        self.lblBreakTitle = QtWidgets.QLabel("TIME FOR A SHORT BREAK")
-        self.lblBreakTitle.setAlignment(QtCore.Qt.AlignCenter)
-        self.lblBreakTitle.setStyleSheet(
-            f"font: 52px {pf}; color: #003e9f; letter-spacing: 3px;")
-        self.lblBreakSub = QtWidgets.QLabel("REST FOR A FEW MINUTES BEFORE THE NEXT BLOCK")
-        self.lblBreakSub.setAlignment(QtCore.Qt.AlignCenter)
-        self.lblBreakSub.setStyleSheet(f"font: 28px {pf}; color: #083c74;")
-        bb.addWidget(self.lblBreakTitle)
-        bb.addWidget(self.lblBreakSub)
-        self.break_banner.setVisible(False)
-        root.addWidget(self.break_banner, 0, QtCore.Qt.AlignHCenter)
 
         # Overlay (used for both start AND play-again)
         self.start_stack = QtWidgets.QStackedLayout()
@@ -825,11 +847,13 @@ class GameWindow(QtWidgets.QMainWindow):
         self.overlay_btn.clicked.connect(self._on_enter_pressed)
         sp.addWidget(self.overlay_btn, 0, QtCore.Qt.AlignHCenter)
         self.start_stack.addWidget(start_page)
-        spacer = QtWidgets.QWidget(); spacer.setFixedHeight(self.BUTTON_H)
-        self.start_stack.addWidget(spacer)
-        holder = QtWidgets.QWidget(); holder.setLayout(self.start_stack)
-        holder.setFixedHeight(self.BUTTON_H)
-        root.addWidget(holder, 0, QtCore.Qt.AlignHCenter)
+        self.start_spacer = QtWidgets.QWidget()
+        self.start_spacer.setFixedHeight(self.BUTTON_H)
+        self.start_stack.addWidget(self.start_spacer)
+        self.start_holder = QtWidgets.QWidget()
+        self.start_holder.setLayout(self.start_stack)
+        self.start_holder.setFixedHeight(self.BUTTON_H)
+        root.addWidget(self.start_holder, 0, QtCore.Qt.AlignHCenter)
 
         # In-app shortcuts: only fire when the game window is the focused
         # application. Kept as a fallback for when the global listener below
@@ -857,6 +881,43 @@ class GameWindow(QtWidgets.QMainWindow):
         self._timer.timeout.connect(self._tick)
         self._timer.start()
 
+    def minimumSizeHint(self) -> QtCore.QSize:
+        """Never let the layout dictate a window bigger than the screen.
+
+        Qt sizes a full-screen window to max(screen, layout minimum). The
+        game-over block is built from big fixed-size labels, so its minimum
+        beat a 768-tall panel and the window grew past it -- silently pushing
+        the prompt (and the break banner) off the bottom. Returning zero here
+        keeps the window at screen size; the block is then scaled to fit by
+        _apply_chrome_scale + _fit_scoreboard, which is what should decide
+        how big it is.
+        """
+        return QtCore.QSize(0, 0)
+
+    def _apply_chrome_scale(self, cs: float) -> None:
+        """Size the fixed chrome (header row, big score, margins) for a
+        screen of this height. 1.0 is the original 1080-tall design."""
+        if abs(cs - self._cs) < 0.01 or not hasattr(self, "lblScore"):
+            return
+        self._cs = cs
+        pf = pixel_font_family()
+
+        def px(v: float) -> int:
+            return max(1, int(round(v * cs)))
+
+        self.lblHighCap.setStyleSheet(
+            f"font: {px(32)}px {pf}; color: #083c74; letter-spacing: {px(2)}px;")
+        self.lblHigh.setStyleSheet(f"font: {px(108)}px {pf}; color: #003e9f;")
+        self.lblTimeCap.setStyleSheet(
+            f"font: {px(32)}px {pf}; color: #083c74; letter-spacing: {px(2)}px;")
+        self.lblTime.setStyleSheet(f"font: {px(108)}px {pf}; color: #003e9f;")
+        self.lblScore.setStyleSheet(f"font: {px(260)}px {pf}; color: #ffffff;")
+        self._root_margin_v = px(self.ROOT_MARGIN_V)
+        self._root_spacing = px(self.ROOT_SPACING)
+        self.root.setContentsMargins(px(40), self._root_margin_v,
+                                     px(40), self._root_margin_v)
+        self.root.setSpacing(self._root_spacing)
+
     def _init_overlays(self):
         cw = self.centralWidget()
         if self.coin_asset.valid():
@@ -877,9 +938,41 @@ class GameWindow(QtWidgets.QMainWindow):
         self.sparkle.lower()
         self.sparkle.stackUnder(self.lblScore)
 
+    def _fit_prompt_height(self) -> None:
+        """Scale the ENTER prompt to the screen.
+
+        At its full 140 px the prompt alone put the window's minimum height
+        at 774 px — more than a 1366x768 panel has, so its bottom edge was
+        already being cut off before any of this. Tie it to the screen
+        instead, with a floor that keeps it comfortably clickable.
+        """
+        cw = self.centralWidget()
+        # showFullScreen() in __init__ fires a resize before the prompt
+        # widgets exist, and an exception raised in a Qt slot takes the whole
+        # UI process down with it.
+        if cw is None or not hasattr(self, "start_holder"):
+            return
+        h = max(self.MIN_BUTTON_H, min(self.BUTTON_H, int(cw.height() * 0.14)))
+        if h == self._button_h:
+            return
+        self._button_h = h
+        self.overlay_btn.setFixedHeight(h)
+        self.start_spacer.setFixedHeight(h)
+        self.start_holder.setFixedHeight(h)
+        font_px = max(20, int(round(34 * h / float(self.BUTTON_H))))
+        self.overlay_btn.setStyleSheet(
+            self.overlay_btn.styleSheet().replace(f"font: 34px", f"font: {font_px}px"))
+
     def resizeEvent(self, ev):
         super().resizeEvent(ev)
         cw = self.centralWidget()
+        if cw is not None:
+            self._apply_chrome_scale(
+                max(0.5, min(1.0, cw.height() / 1080.0)))
+        self._fit_prompt_height()
+        if (getattr(self, "_reveal_ready", False)
+                and (self._show_scoreboard or self._break_due)):
+            self._fit_scoreboard()
         if cw and self.coinpop:
             self.coinpop.setGeometry(cw.rect())
         if cw and self.sparkle:
@@ -907,6 +1000,23 @@ class GameWindow(QtWidgets.QMainWindow):
         )
         self.reveal_gap.changeSize(
             0, px(8), QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Fixed)
+        self.break_gap.changeSize(
+            0, px(18), QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Fixed)
+        self.break_bb.setContentsMargins(px(48), px(14), px(48), px(14))
+        self.break_bb.setSpacing(px(10))
+        self.break_banner.setStyleSheet(f"""
+            QFrame#breakBanner {{
+                background: rgba(255,255,255,0.32);
+                border: {max(1, px(2))}px solid rgba(255,255,255,0.7);
+                border-radius: {px(24)}px;
+            }}
+            QFrame#breakBanner QLabel {{ background: transparent; border: none; }}
+        """)
+        self.lblBreakTitle.setStyleSheet(
+            f"font: {px(self.BREAK_TITLE_PX)}px {pf}; color: #003e9f; "
+            f"letter-spacing: {px(3)}px;")
+        self.lblBreakSub.setStyleSheet(
+            f"font: {px(self.BREAK_SUB_PX)}px {pf}; color: #083c74;")
         self.scoreboard.set_scale(scale)
         self.scoreboard.layout().activate()
         self.scl.invalidate()
@@ -934,14 +1044,10 @@ class GameWindow(QtWidgets.QMainWindow):
         # the block measured as if the table weren't there at all.
         self.center_stack.setCurrentIndex(1)
         avail = (cw.height()
-                 - 2 * self.ROOT_MARGIN_V
+                 - 2 * self._root_margin_v
                  - self.top_widget.sizeHint().height()
-                 - 2 * self.ROOT_SPACING
-                 - self.BUTTON_H)
-        if self.break_banner.isVisible():
-            # The banner only claims a slot while it is shown, so it is only
-            # then that the game-over block has less room to fit into.
-            avail -= self.BREAK_H + self.ROOT_SPACING
+                 - 2 * self._root_spacing
+                 - self._button_h)
         if avail <= 0:
             return
         self._apply_reveal_scale(1.0)
@@ -1085,14 +1191,29 @@ class GameWindow(QtWidgets.QMainWindow):
                 self._show_scoreboard = False
                 self._scoreboard_cache = []
             elapsed = time.monotonic() - self._session_over_since
+            # Break flag: re-read every tick rather than once at the reveal,
+            # so the banner still appears if the parent sets it late (or the
+            # write lands after this process has already seen ui_state == 3).
+            brk = getattr(self.shared, "break_due", None)
+            if brk is None:
+                if not self._warned_no_break_channel:
+                    self._warned_no_break_channel = True
+                    logging.warning("game_ui: no break_due channel in UIShared "
+                                    "-- the parent training script is older than "
+                                    "this UI, so break prompts can never show.")
+                break_due = False
+            else:
+                break_due = int(brk.value) == 1
+            if break_due != self._break_due:
+                self._break_due = break_due
+                if self._reveal_ready:
+                    self.break_banner.setVisible(break_due)
+                    self._fit_scoreboard()
             if not self._reveal_ready and elapsed >= self.SCORE_REVEAL_DELAY_S:
                 self._reveal_ready = True
-                # Read the break flag at reveal time, like the board below:
-                # the parent sets it as the game ends, together with the
-                # state flip that got us here.
-                brk = getattr(self.shared, "break_due", None)
-                self._break_due = brk is not None and int(brk.value) == 1
-                # Shown before _fit_scoreboard so the fit sees the room it takes.
+                logging.info("game_ui: game over -- break_due=%s",
+                             "1" if self._break_due else
+                             ("0" if brk is not None else "absent"))
                 self.break_banner.setVisible(self._break_due)
                 # Read the board HERE, at reveal time, rather than the
                 # moment the game ended: the parent persists this game's
@@ -1103,11 +1224,14 @@ class GameWindow(QtWidgets.QMainWindow):
                 self._scoreboard_cache = self._board_for_player(
                     self._current_scoreboard(highscore))
                 # A one-row board (nobody else recorded yet) says nothing;
-                # show the plain score instead.
+                # the table is then left out. The page is still used when a
+                # break is due -- it carries the banner.
                 self._show_scoreboard = len(self._scoreboard_cache) >= 2
+                self.scoreboard.setVisible(self._show_scoreboard)
                 if self._show_scoreboard:
-                    self.lblRevealScore.setText(str(session_total))
                     self.scoreboard.set_scores(self._scoreboard_cache, self.subject_id)
+                if self._show_scoreboard or self._break_due:
+                    self.lblRevealScore.setText(str(session_total))
                     self._fit_scoreboard()
         else:
             self._session_over_since = None
@@ -1128,7 +1252,11 @@ class GameWindow(QtWidgets.QMainWindow):
                 self.overlay_btn.setText("GAME OVER — ENTER: PLAY AGAIN  ·  ESC: QUIT")
         else:
             self.start_stack.setCurrentIndex(1)
-        self.center_stack.setCurrentIndex(1 if (state == 3 and self._show_scoreboard) else 0)
+        # The game-over page is shown for the scoreboard, for the break
+        # banner, or for both.
+        self.center_stack.setCurrentIndex(
+            1 if (state == 3 and self._reveal_ready
+                  and (self._show_scoreboard or self._break_due)) else 0)
 
         # goal effects
         if last_goal in (1, 2):

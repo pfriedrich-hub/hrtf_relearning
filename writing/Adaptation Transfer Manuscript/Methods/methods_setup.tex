@@ -29,9 +29,9 @@ beyerdynamic, Heilbronn, Germany) by real-time convolution in pyBinSim
 orientation and crossfaded between successive filters. Convolution ran in
 blocks of 256 samples on a 512-tap direct-sound filter, followed in series by a
 late reverberation tail at a direct-to-reverberant ratio of 20\,dB and the
-participant's own headphone equalization filter. Impulse responses derived
-from directional transfer functions carry no absolute scale, so each database
-was scaled by a single broadband factor to a common chain gain; presentation
+participant's own headphone equalization filter. The gain of the rendered chain is
+not fixed by the measurement, so each database was scaled by a single
+broadband factor to a common value; presentation
 level was thereby made identical across participants, conditions and days,
 while interaural and between-direction level differences, being ratios within
 a database, were unaffected. Overall level was matched by ear to the
@@ -54,5 +54,16 @@ free-field array and the system volume held fixed thereafter.
 %   number, or say nothing -- do not quote the block period as the latency.
 % - Headphone model: DT 990 Pro confirmed for all reported participants
 %   (MYSPHERE appears in the code as an alternative, unused here).
+% - LEVEL JUSTIFICATION REWORDED 2026-08-26. It used to read "impulse responses
+%   derived from directional transfer functions carry no absolute scale", which
+%   rested on the DTF framing. A properly referenced HRTF DOES have a defined
+%   magnitude (relative to free field), so that justification no longer holds.
+%   The 6.5-15.2 dB chain-gain spread across databases is therefore NOT
+%   explained by "no absolute scale" -- it must come from the processing
+%   (windowing, onset alignment, low-frequency extrapolation) or from a real
+%   between-subject difference, and 8.7 dB is too large to be the latter.
+%   WORTH CHECKING: if the HRTFs are properly referenced, where does the spread
+%   come from? The current wording is deliberately neutral and does not claim a
+%   cause. Related: project_binsim_level_normalization.
 % - Room dimensions deliberately not repeated; if a reviewer wants the paper
 %   standalone, restore "6.4 x 4.4 x 2.3 m" to the first sentence.

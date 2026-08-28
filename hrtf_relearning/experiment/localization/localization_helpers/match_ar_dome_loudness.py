@@ -84,9 +84,12 @@ loc = Localization(subject, _hrir_settings, _loc_settings)
 # start the pybinsim worker + OSC clients (mirrors Localization.run)
 osc_filter = loc._make_osc_client(port=10000)   # /pyBinSim_ds_Filter
 osc_play   = loc._make_osc_client(port=10003)   # /pyBinSimLoudness, /pyBinSimFile
-binsim_worker = mp.Process(target=loc._binsim_stream, args=(loc.hrir_name,))
+loc.binsim_ready = mp.Event()
+binsim_worker = mp.Process(target=loc._binsim_stream, args=(loc.hrir_name, loc.binsim_ready))
 binsim_worker.start()
-time.sleep(1.5)   # let the stream come up
+# Handshake instead of a fixed sleep: OSC sent before pybinsim's UDP receiver
+# is bound is dropped silently (see Localization._wait_for_binsim).
+loc._wait_for_binsim()
 
 # frontal filter index for the pybinsim path (mirror az like play_stimulus does)
 _rel_az = (-REF_SOURCE[0] + 360) % 360

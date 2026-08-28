@@ -103,7 +103,9 @@ class Localization:
         # init pybinsim
         self.osc_client_1 = self._make_osc_client(port=10000)
         self.osc_client_2 = self._make_osc_client(port=10003)
-        self.binsim_worker = mp.Process(target=self._binsim_stream, args=(self.hrir_name,))
+        self.binsim_ready = mp.Event()
+        self.binsim_worker = mp.Process(target=self._binsim_stream,
+                                        args=(self.hrir_name, self.binsim_ready))
         self.binsim_worker.start()
 
         # init motion sensor
@@ -111,6 +113,9 @@ class Localization:
         time.sleep(.2)
 
         try:
+            # Sensor init above runs while pybinsim loads; only now, before the
+            # first OSC sound, do we have to know the receiver is up.
+            self._wait_for_binsim()
             self.play_sound('beep')
             for self.target in self.sequence:
                 self.wait_for_button('Look at the Center and press Enter')
@@ -135,6 +140,38 @@ class Localization:
             if self.binsim_worker.is_alive():  # SIGTERM wasn't enough — force-kill
                 self.binsim_worker.kill()
                 self.binsim_worker.join()
+
+    # Seconds to wait after pyBinSim reports its OSC receiver is up, to let the
+    # audio stream open before the first sound is sent.
+    BINSIM_STARTUP_GRACE = 0.5
+
+    def _wait_for_binsim(self, timeout=30):
+        """Block until the pyBinSim worker is listening for OSC messages.
+
+        pyBinSim's OSC server is a plain UDP socket: anything sent before it is
+        bound is dropped silently -- no error, no retry, nothing to notice. The
+        ready beep is the first message of the whole test and used to be sent
+        only ~0.2 s after the worker was spawned, i.e. in a race against the
+        worker importing pybinsim and loading the filter database. The beep was
+        heard only when something else (the BLE sensor connecting) happened to
+        stall long enough for the worker to win that race -- which is why it
+        played "every now and then". The trials themselves were never affected:
+        by then the worker has long been up.
+
+        The worker sets `binsim_ready` once BinSim() has returned, i.e. its OSC
+        receiver is bound; the grace covers the audio stream opening right
+        after. Never raises: a timeout logs and continues, so a startup hiccup
+        costs a beep, not the test.
+        """
+        ready = getattr(self, 'binsim_ready', None)
+        if ready is None:  # worker started without a handshake
+            time.sleep(2.0)
+            return
+        if not ready.wait(timeout):
+            logging.warning(f'pybinsim did not report ready within {timeout} s '
+                            '-- continuing, early sounds may be lost.')
+            return
+        time.sleep(self.BINSIM_STARTUP_GRACE)
 
     def play_trial(self):
         # generate stimulus
@@ -184,10 +221,15 @@ class Localization:
         return udp_client.SimpleUDPClient(ip, port)
 
     @staticmethod
-    def _binsim_stream(hrir_name):
+    def _binsim_stream(hrir_name, ready=None):
         import pybinsim
         pybinsim.logger.setLevel(logging.ERROR)
         binsim = pybinsim.BinSim(paths.BINSIM_DIR / hrir_name / f'{hrir_name}_test_settings.txt')
+        if ready is not None:
+            # BinSim() has bound the OSC receiver and loaded the filters:
+            # messages sent from now on will actually arrive (see
+            # _wait_for_binsim).
+            ready.set()
         binsim.stream_start()  # run binsim loop
 
     @staticmethod

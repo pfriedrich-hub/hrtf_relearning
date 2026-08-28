@@ -471,8 +471,6 @@ def run_training(hrir_name=None, ear=None, az_range=None):
     print(f"TRAINING   subject={SUBJECT_ID}   ear={ear}   az_range={az_range}")
     print(f"           HRIR={hrir_name}.sofa   HP={HP}")
     print(f"           other ear={OTHER_EAR} (n_keep={ENV_NKEEP})")
-    if BREAK_EVERY:
-        print(f"           break prompt after every {BREAK_EVERY} games")
     print("-" * 64)
     _fix_output_level()
 

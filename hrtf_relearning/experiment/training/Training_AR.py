@@ -654,9 +654,6 @@ def play_session():
             # when it reveals the scoreboard, so setting it afterwards could
             # miss that read.
             break_due.value = 1 if (BREAK_EVERY and games_played % BREAK_EVERY == 0) else 0
-            if break_due.value:
-                logging.info(f"Break due after game {games_played} "
-                             f"(every {BREAK_EVERY} games).")
             ui_state.value = 3
             # Assert the playback level here as well as in the pulse worker:
             # the worker mutes pyBinSim at the end of every trial (state 0) and

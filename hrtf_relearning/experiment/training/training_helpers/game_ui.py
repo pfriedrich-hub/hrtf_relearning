@@ -669,7 +669,6 @@ class GameWindow(QtWidgets.QMainWindow):
         self._cs = 1.0
         self._root_margin_v = self.ROOT_MARGIN_V
         self._root_spacing = self.ROOT_SPACING
-        self._warned_no_break_channel = False
         self._scoreboard_cache: List[Tuple[str, int]] = []
         self.coin_asset = CoinGraphic(find_coin_path() or Path())
         self.coinpop: Optional[CoinPopGraphic] = None
@@ -1195,15 +1194,7 @@ class GameWindow(QtWidgets.QMainWindow):
             # so the banner still appears if the parent sets it late (or the
             # write lands after this process has already seen ui_state == 3).
             brk = getattr(self.shared, "break_due", None)
-            if brk is None:
-                if not self._warned_no_break_channel:
-                    self._warned_no_break_channel = True
-                    logging.warning("game_ui: no break_due channel in UIShared "
-                                    "-- the parent training script is older than "
-                                    "this UI, so break prompts can never show.")
-                break_due = False
-            else:
-                break_due = int(brk.value) == 1
+            break_due = brk is not None and int(brk.value) == 1
             if break_due != self._break_due:
                 self._break_due = break_due
                 if self._reveal_ready:
@@ -1211,9 +1202,6 @@ class GameWindow(QtWidgets.QMainWindow):
                     self._fit_scoreboard()
             if not self._reveal_ready and elapsed >= self.SCORE_REVEAL_DELAY_S:
                 self._reveal_ready = True
-                logging.info("game_ui: game over -- break_due=%s",
-                             "1" if self._break_due else
-                             ("0" if brk is not None else "absent"))
                 self.break_banner.setVisible(self._break_due)
                 # Read the board HERE, at reveal time, rather than the
                 # moment the game ended: the parent persists this game's

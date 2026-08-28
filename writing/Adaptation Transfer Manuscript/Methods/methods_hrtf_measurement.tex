@@ -18,10 +18,12 @@
 \subsection{HRTF measurement}\label{sec:hrir}
 
 Head-related impulse responses were measured at the blocked entrance of each
-ear canal with microphones mounted in anthropometric earplugs of the PIRATE
-design
+ear canal with MEMS microphones (AMM-3738-T, PUI Devices, Dayton, USA) mounted
+in anthropometric earplugs of the PIRATE design
 % \citep{denk_pirate_2019}
-. Logarithmic sweeps of 200\,ms duration (120\,Hz to 22\,kHz, 85\,dB SPL) were
+, fitted to each participant from a size series
+% \citep{bau_adapting_2024}
+, and supplied with phantom power (PP2B, Millenium). Logarithmic sweeps of 200\,ms duration (120\,Hz to 22\,kHz, 85\,dB SPL) were
 presented ten times from each loudspeaker of the midline column and averaged
 after alignment. Seven loudspeakers at $12.5^\circ$ spacing sample elevation
 too coarsely to resolve the spectral cue, so the arc was recorded three times,
@@ -36,16 +38,20 @@ each loudspeaker in level and magnitude response rather than merely matching
 them to one another.
 
 Impulse responses were recovered by regularized inversion of the sweep and
-each was divided by the reference response of the same loudspeaker, leaving
-the directional transfer function (DTF). This differs from our earlier work
+each was divided by the reference response of the same loudspeaker. The
+quotient is the head-related transfer function (HRTF) in the usual sense: the
+pressure at the blocked ear canal entrance relative to the free-field pressure
+at the position of the head with the listener absent. These are HRTFs and not
+directional transfer functions: no direction-independent component has been
+removed. Our earlier work
 % \citep{friedrich_adaptation_2025}
-, in which the non-directional component was estimated as the average over all
-measured transfer functions. A dedicated reference is used here because only
-the midline is measured: an average over the measured set would be an average
-over the very directions that are subsequently compared, and would remove
-part of the elevation dependence it is meant to preserve. The quotient was
-onset-aligned, windowed with a 2.5\,ms Hann window and truncated to 512
-samples.
+reported directional transfer functions, obtained by dividing each transfer
+function by the average over all measured transfer functions. That step is
+omitted here because only the midline is measured, so an average over the
+measured set would be an average over the very directions that are
+subsequently compared, and would remove part of the elevation dependence it is
+meant to preserve. Each quotient was onset-aligned, windowed with a 2.5\,ms
+Hann window and truncated to 512 samples.
 
 \subsection{Virtual HRTF set}
 
@@ -94,15 +100,24 @@ averaged, and inverted as a regularized minimum-phase filter of 256 taps.
 %       microphones for Individual Reliable Acquisition of Transfer functions
 %       at the Ear canal entrance," Fortschritte der Akustik -- DAGA, Rostock,
 %       doi:10.5281/zenodo.2574395. Denk is first author, not Brinkmann.
+%     bau_adapting_2024 -- VERIFIED: Bau, D., Moscher, O., and Poerschmann, C.
+%       (2024). "Adapting the PIRATE Design for Cost-Effective In-Ear
+%       Microphones," Fortschritte der Akustik -- DAGA, Hannover, pp.
+%       1604-1606. This is the paper the present hardware follows; it tests
+%       AMM-3738-T (PUI) alongside CMM-2718AT (CUI) and SPH1642-HT5H (Knowles)
+%       and finds all three near-equivalent, so it supports the choice rather
+%       than prescribing it. It is also the source for the XS-XL size series.
 %     Duda & Martens (1998) JASA 104(5) -- "Range dependence of the response of
 %       a spherical head model". CHECK this is the right one for the model as
 %       implemented; if processing.py follows a different formulation, cite
 %       that instead. [NOT VERIFIED]
-% - MICROPHONE MODEL IS A PLACEHOLDER. The PIRATE cite covers the earplug, not
-%   the transducer. State the actual microphone (make, model, manufacturer) and
-%   whether the plugs are individually fitted or come from a size series. The
-%   old PUM-3046L-R sentence has been REMOVED -- do not let it drift back in if
-%   the current mics are different.
+% - MICROPHONE now stated: AMM-3738-T (PUI Devices) + PP2B phantom supply
+%   (Millenium is Thomann's house brand -- CHECK whether to name Thomann as the
+%   manufacturer instead, and confirm the town for the PUI address line).
+%   CONFIRM ALSO that the plugs really are the XS-XL size series rather than
+%   individually printed; "fitted to each participant from a size series" is
+%   written on the strength of the setup following Bau et al. (2024).
+%   The old PUM-3046L-R sentence is gone -- do not let it drift back in.
 % - PER-SUBJECT RADII ARE NOT REPORTED. Give the group mean and range once the
 %   cohort is closed. Also state what happens on a failed fit (the code falls
 %   back to 0.0875 m and stores nothing) -- if any reported participant hit the

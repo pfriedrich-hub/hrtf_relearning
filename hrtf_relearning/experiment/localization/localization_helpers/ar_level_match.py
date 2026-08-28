@@ -134,9 +134,12 @@ def binsim_session(subject, hrir_settings, loc_settings, os_volume=50):
 
     osc_filter = loc._make_osc_client(port=10000)   # /pyBinSim_ds_Filter
     osc_play = loc._make_osc_client(port=10003)     # /pyBinSimLoudness, /pyBinSimFile
-    worker = mp.Process(target=loc._binsim_stream, args=(loc.hrir_name,))
+    loc.binsim_ready = mp.Event()
+    worker = mp.Process(target=loc._binsim_stream, args=(loc.hrir_name, loc.binsim_ready))
     worker.start()
-    time.sleep(1.5)   # let the stream come up
+    # Handshake instead of a fixed sleep: OSC sent before pybinsim's UDP
+    # receiver is bound is dropped silently (see Localization._wait_for_binsim).
+    loc._wait_for_binsim()
     try:
         yield loc, osc_filter, osc_play
     finally:

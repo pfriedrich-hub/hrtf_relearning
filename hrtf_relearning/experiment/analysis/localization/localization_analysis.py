@@ -181,6 +181,108 @@ def polar_error(sequence, quadrant_threshold=90.0):
             float(quadrant.mean()))
 
 
+def manipulation_check(own_sequence, donor_sequence, target_band=(8.0, 14.0),
+                       quadrant_threshold=90.0):
+    """Did the donor HRTF actually displace this listener? Day-1 gate.
+
+    The number that matters on day 1 is not how well the listener localizes
+    with the donor composite -- it is how much WORSE the composite made them
+    than their own ears, measured on the same day with the same stimulus. That
+    difference is the manipulation check, and without it a flat learning curve
+    is uninterpretable: a listener who was never displaced has nothing to
+    relearn, and one who was displaced past the point of any usable cue has
+    nothing to work from either.
+
+    Both are real cases in this dataset. Day-1 impairment in mean local polar
+    error, donor block minus own-HRTF block:
+
+        AS +2.5  |  FP +9.3  |  IR +9.6  |  NR +13.4  |  FS +13.6  |  LS +13.9
+
+    AS's composite barely bit. Her elevation gain then rose 0.41 -> 0.51 over
+    three days while her polar error sat at 13.6 -> 13.2 deg, which read as the
+    cohort's one success until the impairment was computed -- it was recovery
+    from a 2.5 deg perturbation. Read this BEFORE reading any learning curve.
+
+    ``headroom`` is the other half: the own-HRTF polar error is the ceiling any
+    donor block can approach under that stimulus, so ``donor - own`` is also
+    exactly how much room is left to improve into. A donor block already within
+    a couple of degrees of it cannot show learning no matter how long the
+    listener trains.
+
+    Both sequences must be measured with the SAME stimulus -- comparing a
+    ripple donor block against a noise own-HRTF block measures the stimulus
+    change, not the manipulation. The check is skipped with a warning if
+    ``sequence.stim`` differs.
+
+    Parameters
+    ----------
+    own_sequence, donor_sequence : Trialsequence
+        The own-HRTF and first donor blocks, same day, same stimulus.
+    target_band : (float, float)
+        Impairment in degrees that counts as a usable manipulation.
+
+    Returns
+    -------
+    dict with ``impairment``, ``own_polar``, ``donor_polar``, ``own_gain``,
+    ``donor_gain``, ``headroom`` (== impairment), ``verdict`` in
+    {'weak', 'ok', 'strong'}, and ``stim_match``.
+    """
+    own_polar = polar_error(own_sequence, quadrant_threshold)[0]
+    donor_polar = polar_error(donor_sequence, quadrant_threshold)[0]
+    own_gain = localization_accuracy(own_sequence)[0]
+    donor_gain = localization_accuracy(donor_sequence)[0]
+
+    own_stim = getattr(own_sequence, 'stim', None)
+    donor_stim = getattr(donor_sequence, 'stim', None)
+    stim_match = own_stim == donor_stim
+    if not stim_match:
+        logging.warning(
+            'manipulation_check: own block ran on %r and the donor block on '
+            '%r. The difference below is confounded with the stimulus change '
+            'and is NOT a manipulation check.', own_stim, donor_stim)
+
+    impairment = float(donor_polar - own_polar)
+    if impairment < target_band[0]:
+        verdict = 'weak'
+    elif impairment > target_band[1]:
+        verdict = 'strong'
+    else:
+        verdict = 'ok'
+
+    return {'impairment': impairment, 'own_polar': float(own_polar),
+            'donor_polar': float(donor_polar), 'own_gain': float(own_gain),
+            'donor_gain': float(donor_gain), 'headroom': impairment,
+            'verdict': verdict, 'stim_match': bool(stim_match)}
+
+
+def block_summary(sequence):
+    """The dual headline for one block: polar error AND elevation gain.
+
+    Report both, always. They are blind to opposite failures and either one
+    alone has produced a wrong reading of this dataset:
+
+    - gain up, polar error flat = a slope change with no accuracy gain; the
+      fitted intercept absorbs a constant bias, so a listener with a systematic
+      offset can post a rising gain while being no more accurate. AS
+      (0.41 -> 0.51 with polar 13.6 -> 13.2) and LS (0.09 -> 0.30 with polar
+      23.2 -> 24.4, i.e. worse) are both this.
+    - polar error down, gain flat = accuracy improving inside a compressed map.
+      FP (gain 0.30 -> 0.34, polar 16.0 -> 13.5) is this, and reads as
+      completely stuck on gain alone.
+
+    Only when both move is it relearning.
+    """
+    gain, ele_rmse, ele_sd, az_gain, az_rmse, az_sd = localization_accuracy(sequence)
+    local_mean, local_rmse, quadrant_rate = polar_error(sequence)
+    return {'polar_error': local_mean, 'polar_rmse': local_rmse,
+            'quadrant_rate': quadrant_rate, 'elevation_gain': gain,
+            'elevation_rmse': ele_rmse, 'elevation_sd': ele_sd,
+            'azimuth_gain': az_gain, 'azimuth_rmse': az_rmse,
+            'azimuth_sd': az_sd, 'n': len(getattr(sequence, 'data', []) or []),
+            'stim': getattr(sequence, 'stim', None),
+            'degenerate': is_degenerate(sequence)}
+
+
 def target_p(sequence, show=False, axis=None):
     """
     Compute per-sector error and target probabilities from a localization run.

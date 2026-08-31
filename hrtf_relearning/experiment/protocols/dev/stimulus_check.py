@@ -161,7 +161,7 @@ print(f"wrote to {OUT_DIR}")
 # externalization. Do it for 'noise' first to hear what the cue sounds like when
 # the source spectrum is fixed, then for 'ripple': the elevation percept should
 # survive, the timbre should not.
-KIND = 'ripple'          # 'noise' | 'ripple' | 'uso'
+KIND = 'noise'          # 'noise' | 'ripple' | 'uso'
 ELEVATIONS = (-30, -15, 0, 15, 30)
 
 _, hrtf, idx = cue_spectra()

@@ -93,6 +93,12 @@ DEFAULT_RESOLUTION = 'filterbank'
 # the same for everyone, so the manipulation is one sentence in the methods.
 # ---------------------------------------------------------------------------
 N_KEEP = 4                    # envelope coefficients kept (Kulkarni & Colburn 1998)
+# !! STALE AS OF 2026-08-31: the rule is "median of the qualified-donor pairs",
+#    and the pool just went from 7 members (21 pairs) to 11 (55 pairs) when
+#    MIN_DONOR_ELEVATION_GAIN was relaxed to 0.6. RECOMPUTE with
+#    pairwise_r_match(load_candidates(<id>, pool=DONOR_POOL)) and update this
+#    number before the next participant, or the band is centred on the old
+#    cohort. The day-1 screen makes a wrong centre survivable, not harmless.
 TARGET_R_MATCH = 0.58         # perturbation size: the median r_match between
                               # QUALIFIED donors, i.e. a typical difference
                               # between two people whose own cue demonstrably
@@ -102,6 +108,19 @@ TARGET_R_MATCH = 0.58         # perturbation size: the median r_match between
 MAX_RIDGE_SLOPE = 0.5         # above this the old map can read the composite as
                               # a coherent elevation and absorb it as a bias
 TOLERANCE = 0.05              # half-width of the band around the target
+
+MIN_CUE_GRADIENT = None       # DELIBERATELY OFF. `cue_gradient` is reported for
+MIN_CUE_MONOTONICITY = None   # every candidate but gates nothing, because over
+                              # the 6 subjects run so far it does NOT predict who
+                              # relearned — see the table in cue_gradient(). A
+                              # threshold at 0.85 dB/10deg was drafted 2026-08-27
+                              # and rejected on back-test: it would have excluded
+                              # AS-left (0.52-0.70), the donor behind FS's
+                              # relearning, the only unambiguous one on record,
+                              # while admitting GS-left (1.04), whose composite
+                              # displaced AS by 2.5 deg and gave her nothing to
+                              # learn. Set these to floats only with data that
+                              # actually supports a cut.
 
 TARGET_DISSIMILARITY = 0.40   # DEPRECATED — the old full-spectrum VSI-dissimilarity
                               # target. Kept only so older embedded modification
@@ -515,6 +534,132 @@ def detail_strength(split, bandwidth=DEFAULT_BAND, resolution=DEFAULT_RESOLUTION
     return float(numpy.mean(values))
 
 
+def _spearman(a, b):
+    """Spearman rho without scipy (no ties expected in either input here)."""
+    a = numpy.asarray(a, dtype=float)
+    b = numpy.asarray(b, dtype=float)
+    rank_a = numpy.argsort(numpy.argsort(a)).astype(float)
+    rank_b = numpy.argsort(numpy.argsort(b)).astype(float)
+    return float(numpy.corrcoef(rank_a, rank_b)[0, 1])
+
+
+def cue_gradient(split, bandwidth=DEFAULT_BAND, resolution=DEFAULT_RESOLUTION,
+                 ear=None):
+    """How READABLE a recording's elevation cue is, as a map. Per ear.
+
+    :func:`detail_strength` answers "how much does the detail vary across
+    directions"; this answers "does that variation carry elevation". The two
+    are not the same question, and the difference is not cosmetic:
+    **detail_strength is invariant to permuting the elevation labels.** Shuffle
+    which spectrum belongs to which direction and the SD across directions is
+    unchanged to the last decimal, while the map becomes unlearnable. A donor
+    can therefore hand over a deep, elevation-dependent, and completely
+    scrambled cue and score well on strength alone. This function is the
+    missing term.
+
+    Three numbers, all computed on the in-band detail of the median-plane arc
+    (the only arc that is measured — every other azimuth is synthesised from
+    it, see the pool comment below), with the across-direction mean removed so
+    what is left is each elevation's own deviation pattern:
+
+    ``gradient``
+        dB of spectral change per 10 deg of elevation — the OLS slope of
+        template RMS distance on |delta elevation| over every pair of
+        elevations. This is cue depth expressed per degree, which is what a
+        listener has to resolve.
+    ``monotonicity``
+        Spearman rho of the same two quantities. Near 1 means far-apart
+        elevations are reliably more different than near ones, i.e. the map has
+        a consistent direction. A high gradient with low monotonicity is a cue
+        that is strong but locally ambiguous.
+    ``decodability``
+        Leave-one-out: for each elevation, take the nearest OTHER elevation's
+        template and call that the estimate, then regress estimate on truth.
+        Slope near 1 means the arc can be read off the detail alone. This is
+        the closest thing here to an upper bound on the elevation gain a
+        listener could reach with this cue if they learned it perfectly.
+
+    ``ear`` selects one of ``EARS``; ``None`` returns the ear-average in
+    ``gradient``/``monotonicity``/``decodability`` and both sides under
+    ``per_ear``. **Pass the ear explicitly when screening a donor for a
+    monaural protocol** — the two ears of one recording can differ a lot
+    (pilot/AH: left 0.88, right 0.73), and only the TRAINED ear's cue is the
+    one the listener has to learn.
+
+    Listener-independent by construction: the cepstral split is linear in log
+    magnitude, so the composite's detail IS the donor's detail (see
+    :func:`pair_metrics`) and adding the listener's envelope cannot change any
+    of these three. Verified on every env4 composite on disk: the trained ear's
+    gradient/monotonicity/decodability equal the raw donor ear's to 2 d.p.
+    That is why this belongs beside :func:`detail_strength` as a property of a
+    recording, and why it could screen the pool before a participant is
+    recruited rather than only a pairing.
+
+    **IT DOES NOT PREDICT RELEARNING AND MUST NOT GATE SELECTION.** Drafted as
+    a gate 2026-08-27, back-tested, rejected. Trained-ear gradient against
+    outcome over the 6 subjects run:
+
+    ======  ========  ====  ===========  ==================================
+    subj    gradient  mono  impairment   outcome (polar error AND gain)
+    ======  ========  ====  ===========  ==================================
+    AS       1.04     0.92     +2.5      none; composite barely displaced her
+    FP       0.85     0.89     +9.3      polar 16.0 -> 13.5, gain flat
+    LS       0.77     0.76    +13.9      none
+    FS       0.70*    0.82    +13.6      polar 22.3 -> 9.8, gain 0.37 -> 0.75
+    IR       0.70*    0.82     +9.6      polar 17.7 -> 15.4 (within-noise)
+    NR       0.57     0.82    +13.4      none
+    ======  ========  ====  ===========  ==================================
+
+    \* v1 whole-donor pipeline, not an env4 composite. The ordering is not
+    monotonic in either direction: the ONLY unambiguous learner sits fourth of
+    six, and the top-ranked donor produced no learning because it produced no
+    perturbation. A cut at 0.85 would have removed the donor that worked.
+
+    What it IS good for is the gap it was built to fill, which is real:
+    :func:`detail_strength` is **invariant to permuting the elevation labels**
+    — shuffle which spectrum belongs to which direction and it returns the same
+    number to the last decimal (measured on GS: 3.6477 dB intact and shuffled),
+    while gradient/monotonicity/decodability collapse from 1.04/+0.92/0.97 to
+    ~0.0/~0.0/~0.0. So a recording CAN hand over a deep, elevation-dependent,
+    scrambled cue and pass on strength alone. Report all three; use them to
+    describe a composite and to catch a build that has genuinely destroyed the
+    map, not to choose between donors that all have one.
+    """
+    ears = EARS if ear is None else (ear,)
+    elevations = numpy.asarray(split['elevations'], dtype=float)
+    if len(elevations) < 4:
+        raise ValueError(f'need at least 4 elevations, got {len(elevations)}')
+
+    per_ear = {}
+    for side in ears:
+        detail = numpy.asarray(
+            _reduce(split[side]['detail'], split['freqs'], bandwidth, resolution),
+            dtype=float)
+        detail = detail - detail.mean(axis=0, keepdims=True)
+
+        diff = detail[:, None, :] - detail[None, :, :]
+        distance = numpy.sqrt(numpy.mean(diff ** 2, axis=-1))
+        separation = numpy.abs(elevations[:, None] - elevations[None, :])
+        upper = numpy.triu_indices(len(elevations), 1)
+
+        slope = numpy.polyfit(separation[upper], distance[upper], 1)[0]
+
+        # LOO nearest-other-template elevation estimate
+        masked = distance + numpy.diag(numpy.full(len(elevations), numpy.inf))
+        estimate = elevations[numpy.argmin(masked, axis=1)]
+
+        per_ear[side] = {
+            'gradient': float(slope * 10.0),
+            'monotonicity': _spearman(separation[upper], distance[upper]),
+            'decodability': float(numpy.polyfit(elevations, estimate, 1)[0]),
+        }
+
+    scores = {key: float(numpy.mean([per_ear[s][key] for s in ears]))
+              for key in ('gradient', 'monotonicity', 'decodability')}
+    scores['per_ear'] = per_ear
+    return scores
+
+
 def pairwise_r_match(hrtfs, n_keep=DEFAULT_N_KEEP, bandwidth=DEFAULT_BAND,
                      resolution=DEFAULT_RESOLUTION):
     """``r_match`` between every pair of unmodified recordings — the scale.
@@ -559,7 +704,9 @@ def own_vsi(split, bandwidth=DEFAULT_BAND, resolution=DEFAULT_RESOLUTION):
 def shortlist(subject_hrtf, candidates, target=TARGET_R_MATCH,
               n_keep=N_KEEP, bandwidth=DEFAULT_BAND,
               resolution=DEFAULT_RESOLUTION, donor_ear=None,
-              max_ridge_slope=MAX_RIDGE_SLOPE, tolerance=TOLERANCE):
+              max_ridge_slope=MAX_RIDGE_SLOPE, tolerance=TOLERANCE,
+              trained_ear=None, min_cue_gradient=MIN_CUE_GRADIENT,
+              min_cue_monotonicity=MIN_CUE_MONOTONICITY):
     """Every candidate, ranked best-first by the selection rule.
 
     ``shortlist()[0]`` is the donor :func:`select_donor` returns; ``[1]`` and
@@ -583,11 +730,44 @@ def shortlist(subject_hrtf, candidates, target=TARGET_R_MATCH,
         Ridge did not collapse for any candidate. Ranked by ridge slope
         ascending. The composite may be partly absorbable as a bias; report it.
 
+    Cutting across all three: a donor whose cue is not READABLE as an elevation
+    map is demoted below every donor whose is, whatever its r_match. See
+    :func:`cue_gradient` -- ``r_match`` and ``ridge_slope`` both ask how far the
+    composite is from the listener's own cue, and ``donor_strength`` asks how
+    much detail there is; none of them asks whether that detail carries
+    elevation, and detail_strength cannot, because it is invariant to permuting
+    the elevation labels. Demoted rather than dropped, so the table stays
+    complete and :func:`select_donor` still resolves when nothing passes.
+
+    ``trained_ear``
+        The ear that will carry the donor's detail. The cue gate is applied to
+        THAT ear alone. Pass it for any monaural protocol: the two ears of one
+        recording routinely differ (pilot/AH gradient: left 0.88, right 0.73),
+        and an ear-averaged screen passes a donor the listener will never hear
+        the good side of. ``None`` falls back to the ear average and warns.
+
+    NOTE the same asymmetry applies to ``r_match`` and ``ridge_slope``, which
+    :func:`pair_metrics` also averages over ears. That is NOT changed here --
+    it would move existing subjects' rank-0 picks -- but per-ear values are in
+    ``cue_per_ear`` and the pair scores' own ``per_ear`` for inspection.
+
     Every row carries ``tier``, ``rank``, ``distance``, ``eligible``
-    (ridge criterion), ``in_band``, ``donor_strength`` and the listener's
+    (ridge criterion), ``in_band``, ``donor_strength``, ``cue_gradient``,
+    ``cue_monotonicity``, ``cue_decodability``, ``cue_ok`` and the listener's
     ``own_vsi``, so the whole table can go in a supplement.
     """
     own_split = median_plane_split(subject_hrtf, n_keep=n_keep)
+
+    if trained_ear is None:
+        logger.warning(
+            'shortlist() called without trained_ear — cue_gradient will be '
+            'reported as the ear AVERAGE. In a monaural protocol pass the ear '
+            "that carries the donor's detail; the two sides of one recording "
+            'routinely differ (pilot/AH: left 0.85, right 0.77; pilot/VD: left '
+            '0.45, right 1.09) and only the trained one is ever heard.')
+    elif trained_ear not in EARS:
+        raise ValueError(f'trained_ear must be one of {EARS}, got {trained_ear!r}')
+    cue_ear = trained_ear if donor_ear is None else donor_ear
 
     rows = []
     for name, donor in candidates.items():
@@ -596,21 +776,52 @@ def shortlist(subject_hrtf, candidates, target=TARGET_R_MATCH,
             scores = pair_metrics(own_split, donor_split, bandwidth=bandwidth,
                                   resolution=resolution, donor_ear=donor_ear)
             strength = detail_strength(donor_split, bandwidth, resolution)
+            cue = cue_gradient(donor_split, bandwidth=bandwidth,
+                               resolution=resolution, ear=cue_ear)
         except Exception as exc:
             logger.warning('skipping donor %s: %s', name, exc)
             continue
         scores.pop('per_ear')
-        rows.append({'donor': name, 'donor_strength': strength, **scores})
+        rows.append({'donor': name, 'donor_strength': strength,
+                     'cue_gradient': cue['gradient'],
+                     'cue_monotonicity': cue['monotonicity'],
+                     'cue_decodability': cue['decodability'],
+                     'cue_ear': cue_ear or 'average',
+                     'cue_per_ear': cue['per_ear'], **scores})
     if not rows:
         raise ValueError('no candidate donor could be scored')
     for row in rows:
         row['distance'] = abs(row['r_match'] - target)
         row['eligible'] = bool(row['ridge_slope'] <= max_ridge_slope)
         row['in_band'] = bool(row['eligible'] and row['distance'] <= tolerance)
+        row['cue_ok'] = bool(
+            (min_cue_gradient is None
+             or row['cue_gradient'] >= min_cue_gradient)
+            and (min_cue_monotonicity is None
+                 or row['cue_monotonicity'] >= min_cue_monotonicity))
 
-    band = [row for row in rows if row['in_band']]
-    ridge_only = [row for row in rows if row['eligible'] and not row['in_band']]
-    rejected = [row for row in rows if not row['eligible']]
+    gate_on = not (min_cue_gradient is None and min_cue_monotonicity is None)
+    readable = [row for row in rows if row['cue_ok']]
+    unreadable = [row for row in rows if not row['cue_ok']]
+    if gate_on and not readable:
+        logger.error(
+            'NO candidate passed the cue gate (gradient >= %.2f dB/10deg and '
+            'monotonicity >= %.2f) on ear %s — best is %s at %.2f/%.2f. The '
+            'ordering below is the old rule only; this listener has no donor '
+            'that hands over a readable elevation map. Do not seat them.',
+            min_cue_gradient, min_cue_monotonicity, cue_ear or 'average',
+            max(rows, key=lambda r: r['cue_gradient'])['donor'],
+            max(rows, key=lambda r: r['cue_gradient'])['cue_gradient'],
+            max(rows, key=lambda r: r['cue_gradient'])['cue_monotonicity'])
+    elif gate_on and unreadable:
+        logger.info('cue gate demoted %d of %d candidates: %s',
+                    len(unreadable), len(rows),
+                    ', '.join(r['donor'] for r in unreadable))
+
+    gated = readable if readable else rows
+    band = [row for row in gated if row['in_band']]
+    ridge_only = [row for row in gated if row['eligible'] and not row['in_band']]
+    rejected = [row for row in gated if not row['eligible']]
 
     if band:
         ordered = (sorted(band, key=lambda r: r['distance'])
@@ -632,11 +843,18 @@ def shortlist(subject_hrtf, candidates, target=TARGET_R_MATCH,
             'falling back to the lowest slope', max_ridge_slope,
             ordered[0]['ridge_slope'], ordered[0]['donor'])
 
+    # demoted, never dropped: they keep their scores and stay in the table so a
+    # supplement shows what was rejected and why, but they sit below every
+    # readable donor so select_donor() cannot land on one by accident.
+    if readable and unreadable:
+        ordered = ordered + sorted(unreadable,
+                                   key=lambda r: -r['cue_gradient'])
+
     for rank, row in enumerate(ordered):
         row['rank'] = rank
         # the tier the CHOSEN donor sits in, so one field says how the pick was
         # made; per-row membership is still readable from eligible/in_band
-        row['tier'] = tier
+        row['tier'] = 'cue_rejected' if not row['cue_ok'] else tier
         row['fallback'] = bool(tier == 'fallback')
     return ordered
 
@@ -645,7 +863,9 @@ def select_donor(subject_hrtf, candidates, target=TARGET_R_MATCH,
                  n_keep=N_KEEP, bandwidth=DEFAULT_BAND,
                  resolution=DEFAULT_RESOLUTION, donor_ear=None,
                  max_ridge_slope=MAX_RIDGE_SLOPE, tolerance=TOLERANCE,
-                 rank=0):
+                 rank=0, trained_ear=None,
+                 min_cue_gradient=MIN_CUE_GRADIENT,
+                 min_cue_monotonicity=MIN_CUE_MONOTONICITY):
     """The per-subject donor choice — the ONLY thing that varies between subjects.
 
     Thin wrapper over :func:`shortlist`: returns ``(chosen_row, all_rows)`` with
@@ -660,7 +880,9 @@ def select_donor(subject_hrtf, candidates, target=TARGET_R_MATCH,
     rows = shortlist(subject_hrtf, candidates, target=target, n_keep=n_keep,
                      bandwidth=bandwidth, resolution=resolution,
                      donor_ear=donor_ear, max_ridge_slope=max_ridge_slope,
-                     tolerance=tolerance)
+                     tolerance=tolerance, trained_ear=trained_ear,
+                     min_cue_gradient=min_cue_gradient,
+                     min_cue_monotonicity=min_cue_monotonicity)
     if rank >= len(rows):
         raise IndexError(f'requested donor rank {rank} but only {len(rows)} '
                          f'candidates were scored')
@@ -766,12 +988,46 @@ def select_donor(subject_hrtf, candidates, target=TARGET_R_MATCH,
 # recordings, EG 0.05. Note CO (.98/3.3 dB) and FD (.82/3.7 dB) show the two can
 # coincide -- the point is only that the acoustic measure cannot be relied on to
 # tell you so.
-DONOR_POOL = ('CO', 'pilot/AGV', 'pilot/SW', 'pilot/VD', 'pilot/AH', 'FS', 'FD')
+DONOR_POOL = ('CO', 'pilot/AGV', 'pilot/SW', 'pilot/VD', 'pilot/AH', 'FS', 'FD',
+              'AS', 'FP', 'LS', 'NR')
 
 #: Elevation gain a donor must reach with their own HRTF to enter the pool.
-#: 0.8 currently falls in the gap between 0.82 and 0.63, so it is not making a
-#: fine distinction -- do not present it as a graded criterion.
-MIN_DONOR_ELEVATION_GAIN = 0.8
+#: RELAXED 0.8 -> 0.6 on 2026-08-31 (Paul's call), which adds AS 0.63, FP 0.79,
+#: LS 1.20 and NR 0.65 from recordings already on disk.
+#:
+#: Why it is safe to relax. The floor existed because there was no downstream
+#: check on the actual pairing: a recording whose owner could not use their own
+#: ears was "unproven, not unusable", and an unproven donor could not be caught
+#: before four days had been spent on it. There IS a check now -- the day-1
+#: behavioural screen (protocols/learning_transfer/donor_screening.py) rejects a
+#: bad pairing on the listener who will actually hear it, and it does so on
+#: elevation gain, the same quantity this floor is made of, measured where it
+#: matters. The pool's remaining job is only "this recording demonstrably
+#: encodes a usable cue", which does not need 0.8.
+#:
+#: The floor also sits inside its own noise: the own-HRTF AR block is n=150,
+#: where the 95% band on elevation gain is +-0.13 (see
+#: project_behavioural_noise_floor), so FD at 0.81 and FS at 0.84 were never
+#: meaningfully above a 0.8 cut.
+#:
+#: PROVENANCE WARNING. Only CO (0.97), FD (0.81) and FS (0.84) can be
+#: re-derived from data/results -- the three that can be checked all match the
+#: numbers quoted below. pilot/AGV, pilot/SW, pilot/VD and pilot/AH have no
+#: json and no pkl anywhere: pilot/AH holds only PNGs (the block was clearly
+#: run), and SW/AGV/VD have empty learning_result/ folders. Their qualification
+#: rests on numbers nobody can reproduce, and they cannot be re-qualified if
+#: this constant moves again. Report them as legacy.
+#:
+#: Qualified from data that still exists: CO 0.97, FS 0.84, FD 0.81, FP 0.79,
+#: NR 0.65, AS 0.63, LS 1.20 (LS's >1 gain is itself anomalous -- see
+#: project_cohort_2408_learning_diagnosis -- but she is admissible as a donor).
+#: Legacy, unverifiable: AGV 0.96, SW 0.93, VD 0.89, AH 0.86.
+#:
+#: 34 of the 38 recordings on disk conform to the grid; the pool is small
+#: because only 13 owners have ever been localization-tested with their own
+#: HRTF in AR, not because the rest are unfit. Qualifying one costs a single
+#: ~150-trial block. See project_donor_pool_extension for the list of 21.
+MIN_DONOR_ELEVATION_GAIN = 0.6
 
 # what a recording must match to be usable without resampling
 REQUIRED_TAPS = 512
@@ -958,10 +1214,18 @@ def report(rows, reference=None):
     elif tier == 'fallback':
         print(f'selection tier: FALLBACK — no candidate collapsed the ridge '
               f'(<= {MAX_RIDGE_SLOPE:.2f}); ranked by ridge slope. REPORT THIS.')
-    print(f'{"":>4}{"donor":>14}  {"r_match":>8} {"ridge":>8} {"strength":>9}  {"":>6}')
+    cue_ear = rows[0].get('cue_ear') if rows else None
+    if cue_ear:
+        print(f'cue gate on the {cue_ear} ear: gradient >= '
+              f'{MIN_CUE_GRADIENT:.2f} dB/10deg, monotonicity >= '
+              f'{MIN_CUE_MONOTONICITY:.2f}')
+    print(f'{"":>4}{"donor":>14}  {"r_match":>8} {"ridge":>8} {"strength":>9} '
+          f'{"grad":>6} {"mono":>6} {"decod":>6}  {"":>6}')
     for row in rows:
         if 'eligible' not in row:
             mark = ''
+        elif not row.get('cue_ok', True):
+            mark = 'CUE!'
         elif row.get('in_band'):
             mark = 'band'
         elif row['eligible']:
@@ -970,8 +1234,12 @@ def report(rows, reference=None):
             mark = 'x'
         arrow = '-->' if row.get('rank') == 0 else (
             f'{row["rank"]}.' if 'rank' in row else '')
+        nan = float('nan')
         print(f'{arrow:>4}{row["donor"]:>14}  {row["r_match"]:8.2f} '
-              f'{row["ridge_slope"]:+8.2f} {row.get("donor_strength", float("nan")):9.1f} '
+              f'{row["ridge_slope"]:+8.2f} {row.get("donor_strength", nan):9.1f} '
+              f'{row.get("cue_gradient", nan):6.2f} '
+              f'{row.get("cue_monotonicity", nan):+6.2f} '
+              f'{row.get("cue_decodability", nan):6.2f} '
               f'{mark:>6}')
     if reference is not None and len(reference):
         quartiles = numpy.percentile(reference, [25, 50, 75])

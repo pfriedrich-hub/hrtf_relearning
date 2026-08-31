@@ -46,6 +46,8 @@ this object for that subject reads it back, so a session on day 3 is
 from __future__ import annotations
 
 import datetime
+import json
+import logging
 import re
 import shutil
 
@@ -61,6 +63,7 @@ from hrtf_relearning.hrtf.modify.plot_compare import plot_ears
 from hrtf_relearning.hrtf.processing.envelope import envelope_dtf, ENVELOPE_BAND
 from hrtf_relearning.hrtf.processing.midline import (midline_arc, expand_from_midline,
                                                      qc_midline, format_qc)
+from hrtf_relearning.hrtf.record.fit_head_radius import usable_radius, FALLBACK_RADIUS_M
 from hrtf_relearning.utils import paths
 
 OTHER_EAR_TREATMENTS = ("flat", "envelope", "native")
@@ -208,26 +211,36 @@ class DonorModification:
         stem = f"{self.subject_id}_donor_{donor_id.split('/')[-1]}"
         return stem if n_keep == selection.N_KEEP else f"{stem}_n{n_keep}"
 
-    def binsim_names(self, sofa_name, mirror, other_ear=None):
+    _UNSET = object()
+
+    def binsim_names(self, sofa_name, mirror, other_ear=None, ear=_UNSET):
         """The binsim database directory name hrtf2binsim would produce.
 
         `other_ear` overrides the instance setting -- `discard_unused` needs to
         enumerate the names every treatment could have produced, because a
         database may have been built when the setting was something else.
+
+        `ear` overrides the trained ear, and `ear=None` means BINAURAL. It has
+        to be passable because hrtf2binsim appends its suffixes inside
+        `if ear:` -- a binaural render of the pre-reduction composite is
+        written to `<subject>_donor_<D>`, with no tail. Assuming the trained
+        ear here would name that database as if it were the monaural one and
+        collide with it. Used by the day-1 screen; see donor_screening.
         """
         other_ear = self.other_ear if other_ear is None else other_ear
+        ear = self.trained_ear if ear is DonorModification._UNSET else ear
         name = sofa_name
         # v2 carries the reduction in the SOFA name already, so hrtf2binsim
         # adds nothing here -- see hrir_settings, which passes ear=None for
         # those files.
         baked = self.pipeline == "v2" and f"_env{self.env_n_keep}_" in sofa_name
-        if self.trained_ear and not baked:
+        if ear and not baked:
             if other_ear == "flat":
-                name += f"_{self.trained_ear}"
+                name += f"_{ear}"
             elif other_ear == "envelope":
-                name += f"_{self.trained_ear}_env{self.env_n_keep}"
+                name += f"_{ear}_env{self.env_n_keep}"
             elif other_ear == "native":
-                name += f"_{self.trained_ear}_nat"
+                name += f"_{ear}_nat"
         if mirror:
             name += "_mirrored"
         return name
@@ -279,7 +292,10 @@ class DonorModification:
         if not quiet:
             print(f"donor pool ({len(candidates)}): {', '.join(candidates)}")
 
-        self._shortlist = selection.shortlist(own, candidates)
+        # trained_ear matters: the cue gate is applied to the ear that will
+        # actually carry the donor's detail, not to the ear average.
+        self._shortlist = selection.shortlist(
+            own, candidates, trained_ear=self.trained_ear)
         if not quiet:
             reference, _ = selection.pairwise_r_match(
                 {self.subject_id: own, **candidates})
@@ -450,6 +466,11 @@ class DonorModification:
             # went into the expansion (step 2 skips az=0), so it is read back
             # from there rather than replayed from the npz -- no reference
             # recording needed.
+            radius = self.head_radius()
+            if not quiet:
+                print(f"azimuth re-expansion at head_radius {radius:.4f} m "
+                      f"(the subject's fitted value -- must match the native "
+                      f"SOFA, see DonorModification.head_radius)")
             own_arc = midline_arc(own)
             donor_arc = midline_arc(candidates[donor_id])
             detail_arc = donor_detail_dtf(own_arc, donor_arc, n_keep=n_keep)
@@ -467,13 +488,14 @@ class DonorModification:
             report = qc_midline(own_arc, arc, processed_ear=self.untrained_ear,
                                 raise_on_fail=True)
             print(format_qc(report))
-            modified = expand_from_midline(arc)
+            modified = expand_from_midline(arc, head_radius=radius)
 
             pipeline_params = {
                 "pipeline": "v2",
                 "chain": ("midline_arc -> donor_detail_dtf -> envelope_dtf -> "
                           "qc_midline -> expand_azimuths_with_binaural_cues"),
-                "expansion": {"itd_method": "phase", "az_range": [-50, 50]},
+                "expansion": {"itd_method": "phase", "az_range": [-50, 50],
+                              "head_radius": float(radius)},
                 "monaural": {"other_ear": "envelope",
                              "ear_kept": self.trained_ear,
                              "ear_processed": self.untrained_ear,
@@ -514,7 +536,7 @@ class DonorModification:
         # one place, or it is an unattributable SOFA sitting next to the native
         # one whenever anything between the two steps raises
         if binaural_path is not None:
-            binaural = expand_from_midline(detail_arc)
+            binaural = expand_from_midline(detail_arc, head_radius=radius)
             binaural.name = binaural_path.stem
             binaural.write_sofa(str(binaural_path))
             embed_modification_params(binaural_path, _params(
@@ -529,7 +551,83 @@ class DonorModification:
 
     # -- staging and swapping ---------------------------------------------
 
-    def prepare_shortlist(self, n=3, mirrored=True, overwrite=False):
+    def head_radius(self):
+        """The subject's fitted head radius, for the azimuth re-expansion.
+
+        **This was a live bug until 2026-08-31.** `expand_from_midline` defaults
+        to head_radius=0.0875, and `build()` called it with no radius, so every
+        composite ever produced had its azimuth cues synthesised at the PIPELINE
+        DEFAULT while the native SOFA was expanded at the subject's FITTED
+        value (HRIR_Recording step 0 fits it and passes `usable_radius(az_fit)`
+        into record_hrir -- note record_hrir's OWN signature default is 0.0875,
+        so a caller that skips step 0 builds the native at the fallback too).
+        Measured on the finished files: every composite carries ITD 287 us at +-35 deg -- the
+        same number for every subject, because it is one fixed radius -- while
+        the natives carry 256 (FP), 258 (AS), 260 (LS), 263 (NR). About 10% too
+        much ITD, and a matching ILD inflation, at every off-midline direction.
+
+        The manipulation is spectral, so this is a confound on the CONTROL
+        dimension: the composite differs from the native in azimuth for a reason
+        that is not the manipulation. It is also why donor blocks show azimuth
+        gains that the native blocks do not, which is what made an azimuth
+        screening gate look informative when it was reading a pipeline fault.
+
+        NB composites built before this fix are NOT comparable to ones built
+        after it on any azimuth measure. See project_donor_screening_protocol.
+        """
+        # record_head_radius always writes the fit into rec/<id>/; the copy in
+        # results/<id>/ only happens when it was called with save=. Look in both
+        # so a fit that exists is never silently ignored.
+        fit_path = self.results_dir / "head_radius_fit.json"
+        if not fit_path.exists():
+            recorded = paths.REC_DIR / self.subject_id / "head_radius_fit.json"
+            if recorded.exists():
+                logging.warning(
+                    "using the head-radius fit from %s -- it was never filed "
+                    "with the subject's results. Re-run record_head_radius with "
+                    "save=<subject> so the radius travels with the data.",
+                    recorded)
+                fit_path = recorded
+        if not fit_path.exists():
+            logging.error(
+                "no head_radius_fit.json for %s -- the azimuth expansion will "
+                "use the pipeline fallback %.4f m, which will NOT match the "
+                "native SOFA unless that also fell back. Run "
+                "fit_head_radius.record_head_radius (protocol step 0).",
+                self.subject_id, FALLBACK_RADIUS_M)
+            return FALLBACK_RADIUS_M
+        with open(fit_path) as handle:
+            return usable_radius(json.load(handle))
+
+    @property
+    def results_dir(self):
+        """Where this subject's records live -- pilots are one level down."""
+        direct = paths.subject_dir(self.subject_id)
+        if direct.exists():
+            return direct
+        pilot = paths.RESULTS_DIR / "pilot" / self.subject_id
+        return pilot if pilot.exists() else direct
+
+    def screen_name(self, donor_id, n_keep=None):
+        """The SOFA a day-1 screen block plays: the BINAURAL composite.
+
+        Own envelope + donor detail on BOTH ears, before the monaural
+        reduction -- i.e. "binaural donor ears". Screening on this rather than
+        on the monaural composite is deliberate: the own-HRTF reference the
+        screen is compared against (the `native` phase) is binaural and full
+        field, so this is the only version that makes the impairment a
+        like-for-like difference instead of confounding the donor's cost with
+        the cost of flattening one ear. It also gives a cleaner azimuth
+        estimate, though azimuth is only a sanity check in the screen now --
+        elevation gain leads. See donor_screening.
+        """
+        return self.binaural_name(donor_id, n_keep)
+
+    def screen_settings(self, donor_id, n_keep=None):
+        """hrir_settings for one screen block. ear=None -> take the file as is."""
+        return self.hrir_settings(self.screen_name(donor_id, n_keep), ear=None)
+
+    def prepare_shortlist(self, n=3, mirrored=True, overwrite=False, screen=False):
         """Stage the top ``n`` donors so a mid-session swap costs seconds.
 
         Builds, for each of the first ``n`` entries of :meth:`shortlist`, the
@@ -545,6 +643,12 @@ class DonorModification:
 
         Only the rank-0 donor is left active -- the alternates are built but
         not selected, so nothing about the default path changes.
+
+        ``screen=True`` additionally builds the BINAURAL database for each
+        candidate, which is what the day-1 screen plays (see
+        :meth:`screen_name` and donor_screening). Another few minutes per donor,
+        and it has to happen before the participant arrives for the same reason
+        the rest of this does.
         """
         from hrtf_relearning.hrtf.binsim.hrtf2binsim import hrtf2binsim
 
@@ -573,6 +677,16 @@ class DonorModification:
                 hrtf2binsim(self.hrir_settings(name, ear=self.trained_ear,
                                                mirror=mirror),
                             overwrite=overwrite, build=True)
+            if screen:
+                screen_name = self.screen_name(donor)
+                db = paths.BINSIM_DIR / self.binsim_names(screen_name, False,
+                                                          ear=None)
+                if db.exists() and not overwrite:
+                    print(f"    screen binsim {db.name} exists -- skipping")
+                else:
+                    print(f"    building screen binsim {db.name} ...")
+                    hrtf2binsim(self.screen_settings(donor),
+                                overwrite=overwrite, build=True)
             staged.append(donor)
 
         # rank 0 is the protocol donor; make it the active one

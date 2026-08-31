@@ -91,6 +91,7 @@ from hrtf_relearning.experiment.protocols.protocol_helpers import (
     externalization_ladder)
 from hrtf_relearning.experiment.misc.system_volume import set_windows_volume
 from hrtf_relearning.experiment.protocols.learning_transfer.donor_modification import DonorModification
+from hrtf_relearning.experiment.protocols.learning_transfer import donor_screening
 from hrtf_relearning.hrtf.modify.plot_compare import plot_split_qc
 from hrtf_relearning.utils import paths
 
@@ -288,8 +289,9 @@ def build_donor_sofa(overwrite=False, show_qc=True, n_keep=None, rank=0,
     return out
 
 
-def prepare_donor_shortlist(n=3, mirrored=True, overwrite=False):
-    out = donor.prepare_shortlist(n=n, mirrored=mirrored, overwrite=overwrite)
+def prepare_donor_shortlist(n=3, mirrored=True, overwrite=False, screen=False):
+    out = donor.prepare_shortlist(n=n, mirrored=mirrored, overwrite=overwrite,
+                                  screen=screen)
     _sync()
     return out
 
@@ -298,6 +300,101 @@ def use_donor(rank=None, donor_id=None, reason=""):
     out = donor.use_donor(rank=rank, donor_id=donor_id, reason=reason)
     _sync()
     return out
+
+
+# ---------------------------------------------------------------------------
+# Day-1 donor screening -- see donor_screening for why this REJECTS and does
+# not rank, and where every threshold comes from.
+# ---------------------------------------------------------------------------
+
+SCREEN_SECTOR_SIZE = (10, 14)   # -> 7 azimuth x 5 elevation sectors over
+                                # FULL_FIELD, i.e. 35 trials at tps=1, ~3 min.
+                                # Coarser in azimuth than the protocol's (7,14)
+                                # ONLY here, to keep the screen short.
+SCREEN_TPS = 1
+
+# Why 35 and not 50 or 75. The azimuth gate — the only one with a demonstrated
+# effect size — is already saturated: at n=35 the azimuth-gain SD is 0.058, so
+# a healthy donor is falsely rejected by the 0.80-1.20 band 0.06% of the time
+# and LS's 1.38 or NR's 1.60 is caught every time. The impairment gate is weak
+# at ANY feasible length (P(missing an AS-like +2.5 deg against the +6 floor) =
+# 16% at n=35, 12% at n=50, 9% at n=75, 2% at n=400), so buying trials does not
+# fix it — the MARGINAL verdict does, by sending borderline calls to a re-check
+# against baseline A. 35 keeps the grid symmetric about the midline
+# (-30..+30 in 10 deg steps), which 30 trials would not.
+SCREEN_N = 3       # candidates, matching prepare_donor_shortlist(n=3).
+                   # Retro-tested pass rate is ~50% per donor, so n=3 finds a
+                   # survivor ~87% of the time and n=5 ~97%.
+
+
+def screen_loc_settings():
+    """Full field, binaural, coarse -- geometrically identical to `native`.
+
+    That match is the point: the impairment gate is screen PE minus native PE,
+    so the two blocks have to differ ONLY in the HRTF.
+    """
+    settings = loc_settings(FULL_FIELD)
+    settings.update(sector_size=SCREEN_SECTOR_SIZE,
+                    targets_per_sector=SCREEN_TPS)
+    return settings
+
+
+def screen_donors(subject, native, n=SCREEN_N, shuffle=True):
+    """Run one short binaural block per staged donor and apply the gates.
+
+    `native` is the object `run_phase("native", subject)` returned -- the
+    own-HRTF reference the screen is measured against.
+
+    Presentation order is shuffled (deterministically, from the subject id, so
+    it is reproducible and reportable) because the screen is itself donor
+    exposure: with a fixed order the rank-0 donor would always be heard first.
+    The REPORT is in rank order regardless.
+
+    Returns (rows, chosen). `chosen` is a shortlist row; pass its donor to
+    use_donor(donor_id=...) to make it active. Nothing is selected
+    automatically -- read the report first.
+    """
+    import random
+    from hrtf_relearning.experiment.analysis.localization.localization_analysis \
+        import block_summary
+
+    rows = donor.shortlist(quiet=True)[:n]
+    order = list(rows)
+    if shuffle:
+        random.Random(SUBJECT_ID).shuffle(order)
+    print(f"\nscreening {len(order)} donors, presentation order: "
+          f"{', '.join(r['donor'] for r in order)}")
+    n_trials = (_n_sectors(FULL_FIELD, SCREEN_SECTOR_SIZE[0])
+                * _n_sectors(ELEVATION_RANGE, SCREEN_SECTOR_SIZE[1]) * SCREEN_TPS)
+    print(f"{n_trials} trials each, binaural, full field  "
+          f"(resolves {donor_screening.resolution(n_trials)['pe']:.1f} deg of "
+          f"polar error — enough to reject, not to rank)")
+
+    measured = {}
+    for row in order:
+        print("\n" + "=" * 70)
+        print(f"SCREEN: {row['donor']}  (shortlist rank {row['rank']}) — "
+              f"{donor.screen_name(row['donor'])}")
+        print("=" * 70)
+        _fix_output_level()
+        test = Localization(subject, donor.screen_settings(row["donor"]),
+                            loc_settings=screen_loc_settings())
+        test.run()
+        measured[row["donor"]] = block_summary(test.sequence)
+        print(f"Done: {test.filename}")
+
+    def as_row(row):
+        m = measured[row["donor"]]
+        return dict(donor=row["donor"], rank=row["rank"], n=m["n"],
+                    pe=m["polar_error"], eg=m["elevation_gain"],
+                    az_gain=m["azimuth_gain"], az_rmse=m["azimuth_rmse"])
+
+    ref = block_summary(native.sequence)
+    reference = dict(pe=ref["polar_error"], eg=ref["elevation_gain"],
+                     az_rmse=ref["azimuth_rmse"], n=ref["n"])
+    out, chosen = donor_screening.evaluate(reference, [as_row(r) for r in rows])
+    donor_screening.report(out, chosen, reference)
+    return out, chosen
 
 
 def load_existing_donor():
@@ -527,15 +624,45 @@ collect_externalization_rating(native)
 # pyBinSim databases (mirrored and un-mirrored), so that if the participant
 # turns out to be at floor with the rank-0 donor you can swap in seconds
 # instead of rebuilding filters while they wait. Leaves rank 0 active.
-prepare_donor_shortlist(n=3)
+# screen=True also builds the binaural database each screen block plays.
+prepare_donor_shortlist(n=3, screen=True)
+
+# %% day 1: SCREEN the staged donors -- run after the native reference --------
+# One 35-trial binaural full-field block per candidate (~3 min each), scored
+# against the native block above. This REJECTS unusable pairings; it does not
+# rank them -- 35 trials cannot separate two working donors, and the rank order
+# among survivors stays the pre-registered one. See donor_screening for the
+# three gates and where every threshold comes from.
+#
+# Retro-tested on every screen already run, with elevation gain leading:
+#   NR pilot/AH  REJECT  EG 0.00 -- the elevation cue is abolished, not degraded
+#   NR pilot/SW  PASS    EG 0.25, 39% of her own gain kept
+#   FP FS        REJECT  EG 0.00
+#   FP pilot/AH  PASS    EG 0.30, 37% kept
+#   LS pilot/AH  REJECT  EG 0.09, 7% kept -- she ran the whole study on it
+#   AS GS        REJECT  EG 0.41 looks fine in absolute terms, but that is 65%
+#                        of her own gain and the impairment was only +2.5 deg:
+#                        the manipulation never bit. This is the case the EG
+#                        RATIO catches and an absolute EG threshold cannot.
+#
+# NB the screen is itself donor exposure: take the day-1 impairment for the
+# chosen donor from ITS screen block, and report baseline A as post-screen.
+screen_rows, screen_choice = screen_donors(subject, native)
 
 # %% day 1: select the donor and build the modified HRTF -- run ONCE ----------
 # Prints the full candidate ranking, the chosen donor and why, writes
 # <SUBJECT_ID>_donor_<DONOR>.sofa with the selection embedded, plus a ranking
 # CSV and before/after figures, and records the donor in the subject file --
 # from here on every session picks it up automatically.
-# Redundant if prepare_donor_shortlist() was run; harmless to run anyway.
+#
+# With the screen above, pass its choice through so the reason is on record:
+#   use_donor(donor_id=screen_choice["donor"], reason="day-1 screen")
+# If every candidate was rejected, stage more donors rather than run the
+# least-bad one -- prepare_donor_shortlist(n=5, screen=True).
+# Without a screen, this builds the rank-0 donor as before.
 
+if screen_choice is not None:
+    use_donor(donor_id=screen_choice["donor"], reason="day-1 screen")
 build_donor_sofa(overwrite=False)
 subject = hr.Subject(SUBJECT_ID)
 

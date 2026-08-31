@@ -545,7 +545,7 @@ def _spearman(a, b):
 
 def cue_gradient(split, bandwidth=DEFAULT_BAND, resolution=DEFAULT_RESOLUTION,
                  ear=None):
-    """How READABLE a recording's elevation cue is, as a map. Per ear.
+    r"""How READABLE a recording's elevation cue is, as a map. Per ear.
 
     :func:`detail_strength` answers "how much does the detail vary across
     directions"; this answers "does that variation carry elevation". The two
@@ -1216,9 +1216,20 @@ def report(rows, reference=None):
               f'(<= {MAX_RIDGE_SLOPE:.2f}); ranked by ridge slope. REPORT THIS.')
     cue_ear = rows[0].get('cue_ear') if rows else None
     if cue_ear:
-        print(f'cue gate on the {cue_ear} ear: gradient >= '
-              f'{MIN_CUE_GRADIENT:.2f} dB/10deg, monotonicity >= '
-              f'{MIN_CUE_MONOTONICITY:.2f}')
+        # MIN_CUE_* are None by design -- the back-test rejected the cue metric
+        # as a SELECTION gate, so the columns are reported and never enforced.
+        # Formatting them unconditionally is a TypeError; see the note on
+        # MIN_CUE_GRADIENT before switching either back on.
+        limits = [name + ' >= ' + f'{value:.2f}' + unit
+                  for name, value, unit in
+                  (('gradient', MIN_CUE_GRADIENT, ' dB/10deg'),
+                   ('monotonicity', MIN_CUE_MONOTONICITY, ''))
+                  if value is not None]
+        if limits:
+            print(f'cue gate on the {cue_ear} ear: ' + ', '.join(limits))
+        else:
+            print(f'cue columns measured on the {cue_ear} ear '
+                  f'(REPORT-ONLY -- no cue gate is enforced)')
     print(f'{"":>4}{"donor":>14}  {"r_match":>8} {"ridge":>8} {"strength":>9} '
           f'{"grad":>6} {"mono":>6} {"decod":>6}  {"":>6}')
     for row in rows:
@@ -1243,10 +1254,20 @@ def report(rows, reference=None):
               f'{mark:>6}')
     if reference is not None and len(reference):
         quartiles = numpy.percentile(reference, [25, 50, 75])
-        print(f'\nbetween-subject VSI dissimilarity (n={len(reference)} pairs): '
+        print(f'\nbetween-donor r_match, the yardstick '
+              f'(n={len(reference)} pairs, listener excluded): '
               f'min {reference.min():.3f} | Q1 {quartiles[0]:.3f} | '
               f'median {quartiles[1]:.3f} | Q3 {quartiles[2]:.3f} | '
               f'max {reference.max():.3f}')
         print('target a donor near the middle of that spread — Trapeau found '
               'stronger disruption gave slower adaptation, Van Wanrooij found '
               'weaker disruption gave none')
+        best = max(row['r_match'] for row in rows)
+        below = float((reference < best).mean())
+        if below < 0.25:
+            print(f'!! this listener is UNLIKE the pool: the best available '
+                  f'r_match ({best:.2f}) sits at the {100*below:.0f}th '
+                  f'percentile of person-to-person differences. Every donor '
+                  f'perturbs them harder than two arbitrary people differ. '
+                  f'Check that their own recording was built on the same '
+                  f'reference era as the pool before reading this as anatomy.')

@@ -74,9 +74,9 @@ EDIT THE CONFIG BLOCK BELOW PER PARTICIPANT.
 ------------------------------------------------------------------------------
 """
 
-SUBJECT_ID = ("NR")
-
 # %% imports and config #------------------------------------------------------
+SUBJECT_ID = ("PF")
+
 import csv  # only for the block-order table below; the modification
             # workflow now lives in donor_modification.py next door
 import os

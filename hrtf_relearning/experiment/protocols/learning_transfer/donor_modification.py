@@ -297,8 +297,16 @@ class DonorModification:
         self._shortlist = selection.shortlist(
             own, candidates, trained_ear=self.trained_ear)
         if not quiet:
-            reference, _ = selection.pairwise_r_match(
-                {self.subject_id: own, **candidates})
+            # DONOR-DONOR PAIRS ONLY -- the listener must NOT be in the yardstick.
+            # It answers "how far apart are two arbitrary people?", which is what
+            # this subject's r_match is then judged against. Including the
+            # listener puts their own n-1 pairs into the distribution they are
+            # being compared to, which is circular and, for a listener who is
+            # unlike the pool, drags the reference down toward them and hides
+            # exactly the fact worth seeing. (PF, 2026-08-31: with him in, the
+            # median read 0.545 over 66 pairs; his own 11 pairs were 10 of the
+            # bottom 16.) This is also the definition TARGET_R_MATCH uses.
+            reference, _ = selection.pairwise_r_match(candidates)
             selection.report(self._shortlist, reference)
         return self._shortlist
 

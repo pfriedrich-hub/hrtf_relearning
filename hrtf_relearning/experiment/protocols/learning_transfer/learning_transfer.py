@@ -189,7 +189,7 @@ GAIN               = 0.2
 #
 # Subjects run before this date were tested on noise. They are pilots and are
 # not pooled with what follows.
-STIM               = "ripple"      # -> "ripple" once the depth is settled, below
+STIM               = "noise"      # -> "ripple" once the depth is settled, below
 # Envelope parameters for STIM='ripple'. Empty dict = inherit the defaults in
 # localization_helpers.stimulus (the single source of truth); set rms_tilt here
 # only to override for a specific cohort, and it is recorded per block in

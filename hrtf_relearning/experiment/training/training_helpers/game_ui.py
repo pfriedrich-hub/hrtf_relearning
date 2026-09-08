@@ -128,6 +128,13 @@ def rank_scores(rows: dict) -> List[Tuple[str, int]]:
 # headed by a score far out of reach discourages more than it motivates.
 #
 # The window leans upwards: more above than below.
+#
+# A participant who really is last in the field cannot be given anyone
+# below them, and the window then fills from above -- a board whose only
+# message is "you are bottom". That is worth less than no board at all, so
+# in that case none is shown (see has_peer_below / _board_for_player): the
+# board appears the first time they have someone under them, which is also
+# the first time it says something encouraging.
 BOARD_ABOVE = 4
 BOARD_BELOW = 2
 
@@ -223,6 +230,18 @@ def board_rows(ranked: List[Tuple[str, int]], subject_id: str,
         if pid in scores and pid != subject_id:
             keep[pid] = scores[pid]
     return rank_scores(keep)
+
+
+def has_peer_below(rows: List[Tuple[str, int]], subject_id: str) -> bool:
+    """True if `subject_id` is not the bottom row of `rows`.
+
+    This is the test for whether a board is worth showing at all. Being
+    shown last -- especially early on, on a handful of games, against
+    people who have had whole sessions -- reads as a verdict rather than a
+    target, so the board is held back until it can show the participant
+    with someone under them.
+    """
+    return bool(rows) and rows[-1][0] != subject_id
 
 
 _PIXEL_FONT_FAMILY: Optional[str] = None
@@ -1085,13 +1104,28 @@ class GameWindow(QtWidgets.QMainWindow):
         the same people — which is the motivating part — while the names
         stay put. Their peers' scores are always the current ones, so being
         overtaken still happens.
+
+        Returns an empty board (and freezes nothing) while the participant
+        is last in the field -- see has_peer_below.
         """
         peers = load_peer_set(self.backup_dir, self.subject_id)
-        if peers is None:
+        rows = board_rows(ranked, self.subject_id, peers or [])
+        if peers is None or not has_peer_below(rows, self.subject_id):
+            # Either no cast has been frozen yet, or the frozen one leaves
+            # the participant on the bottom row -- it was picked while they
+            # were last in the field, or peers have since dropped out of the
+            # data. Pick again against the current standings.
             peers = choose_peer_set(ranked, self.subject_id)
-            if peers:
-                save_peer_set(self.backup_dir, self.subject_id, peers)
-        return board_rows(ranked, self.subject_id, peers or [])
+            rows = board_rows(ranked, self.subject_id, peers or [])
+            if not has_peer_below(rows, self.subject_id):
+                # Still nothing under them: they are last in the whole
+                # field. Show no board, and freeze no cast -- picking one
+                # now would fix in place a set chosen at their lowest
+                # point, which is exactly the set that can never show
+                # anyone below them.
+                return []
+            save_peer_set(self.backup_dir, self.subject_id, peers)
+        return rows
 
     def _on_enter_pressed(self):
         state = int(self.shared.ui_state.value)
@@ -1182,7 +1216,7 @@ class GameWindow(QtWidgets.QMainWindow):
         # scoreboard too, as a window around wherever the participant
         # stands (see _board_for_player). It is skipped entirely when there
         # is nothing meaningful to show — a participant with no score yet,
-        # or no one else to put beside them.
+        # no one else to put beside them, or no one below them.
         if state == 3:
             if self._session_over_since is None:
                 self._session_over_since = time.monotonic()
@@ -1211,9 +1245,11 @@ class GameWindow(QtWidgets.QMainWindow):
                 # include the run that just finished.
                 self._scoreboard_cache = self._board_for_player(
                     self._current_scoreboard(highscore))
-                # A one-row board (nobody else recorded yet) says nothing;
-                # the table is then left out. The page is still used when a
-                # break is due -- it carries the banner.
+                # An empty or one-row board says nothing -- nobody else
+                # recorded yet, or the participant is last in the field and
+                # _board_for_player held the board back. The table is then
+                # left out. The page is still used when a break is due --
+                # it carries the banner.
                 self._show_scoreboard = len(self._scoreboard_cache) >= 2
                 self.scoreboard.setVisible(self._show_scoreboard)
                 if self._show_scoreboard:

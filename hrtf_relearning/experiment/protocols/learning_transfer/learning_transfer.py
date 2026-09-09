@@ -692,7 +692,8 @@ collect_externalization_rating(baseline_A)
 baseline_D = run_phase("baseline_D", subject)
 collect_externalization_rating(baseline_D)
 # Condition identity (ear / mirror / hemifield) is carried into the sequence
-# name by run_phase(), so every figure titled from it says which cell it is --
+# name by run_phase(), so every figure titled from it says which cell it is --12
+
 # see `_condition_tag`.
 
 # ---------------------------------------------------------------------------

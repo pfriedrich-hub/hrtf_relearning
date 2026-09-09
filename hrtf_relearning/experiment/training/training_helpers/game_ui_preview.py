@@ -22,7 +22,8 @@ preview flags vary:
 
     (default)     mid-field -- people above AND below, the normal case
     --top         top of the field, window fills downwards
-    --bottom      last place, window fills upwards
+    --bottom      last place -- no board is shown at all (see
+                  game_ui.has_peer_below); the flag exists to check that
     --new-player  no entry at all and scores nothing -- no board shown
 
 Usage:
@@ -82,7 +83,9 @@ def _make_fake_backup_dir(subject_id: str, include_current_player: bool = True,
     `placement` decides where in the field the current player starts, which
     is what determines the shape of the window drawn around them:
     "middle" (default) puts them mid-field, "top" above everyone, "bottom"
-    below everyone.
+    below everyone. With "bottom" no board is drawn -- a participant who is
+    last has nobody to put below them, and GameWindow holds the board back
+    rather than showing them a bottom row (game_ui.has_peer_below).
 
     There are deliberately more demo participants than fit on the board, so
     the window really is a window in the default preview.
@@ -202,7 +205,8 @@ def main():
     parser.add_argument("--top", action="store_true",
                         help="Preview a participant at the top of the field (window fills downwards)")
     parser.add_argument("--bottom", action="store_true",
-                        help="Preview a participant in last place (window fills upwards)")
+                        help="Preview a participant in last place -- the board is then "
+                             "suppressed entirely, only the score is shown")
     args = parser.parse_args()
 
     app = QtWidgets.QApplication(sys.argv)

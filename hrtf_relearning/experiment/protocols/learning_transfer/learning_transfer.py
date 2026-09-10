@@ -697,7 +697,7 @@ collect_externalization_rating(baseline_D)
 # see `_condition_tag`.
 
 # ---------------------------------------------------------------------------
-# ADAPTATION DAYS
+# ADAPTATION DAYS1
 # anchor -> PRE test -> train -> POST test, so within-session change is
 # separable from overnight consolidation and every rating has a same-day top.
 # Run the four cells in order.
@@ -731,6 +731,15 @@ run_phase("C", subject)
 
 # %% final day: D -- untrained ear, mirrored locations [MAIN] -----------------
 run_phase("D", subject)
+
+
+
+
+
+
+
+
+
 
 
 # ===========================================================================

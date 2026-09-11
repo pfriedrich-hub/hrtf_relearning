@@ -26,6 +26,8 @@ use_interactive()
 from hrtf_relearning.hrtf.record.recordings import *
 from hrtf_relearning.hrtf.record.processing import *
 from hrtf_relearning.utils import paths
+from hrtf_relearning.hrtf.record.fit_head_position import (
+    fit_head_position, check_head_position, save_head_position)
 base_dir = paths.HRTF_DIR
 import logging
 from datetime import datetime
@@ -222,6 +224,23 @@ def record_hrir(
     else:
         logging.info("Loading subject recordings from disk")
         subject_rec = Recordings.load(subj_dir)
+
+    # -----------------------------------------------------------------
+    # 1b) Where did the listener actually sit?
+    # -----------------------------------------------------------------
+    # A chair-height error is invisible in every behavioural block (it cancels
+    # in the dome test and in the AR frame alike) but NOT here: it relabels
+    # every direction in the SOFA and shows up later as a constant elevation
+    # bias in AR that no re-calibration can remove. Check it before the
+    # pipeline spends twenty minutes building that SOFA. Never fatal -- see
+    # fit_head_position.check_head_position.
+    try:
+        head_position = fit_head_position(subject_rec)
+        check_head_position(head_position, subject_id=subject_id)
+        save_head_position(head_position, subj_dir)
+    except Exception as exc:
+        logging.warning("head-position check could not be run (%s: %s)",
+                        type(exc).__name__, exc)
 
     # -----------------------------------------------------------------
     # 2) Reference recordings

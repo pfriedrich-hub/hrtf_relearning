@@ -39,7 +39,11 @@ OTHER_EAR  = os.environ.get("TRAINING_OTHER_EAR", "flat")
 ENV_NKEEP  = int(os.environ.get("TRAINING_ENV_NKEEP", "4"))
 NATIVE_SOFA = os.environ.get("TRAINING_NATIVE_SOFA", SUBJECT_ID)
 
-STIM       = os.environ.get("TRAINING_STIM", "noise")  # 'noise' or 'uso'
+# 'noise' -> pink noise synthesised at startup. Anything else is taken as the
+# name of a wav file in the database's sounds/ directory, cropped to the pulse
+# and target lengths below. This used to be read and then never used: SOUND_FILE
+# was hardcoded to None, so the game played pink noise whatever a protocol set.
+STIM       = os.environ.get("TRAINING_STIM", "noise")
 # Games per block: after every BREAK_EVERY-th game the game-over screen asks
 # for a short break (scoreboard first, then the break banner + a "ready?"
 # prompt). 0 disables it, which is the default when the script is run
@@ -48,7 +52,22 @@ BREAK_EVERY = int(os.environ.get("TRAINING_BREAK_EVERY", "0"))
 AZ_RANGE   = tuple(int(x) for x in os.environ.get("TRAINING_AZ_RANGE", "-35,0").split(","))
 
 # Sound
-SOUND_FILE = None         # None -> pink noise pulses; or 'uso_225ms_9_.wav', etc.
+SOUND_FILE = None if STIM == "noise" else STIM   # wav name in <database>/sounds
+# One pulse has a FIXED length; only the gap carries the distance. With the
+# burst as long as the gap (the old behaviour) the fast end of the ramp was a
+# 75 ms burst carrying a 30 ms ramp at each end -- a ~6 Hz flutter that is
+# perceptually continuous, i.e. barely distinguishable from the target sound
+# while the head was still OUTSIDE the window and no countdown was running.
+# Onset-to-onset spacing is still 2 * interval, so the distance -> rate mapping
+# is exactly as before.
+PULSE_BURST = 0.05        # s, length of one pulse
+PULSE_RAMP  = 0.01        # s, ramp at each end of a pulse
+TARGET_RAMP = 0.03        # s, ramp at each end of the continuous target sound
+# Bump whenever the feedback the participant hears changes. Stored on every
+# trial, so a session can be told apart from earlier ones in analysis.
+#   1 = burst length == gap, continuous cue derived from the pulse interval
+#   2 = fixed-length burst, continuous cue driven by the scoring countdown
+FEEDBACK_VERSION = 2
 # Graphics
 # (the game UI process starts unconditionally below -- there is no flag for
 #  it; add one at the mp.Process(target=game_ui.run_ui) call if you want
@@ -111,6 +130,11 @@ if __name__ == "__main__":
 hrir = hrtf2binsim(hrir_settings, build=(__name__ == "__main__"))
 slab.set_default_samplerate(hrir.samplerate)
 HRIR_DIR = paths.BINSIM_DIR / hrir.name
+# Written once by build_stimuli() in the parent; the pulse worker only sends
+# these paths to pyBinSim afterwards, instead of re-synthesising and re-writing
+# a wav on every single pulse.
+STIM_FILES = {"pulse": HRIR_DIR / "sounds" / "pulse_burst.wav",
+              "target": HRIR_DIR / "sounds" / "target_sound.wav"}
 
 # Vet OUR gain against the headroom the build measured. The build cannot do this
 # alone: it does not know whether the database will be opened by this game at
@@ -123,11 +147,21 @@ def make_osc_client(port, ip="127.0.0.1"):
     return udp_client.SimpleUDPClient(ip, port)
 
 
-def _drain_pose_queue(q):
+def _drain_pose_queue(q, timeout=0.0):
+    """Drain everything the tracker has queued.
+
+    `mp.Queue.put` is asynchronous: the producer's feeder thread can still hold
+    the most recent samples when `get_nowait()` raises Empty, so a plain drain
+    silently truncated `pose_trace` -- the post-goal segment of a scoring trial,
+    and occasionally several seconds of a 10 s trial, never reached the file.
+    Scoring was never affected (it reads `distance.value`); pose metrics were.
+    Pass a small `timeout` once the producer has stopped: the wait is paid once,
+    when the queue has really run dry.
+    """
     items = []
     while True:
         try:
-            items.append(q.get_nowait())
+            items.append(q.get(timeout=timeout) if timeout else q.get_nowait())
         except Empty:
             break
     return items
@@ -169,13 +203,45 @@ def play_sound(osc_client, soundfile=None, duration=None, sleep=False):
     if sleep:
         time.sleep(duration)
 
+def send_soundfile(osc_client, path):
+    """Hand pyBinSim a file to play. Re-sending the same path re-triggers it."""
+    osc_client.send_message("/pyBinSimFile", str(path))
+
+
+def _write_stimulus(duration, ramp, path):
+    if SOUND_FILE:
+        source = HRIR_DIR / "sounds" / SOUND_FILE
+        if not source.exists():
+            raise FileNotFoundError(
+                f"TRAINING_STIM={STIM!r} but there is no {source.name} in "
+                f"{source.parent} -- use 'noise' or put the file there.")
+        sound = slab.Sound.read(source)
+        sound = slab.Sound(sound.data[: int(hrir.samplerate * duration)])
+    else:
+        sound = slab.Sound.pinknoise(duration, level=77)
+    sound.ramp(duration=ramp).write(path)
+    return path
+
+
+def build_stimuli():
+    """Write the two training stimuli once, in the parent, before any worker can
+    touch them. Both are re-triggered by path afterwards (see send_soundfile)."""
+    _write_stimulus(PULSE_BURST, PULSE_RAMP, STIM_FILES["pulse"])
+    _write_stimulus(float(settings["target_time"]), TARGET_RAMP, STIM_FILES["target"])
+    logging.info("Training stimulus: %s | pulse %.0f ms, target sound %.0f ms",
+                 SOUND_FILE or "pink noise", PULSE_BURST * 1000,
+                 float(settings["target_time"]) * 1000)
+
+
 def distance_to_interval(distance):
     """Pulse interval in seconds for a head-to-target distance in degrees.
 
     The law itself lives in training_helpers.pulse, shared with Training_Dome so
     both conditions ramp identically. Unchanged behaviour: the 'ar' mapping with
     the same 75-350 ms bounds and log1p steepness, and 0 inside the target
-    window (the pulse worker reads 0 as "play the target sound continuously").
+    window -- which now only stops the pulse train: what the participant hears
+    inside the window is driven by the countdown flag, not by this 0 (see
+    pulse_maker).
     The truncation to whole milliseconds is kept so the value is bit-for-bit
     what this function returned before the law was moved out.
     """
@@ -241,33 +307,41 @@ def binsim_stream():
     binsim = pybinsim.BinSim(HRIR_DIR / f"{hrir.name}_training_settings.txt")
     binsim.stream_start()
 
-def _sleep_while(pulse_state, want, seconds):
-    """Sleep `seconds`, but in short slices, aborting as soon as pulse_state
-    leaves `want`. Returns False if it aborted early.
-
-    The worker used to block for up to 2x the pulse interval (~0.7 s) inside a
-    single pulse. During that block it could neither see a state change nor
-    keep its hands off /pyBinSimFile, so a game-over or goal sound set by the
-    main process was liable to be overwritten by the next pulse.
-    """
-    end = time.time() + seconds
-    while time.time() < end:
-        if pulse_state.value != want:
-            return False
-        time.sleep(0.005)
-    return True
-
-def pulse_maker(pulse_interval, pulse_state):
+def pulse_maker(pulse_interval, pulse_state, on_target):
     """state: 0 mute, 1 idle (audible, no pulses -- the main process owns the
-    sound file and plays SFX), 2 play pulses; interval in seconds
-    (0 => continuous target sound)"""
+    sound file and plays SFX), 2 play pulses; interval in seconds.
+
+    The continuous target sound is driven by `on_target`, the countdown flag
+    play_trial publishes, NOT by this worker's own reading of the interval. The
+    two used to be derived independently from the same distance and could
+    disagree: an excursion out of the window shorter than one poll of this loop
+    reset the countdown in the main process while this worker kept its latch, so
+    the participant sat inside the window, with the countdown restarted, and the
+    target sound never re-triggered. "Continuous" now means "the countdown is
+    running", by construction.
+
+    Nothing here blocks. The worker used to sleep out the whole gap between two
+    pulses (up to 0.7 s) and could neither see a state change nor keep its hands
+    off /pyBinSimFile while it did. Pulse onsets are scheduled instead, so any
+    change of state is acted on within one 5 ms poll -- and no file is ever
+    re-triggered inside the 50 ms burst of the previous one, which is what
+    rapid crossings of the target window used to do (a 26 ms onset gap turns
+    the feedback into a chop).
+    """
     osc = make_osc_client(port=10003)
     target_sound = False
+    rearm_at = next_pulse_at = last_pulse_at = loudness_at = 0.0
     last_state = None
     while True:
         state = pulse_state.value
+        now = time.time()
         if state == 0:
-            osc.send_message("/pyBinSimLoudness", 0)
+            # Re-assert the mute on entering the state and then at 10 Hz: OSC is
+            # UDP, so a single dropped message must not leave the stream audible
+            # between trials, but there is no point flooding pyBinSim either.
+            if last_state != 0 or now - loudness_at > 0.1:
+                osc.send_message("/pyBinSimLoudness", 0)
+                loudness_at = now
             target_sound = False
         elif state == 1:
             # "idle but don't mute": the goal SFX and the game-over buzzer are
@@ -280,23 +354,33 @@ def pulse_maker(pulse_interval, pulse_state):
             # process, which may set its own level for an SFX.
             if last_state != 1:
                 osc.send_message("/pyBinSimLoudness", settings["gain"])
+                loudness_at = now
             target_sound = False
         elif state == 2:
-            osc.send_message("/pyBinSimLoudness", settings["gain"])
-            interval = pulse_interval.value
-            if interval == 0 and not target_sound:
-                play_sound(osc, soundfile=SOUND_FILE, duration=float(settings["target_time"]), sleep=False)
-                target_sound = True
-            elif interval != 0:
-                # pulse on for `interval`, silent for `interval` -- same cadence
-                # as before, but interruptible (see _sleep_while).
-                play_sound(osc, soundfile=SOUND_FILE, duration=float(interval), sleep=False)
-                if not (_sleep_while(pulse_state, 2, interval)
-                        and _sleep_while(pulse_state, 2, interval)):
-                    continue  # state changed -- re-dispatch, keep last_state
-                target_sound = False
+            if last_state != 2 or now - loudness_at > 0.1:
+                osc.send_message("/pyBinSimLoudness", settings["gain"])
+                loudness_at = now
+            if on_target.value:
+                # (Re)start the target sound whenever the countdown (re)starts,
+                # and re-arm just before the file runs out, so a countdown that
+                # is still running is never heard as a gap.
+                if not target_sound or now >= rearm_at:
+                    send_soundfile(osc, STIM_FILES["target"])
+                    target_sound = True
+                    rearm_at = now + float(settings["target_time"]) - 0.02
+            else:
+                if target_sound:
+                    # Left the window: take the stream back from the target
+                    # sound instead of letting the rest of the file play out.
+                    target_sound = False
+                    next_pulse_at = 0.0
+                interval = pulse_interval.value
+                if interval > 0 and now >= max(next_pulse_at, last_pulse_at + PULSE_BURST):
+                    send_soundfile(osc, STIM_FILES["pulse"])
+                    last_pulse_at = now
+                    next_pulse_at = now + 2 * interval   # onset spacing, as before
         last_state = state
-        time.sleep(0.02)
+        time.sleep(0.005)
 
 def head_tracker(distance, target, sensor_state, pose_queue, current_trial, plot_filter_idx):
     import logging
@@ -356,7 +440,7 @@ def head_tracker(distance, target, sensor_state, pose_queue, current_trial, plot
         time.sleep(0.02)
 
 def play_trial(subject, trial_idx, current_trial, target, distance, pulse_interval, pulse_state, sensor_state,
-               game_time_left, game_timer, session_total, last_goal_points, pose_queue,
+               game_time_left, game_timer, session_total, last_goal_points, pose_queue, on_target,
                game_idx, trial_in_game, game_start_wall, session_id):
     """
     Returns: (game_timer, score)
@@ -372,6 +456,7 @@ def play_trial(subject, trial_idx, current_trial, target, distance, pulse_interv
     trial_timer = 0.0
     time_on_target = 0.0
     count_down = False
+    on_target.value = 0
 
     sensor_state.value = 2  # calibrate
     time.sleep(0.1)
@@ -394,18 +479,29 @@ def play_trial(subject, trial_idx, current_trial, target, distance, pulse_interv
         # update UI timer
         game_time_left.value = max(0.0, settings['game_time'] - (game_timer + trial_timer))
 
-        # pulse interval based on distance
-        pulse_interval.value = distance_to_interval(distance.value)
+        # One read of the tracker's distance per iteration: the pulse interval
+        # and the scoring window are two views of the SAME sample and can no
+        # longer disagree (these were two separate reads of distance.value).
+        d = distance.value
 
-        # target window / scoring
-        if distance.value < settings['target_size']:
+        # pulse interval based on distance
+        pulse_interval.value = distance_to_interval(d)
+
+        # target window / scoring. `<=` matches pulse.distance_to_interval,
+        # which returns 0 (continuous) at exactly target_size, and Training_Dome.
+        if d <= settings['target_size']:
             if not count_down:
                 time_on_target, count_down = time.time(), True
         else:
             time_on_target, count_down = time.time(), False
 
+        # Publish the countdown to the pulse worker: what the participant hears
+        # is now this flag, not a second derivation of it.
+        on_target.value = int(count_down)
+
         if count_down and time.time() > time_on_target + settings['target_time']:  # goal condition
             pulse_state.value = 1  # stop pulse loop (idle but don't mute)
+            on_target.value = 0
 
             # Decide score & file
             if trial_timer <= settings['score_time']:
@@ -440,10 +536,14 @@ def play_trial(subject, trial_idx, current_trial, target, distance, pulse_interv
     logging.info(f"Score: {score}")
     game_timer += trial_timer
     pulse_state.value = 0
+    on_target.value = 0
     sensor_state.value = 1
+    current_trial.value = -1  # anything queued from here on is tagged -1 and dropped
 
-    # Collect pose samples; keep those for our trial id & time window
-    raw = _drain_pose_queue(pose_queue)
+    # Collect pose samples; keep those for our trial id & time window. The
+    # producer has stopped (sensor_state 1), so give samples still in the
+    # queue's feeder a moment to arrive rather than dropping them.
+    raw = _drain_pose_queue(pose_queue, timeout=0.15)
     # raw items are (t_wall, trial_id, yaw, pitch)
     trace = [(t, yaw, pitch,) for (t, tid, yaw, pitch) in raw
              if (tid == trial_idx) and (t0 <= t <= t1)]
@@ -469,6 +569,15 @@ def play_trial(subject, trial_idx, current_trial, target, distance, pulse_interv
         "pose_trace": trace,                        # [(t, yaw, pitch), ...]
         "score": int(score),                        # 0 miss, 1 hit, 2 fast hit
         "reached_target": bool(score > 0),
+        # provenance: what the participant was hearing and scoring against.
+        # Nothing in the data used to say which target window, hold time or
+        # feedback version produced a trial (Training_Dome already stores its
+        # settings), so a change here was invisible in analysis.
+        "condition": "ar",
+        "hrir_name": hrir.name,
+        "stim": STIM,
+        "feedback_version": FEEDBACK_VERSION,
+        "settings": dict(settings),
     }
     if 0 <= trial_idx < len(subject.trials):
         # defensive: overwrite if a slot already exists (e.g. resumed run)
@@ -507,6 +616,9 @@ def play_session():
     logging.info("Training target range: az=%s el=%s", az_range, ele_range)
     settings = dict(settings, az_range=az_range, ele_range=ele_range)
 
+    # Write the pulse and target stimuli once, before any worker can touch them.
+    build_stimuli()
+
     # Last localization sequence whose test area matches the training ranges
     # (not simply subject.last_sequence, which may be a mismatched or
     # midline-only test run just before this session). None -> uniform targets.
@@ -515,6 +627,7 @@ def play_session():
     # Shared state for workers
     sensor_state    = mp.Value("i", 0)
     pulse_state     = mp.Value("i", 0)
+    on_target       = mp.Value("i", 0)  # countdown state, read by the pulse worker
     target          = mp.Array("f", [0.0, 0.0])
     distance        = mp.Value("f", 0.0)
     pulse_interval  = mp.Value("f", 0.0)
@@ -558,7 +671,7 @@ def play_session():
     tracking_worker.start()
     binsim_worker = mp.Process(target=binsim_stream, args=())
     binsim_worker.start()
-    pulse_worker = mp.Process(target=pulse_maker, args=(pulse_interval, pulse_state))
+    pulse_worker = mp.Process(target=pulse_maker, args=(pulse_interval, pulse_state, on_target))
     pulse_worker.start()
 
     if SHOW_TF:  # start plot_worker
@@ -627,7 +740,7 @@ def play_session():
 
                 game_timer, score = play_trial(subject, trial_idx, current_trial, target, distance, pulse_interval,
                                                pulse_state, sensor_state, game_time_left, game_timer, session_total,
-                                               last_goal_points, pose_queue,
+                                               last_goal_points, pose_queue, on_target,
                                                game_idx=games_played, trial_in_game=trial_in_game,
                                                game_start_wall=game_start_wall, session_id=session_id)
                 scores.append(score)

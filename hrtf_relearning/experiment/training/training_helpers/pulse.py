@@ -11,8 +11,10 @@ Two mappings:
 'ar'
     log1p ramp from `min_pulse_interval` at the edge of the target window to
     `max_pulse_interval` at the far corner of the target area, and exactly 0
-    inside the window -- both games read 0 as "play continuously", which is the
-    same signal as the scoring criterion. Normalised by `target_size` and by the
+    inside the window. `Training_Dome` reads that 0 as "play continuously";
+    `Training_AR` no longer does -- there the continuous target sound follows
+    the scoring countdown itself, so the cue cannot drift out of step with the
+    criterion (Training_AR.pulse_maker). Normalised by `target_size` and by the
     extent of the target area, so changing the window or switching between a
     midline and a whole-dome/hemifield area rescales the ramp instead of
     silently changing the difficulty.

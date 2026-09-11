@@ -51,9 +51,13 @@ WHAT THE GATES ARE, AND WHERE THE NUMBERS COME FROM.
    improved 0.41 -> 0.51 in gain over three days, and that "recovery" is inside
    the n=75 noise band. Above about +20 deg there is a floor risk.
 
-3. Elevation gain floor, deliberately loose. A very low day-1 gain WITH a large
-   polar error suggests an unreadable map, but do not set this tight: FS opened
-   at 0.37 and IR at 0.20 and both were among the better outcomes on record.
+3. Elevation gain BAND on the retained fraction, 30-55% of the listener's own
+   gain (MIN_EG_RETAINED / MAX_EG_RETAINED), plus an absolute backstop at
+   MIN_EG. Tightened from a loose floor on 2026-09-11 -- see the long note at
+   the constants for the measured cost on the earmold cells and why it is a bet
+   on exposure dose rather than something that data supports. Note IR opened at
+   an absolute 0.20 and was among the better outcomes, which is exactly why the
+   floor is fractional: IR kept 41% of his own 0.49 and passes comfortably.
 
 The bands are set from the distributions above and validated post hoc against
 NR and LS. They have not been applied prospectively to anyone. Treat them as
@@ -85,9 +89,45 @@ NOISE_N = 132
 # absolute terms and opposite in outcome; the ratio separates them.
 MIN_EG = 0.15             # below this the composite has abolished the cue
                           # (LS 0.09, NR/FP 0.00 -- a block at chance teaches
-                          # nothing and measures nothing)
+                          # nothing and measures nothing). ABSOLUTE backstop
+                          # only; the band below is what actually gates.
 EG_TARGET = 0.30          # where a good pairing lands, per Paul. Reported.
 EG_TARGET_BAND = (0.20, 0.45)
+
+# THE GATE IS A BAND ON THE RETAINED FRACTION (Paul, 2026-09-11). He asked for
+# an absolute floor of 0.30, having aimed at day-1 EG ~0.30 in the earmold
+# study. Two reasons it is expressed as a FRACTION of the listener's own gain
+# instead:
+#
+# 1. An absolute 0.30 against MAX_EG_RETAINED = 0.55 needs own EG >= 0.545 for
+#    ANY donor to be admissible, and at the screen's 35 trials (EG resolved to
+#    ~0.27) the window is thinner than the measurement for most listeners:
+#    AS own 0.62 -> [0.30, 0.34], width 0.04; NR 0.69 -> 0.08; IR 0.77 -> 0.12;
+#    PF 0.23 -> INVERTED, no donor can pass. A gate narrower than its own
+#    measurement is not a gate.
+# 2. 0.30 was already a fraction in disguise: the mold subjects' ears-free EG
+#    was ~0.96 median, so "aim at 0.30" meant "aim at ~31% retained", which is
+#    commensurate with the ceiling it has to sit under.
+#
+# COST, measured on the 28 earmold cells (~/an/eg_retained.py). A 0.30 retained
+# floor rejects 11/28 and loses 4 of the 13 cells that recovered >=70% of their
+# gain (lm w1 15% retained -> 101% recovered; ll w1 20% -> 75%; lk w1 20% ->
+# 71%; jh w2 27% -> 74%), and buys only +0.04 of median final EG (0.73 -> 0.77).
+# Retained predicts the asymptote no better than absolute day-1 EG (rho +0.37
+# p=0.054 vs +0.39 p=0.041) -- both weak.
+#
+# So this floor is NOT supported by the mold data. It is a deliberate bet on
+# DOSE: the molds gave ~50-100x the exposure, which is what rescued their
+# low-retention cells, and the AR protocol is not that regime. On the AR cohort
+# the band does exactly what it is meant to -- rejects LS (8% retained) and GM
+# (21%), both non-learners, and AS (66%, never bit), while passing NR 38%,
+# FP 38%, IR 41%, FS 44%, which are the better AR outcomes on record.
+# COUNTEREXAMPLE to keep in view: LS is the one AR subject whose gain change
+# cleared the noise band (+0.21) and this floor rejects her -- though her donor
+# render also has the unexplained azimuth pathology, so her data is suspect
+# independently. Re-fit once more subjects have been through.
+MIN_EG_RETAINED = 0.30    # donor EG / own EG. Below this too little of the cue
+                          # is left to relearn from AT THIS EXPOSURE.
 MAX_EG_RETAINED = 0.55    # donor EG / own EG. Above this the manipulation did
                           # not bite. AS 0.65 (rejected); FS 0.44, IR 0.41,
                           # FP 0.38, NR 0.38 (all pass); LS 0.075 (floor).
@@ -145,7 +185,8 @@ def impairment_se(n_screen, n_reference):
 
 
 def evaluate(reference, candidates,
-             min_eg=MIN_EG, max_eg_retained=MAX_EG_RETAINED,
+             min_eg=MIN_EG, min_eg_retained=MIN_EG_RETAINED,
+             max_eg_retained=MAX_EG_RETAINED,
              impairment_reject=IMPAIRMENT_REJECT,
              az_gain_reject=AZ_GAIN_REJECT, az_gain_flag=AZ_GAIN_FLAG,
              az_rmse_factor=AZ_RMSE_FACTOR):
@@ -185,6 +226,12 @@ def evaluate(reference, candidates,
             reasons.append(
                 f"elevation gain {c['eg']:.2f} < {min_eg:.2f} — the composite "
                 f"has abolished the cue, not degraded it")
+        if numpy.isfinite(r["eg_retained"]) and r["eg_retained"] < min_eg_retained:
+            reasons.append(
+                f"kept only {r['eg_retained']*100:.0f}% of their own elevation "
+                f"gain ({c['eg']:.2f} of {own_eg:.2f}) — below "
+                f"{min_eg_retained*100:.0f}%, too little cue left to relearn "
+                f"from at this exposure")
         if numpy.isfinite(r["eg_retained"]) and r["eg_retained"] > max_eg_retained:
             reasons.append(
                 f"kept {r['eg_retained']*100:.0f}% of their own elevation gain "
@@ -221,6 +268,10 @@ def evaluate(reference, candidates,
             marginal.append(f"elevation gain {c['eg']:.2f} is within one SE "
                             f"({eg_se:.2f}) of the {min_eg:.2f} floor")
         if numpy.isfinite(r["eg_retained"]) and own_eg:
+            if abs(c["eg"] - min_eg_retained * own_eg) < eg_se:
+                marginal.append(
+                    f"kept {r['eg_retained']*100:.0f}% — within one SE of the "
+                    f"{min_eg_retained*100:.0f}% too-little-left edge")
             if abs(c["eg"] - max_eg_retained * own_eg) < eg_se:
                 marginal.append(
                     f"kept {r['eg_retained']*100:.0f}% — within one SE of the "

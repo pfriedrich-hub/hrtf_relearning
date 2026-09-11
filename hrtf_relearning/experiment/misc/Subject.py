@@ -25,6 +25,13 @@ class Subject:
         Age, gender and when they were recorded. Empty for records created
         before demographics were collected; fill with
         ``protocol_helpers.collect_demographics(subject)``.
+    donor_screen : dict
+        The day-1 behavioural donor screen — ``{'timestamp', 'reference',
+        'rows', 'chosen', 'n_trials'}``, or ``{}`` if it was never run. It is
+        the record that a composite was checked against the gates in
+        ``donor_screening`` BEFORE four days were spent on it; without it a
+        screened and an unscreened donor are indistinguishable afterwards.
+        Written by ``learning_transfer.screen_donors``.
     active_donor : dict
         Which donor this participant's composite HRTF is currently built from
         — ``{'donor', 'rank', 'tier', 'timestamp'}``, or ``{}`` if none has
@@ -112,6 +119,7 @@ class Subject:
             self.highscore = 0
             self.demographics = {}
             self.active_donor = {}
+            self.donor_screen = {}
             self.head_radius = None
 
     def _load(self):
@@ -143,6 +151,10 @@ class Subject:
         # {} for records created before the donor was tracked here (it used to
         # live in a <id>_donor_log.csv next to the plots)
         self.active_donor = data.get("active_donor", {})
+        # {} for records made before the screen was tracked, AND for anyone who
+        # skipped it — learning_transfer.require_screen cannot tell those apart,
+        # which is deliberate: both mean "no screen on record".
+        self.donor_screen = data.get("donor_screen", {})
         # None for records made before the head radius was fitted acoustically
         # (those HRIRs were built with the pipeline default, 0.0875 m).
         self.head_radius = data.get("head_radius", None)
@@ -158,6 +170,7 @@ class Subject:
             "highscore": self.highscore,
             "demographics": self.demographics,
             "active_donor": self.active_donor,
+            "donor_screen": self.donor_screen,
             "head_radius": self.head_radius,
         }
         with open(self.file_path, "wb") as f:
@@ -449,6 +462,7 @@ class Subject:
                 "highscore": int(self.highscore) if self.highscore is not None else 0,
                 "demographics": dict(self.demographics or {}),
                 "active_donor": _to_jsonable(self.active_donor or {}),
+                "donor_screen": _to_jsonable(self.donor_screen or {}),
                 "head_radius": _to_jsonable(self.head_radius),
                 # last_sequence is one of the localization runs; archive the key
                 # rather than a second copy of the whole run.

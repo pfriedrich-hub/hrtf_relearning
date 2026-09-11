@@ -77,6 +77,7 @@ EDIT THE CONFIG BLOCK BELOW PER PARTICIPANT.
 # %% imports and config #------------------------------------------------------
 SUBJECT_ID = ("GM")
 
+import datetime  # timestamp on the persisted day-1 screen (screen_donors)
 import csv  # only for the block-order table below; the modification
             # workflow now lives in donor_modification.py next door
 import os
@@ -128,6 +129,11 @@ NATIVE_SOFA = f"{SUBJECT_ID}"      # individual measured HRTF
 # the experiment.
 DONOR_OVERRIDE = None
 DONOR_ID = None                    # resolved from the subject file below
+
+# Set by the day-1 SCREEN cell. Pre-declared so the selection cell below reads
+# "no screen yet" instead of raising NameError -- that NameError is what made
+# skipping the screen look like a broken cell rather than a missing step.
+screen_rows, screen_choice = None, None
 MODIFIED_SOFA = None               # <SUBJECT_ID>_donor_<DONOR_ID>, set below
 
 HP = "DT990"
@@ -281,7 +287,14 @@ def donor_shortlist(refresh=False, quiet=False):
 
 
 def build_donor_sofa(overwrite=False, show_qc=True, n_keep=None, rank=0,
-                     donor_id=None, set_active=True, quiet=False):
+                     donor_id=None, set_active=True, quiet=False,
+                     override_reason=None):
+    # Committing a donor without a screen is the failure this guard exists for;
+    # building one WITHOUT making it active (staging, rebuilds, analysis) is
+    # unaffected.
+    if set_active:
+        why = require_screen(hr.Subject(SUBJECT_ID), override_reason)
+        print(f"  donor provenance: {why}")
     out = donor.build(overwrite=overwrite, show_qc=show_qc, n_keep=n_keep,
                       rank=rank, donor_id=donor_id, set_active=set_active,
                       quiet=quiet)
@@ -394,7 +407,53 @@ def screen_donors(subject, native, n=SCREEN_N, shuffle=True):
                      az_rmse=ref["azimuth_rmse"], n=ref["n"])
     out, chosen = donor_screening.evaluate(reference, [as_row(r) for r in rows])
     donor_screening.report(out, chosen, reference)
+    # Persist it. Without this the screen lives only in the notebook's memory:
+    # a later session cannot tell a screened donor from an unscreened one, and
+    # `require_screen` below has nothing to check. GM ran her whole study on an
+    # unscreened donor because there was no record either way (2026-09-11).
+    subject.donor_screen = {
+        "timestamp": datetime.datetime.now().isoformat(timespec="seconds"),
+        "reference": reference,
+        "rows": out,
+        "chosen": chosen["donor"] if chosen else None,
+        "n_trials": int(rows[0].get("n", 0)) if rows else None,
+    }
+    subject.write()
     return out, chosen
+
+
+def screen_on_record(subject):
+    """The stored day-1 screen for this subject, or None."""
+    rec = getattr(subject, "donor_screen", None)
+    return rec or None
+
+
+def require_screen(subject, override_reason=None):
+    """Refuse to commit a donor that no screen ever passed.
+
+    The screen is a REJECT filter (donor_screening): its whole job is to stop a
+    participant running four days on a composite that abolished their cue, or on
+    one that never bit. Skipping it is silent -- the study runs, the data look
+    normal, and the verdict is only available afterwards, which is exactly how
+    GM ran to completion on a donor that was never screened.
+
+    Pass `override_reason` to proceed deliberately; the text is recorded in
+    `subject.active_donor['reason']`, so a deviation stays reportable instead of
+    becoming invisible.
+    """
+    if override_reason:
+        return f"NO SCREEN -- override: {override_reason}"
+    rec = screen_on_record(subject)
+    if rec is None:
+        raise RuntimeError(
+            f"no day-1 screen on record for {SUBJECT_ID}.\n"
+            f"    Run the SCREEN cell first:  screen_rows, screen_choice = "
+            f"screen_donors(subject, native)\n"
+            f"    To proceed without one, say so explicitly and it goes on the "
+            f"record:\n"
+            f"        build_donor_sofa(override_reason='...')")
+    return f"day-1 screen {rec['timestamp']}"
+
 
 
 def load_existing_donor():
@@ -593,6 +652,13 @@ def show_status(subject):
           f"{DONOR_ID or '(not selected yet)'}   other ear={OTHER_EAR}")
     print(f"hemifields -> trained {TRAINED_HEMI}, mirrored {MIRRORED_HEMI}")
     print(f"modified SOFA: {MODIFIED_SOFA}    final-day order: {'-'.join(FINAL_ORDER)}")
+    rec = screen_on_record(subject)
+    if rec is None:
+        print("day-1 screen: *** NOT RUN *** -- run the SCREEN cell before "
+              "selecting a donor")
+    else:
+        print(f"day-1 screen: {rec['timestamp']}  chosen={rec['chosen']}  "
+              f"(n={rec.get('n_trials')} per donor)")
     done = list(getattr(subject, "localization", {}).keys())
     if done:
         print(f"\nLocalization runs on file for {SUBJECT_ID} ({len(done)}):")
@@ -664,6 +730,11 @@ screen_rows, screen_choice = screen_donors(subject, native)
 if screen_choice is not None:
     use_donor(donor_id=screen_choice["donor"], reason="day-1 screen")
 build_donor_sofa(overwrite=False)
+# If this raises "no day-1 screen on record", that is the guard doing its job:
+# go back and run the SCREEN cell. Only if the screen genuinely cannot be run
+# (e.g. re-deriving an old subject) pass it through explicitly, and the reason
+# lands in the subject file:
+#   build_donor_sofa(overwrite=False, override_reason="re-deriving AS 18.08")
 subject = hr.Subject(SUBJECT_ID)
 
 # %% later sessions: confirm which composite is loaded ------------------------bjm

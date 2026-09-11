@@ -96,6 +96,13 @@ class Localization:
             return None
 
     def write(self):
+        # Gravity-referenced head pitch at every trial's tracker zero, kept
+        # with the sequence so a session can be segmented into laser-alignment
+        # epochs afterwards (a step change marks a headband refit). Record
+        # only -- see meta_motion.Sensor.calibration_log.
+        if getattr(self, 'motion_sensor', None) is not None:
+            self.sequence.calibration_poses = list(
+                self.motion_sensor.calibration_log)
         self.subject.localization[self.filename] = self.sequence
         self.subject.write()
 

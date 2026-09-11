@@ -66,6 +66,22 @@ class Sensor:
         self.state = self._connect(state)
         self.convention = 'psychoacoustics'
         self.is_calibrated = False
+        #: Raw (gravity-referenced) pose at every `calibrate()` call this
+        #: session, in order: one row per trial, [azimuth, elevation]. The
+        #: sensor runs in NDOF, so the elevation column is a real pitch rather
+        #: than a relative reading -- `calibrate` then zeroes it, which is why
+        #: nothing downstream can see what it was.
+        #:
+        #: BOOKKEEPING ONLY. Nothing checks it live, deliberately: the
+        #: headband comes off and is refit within a session, which moves the
+        #: sensor's mounting offset, so there is no value a warning could be
+        #: written against that would not fire on normal procedure. What it IS
+        #: good for is afterwards -- a step change between consecutive trials
+        #: marks a refit, so a session's blocks can be segmented into
+        #: alignment epochs and asked whether anything moved WITHIN one. The
+        #: guarantee that the laser matches the head is manual (Paul,
+        #: 2026-09-11); this only makes it auditable.
+        self.calibration_log = []
 
     @staticmethod
     def _connect(state):
@@ -152,6 +168,8 @@ class Sensor:
                     break
         self.pose_offset = numpy.mean(log, axis=0).astype('float16')
         self.is_calibrated = True
+        self.calibration_log.append([float(self.pose_offset[0]),
+                                     float(self.pose_offset[1])])
         logging.debug('Sensor calibration complete.')
 
     def halt(self):

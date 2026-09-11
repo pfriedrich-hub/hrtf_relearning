@@ -4,6 +4,7 @@
   "torch_device": "cuda",
   "mpl_backend": "TkAgg",
 
+
   "_audio_comment": "Playback-route check, see hrtf_relearning/experiment/misc/audio_device.py. Omit audio_output entirely on machines with no fixed interface — the check is then a no-op.",
   "audio_output": "Sound Blaster",
   "audio_volume": 50,

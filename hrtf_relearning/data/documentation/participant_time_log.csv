@@ -1,0 +1,48 @@
+id,set,src,days,blocks,games,measured_h,billed_h,suspect,err
+PF,investigator,PF.json,4,5,2,0.82,0.0,,
+PF,investigator,PF.json,1,2,0,0.22,0.0,,
+paul,investigator,paul.pkl,1,0,29,0.17,0.0,31.12=934m,934-min span on 31.12 discarded as a clock artefact
+IR,main,IR.json,5,19,48,5.6,6.85,,
+FS,main,FS.json,4,24,38,5.43,6.43,,
+LS,main,LS.json,4,20,56,5.4,6.4,,hrtf/rec also holds LS_pilot — check whether that is a re-recording of the same person
+AS,main,AS.json,4,23,48,5.05,6.05,,"SAME PERSON AS pilot/AS? recorded as a donor 06-13.07, run as a participant 18-21.08 — resolve before headcount"
+NR,main,NR.json,3,13,17,2.83,3.58,,
+GM,main,GM.json,2,12,18,2.57,3.07,,
+MB,pilot,MB.pkl,6,11,79,7.0,8.5,,
+CO,pilot,CO.json,5,17,0,6.58,7.83,,
+RK,pilot,RK_corrected.pkl,4,18,54,6.55,7.55,,read from RK_corrected.pkl (RK.pkl is corrupted)
+AS,pilot,AS.json,5,24,0,5.42,6.67,,SAME PERSON AS main/AS? see main row
+JP,pilot,JP.pkl,5,16,47,5.33,6.58,,
+FD,pilot,FD.json,4,18,0,5.32,6.32,,
+AH,pilot,AH.pkl,4,13,50,5.02,6.02,,
+NK,pilot,NK.pkl,4,14,22,5.02,6.02,,
+SS,pilot,SS.json,4,18,0,4.92,5.92,,
+AvS,pilot,AvS.pkl,3,3,84,4.92,5.67,,
+SK,pilot,SK.pkl,4,13,49,4.47,5.47,,
+FP,pilot,FP.json,4,14,38,4.43,5.43,,the age-41 participant in the learning_transfer sheet; data lives under pilot/
+JZ,pilot,JZ.pkl,4,12,43,4.2,5.2,,
+JS,pilot,JS.json,5,21,0,3.6,4.85,,
+VD,pilot,VD.pkl,3,30,13,3.43,4.18,,
+VG,pilot,VG.pkl,3,8,0,3.4,4.15,,
+PC,pilot,PC.pkl,3,6,0,3.18,3.93,,
+PFo,pilot,PFo.pkl,3,6,28,2.67,3.42,,
+ES,pilot,ES.pkl,2,5,32,2.83,3.33,,
+CA,pilot,CA.json,4,15,0,2.05,3.05,,
+NW,pilot,NW.json,2,12,1,2.52,3.02,,
+NKa,pilot,NKa.pkl,2,12,9,2.3,2.8,,likely the same person as NKa_01 — split record
+SW,pilot,SW.pkl,2,5,1,1.93,2.43,,
+TS,pilot,TS.json,1,15,0,1.9,2.15,,
+IM,pilot,IM.json,2,10,0,0.92,1.42,,
+AGV,pilot,AGV.json,1,6,0,0.87,1.12,,
+JF,pilot,JF.json,1,3,0,0.67,0.92,,
+MSc,pilot,MSc.pkl,1,6,0,0.53,0.78,,
+UG,pilot,UG.json,1,5,0,0.48,0.73,,
+CZ,pilot,CZ.pkl,1,3,0,0.45,0.7,,
+GLK,pilot,GLK.json,1,3,0,0.42,0.67,,
+SZ,pilot,SZ.json,1,3,0,0.38,0.63,,
+NKa_01,pilot,NKa_01.pkl,1,3,0,0.32,0.57,,likely the same person as NKa — split record
+OS,pilot,OS.pkl,1,2,0,0.25,0.5,,
+MD,pilot,MD.pkl,1,2,0,0.23,0.48,,
+JR,pilot,JR.pkl,1,1,0,0.2,0.45,,
+GS,recording-only,hrtf/rec or sofa,1,0,0,0.0,1.0,,no behavioural file — 1 h assumed
+MS,recording-only,hrtf/rec or sofa,1,0,0,0.0,1.0,,no behavioural file — 1 h assumed

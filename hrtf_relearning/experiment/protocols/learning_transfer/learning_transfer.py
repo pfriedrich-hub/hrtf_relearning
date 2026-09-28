@@ -76,7 +76,7 @@ EDIT THE CONFIG BLOCK BELOW PER PARTICIPANT.
 """
 
 # %% imports and config #------------------------------------------------------
-SUBJECT_ID = ("GM")
+SUBJECT_ID = ("SH")
 
 import datetime  # timestamp on the persisted day-1 screen (screen_donors)
 import csv  # only for the block-order table below; the modification
@@ -698,16 +698,19 @@ def show_status(subject):
 
 
 
+
 # %% status check (rerun anytime) --------------------------------------------
 subject = hr.Subject(SUBJECT_ID)
 collect_demographics(subject)      # once per participant; skipped if on file
 show_status(subject)
+
 
 # %% day 1: native reference (original HRIR, full field) ----------------------
 # Doubles as the first anchor: this is the best the chain can sound, so its
 # rating defines the top of the 0-10 scale for everything that follows.
 native = run_phase("native", subject)
 collect_externalization_rating(native)
+
 
 # %% BEFORE THE SESSION: stage the top 3 donors -------------------------------
 # Run this with nobody in the rig. Builds the rank 0/1/2 composites AND their

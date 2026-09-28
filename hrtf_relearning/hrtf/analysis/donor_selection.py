@@ -93,21 +93,57 @@ DEFAULT_RESOLUTION = 'filterbank'
 # the same for everyone, so the manipulation is one sentence in the methods.
 # ---------------------------------------------------------------------------
 N_KEEP = 4                    # envelope coefficients kept (Kulkarni & Colburn 1998)
-# !! STALE AS OF 2026-08-31: the rule is "median of the qualified-donor pairs",
-#    and the pool just went from 7 members (21 pairs) to 11 (55 pairs) when
-#    MIN_DONOR_ELEVATION_GAIN was relaxed to 0.6. RECOMPUTE with
-#    pairwise_r_match(load_candidates(<id>, pool=DONOR_POOL)) and update this
-#    number before the next participant, or the band is centred on the old
-#    cohort. The day-1 screen makes a wrong centre survivable, not harmless.
-TARGET_R_MATCH = 0.58         # perturbation size: the median r_match between
-                              # QUALIFIED donors, i.e. a typical difference
+# RECOMPUTED 2026-09-28 on the 12-recording pool with PER-EAR candidates, which
+# is the population the rule now draws from. Measured, `pairwise_r_match`:
+#
+#   per-person  n= 66 pairs | min  0.103 | Q1 0.490 | median 0.601 | Q3 0.702 | max 0.820
+#   per-EAR     n=264 pairs | min -0.189 | Q1 0.487 | median 0.626 | Q3 0.719 | max 0.861
+#
+# The old 0.58 came from a SEVEN-member person-level pool (21 pairs). It was
+# 0.046 low -- just inside one tolerance band, so the band it defined,
+# [0.53, 0.63], overlapped the correct one, [0.576, 0.676], rather than missing
+# it. Not a disaster, but it was selecting off-centre.
+#
+# NOTE the per-ear minimum is NEGATIVE (-0.189) where the person-level minimum
+# was +0.103: some donor-EAR pairings are anti-correlated with the listener's
+# own detail at the same elevation. Averaging the two ears had been hiding the
+# most strongly perturbing pairings in the pool. They are not selected (the
+# target is mid-range) but they are real and the distribution now has a tail.
+#
+# RECOMPUTE WHENEVER THE POOL OR PER_EAR_SELECTION CHANGES:
+#   vals, _ = pairwise_r_match(load_candidates('__none__', pool=DONOR_POOL))
+#   numpy.median(vals)
+TARGET_R_MATCH = 0.626        # perturbation size: the median r_match between
+                              # QUALIFIED donor ears, i.e. a typical difference
                               # between two people whose own cue demonstrably
-                              # works. Over the 7-donor pool, 21 pairs:
-                              # min 0.32 | Q1 0.51 | median 0.58 | Q3 0.66 |
-                              # max 0.77. RECOMPUTE WHEN THE POOL CHANGES.
+                              # works.
 MAX_RIDGE_SLOPE = 0.5         # above this the old map can read the composite as
                               # a coherent elevation and absorb it as a bias
 TOLERANCE = 0.05              # half-width of the band around the target
+
+# A CANDIDATE IS A DONOR *EAR*, NOT A DONOR (2026-09-17, Paul's call).
+# The protocol is monaural: exactly one of a donor's two ears is transplanted,
+# onto the listener's trained ear. Scoring the ear AVERAGE -- which is what
+# pair_metrics returns at the top level -- puts half the ranking weight on an
+# ear whose composite is never built, and the two ears of one recording differ
+# a lot (pilot/VD cue gradient: left 0.45, right 1.09). Enumerating both ears
+# also doubles the candidate set at zero recruitment cost, which is the cheapest
+# extension available: the pool is limited by qualification blocks, not by
+# recordings (see project_donor_pool_extension).
+#
+# Legitimate acoustically: on the az=0 arc both ears see the same source, and
+# ILD/ITD are imposed downstream by expand_from_midline's spherical-head step,
+# not taken from the donor. So a donor's LEFT-ear detail on a listener's RIGHT
+# ear is another person's elevation cue, not a mirrored one.
+#
+# Set False to reproduce a pre-2026-09-17 ranking exactly.
+PER_EAR_SELECTION = True
+
+# How the BAND tier is ordered. 'strength' is what shortlist.__doc__ has
+# described since the tier was introduced and what the tier is for; 'distance'
+# is what the code actually did until 2026-09-17. Default stays 'distance' so
+# no subject already run has their rank-0 pick moved by this file alone.
+BAND_RANK_BY = 'distance'
 
 MIN_CUE_GRADIENT = None       # DELIBERATELY OFF. `cue_gradient` is reported for
 MIN_CUE_MONOTONICITY = None   # every candidate but gates nothing, because over
@@ -506,8 +542,15 @@ def pair_metrics(own_split, donor_split, bandwidth=DEFAULT_BAND,
     return scores
 
 
-def detail_strength(split, bandwidth=DEFAULT_BAND, resolution=DEFAULT_RESOLUTION):
-    """How strong ONE recording's own elevation cue is, in dB. Ear-averaged.
+def detail_strength(split, bandwidth=DEFAULT_BAND, resolution=DEFAULT_RESOLUTION,
+                    ear=None):
+    """How strong ONE recording's own elevation cue is, in dB.
+
+    ``ear`` selects one of :data:`EARS`; ``None`` (the default) returns the
+    ear-average, which is what every caller before 2026-09-17 got. **Pass the
+    ear explicitly in a monaural protocol** -- only one of a donor's two ears
+    is ever transplanted, and the two differ (see :func:`cue_gradient`). This
+    was the last ranking quantity with no per-ear path.
 
     The SD across directions of the in-band spectral DETAIL — i.e. of exactly
     the quantity :func:`~hrtf_relearning.hrtf.modify.donor_detail.donor_detail_dtf`
@@ -527,8 +570,8 @@ def detail_strength(split, bandwidth=DEFAULT_BAND, resolution=DEFAULT_RESOLUTION
     subtracted direction by direction.
     """
     values = []
-    for ear in EARS:
-        detail = _reduce(split[ear]['detail'], split['freqs'], bandwidth, resolution)
+    for side in (EARS if ear is None else (ear,)):
+        detail = _reduce(split[side]['detail'], split['freqs'], bandwidth, resolution)
         values.append(float(numpy.mean(numpy.std(numpy.asarray(detail, dtype=float),
                                                  axis=0))))
     return float(numpy.mean(values))
@@ -661,7 +704,7 @@ def cue_gradient(split, bandwidth=DEFAULT_BAND, resolution=DEFAULT_RESOLUTION,
 
 
 def pairwise_r_match(hrtfs, n_keep=DEFAULT_N_KEEP, bandwidth=DEFAULT_BAND,
-                     resolution=DEFAULT_RESOLUTION):
+                     resolution=DEFAULT_RESOLUTION, per_ear=PER_EAR_SELECTION):
     """``r_match`` between every pair of unmodified recordings — the scale.
 
     This is the distribution :data:`TARGET_R_MATCH` is defined from, and the
@@ -674,22 +717,40 @@ def pairwise_r_match(hrtfs, n_keep=DEFAULT_N_KEEP, bandwidth=DEFAULT_BAND,
     """
     splits = {name: median_plane_split(hrtf, n_keep=n_keep)
               for name, hrtf in hrtfs.items()}
-    names = list(splits)
+
+    def _r(a, ear_a, b, ear_b):
+        first = _reduce(splits[a][ear_a]['detail'], splits[a]['freqs'],
+                        bandwidth, resolution)
+        second = _reduce(splits[b][ear_b]['detail'], splits[b]['freqs'],
+                         bandwidth, resolution)
+        return float(numpy.mean(numpy.diag(_correlate(first, second))))
+
     pairs = {}
-    for i, a in enumerate(names):
-        for b in names[i + 1:]:
-            try:
-                per_ear = []
-                for ear in EARS:
-                    first = _reduce(splits[a][ear]['detail'], splits[a]['freqs'],
-                                    bandwidth, resolution)
-                    second = _reduce(splits[b][ear]['detail'], splits[b]['freqs'],
-                                     bandwidth, resolution)
-                    per_ear.append(float(numpy.mean(numpy.diag(
-                        _correlate(first, second)))))
-                pairs[(a, b)] = float(numpy.mean(per_ear))
-            except Exception as exc:
-                logger.warning('skipping pair %s/%s: %s', a, b, exc)
+    if per_ear:
+        # Every donor EAR against every other donor ear, which is the
+        # population the per-ear rule draws candidates from. A person's own two
+        # ears are NOT a pair: they are never both candidates for one listener
+        # ear in the same sense, and including them would put a within-head
+        # correlation into a between-people yardstick.
+        keys = [(name, ear) for name in splits for ear in EARS]
+        for i, (a, ear_a) in enumerate(keys):
+            for b, ear_b in keys[i + 1:]:
+                if a == b:
+                    continue
+                try:
+                    pairs[(f'{a}:{ear_a[0].upper()}',
+                           f'{b}:{ear_b[0].upper()}')] = _r(a, ear_a, b, ear_b)
+                except Exception as exc:
+                    logger.warning('skipping pair %s/%s: %s', a, b, exc)
+    else:
+        names = list(splits)
+        for i, a in enumerate(names):
+            for b in names[i + 1:]:
+                try:
+                    pairs[(a, b)] = float(numpy.mean(
+                        [_r(a, ear, b, ear) for ear in EARS]))
+                except Exception as exc:
+                    logger.warning('skipping pair %s/%s: %s', a, b, exc)
     return numpy.array(sorted(pairs.values())), pairs
 
 
@@ -706,7 +767,8 @@ def shortlist(subject_hrtf, candidates, target=TARGET_R_MATCH,
               resolution=DEFAULT_RESOLUTION, donor_ear=None,
               max_ridge_slope=MAX_RIDGE_SLOPE, tolerance=TOLERANCE,
               trained_ear=None, min_cue_gradient=MIN_CUE_GRADIENT,
-              min_cue_monotonicity=MIN_CUE_MONOTONICITY):
+              min_cue_monotonicity=MIN_CUE_MONOTONICITY,
+              per_ear=PER_EAR_SELECTION, band_rank_by=BAND_RANK_BY):
     """Every candidate, ranked best-first by the selection rule.
 
     ``shortlist()[0]`` is the donor :func:`select_donor` returns; ``[1]`` and
@@ -746,10 +808,28 @@ def shortlist(subject_hrtf, candidates, target=TARGET_R_MATCH,
         and an ear-averaged screen passes a donor the listener will never hear
         the good side of. ``None`` falls back to the ear average and warns.
 
-    NOTE the same asymmetry applies to ``r_match`` and ``ridge_slope``, which
-    :func:`pair_metrics` also averages over ears. That is NOT changed here --
-    it would move existing subjects' rank-0 picks -- but per-ear values are in
-    ``cue_per_ear`` and the pair scores' own ``per_ear`` for inspection.
+    ``per_ear``
+        CHANGED 2026-09-17. When True (the default, :data:`PER_EAR_SELECTION`)
+        a candidate is a donor EAR, not a donor: each recording contributes two
+        rows, and ``r_match``/``ridge_slope``/``donor_strength``/the cue columns
+        are all measured on the ONE pairing that gets delivered -- the
+        listener's ``trained_ear`` against that donor ear. Rows carry
+        ``donor_ear``. Requires ``trained_ear`` and is mutually exclusive with
+        ``donor_ear``.
+
+        Until then these three were ear AVERAGES while the monaural composite
+        delivered a single donor ear, so half of every ranking quantity was
+        measured on an ear whose composite is never built. Set
+        ``per_ear=False`` to reproduce a pre-2026-09-17 ranking; it is the only
+        way to get the old numbers back, since the default has moved.
+
+    ``band_rank_by``
+        ``'distance'`` (default) or ``'strength'``. The band tier's description
+        above -- strongest cue among candidates equally close to target -- is
+        what ``'strength'`` does; ``'distance'`` is what the code did before
+        2026-09-17 and remains the default so that no subject already run has
+        their rank-0 pick moved. With a per-ear pool the band tier is populated
+        rather than usually holding one row, so this now decides something.
 
     Every row carries ``tier``, ``rank``, ``distance``, ``eligible``
     (ridge criterion), ``in_band``, ``donor_strength``, ``cue_gradient``,
@@ -769,25 +849,59 @@ def shortlist(subject_hrtf, candidates, target=TARGET_R_MATCH,
         raise ValueError(f'trained_ear must be one of {EARS}, got {trained_ear!r}')
     cue_ear = trained_ear if donor_ear is None else donor_ear
 
+    if per_ear and trained_ear is None:
+        raise ValueError(
+            'per_ear=True needs trained_ear: a donor EAR is scored against the '
+            'listener ear that will actually hear it, so there is no such thing '
+            'as a per-ear score without knowing which ear that is.')
+    if per_ear and donor_ear is not None:
+        raise ValueError(
+            'per_ear=True enumerates both donor ears itself; donor_ear= pins '
+            'one and the two cannot both be set.')
+
     rows = []
     for name, donor in candidates.items():
         try:
             donor_split = median_plane_split(donor, n_keep=n_keep)
-            scores = pair_metrics(own_split, donor_split, bandwidth=bandwidth,
-                                  resolution=resolution, donor_ear=donor_ear)
-            strength = detail_strength(donor_split, bandwidth, resolution)
-            cue = cue_gradient(donor_split, bandwidth=bandwidth,
-                               resolution=resolution, ear=cue_ear)
         except Exception as exc:
             logger.warning('skipping donor %s: %s', name, exc)
             continue
-        scores.pop('per_ear')
-        rows.append({'donor': name, 'donor_strength': strength,
-                     'cue_gradient': cue['gradient'],
-                     'cue_monotonicity': cue['monotonicity'],
-                     'cue_decodability': cue['decodability'],
-                     'cue_ear': cue_ear or 'average',
-                     'cue_per_ear': cue['per_ear'], **scores})
+        for side in (EARS if per_ear else (donor_ear,)):
+            if per_ear and (name.split('/')[-1], side) in EXCLUDED_DONOR_EARS:
+                logger.info('donor ear %s/%s is excluded -- see '
+                            'EXCLUDED_DONOR_EARS', name, side)
+                continue
+            try:
+                scores = pair_metrics(own_split, donor_split, bandwidth=bandwidth,
+                                      resolution=resolution, donor_ear=side)
+                if per_ear:
+                    # THE DELIVERED PAIRING, and the whole point of per_ear:
+                    # the listener's trained ear against this ONE donor ear.
+                    # pair_metrics still averages its two listener ears into
+                    # the top-level scores; the untrained ear's composite is
+                    # never built, so averaging it in scores half of a file
+                    # that does not exist.
+                    delivered = scores['per_ear'][trained_ear]
+                    scores = {'r_match': delivered['r_match'],
+                              'ridge_slope': delivered['ridge_slope']}
+                else:
+                    scores.pop('per_ear')
+                strength = detail_strength(donor_split, bandwidth, resolution,
+                                           ear=side if per_ear else None)
+                cue = cue_gradient(donor_split, bandwidth=bandwidth,
+                                   resolution=resolution,
+                                   ear=side if per_ear else cue_ear)
+            except Exception as exc:
+                logger.warning('skipping donor %s (%s ear): %s', name, side, exc)
+                continue
+            rows.append({'donor': name,
+                         'donor_ear': side if per_ear else donor_ear,
+                         'donor_strength': strength,
+                         'cue_gradient': cue['gradient'],
+                         'cue_monotonicity': cue['monotonicity'],
+                         'cue_decodability': cue['decodability'],
+                         'cue_ear': (side if per_ear else cue_ear) or 'average',
+                         'cue_per_ear': cue['per_ear'], **scores})
     if not rows:
         raise ValueError('no candidate donor could be scored')
     for row in rows:
@@ -824,7 +938,18 @@ def shortlist(subject_hrtf, candidates, target=TARGET_R_MATCH,
     rejected = [row for row in gated if not row['eligible']]
 
     if band:
-        ordered = (sorted(band, key=lambda r: r['distance'])
+        # band_rank_by: 'distance' is what the code has always done;
+        # 'strength' is what this docstring described for months and what the
+        # band tier is FOR -- among candidates all equally close to the
+        # intended perturbation size, hand over the strongest cue. Left on
+        # 'distance' by default because flipping it moves the rank-0 pick of
+        # every subject already run. See the note in shortlist.__doc__.
+        band_key = ((lambda r: -r['donor_strength']) if band_rank_by == 'strength'
+                    else (lambda r: r['distance']))
+        if band_rank_by not in ('distance', 'strength'):
+            raise ValueError(f"band_rank_by must be 'distance' or 'strength', "
+                             f"got {band_rank_by!r}")
+        ordered = (sorted(band, key=band_key)
                    + sorted(ridge_only, key=lambda r: r['distance'])
                    + sorted(rejected, key=lambda r: r['ridge_slope']))
         tier = 'band'
@@ -865,7 +990,8 @@ def select_donor(subject_hrtf, candidates, target=TARGET_R_MATCH,
                  max_ridge_slope=MAX_RIDGE_SLOPE, tolerance=TOLERANCE,
                  rank=0, trained_ear=None,
                  min_cue_gradient=MIN_CUE_GRADIENT,
-                 min_cue_monotonicity=MIN_CUE_MONOTONICITY):
+                 min_cue_monotonicity=MIN_CUE_MONOTONICITY,
+                 per_ear=PER_EAR_SELECTION, band_rank_by=BAND_RANK_BY):
     """The per-subject donor choice — the ONLY thing that varies between subjects.
 
     Thin wrapper over :func:`shortlist`: returns ``(chosen_row, all_rows)`` with
@@ -882,7 +1008,8 @@ def select_donor(subject_hrtf, candidates, target=TARGET_R_MATCH,
                      donor_ear=donor_ear, max_ridge_slope=max_ridge_slope,
                      tolerance=tolerance, trained_ear=trained_ear,
                      min_cue_gradient=min_cue_gradient,
-                     min_cue_monotonicity=min_cue_monotonicity)
+                     min_cue_monotonicity=min_cue_monotonicity,
+                     per_ear=per_ear, band_rank_by=band_rank_by)
     if rank >= len(rows):
         raise IndexError(f'requested donor rank {rank} but only {len(rows)} '
                          f'candidates were scored')
@@ -988,8 +1115,38 @@ def select_donor(subject_hrtf, candidates, target=TARGET_R_MATCH,
 # recordings, EG 0.05. Note CO (.98/3.3 dB) and FD (.82/3.7 dB) show the two can
 # coincide -- the point is only that the acoustic measure cannot be relied on to
 # tell you so.
+#
+# EXTENDED 2026-09-17: + GM (own EG 0.82, n=131, GM/GM.json). She is the only
+# recording on disk that newly clears the floor -- everything else either has a
+# reproducible EG below 0.6 or still has no own-HRTF block at all. With per-ear
+# selection the pool is 12 recordings -> 24 donor ears, minus the one excluded
+# below, so 23 candidates per listener against 11 before.
+#
+# The EG column below was RE-DERIVED 2026-09-17 from the subject JSONs with
+# baseline_run's own rule (first finished non-dome own-HRTF run of >=50 trials)
+# at |el| <= 30: AS 0.63, CO 0.98, FD 0.82, FP 0.84, FS 0.86, GM 0.82, LS 1.30,
+# NR 0.70, AGV 0.96, AH 0.86 -- every one within +0.10 of the number quoted
+# here, and AS/IR/PF/SS/TS to the second decimal. The small positive offsets are
+# the elevation-window convention (this table says |el| <= 30; vsi_rmse's
+# EL_LIMIT=None takes the narrowest span present instead). Do not read them as
+# disagreement.
 DONOR_POOL = ('CO', 'pilot/AGV', 'pilot/SW', 'pilot/VD', 'pilot/AH', 'FS', 'FD',
-              'AS', 'FP', 'LS', 'NR')
+              'AS', 'FP', 'LS', 'NR', 'GM')
+
+#: Donor EARS kept out of the pool while the recording itself stays in.
+#: Only meaningful with PER_EAR_SELECTION; a per-person pool cannot express it.
+#:
+#: This is for a recording with a known defect on ONE side, which the
+#: person-level qualification cannot catch: MIN_DONOR_ELEVATION_GAIN comes from
+#: a BINAURAL own-HRTF block, so "this person's cue works" is evidence about the
+#: pair of ears, not about each one. A listener can localize well on their good
+#: side while the other is compromised.
+#:
+#: GM left: a badly seated in-ear mic cost this ear 17% of its cue depth and
+#: gave a constant ITD offset that drove her head-radius fit to 0.0701 m before
+#: it was refitted to 0.079 m (project_gm_head_radius_fit). Her RIGHT ear is
+#: fine and is what she was trained on; it stays a candidate.
+EXCLUDED_DONOR_EARS = frozenset({('GM', 'left')})
 
 #: Elevation gain a donor must reach with their own HRTF to enter the pool.
 #: RELAXED 0.8 -> 0.6 on 2026-08-31 (Paul's call), which adds AS 0.63, FP 0.79,
@@ -1010,13 +1167,16 @@ DONOR_POOL = ('CO', 'pilot/AGV', 'pilot/SW', 'pilot/VD', 'pilot/AH', 'FS', 'FD',
 #: project_behavioural_noise_floor), so FD at 0.81 and FS at 0.84 were never
 #: meaningfully above a 0.8 cut.
 #:
-#: PROVENANCE WARNING. Only CO (0.97), FD (0.81) and FS (0.84) can be
-#: re-derived from data/results -- the three that can be checked all match the
-#: numbers quoted below. pilot/AGV, pilot/SW, pilot/VD and pilot/AH have no
-#: json and no pkl anywhere: pilot/AH holds only PNGs (the block was clearly
-#: run), and SW/AGV/VD have empty learning_result/ folders. Their qualification
-#: rests on numbers nobody can reproduce, and they cannot be re-qualified if
-#: this constant moves again. Report them as legacy.
+#: PROVENANCE. NARROWED 2026-09-17 from four unverifiable members to TWO.
+#: pilot/AGV and pilot/AH DO have json after all -- pilot/AGV.json and
+#: pilot/backup/AH.json -- and both reproduce the numbers quoted here exactly
+#: (AGV 0.96 n=64, AH 0.86 n=62). An earlier audit looked only for
+#: pilot/<id>/<id>.json and missed both spellings.
+#:
+#: Still unverifiable: pilot/SW (0.93) and pilot/VD (0.89). No json, no pkl,
+#: empty learning_result/ folders. Their qualification rests on numbers nobody
+#: can reproduce and they cannot be re-qualified if this constant moves again.
+#: Report those two as legacy; the other nine are re-derivable.
 #:
 #: Qualified from data that still exists: CO 0.97, FS 0.84, FD 0.81, FP 0.79,
 #: NR 0.65, AS 0.63, LS 1.20 (LS's >1 gain is itself anomalous -- see
@@ -1214,7 +1374,16 @@ def report(rows, reference=None):
     elif tier == 'fallback':
         print(f'selection tier: FALLBACK — no candidate collapsed the ridge '
               f'(<= {MAX_RIDGE_SLOPE:.2f}); ranked by ridge slope. REPORT THIS.')
-    cue_ear = rows[0].get('cue_ear') if rows else None
+    # PER-EAR: every row's cue columns are measured on THAT row's donor ear, so
+    # there is no single ear to name. Taking rows[0]['cue_ear'] here announced
+    # the top row's ear as if it applied to the whole table -- and with a
+    # right-trained listener whose rank 0 is a left donor ear, it printed
+    # "measured on the left ear" under a right-ear protocol. Say what is true.
+    per_ear_rows = any(row.get('donor_ear') for row in rows)
+    cue_ear = None if per_ear_rows else (rows[0].get('cue_ear') if rows else None)
+    if per_ear_rows:
+        print('cue columns measured on each row\'s OWN donor ear (the ear column) '
+              '-- REPORT-ONLY, no cue gate is enforced')
     if cue_ear:
         # MIN_CUE_* are None by design -- the back-test rejected the cue metric
         # as a SELECTION gate, so the columns are reported and never enforced.
@@ -1230,8 +1399,12 @@ def report(rows, reference=None):
         else:
             print(f'cue columns measured on the {cue_ear} ear '
                   f'(REPORT-ONLY -- no cue gate is enforced)')
-    print(f'{"":>4}{"donor":>14}  {"r_match":>8} {"ridge":>8} {"strength":>9} '
-          f'{"grad":>6} {"mono":>6} {"decod":>6}  {"":>6}')
+    per_ear = per_ear_rows
+    if per_ear:
+        print('candidates are donor EARS: every column is the delivered '
+              'pairing (listener trained ear vs that donor ear)')
+    print(f'{"":>4}{"donor":>14} {"ear":>6} {"r_match":>8} {"ridge":>8} '
+          f'{"strength":>9} {"grad":>6} {"mono":>6} {"decod":>6}  {"":>6}')
     for row in rows:
         if 'eligible' not in row:
             mark = ''
@@ -1246,7 +1419,8 @@ def report(rows, reference=None):
         arrow = '-->' if row.get('rank') == 0 else (
             f'{row["rank"]}.' if 'rank' in row else '')
         nan = float('nan')
-        print(f'{arrow:>4}{row["donor"]:>14}  {row["r_match"]:8.2f} '
+        ear = row.get('donor_ear') or ('same' if per_ear else '-')
+        print(f'{arrow:>4}{row["donor"]:>14} {ear:>6} {row["r_match"]:8.2f} '
               f'{row["ridge_slope"]:+8.2f} {row.get("donor_strength", nan):9.1f} '
               f'{row.get("cue_gradient", nan):6.2f} '
               f'{row.get("cue_monotonicity", nan):+6.2f} '

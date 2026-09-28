@@ -313,15 +313,18 @@ def report(rows, chosen, reference):
     print(f"primary gate is ELEVATION GAIN: >= {MIN_EG:.2f} absolute (a cue "
           f"exists) AND <= {MAX_EG_RETAINED*100:.0f}% of the listener's own "
           f"(it was perturbed). Target ~{EG_TARGET:.2f}.\n")
-    print(f"{'rank':>4} {'donor':>14} {'EG':>6} {'kept':>6} {'PE':>6} "
+    print(f"{'rank':>4} {'donor':>14} {'ear':>6} {'EG':>6} {'kept':>6} {'PE':>6} "
           f"{'impair':>7} {'azGain':>7} {'azRMSE':>7}  verdict")
     for r in sorted(rows, key=lambda r: r["rank"]):
         mark = ("MARGINAL" if r["passed"] and r.get("marginal")
                 else "PASS" if r["passed"] else "REJECT")
-        star = " <--" if chosen is not None and r["donor"] == chosen["donor"] else ""
+        star = (" <--" if chosen is not None
+                and r["donor"] == chosen["donor"]
+                and r.get("donor_ear") == chosen.get("donor_ear") else "")
         kept = (f"{r['eg_retained']*100:5.0f}%"
                 if numpy.isfinite(r.get("eg_retained", float("nan"))) else "    —")
-        print(f"{r['rank']:>4} {r['donor']:>14} {r['eg']:6.2f} {kept:>6} "
+        print(f"{r['rank']:>4} {r['donor']:>14} "
+              f"{(r.get('donor_ear') or 'same'):>6} {r['eg']:6.2f} {kept:>6} "
               f"{r['pe']:6.1f} {r['impairment']:+7.1f} {r['az_gain']:7.2f} "
               f"{r['az_rmse']:7.1f}  {mark}{star}")
         for reason in r["reasons"] + list(r.get("marginal", [])):
@@ -333,7 +336,10 @@ def report(rows, chosen, reference):
               "least-bad one — a rejected donor is rejected for a reason that "
               "training cannot fix.")
     else:
-        print(f"chosen: {chosen['donor']} (rank {chosen['rank']}) — the first "
+        chosen_ear = chosen.get('donor_ear')
+        print(f"chosen: {chosen['donor']}"
+              f"{f' ({chosen_ear} ear)' if chosen_ear else ''} "
+              f"(rank {chosen['rank']}) — the first "
               f"survivor in the pre-registered order, NOT the best-scoring one.")
         if not (EG_TARGET_BAND[0] <= chosen["eg"] <= EG_TARGET_BAND[1]):
             print(f"  note: elevation gain {chosen['eg']:.2f} is outside the "

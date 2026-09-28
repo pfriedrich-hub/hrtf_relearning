@@ -129,6 +129,10 @@ NATIVE_SOFA = f"{SUBJECT_ID}"      # individual measured HRTF
 # the experiment.
 DONOR_OVERRIDE = None
 DONOR_ID = None                    # resolved from the subject file below
+DONOR_EAR = None                   # which of the donor's ears supplies the
+                                   # detail; None = the same side as the
+                                   # trained ear, i.e. every pre-2026-09-17
+                                   # build. Set by _sync from the record.
 
 # Set by the day-1 SCREEN cell. Pre-declared so the selection cell below reads
 # "no screen yet" instead of raising NameError -- that NameError is what made
@@ -273,8 +277,9 @@ def _sync():
     and re-running the config cell resets them. `donor` is the authority; these
     two follow it.
     """
-    global DONOR_ID, MODIFIED_SOFA
+    global DONOR_ID, DONOR_EAR, MODIFIED_SOFA
     DONOR_ID, MODIFIED_SOFA = donor.donor_id, donor.modified_sofa
+    DONOR_EAR = donor.donor_ear
 
 
 def hrir_settings(sofa_name, ear=None, mirror=False, other_ear=None):
@@ -287,8 +292,8 @@ def donor_shortlist(refresh=False, quiet=False):
 
 
 def build_donor_sofa(overwrite=False, show_qc=True, n_keep=None, rank=0,
-                     donor_id=None, set_active=True, quiet=False,
-                     override_reason=None):
+                     donor_id=None, donor_ear=None, set_active=True,
+                     quiet=False, override_reason=None):
     # Committing a donor without a screen is the failure this guard exists for;
     # building one WITHOUT making it active (staging, rebuilds, analysis) is
     # unaffected.
@@ -296,8 +301,8 @@ def build_donor_sofa(overwrite=False, show_qc=True, n_keep=None, rank=0,
         why = require_screen(hr.Subject(SUBJECT_ID), override_reason)
         print(f"  donor provenance: {why}")
     out = donor.build(overwrite=overwrite, show_qc=show_qc, n_keep=n_keep,
-                      rank=rank, donor_id=donor_id, set_active=set_active,
-                      quiet=quiet)
+                      rank=rank, donor_id=donor_id, donor_ear=donor_ear,
+                      set_active=set_active, quiet=quiet)
     _sync()
     return out
 
@@ -309,8 +314,9 @@ def prepare_donor_shortlist(n=3, mirrored=True, overwrite=False, screen=False):
     return out
 
 
-def use_donor(rank=None, donor_id=None, reason=""):
-    out = donor.use_donor(rank=rank, donor_id=donor_id, reason=reason)
+def use_donor(rank=None, donor_id=None, donor_ear=None, reason=""):
+    out = donor.use_donor(rank=rank, donor_id=donor_id, donor_ear=donor_ear,
+                          reason=reason)
     _sync()
     return out
 
@@ -375,8 +381,19 @@ def screen_donors(subject, native, n=SCREEN_N, shuffle=True):
     order = list(rows)
     if shuffle:
         random.Random(SUBJECT_ID).shuffle(order)
-    print(f"\nscreening {len(order)} donors, presentation order: "
-          f"{', '.join(r['donor'] for r in order)}")
+    # PER-EAR: a donor id is no longer unique in this list -- the same
+    # recording can appear twice, once per ear -- so everything keyed off a
+    # candidate must use (donor, donor_ear). Keying by id alone silently made
+    # the second block overwrite the first.
+    def _key(row):
+        return (row["donor"], row.get("donor_ear"))
+
+    def _label(row):
+        ear = row.get("donor_ear")
+        return f"{row['donor']}({ear} ear)" if ear else row["donor"]
+
+    print(f"\nscreening {len(order)} donor ears, presentation order: "
+          f"{', '.join(_label(r) for r in order)}")
     n_trials = (_n_sectors(FULL_FIELD, SCREEN_SECTOR_SIZE[0])
                 * _n_sectors(ELEVATION_RANGE, SCREEN_SECTOR_SIZE[1]) * SCREEN_TPS)
     print(f"{n_trials} trials each, binaural, full field  "
@@ -386,19 +403,22 @@ def screen_donors(subject, native, n=SCREEN_N, shuffle=True):
     measured = {}
     for row in order:
         print("\n" + "=" * 70)
-        print(f"SCREEN: {row['donor']}  (shortlist rank {row['rank']}) — "
-              f"{donor.screen_name(row['donor'])}")
+        ear = row.get("donor_ear")
+        print(f"SCREEN: {_label(row)}  (shortlist rank {row['rank']}) — "
+              f"{donor.screen_name(row['donor'], donor_ear=ear)}")
         print("=" * 70)
         _fix_output_level()
-        test = Localization(subject, donor.screen_settings(row["donor"]),
+        test = Localization(subject,
+                            donor.screen_settings(row["donor"], donor_ear=ear),
                             loc_settings=screen_loc_settings())
         test.run()
-        measured[row["donor"]] = block_summary(test.sequence)
+        measured[_key(row)] = block_summary(test.sequence)
         print(f"Done: {test.filename}")
 
     def as_row(row):
-        m = measured[row["donor"]]
-        return dict(donor=row["donor"], rank=row["rank"], n=m["n"],
+        m = measured[_key(row)]
+        return dict(donor=row["donor"], donor_ear=row.get("donor_ear"),
+                    rank=row["rank"], n=m["n"],
                     pe=m["polar_error"], eg=m["elevation_gain"],
                     az_gain=m["azimuth_gain"], az_rmse=m["azimuth_rmse"])
 
@@ -416,6 +436,7 @@ def screen_donors(subject, native, n=SCREEN_N, shuffle=True):
         "reference": reference,
         "rows": out,
         "chosen": chosen["donor"] if chosen else None,
+        "chosen_ear": chosen.get("donor_ear") if chosen else None,
         "n_trials": int(rows[0].get("n", 0)) if rows else None,
     }
     subject.write()
@@ -722,13 +743,18 @@ screen_rows, screen_choice = screen_donors(subject, native)
 # from here on every session picks it up automatically.
 #
 # With the screen above, pass its choice through so the reason is on record:
-#   use_donor(donor_id=screen_choice["donor"], reason="day-1 screen")
+#   use_donor(donor_id=screen_choice["donor"],
+#             donor_ear=screen_choice.get("donor_ear"), reason="day-1 screen")
+# The ear is REQUIRED since per-ear selection: a donor id alone now matches two
+# shortlist rows and use_donor refuses to guess between them.
 # If every candidate was rejected, stage more donors rather than run the
 # least-bad one -- prepare_donor_shortlist(n=5, screen=True).
 # Without a screen, this builds the rank-0 donor as before.
 
 if screen_choice is not None:
-    use_donor(donor_id=screen_choice["donor"], reason="day-1 screen")
+    use_donor(donor_id=screen_choice["donor"],
+              donor_ear=screen_choice.get("donor_ear"),
+              reason="day-1 screen")
 build_donor_sofa(overwrite=False)
 # If this raises "no day-1 screen on record", that is the guard doing its job:
 # go back and run the SCREEN cell. Only if the screen genuinely cannot be run

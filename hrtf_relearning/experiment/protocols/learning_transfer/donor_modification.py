@@ -100,7 +100,7 @@ class DonorModification:
 
     def __init__(self, subject_id, *, trained_ear, native_sofa=None,
                  other_ear="envelope", env_n_keep=None, pipeline="v2",
-                 donor_id=None, hp="DT990", reverb=True, drr=20,
+                 donor_id=None, donor_ear=None, hp="DT990", reverb=True, drr=20,
                  convolution="cpu", storage="cpu"):
         if trained_ear not in ("left", "right"):
             raise ValueError("trained_ear must be 'left' or 'right'")
@@ -133,10 +133,28 @@ class DonorModification:
         if donor_id is None:
             donor_id = self._recorded_donor()
             self.donor_from_record = donor_id is not None
+            if self.donor_from_record and donor_ear is None:
+                # A record written before 2026-09-17 has no donor_ear; that is
+                # the same-side build, which is what None means downstream.
+                donor_ear = self._recorded_donor_ear()
+        if donor_ear is not None and donor_ear not in ("left", "right"):
+            raise ValueError("donor_ear must be 'left', 'right' or None")
         self.donor_id = donor_id
-        self.modified_sofa = self.modified_name(donor_id) if donor_id else None
+        # None == the donor's SAME side as trained_ear, i.e. every build made
+        # before per-ear selection. Kept as None rather than normalised to the
+        # trained ear so the file names of those builds stay byte-identical.
+        self.donor_ear = donor_ear
+        self.modified_sofa = (self.modified_name(donor_id, donor_ear=donor_ear)
+                              if donor_id else None)
 
         self._shortlist = None
+
+    def _recorded_donor_ear(self):
+        """The donor EAR from the participant's pickle, or None -- never raises."""
+        try:
+            return (hr.Subject(self.subject_id).active_donor or {}).get("donor_ear")
+        except Exception:                              # noqa: BLE001
+            return None
 
     def _recorded_donor(self):
         """The participant's donor from their pickle, or None -- never raises.
@@ -155,7 +173,9 @@ class DonorModification:
     def __repr__(self):
         return (f"<DonorModification {self.subject_id} "
                 f"ear={self.trained_ear} {self.pipeline} "
-                f"donor={self.donor_id} sofa={self.modified_sofa}>")
+                f"donor={self.donor_id}"
+                f"{f'/{self.donor_ear}' if self.donor_ear else ''} "
+                f"sofa={self.modified_sofa}>")
 
     # -- paths ------------------------------------------------------------
 
@@ -171,7 +191,25 @@ class DonorModification:
 
     # -- naming -----------------------------------------------------------
 
-    def modified_name(self, donor_id, n_keep=None):
+    def _donor_tag(self, donor_id, donor_ear):
+        """``FS`` for a same-side build, ``FS-L`` / ``FS-R`` for a cross-ear one.
+
+        BACKWARDS COMPATIBILITY IS THE POINT. Every composite built before
+        per-ear selection took the donor's matching side, and its name carries
+        no ear tag; emitting one now would orphan every SOFA, every binsim
+        database and every stored ``seq.hrir`` on disk, and
+        ``group_transfer``/``elevation_learning`` match those strings exactly.
+        So the tag appears ONLY when the donor ear differs from the trained
+        ear -- a file that could not exist before and therefore collides with
+        nothing. ``is_training_sofa`` still resolves: the tag sits before the
+        ``_env<k>_<ear>`` tail it tests, and contains no ``_n<digits>``.
+        """
+        stem = donor_id.split('/')[-1]
+        if donor_ear is None or donor_ear == self.trained_ear:
+            return stem
+        return f"{stem}-{donor_ear[0].upper()}"
+
+    def modified_name(self, donor_id, n_keep=None, donor_ear=None):
         """The SOFA the protocol's blocks load.
 
         On v2 the monaural reduction is already inside the file, so it is part
@@ -179,7 +217,7 @@ class DonorModification:
         set differently between two runs of the same block.
         """
         n_keep = selection.N_KEEP if n_keep is None else n_keep
-        stem = f"{self.subject_id}_donor_{donor_id.split('/')[-1]}"
+        stem = f"{self.subject_id}_donor_{self._donor_tag(donor_id, donor_ear)}"
         if n_keep != selection.N_KEEP:
             stem = f"{stem}_n{n_keep}"
         if self.pipeline == "v2":
@@ -205,10 +243,10 @@ class DonorModification:
             return rest.endswith(f"_env{self.env_n_keep}_{self.trained_ear}")
         return not re.search(r"_env\d+_(left|right)$", rest)
 
-    def binaural_name(self, donor_id, n_keep=None):
+    def binaural_name(self, donor_id, n_keep=None, donor_ear=None):
         """v2 only: the composite BEFORE the monaural reduction. QC reference."""
         n_keep = selection.N_KEEP if n_keep is None else n_keep
-        stem = f"{self.subject_id}_donor_{donor_id.split('/')[-1]}"
+        stem = f"{self.subject_id}_donor_{self._donor_tag(donor_id, donor_ear)}"
         return stem if n_keep == selection.N_KEEP else f"{stem}_n{n_keep}"
 
     _UNSET = object()
@@ -310,13 +348,30 @@ class DonorModification:
             selection.report(self._shortlist, reference)
         return self._shortlist
 
-    def _pick(self, rows, rank=0, donor_id=None):
-        """Resolve (rank | donor_id) to one shortlist row."""
+    def _pick(self, rows, rank=0, donor_id=None, donor_ear=None):
+        """Resolve (rank | donor_id[+donor_ear]) to one shortlist row.
+
+        With per-ear selection a donor id alone is AMBIGUOUS -- the same
+        recording appears twice, once per ear -- so naming one without an ear
+        raises rather than silently taking whichever ranked higher.
+        """
         if donor_id is not None:
-            matches = [row for row in rows if row["donor"] == donor_id]
+            matches = [row for row in rows if row["donor"] == donor_id
+                       and (donor_ear is None
+                            or row.get("donor_ear") == donor_ear)]
             if not matches:
-                raise ValueError(f"{donor_id} is not in this subject's pool: "
-                                 f"{', '.join(r['donor'] for r in rows)}")
+                have = ', '.join(
+                    f"{r['donor']}({r.get('donor_ear') or 'same side'})"
+                    for r in rows)
+                raise ValueError(f"{donor_id}"
+                                 f"{f' ({donor_ear} ear)' if donor_ear else ''}"
+                                 f" is not in this subject's pool: {have}")
+            if len(matches) > 1:
+                ears = ', '.join(str(r.get("donor_ear")) for r in matches)
+                raise ValueError(
+                    f"{donor_id} is in the pool twice (ears: {ears}) -- pass "
+                    f"donor_ear= to say which one. Candidates are donor EARS "
+                    f"since 2026-09-17; see donor_selection.PER_EAR_SELECTION.")
             return matches[0]
         if rank is None:
             raise ValueError("pass rank= or donor_id=")
@@ -327,7 +382,7 @@ class DonorModification:
 
     # -- the donor a participant is on ------------------------------------
 
-    def _set_active_donor(self, donor_id, rank, reason=""):
+    def _set_active_donor(self, donor_id, rank, reason="", donor_ear=None):
         """Record the donor this participant is currently on, in their pickle.
 
         Stored as subject.active_donor so a later session can reload the donor
@@ -340,6 +395,10 @@ class DonorModification:
         subject = hr.Subject(self.subject_id)
         subject.active_donor = {
             "donor": donor_id,
+            # None means the donor's matching side, which is every build made
+            # before per-ear selection -- do not normalise it to trained_ear,
+            # or an old record starts claiming an ear it never recorded.
+            "donor_ear": donor_ear,
             "rank": rank,
             "reason": reason,
             "timestamp": datetime.datetime.now().isoformat(timespec="seconds"),
@@ -358,6 +417,7 @@ class DonorModification:
             print(f"no donor recorded for {self.subject_id}")
             return
         print(f"{self.subject_id}: donor {record.get('donor')} "
+              f"({record.get('donor_ear') or 'same side'} ear) "
               f"(rank {record.get('rank')}) set {record.get('timestamp')}")
         if record.get("reason"):
             print(f"  reason: {record['reason']}")
@@ -402,7 +462,7 @@ class DonorModification:
         return out_png
 
     def build(self, overwrite=False, show_qc=True, n_keep=None, rank=0,
-              donor_id=None, set_active=True, quiet=False):
+              donor_id=None, donor_ear=None, set_active=True, quiet=False):
         """Build one composite, write it, return (path, donor_id).
 
         Writes <subject>_donor_<DONOR>.sofa next to the native one, embeds the
@@ -424,7 +484,11 @@ class DonorModification:
             raise RuntimeError("empty donor pool -- check selection.DONOR_POOL")
 
         rows = self.shortlist(quiet=quiet)
-        chosen = self._pick(rows, rank=rank, donor_id=donor_id)
+        chosen = self._pick(rows, rank=rank, donor_id=donor_id,
+                            donor_ear=donor_ear)
+        # the ear the composite actually takes its detail from; None on a
+        # pre-per-ear shortlist, which means the donor's matching side
+        donor_ear = chosen.get("donor_ear")
 
         if not quiet:
             print(f"\ndonor rank {chosen['rank']}: {chosen['donor']}   r_match "
@@ -433,6 +497,10 @@ class DonorModification:
                   f"   ridge slope {chosen['ridge_slope']:+.2f}"
                   f"   cue strength {chosen['donor_strength']:.1f} dB"
                   f"   [{chosen['tier']}]")
+            heard = donor_ear or self.trained_ear
+            same = " (same side)" if donor_ear is None else ""
+            print(f"donor ear: {heard}{same}  ->  listener's "
+                  f"{self.trained_ear} ear")
         if chosen["fallback"]:
             print("  !! FALLBACK: no candidate met the ridge criterion; lowest "
                   "slope used. This must be reported.")
@@ -444,10 +512,12 @@ class DonorModification:
         # ladder strengths differ ONLY in how much of the cue is handed over --
         # not in whose cue it is.
         donor_id = chosen["donor"]
-        name = self.modified_name(donor_id, n_keep)
+        name = self.modified_name(donor_id, n_keep, donor_ear=donor_ear)
         if is_default and set_active:
             self.donor_id, self.modified_sofa = donor_id, name
-            self._set_active_donor(donor_id, chosen["rank"], chosen["tier"])
+            self.donor_ear = donor_ear
+            self._set_active_donor(donor_id, chosen["rank"], chosen["tier"],
+                                   donor_ear=donor_ear)
         out_path = self.sofa_dir / f"{name}.sofa"
         if out_path.exists() and not overwrite:
             if not quiet:
@@ -467,7 +537,8 @@ class DonorModification:
         binaural_path = None
 
         if self.pipeline == "v1":
-            modified = donor_detail_dtf(own, candidates[donor_id], n_keep=n_keep)
+            modified = donor_detail_dtf(own, candidates[donor_id],
+                                        n_keep=n_keep, donor_ear=donor_ear)
         else:
             # --- v2: modify the 19 MEASURED directions, then re-expand -------
             # The az=0 arc in the finished SOFA is magnitude-identical to what
@@ -481,7 +552,8 @@ class DonorModification:
                       f"SOFA, see DonorModification.head_radius)")
             own_arc = midline_arc(own)
             donor_arc = midline_arc(candidates[donor_id])
-            detail_arc = donor_detail_dtf(own_arc, donor_arc, n_keep=n_keep)
+            detail_arc = donor_detail_dtf(own_arc, donor_arc, n_keep=n_keep,
+                                          donor_ear=donor_ear)
             # The binaural composite (QC reference, and the ladder's input) is
             # this arc expanded. It is NAMED here and built and written further
             # down, next to its embed_modification_params call: qc_midline
@@ -489,7 +561,9 @@ class DonorModification:
             # next to the native one every time it did -- precisely the
             # unattributable file the embed exists to prevent. envelope_dtf
             # deep-copies, so detail_arc is still the pre-reduction arc there.
-            binaural_path = self.sofa_dir / f"{self.binaural_name(donor_id, n_keep)}.sofa"
+            binaural_path = self.sofa_dir / (
+                f"{self.binaural_name(donor_id, n_keep, donor_ear=donor_ear)}"
+                f".sofa")
 
             arc = envelope_dtf(detail_arc, ear=self.trained_ear,
                                n_keep=self.env_n_keep)
@@ -521,6 +595,7 @@ class DonorModification:
         def _params(**extra):
             return modification_params(
                 self.subject_id, donor_id, n_keep=n_keep,
+                donor_ear=donor_ear, target_ear=self.trained_ear,
                 target_r_match=selection.TARGET_R_MATCH,
                 tolerance=selection.TOLERANCE,
                 band=selection.DEFAULT_BAND,
@@ -530,10 +605,11 @@ class DonorModification:
                 fallback=chosen["fallback"],
                 scores={k: chosen[k] for k in ('r_match', 'ridge_slope',
                                                'donor_strength')},
-                ranking=[{k: row[k] for k in ('donor', 'rank', 'tier',
-                                              'donor_strength', 'r_match',
-                                              'ridge_slope', 'eligible',
-                                              'in_band')} for row in rows],
+                ranking=[{k: row.get(k) for k in ('donor', 'donor_ear', 'rank',
+                                                  'tier', 'donor_strength',
+                                                  'r_match', 'ridge_slope',
+                                                  'eligible', 'in_band')}
+                         for row in rows],
                 **extra)
 
         modified.write_sofa(str(out_path))
@@ -616,7 +692,7 @@ class DonorModification:
         pilot = paths.RESULTS_DIR / "pilot" / self.subject_id
         return pilot if pilot.exists() else direct
 
-    def screen_name(self, donor_id, n_keep=None):
+    def screen_name(self, donor_id, n_keep=None, donor_ear=None):
         """The SOFA a day-1 screen block plays: the BINAURAL composite.
 
         Own envelope + donor detail on BOTH ears, before the monaural
@@ -629,11 +705,12 @@ class DonorModification:
         estimate, though azimuth is only a sanity check in the screen now --
         elevation gain leads. See donor_screening.
         """
-        return self.binaural_name(donor_id, n_keep)
+        return self.binaural_name(donor_id, n_keep, donor_ear=donor_ear)
 
-    def screen_settings(self, donor_id, n_keep=None):
+    def screen_settings(self, donor_id, n_keep=None, donor_ear=None):
         """hrir_settings for one screen block. ear=None -> take the file as is."""
-        return self.hrir_settings(self.screen_name(donor_id, n_keep), ear=None)
+        return self.hrir_settings(
+            self.screen_name(donor_id, n_keep, donor_ear=donor_ear), ear=None)
 
     def prepare_shortlist(self, n=3, mirrored=True, overwrite=False, screen=False):
         """Stage the top ``n`` donors so a mid-session swap costs seconds.
@@ -667,15 +744,16 @@ class DonorModification:
 
         staged = []
         for row in rows[:n]:
-            donor = row["donor"]
-            print(f"\n--- rank {row['rank']}: {donor} "
+            donor, ear = row["donor"], row.get("donor_ear")
+            print(f"\n--- rank {row['rank']}: {donor}"
+                  f"{f' ({ear} ear)' if ear else ''} "
                   f"(r_match {row['r_match']:.2f}, ridge "
                   f"{row['ridge_slope']:+.2f}, strength "
                   f"{row['donor_strength']:.1f} dB, {row['tier']}) ---")
             # set_active=False: staging must not silently repoint the protocol
-            self.build(overwrite=overwrite, show_qc=False,
-                       donor_id=donor, set_active=False, quiet=True)
-            name = self.modified_name(donor)
+            self.build(overwrite=overwrite, show_qc=False, donor_id=donor,
+                       donor_ear=ear, set_active=False, quiet=True)
+            name = self.modified_name(donor, donor_ear=ear)
             for mirror in ((False, True) if mirrored else (False,)):
                 db = paths.BINSIM_DIR / self.binsim_names(name, mirror)
                 if db.exists() and not overwrite:
@@ -686,16 +764,16 @@ class DonorModification:
                                                mirror=mirror),
                             overwrite=overwrite, build=True)
             if screen:
-                screen_name = self.screen_name(donor)
+                screen_name = self.screen_name(donor, donor_ear=ear)
                 db = paths.BINSIM_DIR / self.binsim_names(screen_name, False,
                                                           ear=None)
                 if db.exists() and not overwrite:
                     print(f"    screen binsim {db.name} exists -- skipping")
                 else:
                     print(f"    building screen binsim {db.name} ...")
-                    hrtf2binsim(self.screen_settings(donor),
+                    hrtf2binsim(self.screen_settings(donor, donor_ear=ear),
                                 overwrite=overwrite, build=True)
-            staged.append(donor)
+            staged.append(f"{donor}{f'({ear})' if ear else ''}")
 
         # rank 0 is the protocol donor; make it the active one
         self.build(overwrite=False, show_qc=False, rank=0, quiet=True)
@@ -705,7 +783,7 @@ class DonorModification:
         print("once the donor is settled: discard_unused()")
         return staged
 
-    def use_donor(self, rank=None, donor_id=None, reason=""):
+    def use_donor(self, rank=None, donor_id=None, donor_ear=None, reason=""):
         """Switch the active donor mid-session. Instant if pre-staged.
 
         Use when a participant cannot localize at all with the current
@@ -724,10 +802,13 @@ class DonorModification:
         session instead.
         """
         rows = self.shortlist(quiet=True)
-        row = self._pick(rows, rank=rank, donor_id=donor_id)
+        row = self._pick(rows, rank=rank, donor_id=donor_id,
+                         donor_ear=donor_ear)
 
-        previous = self.donor_id
-        name = self.modified_name(row["donor"])
+        previous = (f"{self.donor_id}"
+                    f"{f'({self.donor_ear})' if self.donor_ear else ''}")
+        donor_ear = row.get("donor_ear")
+        name = self.modified_name(row["donor"], donor_ear=donor_ear)
         sofa_path = self.sofa_dir / f"{name}.sofa"
         if not sofa_path.exists():
             raise FileNotFoundError(
@@ -749,9 +830,12 @@ class DonorModification:
                                 overwrite=False, build=True)
 
         self.donor_id, self.modified_sofa = row["donor"], name
+        self.donor_ear = donor_ear
         self._set_active_donor(row["donor"], row["rank"],
-                               reason or f"(no reason given; from {previous})")
-        print(f"\nactive donor: {previous} -> {row['donor']}   "
+                               reason or f"(no reason given; from {previous})",
+                               donor_ear=donor_ear)
+        print(f"\nactive donor: {previous} -> {row['donor']}"
+              f"{f'({donor_ear})' if donor_ear else ''}   "
               f"(rank {row['rank']}, {row['tier']}, "
               f"r_match {row['r_match']:.2f}, ridge "
               f"{row['ridge_slope']:+.2f}, strength "
@@ -774,7 +858,9 @@ class DonorModification:
         come off the filesystem.
         """
         if self.donor_id is not None:
-            matches = [self.sofa_dir / f"{self.modified_name(self.donor_id)}.sofa"]
+            matches = [self.sofa_dir / (
+                f"{self.modified_name(self.donor_id, donor_ear=self.donor_ear)}"
+                f".sofa")]
         else:
             matches = [path for path
                        in sorted(self.sofa_dir.glob(f"{self.subject_id}_donor_*.sofa"))
@@ -856,16 +942,25 @@ class DonorModification:
         # every variant the active composite could have produced, so a
         # since-changed setting can never make this delete the database the
         # participant is actually being tested on.
+        # PER-EAR: a donor id no longer names one composite -- '<SID>_donor_FS'
+        # and '<SID>_donor_FS-L' are different files. `keep` is given as donor
+        # ids, and the active record may predate donor_ear, so spare EVERY ear
+        # variant a named donor could have produced. Over-sparing leaves a stray
+        # file; under-sparing deletes the composite a participant is mid-study
+        # on, and only one of those is recoverable.
         spared_sofa, spared_binsim = set(), set()
-        for donor in {active, *(keep or [])}:
-            name = self.modified_name(donor)
+        donor_ears = (None, "left", "right")
+        for donor, donor_ear in ((d, e) for d in {active, *(keep or [])}
+                                 for e in donor_ears):
+            name = self.modified_name(donor, donor_ear=donor_ear)
             # On v2 a donor has TWO files: the reduced one the blocks load
             # (modified_name, '<SID>_donor_<D>_env4_<ear>') and the binaural
             # composite kept as its QC reference (binaural_name,
             # '<SID>_donor_<D>'). Sparing only the first would delete the QC
             # reference for the donor that was actually used. On v1 the two
             # names coincide.
-            spared_sofa.update((name, self.binaural_name(donor)))
+            spared_sofa.update(
+                (name, self.binaural_name(donor, donor_ear=donor_ear)))
             for treatment in OTHER_EAR_TREATMENTS:
                 spared_binsim.update(
                     self.binsim_names(name, m, other_ear=treatment)

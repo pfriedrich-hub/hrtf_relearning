@@ -15,6 +15,7 @@ the protocol's config cell raises.
 """
 
 SUBJECT_ID = 'CO'          # any participant with a measured <id>.sofa
+TRAINED_EAR = 'right'      # per-ear selection needs it (2026-09-17)
 BUILD_BINSIM = True        # stage 4: write the pyBinSim database (no hardware,
                            # but needs the subject's DT990_equalization.npz)
 
@@ -72,7 +73,7 @@ check('conformance filter rejects non-matching recordings',
       f'{len(strict)} of all available recordings conform')
 
 # %% stage 2: selection -------------------------------------------------------
-chosen, rows = selection.select_donor(own, candidates)
+chosen, rows = selection.select_donor(own, candidates, trained_ear=TRAINED_EAR)
 reference, _ = selection.pairwise_r_match({SUBJECT_ID: own, **candidates})
 selection.report(rows, reference)
 check('a donor was selected', chosen is not None,
@@ -80,8 +81,14 @@ check('a donor was selected', chosen is not None,
       f'ridge {chosen["ridge_slope"]:+.2f}')
 check('selection is not a fallback', not chosen['fallback'],
       'lowest-slope donor used — report this if it persists')
-check('every candidate was scored', len(rows) == len(candidates),
-      f'{len(rows)} rows')
+# per-ear: each recording contributes TWO rows, one per donor ear
+expected = len(candidates) * (2 if selection.PER_EAR_SELECTION else 1)
+check('every candidate EAR was scored', len(rows) == expected,
+      f'{len(rows)} rows from {len(candidates)} recordings')
+check('both ears present for every donor',
+      not selection.PER_EAR_SELECTION
+      or all(sum(r['donor'] == d for r in rows) == 2 for d in candidates),
+      'each donor appears once per ear')
 check('chosen r_match inside the between-subject range',
       reference.min() <= chosen['r_match'] <= reference.max(),
       f'{chosen["r_match"]:.2f} in [{reference.min():.2f}, {reference.max():.2f}]')

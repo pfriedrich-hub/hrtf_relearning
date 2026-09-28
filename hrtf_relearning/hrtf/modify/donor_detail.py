@@ -203,6 +203,8 @@ def modification_params(subject_id, donor_id, n_keep=DEFAULT_N_KEEP,
 # ---------------------------------------------------------------------------
 
 SUB_ID = 'CO'          # participant with a measured <id>.sofa
+TRAINED_EAR = 'right'  # selection is per donor EAR since 2026-09-17,
+                       # so it needs the ear that will hear the detail
 OUT_SUFFIX = 'donor'   # writes <SUB_ID>_donor_<DONOR>.sofa
 
 # Nothing else is set per participant. n_keep, the target dissimilarity, the
@@ -234,10 +236,12 @@ if __name__ == '__main__':
     candidates = selection.load_candidates(SUB_ID)
     print(f'{len(candidates)} candidate donors: {", ".join(candidates)}')
 
-    chosen, rows = selection.select_donor(own, candidates)
+    chosen, rows = selection.select_donor(own, candidates,
+                                          trained_ear=TRAINED_EAR)
     reference, _ = selection.pairwise_r_match({SUB_ID: own, **candidates})
     selection.report(rows, reference)
-    print(f'\nchosen donor: {chosen["donor"]}  '
+    print(f'\nchosen donor: {chosen["donor"]} '
+          f'({chosen.get("donor_ear") or "same side"} ear)  '
           f'(r_match {chosen["r_match"]:.2f}, target '
           f'{selection.TARGET_R_MATCH:.2f}, ridge slope '
           f'{chosen["ridge_slope"]:+.2f}, cue strength '

@@ -184,182 +184,108 @@ def impairment_se(n_screen, n_reference):
     return float(numpy.hypot(f(n_screen), f(n_reference)))
 
 
-def evaluate(reference, candidates,
-             min_eg=MIN_EG, min_eg_retained=MIN_EG_RETAINED,
-             max_eg_retained=MAX_EG_RETAINED,
-             impairment_reject=IMPAIRMENT_REJECT,
-             az_gain_reject=AZ_GAIN_REJECT, az_gain_flag=AZ_GAIN_FLAG,
-             az_rmse_factor=AZ_RMSE_FACTOR):
-    """Apply the gates. Returns ``(rows, chosen)``.
+def measure(reference, candidates):
+    """Compute the readouts for each screened candidate. NO gates, NO verdict.
+
+    SIMPLIFIED 2026-09-28 (Paul): "I just want to run the screen and then
+    select based on EG and PE." This used to apply three families of gates and
+    return a `chosen` donor. It no longer decides anything -- it measures, and
+    the experimenter reads the table.
+
+    Why the gates went. At 35 trials the standard error on elevation gain is
+    ~0.14, i.e. ~20 percentage points of the retained fraction, so a 30-55%
+    band is far narrower than the measurement. Today's screen rejected GM-right
+    for SH on a 0.24 SE miss of the ceiling -- a verdict indistinguishable from
+    noise, dressed as a decision. Resolving that band would need ~335 trials per
+    candidate, which is the whole session. The screen is good at catching gross
+    failure and bad at fine distinctions, so it now reports and the gross
+    failures are obvious in the numbers.
 
     Parameters
     ----------
     reference : dict
         The own-HRTF block, SAME geometry and stimulus as the screens --
         normally the `native` phase (binaural, full field). Needs ``pe``,
-        ``eg`` and ``az_rmse``; ``n`` is used for the resolution note.
+        ``eg`` and ``az_rmse``; ``n`` sets the resolution note.
     candidates : list of dict
-        One per screened donor, in SHORTLIST RANK ORDER, each with ``donor``,
-        ``rank``, ``pe``, ``eg``, ``az_gain``, ``az_rmse``, ``n``.
+        One per screened donor, each with ``donor``, ``donor_ear``, ``rank``,
+        ``pe``, ``eg``, ``az_gain``, ``az_rmse``, ``n``.
 
     Returns
     -------
     rows : list of dict
-        Input rows plus ``impairment``, ``eg_retained``, ``passed``,
-        ``reasons`` (empty when it passed) and ``marginal``.
-    chosen : dict or None
-        The FIRST SURVIVOR IN RANK ORDER -- not the best-scoring one. None if
-        every candidate was rejected, which means stage more donors rather than
-        pick the least-bad.
+        Input rows plus ``eg_retained``, ``impairment``, and the standard
+        errors ``eg_se``, ``eg_retained_se``, ``impairment_se``.
     """
     own_eg = reference.get("eg")
+    n_ref = int(reference.get("n") or NOISE_N)
     rows = []
     for c in candidates:
         r = dict(c)
+        n = int(r.get("n") or 1)
         r["impairment"] = float(c["pe"] - reference["pe"])
         r["eg_retained"] = (float(c["eg"] / own_eg)
                             if own_eg and own_eg > 0.1 else float("nan"))
-        reasons, marginal = [], []
-
-        # -- primary: elevation gain, asked twice ---------------------------
-        if c["eg"] < min_eg:
-            reasons.append(
-                f"elevation gain {c['eg']:.2f} < {min_eg:.2f} — the composite "
-                f"has abolished the cue, not degraded it")
-        if numpy.isfinite(r["eg_retained"]) and r["eg_retained"] < min_eg_retained:
-            reasons.append(
-                f"kept only {r['eg_retained']*100:.0f}% of their own elevation "
-                f"gain ({c['eg']:.2f} of {own_eg:.2f}) — below "
-                f"{min_eg_retained*100:.0f}%, too little cue left to relearn "
-                f"from at this exposure")
-        if numpy.isfinite(r["eg_retained"]) and r["eg_retained"] > max_eg_retained:
-            reasons.append(
-                f"kept {r['eg_retained']*100:.0f}% of their own elevation gain "
-                f"({c['eg']:.2f} of {own_eg:.2f}) — above "
-                f"{max_eg_retained*100:.0f}%, the manipulation did not bite")
-
-        # -- co-gate: did the perturbation land at all ----------------------
-        if r["impairment"] < impairment_reject[0]:
-            reasons.append(
-                f"impairment only +{r['impairment']:.1f} deg — nothing to relearn")
-        elif r["impairment"] > impairment_reject[1]:
-            reasons.append(f"impairment +{r['impairment']:.1f} deg — floor risk")
-
-        # -- sanity: azimuth. Egregious rejects only; see the header. -------
-        if not (az_gain_reject[0] <= c["az_gain"] <= az_gain_reject[1]):
-            reasons.append(
-                f"azimuth gain {c['az_gain']:.2f} outside "
-                f"{az_gain_reject[0]:.2f}-{az_gain_reject[1]:.2f} — this block "
-                f"is a write-off (check the participant was doing the task), "
-                f"not evidence about the donor")
-        elif not (az_gain_flag[0] <= c["az_gain"] <= az_gain_flag[1]):
-            marginal.append(f"azimuth gain {c['az_gain']:.2f} outside "
-                            f"{az_gain_flag[0]:.2f}-{az_gain_flag[1]:.2f} (noted, "
-                            f"does not reject)")
-        limit = az_rmse_factor * reference["az_rmse"]
-        if c["az_rmse"] > limit:
-            marginal.append(f"azimuth RMSE {c['az_rmse']:.1f} deg > {limit:.1f} "
-                            f"({az_rmse_factor:g}x own) (noted, does not reject)")
-
-        # -- MARGINAL: passed, but a gated quantity is within one SE of an
-        #    edge, so the verdict would flip on a re-run.
-        eg_se = NOISE_EG_SD * numpy.sqrt(NOISE_N / float(c["n"]))
-        if abs(c["eg"] - min_eg) < eg_se:
-            marginal.append(f"elevation gain {c['eg']:.2f} is within one SE "
-                            f"({eg_se:.2f}) of the {min_eg:.2f} floor")
-        if numpy.isfinite(r["eg_retained"]) and own_eg:
-            if abs(c["eg"] - min_eg_retained * own_eg) < eg_se:
-                marginal.append(
-                    f"kept {r['eg_retained']*100:.0f}% — within one SE of the "
-                    f"{min_eg_retained*100:.0f}% too-little-left edge")
-            if abs(c["eg"] - max_eg_retained * own_eg) < eg_se:
-                marginal.append(
-                    f"kept {r['eg_retained']*100:.0f}% — within one SE of the "
-                    f"{max_eg_retained*100:.0f}% did-not-bite edge")
-        se = impairment_se(c["n"], reference.get("n", c["n"]))
-        for edge, side in ((impairment_reject[0], "floor"),
-                           (impairment_reject[1], "ceiling")):
-            if abs(r["impairment"] - edge) < se:
-                marginal.append(
-                    f"impairment {r['impairment']:+.1f} deg is within one SE "
-                    f"({se:.1f}) of the {side} at {edge:+.0f}")
-
-        r["reasons"] = reasons
-        r["marginal"] = [] if reasons else marginal
-        r["passed"] = not reasons
+        r["eg_se"] = float(NOISE_EG_SD * numpy.sqrt(NOISE_N / float(n)))
+        # the reference block is ~4x longer, so its error is the smaller term;
+        # this is the candidate's own error expressed as a fraction of own EG
+        r["eg_retained_se"] = (float(r["eg_se"] / own_eg)
+                               if own_eg and own_eg > 0.1 else float("nan"))
+        r["impairment_se"] = impairment_se(n, n_ref)
         rows.append(r)
-
-    survivors = [r for r in rows if r["passed"]]
-    survivors.sort(key=lambda r: r["rank"])
-    return rows, (survivors[0] if survivors else None)
+    return sorted(rows, key=lambda r: r.get("rank", 99))
 
 
-def report(rows, chosen, reference):
+def report(rows, reference):
     """Print the screen. Everything a supplement needs is on these lines."""
     ns = sorted({int(r["n"]) for r in rows})
     res = resolution(min(ns)) if ns else {"pe": float("nan"), "eg": float("nan")}
     print("\n" + "=" * 78)
-    print("DAY-1 DONOR SCREEN — reject filter, not a ranking")
+    print("DAY-1 DONOR SCREEN — measurement, not a verdict. You choose.")
     print("=" * 78)
-    print(f"reference (own HRTF, same geometry): elevation gain "
-          f"{reference.get('eg', float('nan')):.2f}, polar error "
-          f"{reference['pe']:.1f} deg, azimuth RMSE {reference['az_rmse']:.1f} deg"
-          + (f", n={reference['n']}" if reference.get("n") else ""))
-    print(f"screen blocks n={'/'.join(str(x) for x in ns)}  ->  two donors are "
-          f"distinguishable only beyond {res['pe']:.1f} deg polar error / "
-          f"{res['eg']:.2f} gain.")
-    print("Do NOT read the ordering below as a ranking; it is rank order from "
-          "donor_selection.shortlist().\n")
-    print(f"primary gate is ELEVATION GAIN: >= {MIN_EG:.2f} absolute (a cue "
-          f"exists) AND <= {MAX_EG_RETAINED*100:.0f}% of the listener's own "
-          f"(it was perturbed). Target ~{EG_TARGET:.2f}.\n")
-    print(f"{'rank':>4} {'donor':>14} {'ear':>6} {'EG':>6} {'kept':>6} {'PE':>6} "
-          f"{'impair':>7} {'azGain':>7} {'azRMSE':>7}  verdict")
-    for r in sorted(rows, key=lambda r: r["rank"]):
-        mark = ("MARGINAL" if r["passed"] and r.get("marginal")
-                else "PASS" if r["passed"] else "REJECT")
-        star = (" <--" if chosen is not None
-                and r["donor"] == chosen["donor"]
-                and r.get("donor_ear") == chosen.get("donor_ear") else "")
-        kept = (f"{r['eg_retained']*100:5.0f}%"
-                if numpy.isfinite(r.get("eg_retained", float("nan"))) else "    —")
-        print(f"{r['rank']:>4} {r['donor']:>14} "
-              f"{(r.get('donor_ear') or 'same'):>6} {r['eg']:6.2f} {kept:>6} "
-              f"{r['pe']:6.1f} {r['impairment']:+7.1f} {r['az_gain']:7.2f} "
-              f"{r['az_rmse']:7.1f}  {mark}{star}")
-        for reason in r["reasons"] + list(r.get("marginal", [])):
-            print(f"{'':>46}   - {reason}")
-    print()
-    if chosen is None:
-        print("!! EVERY candidate was rejected. Stage more donors "
-              "(prepare_shortlist(n=5, screen=True)) rather than run the "
-              "least-bad one — a rejected donor is rejected for a reason that "
-              "training cannot fix.")
-    else:
-        chosen_ear = chosen.get('donor_ear')
-        print(f"chosen: {chosen['donor']}"
-              f"{f' ({chosen_ear} ear)' if chosen_ear else ''} "
-              f"(rank {chosen['rank']}) — the first "
-              f"survivor in the pre-registered order, NOT the best-scoring one.")
-        if not (EG_TARGET_BAND[0] <= chosen["eg"] <= EG_TARGET_BAND[1]):
-            print(f"  note: elevation gain {chosen['eg']:.2f} is outside the "
-                  f"target band {EG_TARGET_BAND[0]:.2f}-{EG_TARGET_BAND[1]:.2f} "
-                  f"(centre {EG_TARGET:.2f}) though inside the reject band. "
-                  f"Report it.")
-        if not (IMPAIRMENT_TARGET[0] <= chosen["impairment"] <= IMPAIRMENT_TARGET[1]):
-            print(f"  note: impairment {chosen['impairment']:+.1f} deg is outside "
-                  f"the target band {IMPAIRMENT_TARGET[0]:g}-"
-                  f"{IMPAIRMENT_TARGET[1]:g} deg though inside the reject band.")
-        if chosen.get("marginal"):
-            print("  ** MARGINAL — this donor passed, but on a quantity close "
-                  "enough to a boundary that a re-run could flip it. Run it, "
-                  "then re-check against baseline A before committing the "
-                  "participant to four days; use_donor() still swaps in "
-                  "seconds at that point.")
-        print("  REMINDER: the screen is itself donor exposure. THIS block is "
-              "the naive measurement of the chosen donor — take the day-1 "
-              "impairment from here, not from baseline A. Baseline A now runs "
-              "post-screen for every participant; that is uniform and "
-              "interpretable, but it has to be reported.")
+    print(f"own HRTF, same geometry: EG {reference.get('eg', float('nan')):.2f}"
+          f"   PE {reference['pe']:.1f} deg"
+          f"   azRMSE {reference['az_rmse']:.1f} deg"
+          + (f"   n={reference['n']}" if reference.get("n") else ""))
+    print(f"screen blocks n={'/'.join(str(x) for x in ns)}  ->  two candidates "
+          f"differ meaningfully only beyond {res['eg']:.2f} gain / "
+          f"{res['pe']:.1f} deg polar error.")
+    print("Order is donor_selection.shortlist() rank, NOT a ranking by these "
+          "numbers.\n")
+
+    print(f"{'rank':>4} {'donor':>13} {'ear':>6} {'EG':>14} {'kept':>13} "
+          f"{'PE':>7} {'impairment':>14}")
+    for r in rows:
+        kept = (f"{r['eg_retained']*100:4.0f}% ±{r['eg_retained_se']*100:.0f}"
+                if numpy.isfinite(r.get("eg_retained", float("nan"))) else "        —")
+        print(f"{r['rank']:>4} {r['donor']:>13} "
+              f"{(r.get('donor_ear') or 'same'):>6} "
+              f"{r['eg']:7.2f} ±{r['eg_se']:.2f} {kept:>13} "
+              f"{r['pe']:7.1f} {r['impairment']:+8.1f} ±{r['impairment_se']:.1f}")
+
+    print("\nazimuth — SANITY ONLY. Azimuth is invariant to a spectral "
+          "manipulation, so a bad value\nmeans the BLOCK was a write-off "
+          "(participant off task, tracker frozen), not the donor:")
+    for r in rows:
+        flag = "" if AZ_GAIN_FLAG[0] <= r["az_gain"] <= AZ_GAIN_FLAG[1] else "   <-- look"
+        print(f"{r['rank']:>4} {r['donor']:>13} {(r.get('donor_ear') or 'same'):>6} "
+              f"   gain {r['az_gain']:5.2f}   RMSE {r['az_rmse']:5.1f} deg "
+              f"(own {reference['az_rmse']:.1f}){flag}")
+
+    print(f"\nreference bands — for orientation, NOTHING here is enforced:")
+    print(f"  elevation gain   target ~{EG_TARGET:.2f}, good pairings land "
+          f"{EG_TARGET_BAND[0]:.2f}-{EG_TARGET_BAND[1]:.2f}; below {MIN_EG:.2f} "
+          f"the cue is effectively gone")
+    print(f"  retained         {MIN_EG_RETAINED*100:.0f}-{MAX_EG_RETAINED*100:.0f}% "
+          f"of the listener's own gain")
+    print(f"  impairment       {IMPAIRMENT_TARGET[0]:g}-{IMPAIRMENT_TARGET[1]:g} deg "
+          f"of polar error vs own")
+    print("\nSelect with:  use_donor(donor_id='XX', donor_ear='left|right', "
+          "reason='what you saw')")
+    print("If nothing looks usable, screen more rather than take the least-bad:"
+          "\n  screen_rows = screen_more(subject, native, n=2)")
+    print("\nNOTE the screen is itself donor exposure. THIS block is the naive "
+          "measurement of\nwhichever donor you pick — take the day-1 "
+          "impairment from here, not from baseline A.")
     print("=" * 78)
-    return chosen
+    return rows

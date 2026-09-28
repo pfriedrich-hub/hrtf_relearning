@@ -1,5 +1,4 @@
 
-0
 """
 HRIR_Recording.py
 
@@ -42,7 +41,7 @@ from hrtf_relearning.hrtf.record.calibration.calibrate_headphones import calibra
 from hrtf_relearning.utils import paths
 import json
 
-SUBJECT_ID   = 'GM'          # edit per participant
+SUBJECT_ID   = 'SH'          # edit per participant
 REFERENCE_ID = 'ref_31.08'   # fresh id -> step 0b records it; reused id -> loaded
 EQUALIZE_DOME = False        # subject AND reference; they must match. See step 0b.
 HEAD_RADIUS = FALLBACK_RADIUS_M   # fallback if step 0 is skipped -- MUST be
@@ -103,7 +102,7 @@ logging.info('--- Step 2: HP calibration ---')
 hp_filter = calibrate_headphones(SUBJECT_ID, 'DT990', N_REC_HP, SHOW, False, overwrite=True)
 
 # %% stimulus for every localization test in this file -------------------------
-STIM = 'noise'            # -> 'ripple' once the depth is settled
+STIM = 'ripple'            # -> 'ripple' once the depth is settled
 STIM_SETTINGS = {'rms_tilt': 3}        # empty = inherit localization_helpers.stimulus defaults
 
 # %% step 4: dome localization ---------------------------------------------------

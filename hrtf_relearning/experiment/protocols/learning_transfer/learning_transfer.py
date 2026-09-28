@@ -56,7 +56,8 @@ Write each subject's id into the 'subject' column before running.
 
 RUN ORDER. Cells top to bottom are the protocol proper, in the order they are
 performed:
-    day 1            status -> native reference -> build donor -> baseline A/D
+    day 1            status -> native reference -> build donor -> baselines
+                     A/B/C/D, in the subject's final-day order
     adaptation days  PRE test -> train -> POST test   (three cells, in order)
     final day        the counterbalanced 2x2
 Everything under MISC at the bottom is diagnostic and is NOT run as a matter of
@@ -516,6 +517,8 @@ def phases():
     return {
         "native":     ("Native reference",         "Day 1", NATIVE_SOFA,   None,        False, FULL_FIELD,    "binaural, native HRTF, full field"),
         "baseline_A": ("Baseline A: trained/same", "Day 1", MODIFIED_SOFA, TRAINED_EAR, False, TRAINED_HEMI,  "naive trained ear, modified filter (matches final A)"),
+        "baseline_B": ("Baseline B: trained/mirr", "Day 1", MODIFIED_SOFA, TRAINED_EAR, False, MIRRORED_HEMI, "naive trained ear, modified filter, mirrored locations (matches final B)"),
+        "baseline_C": ("Baseline C: untrnd/same",  "Day 1", MODIFIED_SOFA, TRAINED_EAR, True,  TRAINED_HEMI,  "naive untrained ear, MIRRORED modified filter, same locations (matches final C)"),
         "baseline_D": ("Baseline D: untrnd/mirr",  "Day 1", MODIFIED_SOFA, TRAINED_EAR, True,  MIRRORED_HEMI, "naive untrained ear, MIRRORED modified filter (matches final D)"),
         "daily":      ("Daily training test",      "Adaptation days", MODIFIED_SOFA, TRAINED_EAR, False, TRAINED_HEMI,  "monaural trained ear, trained hemifield"),
         "A":          ("Final A: trained/same",    "Final day", MODIFIED_SOFA, TRAINED_EAR, False, TRAINED_HEMI,  "trained ear, same locations (baseline retest)"),
@@ -781,11 +784,65 @@ load_existing_donor()
 #   ="EG 0.03 on baseline A, responses at chance")
 # use_donor(rank=1, reason="")
 
-# %% day 1: baseline A -- trained ear, same loc (matches final A) -------------
+# ---------------------------------------------------------------------------
+# DAY-1 BASELINES -- all four cells, since 2026-09-28.
+#
+# Transfer is read from within-cell pre-post CHANGE scores, because the cells
+# start from different naive levels: even the mirror pair A/D differed by up
+# to +-0.25 EG on day 1 in the pilots, about the size of the change-score
+# noise band. Final-day B and C ranged 0.05-0.73 and 0.07-0.62 EG, so without
+# a day-1 value they cannot be read. Every cell therefore gets a baseline,
+# and the Ear x Side 2x2 can be analysed on change scores in full.
+#
+# What the four cells distinguish (+ = improves from day 1 to the final day):
+#
+#   where learning lives                          A  B  C  D
+#   trained ear's monaural pathway (ear-specific) +  +  -  -
+#   binaural stage organised by side (side)       +  -  +  -
+#   shared stage (ear- and side-general)          +  +  +  +
+#   only the trained ear x side combination       +  -  -  -
+#
+# Without C, the side-specific and combination-only accounts both predict
+# (+, -, -) and cannot be told apart. C is the only cell that tests transfer
+# to the other ear with the source kept on the trained side, so it turns the
+# binaural-stage account from an inference drawn from nulls in B and D into a
+# positive prediction. D, acoustically the mirror of A, tests only the
+# shared-stage account.
+#
+# B and C are far-ear cells: the donor detail reaches only the head-shadowed
+# far ear and the near ear gets the elevation-flat envelope. That acoustic
+# difference from A is why they need their own baselines, not a reason to
+# drop them.
+#
+# Run in the subject's FINAL_ORDER (Williams square from the block-order CSV),
+# so each cell holds the same position on day 1 and the final day.
+# ~150 trials more than before.
+#
+# Subjects run before this change (FS, IR, AS, LS, GM, NR, FP) have day-1 A and
+# D only: their B and C are post-only and drop out of the B/C change scores.
+# ---------------------------------------------------------------------------
+
+# %% day 1: baselines A/B/C/D in this subject's counterbalanced order --------
+subject = hr.Subject(SUBJECT_ID)
+print(f"Running day-1 baselines in order: {FINAL_ORDER}")
+baselines = {}
+for key in FINAL_ORDER:
+    baselines[key] = run_phase(f"baseline_{key}", subject)
+    collect_externalization_rating(baselines[key])
+
+# %% day 1: baseline A -- trained ear, same loc (redo individually) -----------
 baseline_A = run_phase("baseline_A", subject)
 collect_externalization_rating(baseline_A)
 
-# %% day 1: baseline D -- untrained ear, mirrored loc (matches final D) -------
+# %% day 1: baseline B -- trained ear, mirrored loc (redo individually) -------
+baseline_B = run_phase("baseline_B", subject)
+collect_externalization_rating(baseline_B)
+
+# %% day 1: baseline C -- untrained ear, same loc (redo individually) ---------
+baseline_C = run_phase("baseline_C", subject)
+collect_externalization_rating(baseline_C)
+
+# %% day 1: baseline D -- untrained ear, mirrored loc (redo individually) -----
 baseline_D = run_phase("baseline_D", subject)
 collect_externalization_rating(baseline_D)
 # Condition identity (ear / mirror / hemifield) is carried into the sequence

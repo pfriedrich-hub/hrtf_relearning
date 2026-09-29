@@ -26,11 +26,6 @@ preview flags vary:
                   game_ui.has_peer_below); the flag exists to check that
     --new-player  no entry at all and scores nothing -- no board shown
 
-The board is only revealed on a game that moved the subject up
-(game_ui.newly_passed). So that the first fake game shows it, the preview
-seeds the baseline as if the subject had been one place lower before;
-later fake games show it only when the fake score really overtakes someone.
-
 Usage:
     python -m hrtf_relearning.experiment.training.training_helpers.game_ui_preview
     python -m hrtf_relearning.experiment.training.training_helpers.game_ui_preview CA
@@ -38,10 +33,10 @@ Usage:
     python -m hrtf_relearning.experiment.training.training_helpers.game_ui_preview --bottom
     python -m hrtf_relearning.experiment.training.training_helpers.game_ui_preview --new-player
 
-Because the peer set is frozen on first display, the demo run keeps the
-same names across its repeated fake games -- watch the subject climb PAST
-them rather than the cast changing. Each launch starts from a clean temp
-dir, so the set is re-picked per launch.
+The peer set is kept across the demo's repeated fake games: watch the
+subject climb PAST the same names, and the next higher-ranked demo players
+join at the top once they have passed someone (game_ui.extend_peer_set).
+Each launch starts from a clean temp dir, so the set is re-picked per launch.
 
 To A/B test the retro pixel font (see game_ui._PIXEL_FONT_CHOICES), set
 HRTF_PIXEL_FONT before launching, e.g.:
@@ -120,14 +115,6 @@ def _make_fake_backup_dir(subject_id: str, include_current_player: bool = True,
         sub = tmp / sid
         sub.mkdir(parents=True, exist_ok=True)
         (sub / f"{sid}.json").write_text(json.dumps(payload), encoding="utf-8")
-    # Baseline "one place lower than now", so the first reveal counts as a
-    # move-up (see game_ui.newly_passed) and the board is actually previewed.
-    ranked = game_ui.rank_scores(fake_rows)
-    above = game_ui.ids_above(ranked, subject_id)
-    if above is not None:
-        ids = [sid for sid, _ in ranked]
-        i = ids.index(subject_id)
-        game_ui.save_ids_above(tmp, subject_id, above + ids[i + 1:i + 2])
     return tmp
 
 

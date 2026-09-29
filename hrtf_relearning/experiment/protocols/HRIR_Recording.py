@@ -118,7 +118,8 @@ dome_loc.run()
 
 # %% step 4b: OPTIONAL dome training -- only if step 4 is at floor ---------------
 training = TrainingDome(subject, region='midline')
-training.run(n_games=1)  # todo for midline training: narrow down target size on vertical to 1°, do away with double scores, highscore sounds
+training.run(n_games=1)  # midline: 1 deg elevation window, single scores, no
+# game-over sounds (REGIONS['midline'] in Training_Dome; override via settings=)
 
 
 # %% step 5b: virtual localization -- DT990 ---------------------------------------

@@ -125,15 +125,31 @@ PROCESSOR_MODE = 'training_dome'
 # instant hit.
 REGIONS = {
     'dome':    dict(azimuth_range=(-52.5, 52.5), elevation_range=(-37.5, 37.5), min_dist=30),
-    'midline': dict(azimuth_range=(0, 0),        elevation_range=(-37.5, 37.5), min_dist=25),
+    # midline: the task is purely vertical, so the window is narrowed on
+    # elevation only (target_size stays the azimuth half-width), every hit is
+    # worth one point, and the game ends without the high-score / buzzer sound.
+    'midline': dict(azimuth_range=(0, 0),        elevation_range=(-37.5, 37.5), min_dist=25,
+                    target_size_el=1, double_score=False, game_over_sounds=False),
 }
+
+# Outside the target window the pulse train never goes continuous: with a
+# narrowed elevation window the head can be within `target_size` of the target
+# while still outside the window, and the 'ar' map would otherwise play the
+# "on target" sound there without a score following it.
+MIN_OUTSIDE_INTERVAL = 50   # ms
 
 DEFAULT_SETTINGS = dict(
     target_size=4,          # deg, radius of the target window
+    target_size_el=None,    # deg, elevation half-height of the window; None ->
+                            # circular window of radius target_size. When set,
+                            # the window is a box: |d_az| <= target_size and
+                            # |d_el| <= target_size_el
     target_time=0.5,        # s the pose must stay inside the window to score
     trial_time=10,          # s before a trial is given up
     game_time=90,           # s of playing time per game (trial time only)
     score_time=3,           # s below which a hit is worth 2 points instead of 1
+    double_score=True,      # False -> every hit is worth 1 point
+    game_over_sounds=True,  # False -> no high-score / buzzer sound at game end
     min_dist=None,          # deg between consecutive targets (None -> region default)
     # distance law -- see training_helpers.pulse
     pulse_map='ar',         # 'ar' (same mapping as Training_AR) | 'legacy'
@@ -371,10 +387,12 @@ class TrainingDome:
             self.subject.highscore_dome = int(total)
             self.subject.write()
             print(f'\nGame {game_idx} over | {total} points -- new high score!')
-            self._play_goal_sound('hi_score')
+            if self.settings['game_over_sounds']:
+                self._play_goal_sound('hi_score')
         else:
             print(f'\nGame {game_idx} over | {total} points (high score {highscore})')
-            self._play_goal_sound('buzzer')
+            if self.settings['game_over_sounds']:
+                self._play_goal_sound('buzzer')
 
     # ------------------------------------------------------------ trial
     def set_target(self):
@@ -411,8 +429,7 @@ class TrainingDome:
         Returns (game_timer, score).
         """
         trace, score, count_down, on_target_since = [], 0, False, 0.0
-        distance = angular_distance(self.motion_sensor.get_pose(), self.target)
-        self._write_interval(distance)
+        self._write_interval(self.motion_sensor.get_pose())
         freefield.play(kind='zBusA', proc='all')     # start the pulse train
 
         t0 = time.time()
@@ -422,19 +439,20 @@ class TrainingDome:
             pose = self.motion_sensor.get_pose()
             trace.append((now, float(pose[0]), float(pose[1])))
             distance = angular_distance(pose, self.target)
-            self._write_interval(distance)
+            self._write_interval(pose)
             if self.settings['verbose']:
                 print(f'head pose: azimuth {pose[0]:6.1f}, elevation {pose[1]:6.1f}'
                       f' | distance {distance:5.1f}', end='\r', flush=True)
 
-            if distance <= self.settings['target_size']:
+            if self.in_window(pose):
                 if not count_down:
                     on_target_since, count_down = now, True
             else:
                 count_down = False
 
             if count_down and now - on_target_since >= self.settings['target_time']:
-                score = 2 if trial_timer <= self.settings['score_time'] else 1
+                score = (2 if self.settings['double_score']
+                         and trial_timer <= self.settings['score_time'] else 1)
                 print(f'\nScore! {score}')
                 self._play_goal_sound('coins' if score == 2 else 'coin')
                 break
@@ -509,9 +527,31 @@ class TrainingDome:
         freefield.write(tag='source', value=1, processors=['RX81', 'RX82'])
         self._interval_written = None
 
-    def _write_interval(self, distance):
-        """Update the inter-pulse interval on the processors (ms), if it changed."""
-        interval = distance_to_interval(distance, self.settings)
+    def in_window(self, pose):
+        """True if `pose` is inside the target window (see `target_size_el`)."""
+        el_size = self.settings.get('target_size_el')
+        if el_size is None:
+            return angular_distance(pose, self.target) <= self.settings['target_size']
+        d_az = (float(pose[0]) - self.target[0] + 180.0) % 360.0 - 180.0
+        d_el = float(pose[1]) - self.target[1]
+        return abs(d_az) <= self.settings['target_size'] and abs(d_el) <= el_size
+
+    def _write_interval(self, pose):
+        """Update the inter-pulse interval on the processors (ms), if it changed.
+
+        0 (continuous) exactly when the pose is inside the scoring window, so
+        the cue cannot say "on target" where no score can follow.
+        """
+        if self.in_window(pose):
+            interval = 0.0
+        else:
+            distance = angular_distance(pose, self.target)
+            # with a narrowed elevation window, start the ramp at ITS edge, or
+            # the pulse sits flat between target_size_el and target_size
+            ramp = self.settings
+            if self.settings.get('target_size_el') is not None:
+                ramp = dict(self.settings, target_size=self.settings['target_size_el'])
+            interval = max(distance_to_interval(distance, ramp), MIN_OUTSIDE_INTERVAL)
         if self._interval_written is None or abs(interval - self._interval_written) >= 1:
             freefield.write(tag='interval', value=interval, processors=['RX81', 'RX82'])
             self._interval_written = interval

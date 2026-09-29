@@ -41,7 +41,7 @@ from hrtf_relearning.hrtf.record.calibration.calibrate_headphones import calibra
 from hrtf_relearning.utils import paths
 import json
 
-SUBJECT_ID   = 'SH'          # edit per participant
+SUBJECT_ID   = 'LGL'          # edit per participant
 REFERENCE_ID = 'ref_31.08'   # fresh id -> step 0b records it; reused id -> loaded
 EQUALIZE_DOME = False        # subject AND reference; they must match. See step 0b.
 HEAD_RADIUS = FALLBACK_RADIUS_M   # fallback if step 0 is skipped -- MUST be

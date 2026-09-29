@@ -77,9 +77,29 @@ FEEDBACK_VERSION = 3
 #  to be able to turn it off)
 SHOW_TF = 'TF'  # set to TF or IR to spawn live filter plot
 
+# Target window shrinks within a game, to keep good players off the score
+# ceiling: TARGET_SIZE_START deg radius at the start of every game, one equal
+# step smaller each time the game's points reach a threshold, down to
+# TARGET_SIZE_MIN (4 -> 3.7 -> 3.4 -> 3.1 -> 2.8 -> 2.5). Applied between
+# trials, never mid-trial. 2.5 deg is about the finest window the ~4.2 deg
+# HRIR grid (nearest-neighbour filter selection) can support -- below half
+# the grid step, inside and just outside the window often select the same
+# filter. The size in force is logged with every trial (trial["settings"]).
+TARGET_SIZE_START = 4.0
+TARGET_SIZE_MIN = 2.5
+TARGET_SHRINK_AT = (20, 25, 30, 35, 40)   # game points at which it shrinks
+
+
+def target_size_for(points):
+    """Target window radius (deg) for a game that has scored `points` so far."""
+    n = sum(points >= t for t in TARGET_SHRINK_AT)
+    step = (TARGET_SIZE_START - TARGET_SIZE_MIN) / len(TARGET_SHRINK_AT)
+    return round(TARGET_SIZE_START - n * step, 3)
+
+
 # Game settings
 settings = dict(
-    target_size=4,
+    target_size=TARGET_SIZE_START,   # updated before every trial, see target_size_for
     target_time=0.5,
     min_dist=30,
     game_time=90,
@@ -752,6 +772,9 @@ def play_session():
                 # start trial
                 ui_state.value = 2
                 enter_pressed.value = 0
+                # Shrink the target window with this game's points so far
+                # (session_total is reset at the start of every game).
+                settings["target_size"] = target_size_for(int(session_total.value))
 
                 game_timer, score = play_trial(subject, trial_idx, current_trial, target, distance, pulse_interval,
                                                pulse_state, sensor_state, game_time_left, game_timer, session_total,

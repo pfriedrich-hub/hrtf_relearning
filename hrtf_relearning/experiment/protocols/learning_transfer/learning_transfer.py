@@ -495,9 +495,11 @@ def screen_donors(subject, native, n=SCREEN_N, shuffle=True, ranks=None):
         "timestamp": datetime.datetime.now().isoformat(timespec="seconds"),
         "reference": reference,
         "rows": out,
-        "chosen": chosen["donor"] if chosen else None,
-        "chosen_ear": chosen.get("donor_ear") if chosen else None,
-        "n_trials": int(rows[0].get("n", 0)) if rows else None,
+        # no "chosen" any more: the screen measures, use_donor() selects and
+        # records the choice in active_donor. (A leftover `chosen` reference
+        # here raised NameError AFTER the blocks ran, so nothing was persisted
+        # -- LGL, 2026-09-29.)
+        "n_trials": int(fresh[0].get("n", 0)) if fresh else None,
         "batches": ((screen_on_record(subject) or {}).get("batches", 0)) + 1,
     }
     subject.write()
@@ -775,7 +777,7 @@ def show_status(subject):
         print("day-1 screen: *** NOT RUN *** -- run the SCREEN cell before "
               "selecting a donor")
     else:
-        print(f"day-1 screen: {rec['timestamp']}  chosen={rec['chosen']}  "
+        print(f"day-1 screen: {rec['timestamp']}  chosen={rec.get('chosen', '-')}  "
               f"(n={rec.get('n_trials')} per donor)")
     done = list(getattr(subject, "localization", {}).keys())
     if done:

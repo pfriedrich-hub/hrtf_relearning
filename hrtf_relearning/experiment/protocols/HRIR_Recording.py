@@ -63,6 +63,9 @@ SHOW         = True
 AZ_RANGE     = (-60, 60)      # lateral speakers to sweep, degrees
 AZ_ELEVATION = (-1, 1)        # horizontal row only
 N_REC_AZ     = 10
+REDO_HEAD_RADIUS = False     # True -> re-record the horizontal row instead of
+# loading azimuth.npz (e.g. the fit failed and the mics were re-seated). Set it,
+# rerun step 0, then set it back so a later rerun does not re-record again.
 
 ROOT = hr.PATH
 slab.set_default_samplerate(FS)
@@ -74,7 +77,8 @@ subject = hr.Subject(SUBJECT_ID)
 logging.info('--- Step 0: acoustic head radius ---')
 az_fit = record_head_radius(
     SUBJECT_ID, azimuth_range=AZ_RANGE, elevation=AZ_ELEVATION,
-    n_recordings=N_REC_AZ, hp_freq=HP_FREQ, fs=FS, show=SHOW, save=subject)
+    n_recordings=N_REC_AZ, hp_freq=HP_FREQ, fs=FS, show=SHOW, save=subject,
+    overwrite=REDO_HEAD_RADIUS)
 # usable_radius returns the fitted value, or falls back to 0.0875 with a loud
 # error if the fit hit a bound / has a huge residual / the two ITD estimators
 # disagree. Read the printed table anyway: KEMAR gives 0.0722 m, residual 27 us.
@@ -114,7 +118,7 @@ dome_loc.run()
 
 # %% step 4b: OPTIONAL dome training -- only if step 4 is at floor ---------------
 training = TrainingDome(subject, region='midline')
-training.run(n_games=1)
+training.run(n_games=1)  # todo for midline training: narrow down target size on vertical to 1°, do away with double scores, highscore sounds
 
 
 # %% step 5b: virtual localization -- DT990 ---------------------------------------

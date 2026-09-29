@@ -53,20 +53,23 @@ AZ_RANGE   = tuple(int(x) for x in os.environ.get("TRAINING_AZ_RANGE", "-35,0").
 
 # Sound
 SOUND_FILE = None if STIM == "noise" else STIM   # wav name in <database>/sounds
-# A pulse is as long as the gap that follows it: on for `interval`, off for
-# `interval` (onset spacing 2 * interval), each pulse freshly synthesised --
-# the original feedback, restored 2026-09-29 after a spell (v2) of fixed 50 ms
-# bursts. The ramp is 5 ms (it was 30 ms in v1), so even the shortest 75 ms
-# pulse has a clear on/off edge instead of fluttering into the continuous
-# target sound.
+# A pulse is as long as the gap that follows it (as in v1), but never longer
+# than PULSE_MAX_BURST: near the target the pulse fills half the onset spacing
+# (75 ms on / 75 ms off), far away it is capped (150 ms on / 550 ms off at
+# the 350 ms interval) -- enough exposure per pulse without long sounds that
+# make the rate slow to follow the head. Each pulse is freshly synthesised.
+# Onset spacing is 2 * interval, re-read on every poll, so moving towards the
+# target shortens the pending gap immediately (see pulse_maker).
+PULSE_MAX_BURST = 0.15    # s, cap on the length of one pulse
 PULSE_RAMP  = 0.005       # s, ramp at each end of a pulse
 TARGET_RAMP = 0.03        # s, ramp at each end of the continuous target sound
 # Bump whenever the feedback the participant hears changes. Stored on every
 # trial, so a session can be told apart from earlier ones in analysis.
 #   1 = burst length == gap, continuous cue derived from the pulse interval
 #   2 = fixed-length burst, continuous cue driven by the scoring countdown
-#   3 = burst length == gap again (as 1) but 5 ms pulse ramps (1 had 30 ms),
-#       continuous cue driven by the countdown (as 2)
+#   3 = burst length == gap (as 1) capped at PULSE_MAX_BURST, 5 ms pulse ramps
+#       (1 had 30 ms), next onset follows the current interval, continuous cue
+#       driven by the countdown (as 2)
 FEEDBACK_VERSION = 3
 # Graphics
 # (the game UI process starts unconditionally below -- there is no flag for
@@ -329,7 +332,8 @@ def pulse_maker(pulse_interval, pulse_state, on_target):
     """
     osc = make_osc_client(port=10003)
     target_sound = False
-    rearm_at = next_pulse_at = last_pulse_at = loudness_at = 0.0
+    rearm_at = last_pulse_at = loudness_at = 0.0
+    restart = False
     last_burst = 0.0
     pulse_slot = 0
     last_state = None
@@ -374,16 +378,22 @@ def pulse_maker(pulse_interval, pulse_state, on_target):
                     # Left the window: take the stream back from the target
                     # sound instead of letting the rest of the file play out.
                     target_sound = False
-                    next_pulse_at = 0.0
+                    restart = True
                 interval = pulse_interval.value
-                if interval > 0 and now >= max(next_pulse_at, last_pulse_at + last_burst):
+                # The gap is re-derived from the CURRENT interval on every poll,
+                # not frozen at the last onset: a head moving towards the target
+                # hears the rate speed up within one 5 ms poll (never cutting
+                # into the burst still playing).
+                due = now if restart else last_pulse_at + 2 * interval
+                if interval > 0 and now >= max(due, last_pulse_at + last_burst):
                     path = STIM_FILES["pulse"][pulse_slot]
                     pulse_slot ^= 1
-                    _write_stimulus(float(interval), PULSE_RAMP, path)
+                    burst = min(float(interval), PULSE_MAX_BURST)
+                    _write_stimulus(burst, PULSE_RAMP, path)
                     send_soundfile(osc, path)
-                    last_burst = float(interval)
+                    last_burst = burst
                     last_pulse_at = now
-                    next_pulse_at = now + 2 * interval   # onset spacing, as before
+                    restart = False
         last_state = state
         time.sleep(0.005)
 

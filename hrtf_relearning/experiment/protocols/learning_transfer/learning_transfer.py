@@ -76,7 +76,7 @@ EDIT THE CONFIG BLOCK BELOW PER PARTICIPANT.
 """
 
 # %% imports and config #------------------------------------------------------
-SUBJECT_ID = ("SH")
+SUBJECT_ID = ("LGL")
 
 import datetime  # timestamp on the persisted day-1 screen (screen_donors)
 import csv  # only for the block-order table below; the modification
@@ -805,14 +805,14 @@ collect_externalization_rating(native)
 
 
 # %% BEFORE THE SESSION: stage donors (minutes per donor -- nobody in the rig)
-prepare_donor_shortlist(n=3, screen=True)
+prepare_donor_shortlist(n=6, screen=True)
 
 # %% day 1: SCREEN -- run after the native reference -------------------------
 screen_rows = screen_donors(subject, native)
 
 # %% day 1: OPTIONAL -- measure more candidates, merged into the record ------
-# screen_rows = screen_more(subject, native, n=2)
-# screen_rows = screen_donors(subject, native, ranks=range(3, 6))
+screen_rows = screen_more(subject, native, n=3)
+screen_rows = screen_donors(subject, native, ranks=range(3, 6))
 
 # %% day 1: CHOOSE the donor -- edit both fields, run ONCE -------------------
 # Pick on elevation gain and polar error from the table above. `reason` is the

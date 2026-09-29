@@ -89,8 +89,8 @@ def main():
                              eg=measured["elevation_gain"],
                              az_gain=measured["azimuth_gain"],
                              az_rmse=measured["azimuth_rmse"]))
-        evaluated, chosen = donor_screening.evaluate(reference, rows)
-        donor_screening.report(evaluated, chosen, reference)
+        evaluated = donor_screening.measure(reference, rows)
+        donor_screening.report(evaluated, reference)
 
 
 if __name__ == "__main__":

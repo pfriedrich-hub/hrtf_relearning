@@ -76,7 +76,7 @@ EDIT THE CONFIG BLOCK BELOW PER PARTICIPANT.
 """
 
 # %% imports and config #------------------------------------------------------
-SUBJECT_ID = ("GM")
+SUBJECT_ID = ("SH")
 
 import datetime  # timestamp on the persisted day-1 screen (screen_donors)
 import csv  # only for the block-order table below; the modification
@@ -138,7 +138,7 @@ DONOR_EAR = None                   # which of the donor's ears supplies the
 # Set by the day-1 SCREEN cell. Pre-declared so the selection cell below reads
 # "no screen yet" instead of raising NameError -- that NameError is what made
 # skipping the screen look like a broken cell rather than a missing step.
-screen_rows, screen_choice = None, None
+screen_rows = None
 MODIFIED_SOFA = None               # <SUBJECT_ID>_donor_<DONOR_ID>, set below
 
 HP = "DT990"
@@ -200,16 +200,28 @@ GAIN               = 0.2
 #
 # Subjects run before this date were tested on noise. They are pilots and are
 # not pooled with what follows.
-STIM               = "ripple"      # -> "ripple" once the depth is settled, below
+STIM               = "ripple"
 # Envelope parameters for STIM='ripple'. Empty dict = inherit the defaults in
 # localization_helpers.stimulus (the single source of truth); set rms_tilt here
 # only to override for a specific cohort, and it is recorded per block in
 # sequence.stim_settings either way.
-#   !! Depth is NOT yet settled: the current default (8 dB rms, 27 dB median
-#      peak-to-trough) sits above the ~20 dB depth at which Macpherson &
-#      Middlebrooks report localization degradation. Run the free-field check
-#     nm and the AR self-test
-#      (cells 7-9) BEFORE flipping STIM to 'ripple' for a participant.
+#
+# DEPTH SETTLED 2026-09-28 (Paul): rms_tilt=3, deliberately NOT the module
+# default. Measured over 400 draws of shape_from_coefficients:
+#
+#   rms_tilt=3  ->  3.00 dB envelope SD, peak-to-trough 10.1 median / 12.6 max
+#   rms_tilt=8  ->  8.00 dB envelope SD, peak-to-trough 27.0 median / 33.6 max
+#
+# Macpherson & Middlebrooks (2003) see no degradation below ~20 dB
+# peak-to-trough, so the default sits above it and rms_tilt=3 sits at half it,
+# worst draw included. The point is to make the source vary enough that the
+# elevation cue cannot be read as a fixed absolute spectrum -- 3 dB of source
+# variation against 2.7-4.0 dB of cue detail SD does that -- NOT to run
+# participants at the edge of degradation.
+#
+# HRIR_Recording.py carries the same STIM and STIM_SETTINGS. Keep them in step:
+# it runs the day-1 dome block and the day-1 AR check, and a mismatch puts a
+# stimulus difference inside the AR-vs-dome comparison the laser correction uses.
 STIM_SETTINGS      = {'rms_tilt': 3}
 MIDLINE_TOL        = 1.0
 FULL_FIELD = (-35, 35)
@@ -299,7 +311,12 @@ def build_donor_sofa(overwrite=False, show_qc=True, n_keep=None, rank=0,
     # building one WITHOUT making it active (staging, rebuilds, analysis) is
     # unaffected.
     if set_active:
-        why = require_screen(hr.Subject(SUBJECT_ID), override_reason)
+        # resolve WHICH donor is about to be committed, so the guard can check
+        # that one was screened rather than just that some screen exists
+        row = donor._pick(donor.shortlist(quiet=True), rank=rank,
+                          donor_id=donor_id, donor_ear=donor_ear)
+        why = require_screen(hr.Subject(SUBJECT_ID), override_reason,
+                             donor_id=row["donor"], donor_ear=row.get("donor_ear"))
         print(f"  donor provenance: {why}")
     out = donor.build(overwrite=overwrite, show_qc=show_qc, n_keep=n_keep,
                       rank=rank, donor_id=donor_id, donor_ear=donor_ear,
@@ -315,7 +332,12 @@ def prepare_donor_shortlist(n=3, mirrored=True, overwrite=False, screen=False):
     return out
 
 
-def use_donor(rank=None, donor_id=None, donor_ear=None, reason=""):
+def use_donor(rank=None, donor_id=None, donor_ear=None, reason="",
+              override_reason=None):
+    row = donor._pick(donor.shortlist(quiet=True), rank=rank,
+                      donor_id=donor_id, donor_ear=donor_ear)
+    require_screen(hr.Subject(SUBJECT_ID), override_reason,
+                   donor_id=row["donor"], donor_ear=row.get("donor_ear"))
     out = donor.use_donor(rank=rank, donor_id=donor_id, donor_ear=donor_ear,
                           reason=reason)
     _sync()
@@ -342,6 +364,12 @@ SCREEN_TPS = 1
 # fix it — the MARGINAL verdict does, by sending borderline calls to a re-check
 # against baseline A. 35 keeps the grid symmetric about the midline
 # (-30..+30 in 10 deg steps), which 30 trials would not.
+# Externalization ratings on the day-1 baselines. A is the trained-ear
+# condition and D is the main transfer cell; B and C are far-ear variants of
+# the same two composites, so a rating on all four measures boredom rather than
+# externalization. The native anchor still defines the top of the scale.
+RATED_BASELINES = ("A", "D")
+
 SCREEN_N = 3       # candidates, matching prepare_donor_shortlist(n=3).
                    # Retro-tested pass rate is ~50% per donor, so n=3 finds a
                    # survivor ~87% of the time and n=5 ~97%.
@@ -359,8 +387,19 @@ def screen_loc_settings():
     return settings
 
 
-def screen_donors(subject, native, n=SCREEN_N, shuffle=True):
+def screen_donors(subject, native, n=SCREEN_N, shuffle=True, ranks=None):
     """Run one short binaural block per staged donor and apply the gates.
+
+    `ranks` screens specific shortlist ranks instead of the first `n`, e.g.
+    `ranks=range(3, 6)` after the first three were unconvincing. Ranks already
+    screened in this subject's record are skipped, and the new blocks are
+    MERGED into it rather than replacing it, so the record ends up holding
+    every donor ever screened for this subject. `screen_more()` below is the
+    convenience wrapper.
+
+    Screening is itself donor exposure: each extra block is 35 more trials
+    heard before the naive baselines. Two or three extra is cheap; a dozen is
+    not, and at some point the "naive" baseline is no longer naive.
 
     `native` is the object `run_phase("native", subject)` returned -- the
     own-HRTF reference the screen is measured against.
@@ -370,15 +409,30 @@ def screen_donors(subject, native, n=SCREEN_N, shuffle=True):
     exposure: with a fixed order the rank-0 donor would always be heard first.
     The REPORT is in rank order regardless.
 
-    Returns (rows, chosen). `chosen` is a shortlist row; pass its donor to
-    use_donor(donor_id=...) to make it active. Nothing is selected
-    automatically -- read the report first.
+    Returns the measured rows. NOTHING is selected: read the table and call
+    use_donor(donor_id=..., donor_ear=..., reason=...) yourself. See
+    donor_screening.measure for why the gates were removed.
     """
     import random
     from hrtf_relearning.experiment.analysis.localization.localization_analysis \
         import block_summary
 
-    rows = donor.shortlist(quiet=True)[:n]
+    all_rows = donor.shortlist(quiet=True)
+    previous = (screen_on_record(subject) or {}).get("rows", [])
+    done = {(r.get("donor"), r.get("donor_ear")) for r in previous}
+    if ranks is not None:
+        wanted = [r for r in all_rows if r["rank"] in set(ranks)]
+    else:
+        wanted = [r for r in all_rows
+                  if (r["donor"], r.get("donor_ear")) not in done][:n]
+    rows = [r for r in wanted if (r["donor"], r.get("donor_ear")) not in done]
+    if not rows:
+        print("every requested candidate is already screened for this subject; "
+              "nothing to run. Widen `ranks=` or clear subject.donor_screen.")
+        return previous
+    if done:
+        print(f"already screened: "
+              f"{', '.join(f'{d}({e})' if e else d for d, e in sorted(done))}")
     order = list(rows)
     if shuffle:
         random.Random(SUBJECT_ID).shuffle(order)
@@ -426,8 +480,13 @@ def screen_donors(subject, native, n=SCREEN_N, shuffle=True):
     ref = block_summary(native.sequence)
     reference = dict(pe=ref["polar_error"], eg=ref["elevation_gain"],
                      az_rmse=ref["azimuth_rmse"], n=ref["n"])
-    out, chosen = donor_screening.evaluate(reference, [as_row(r) for r in rows])
-    donor_screening.report(out, chosen, reference)
+    fresh = donor_screening.measure(reference, [as_row(r) for r in rows])
+    # MERGE with anything screened earlier in this session so the record holds
+    # every candidate ever measured for this subject, keyed on (donor, ear).
+    merged = {(r.get("donor"), r.get("donor_ear")): r for r in previous}
+    merged.update({(r.get("donor"), r.get("donor_ear")): r for r in fresh})
+    out = sorted(merged.values(), key=lambda r: r.get("rank", 99))
+    donor_screening.report(out, reference)
     # Persist it. Without this the screen lives only in the notebook's memory:
     # a later session cannot tell a screened donor from an unscreened one, and
     # `require_screen` below has nothing to check. GM ran her whole study on an
@@ -439,9 +498,23 @@ def screen_donors(subject, native, n=SCREEN_N, shuffle=True):
         "chosen": chosen["donor"] if chosen else None,
         "chosen_ear": chosen.get("donor_ear") if chosen else None,
         "n_trials": int(rows[0].get("n", 0)) if rows else None,
+        "batches": ((screen_on_record(subject) or {}).get("batches", 0)) + 1,
     }
     subject.write()
-    return out, chosen
+    return out
+
+
+def screen_more(subject, native, n=2, shuffle=True):
+    """Screen the next `n` unscreened candidates and merge into the record.
+
+    For when the first batch was unconvincing. Staging is the slow part: if a
+    candidate's binaural database was not built by prepare_donor_shortlist it
+    is built here, which costs minutes with the participant in the chair. Stage
+    generously BEFORE the session instead -- prepare_donor_shortlist(n=6,
+    screen=True) is only wall-clock, and unused builds cost nothing but disk
+    (discard_unused clears them afterwards).
+    """
+    return screen_donors(subject, native, n=n, shuffle=shuffle)
 
 
 def screen_on_record(subject):
@@ -450,8 +523,15 @@ def screen_on_record(subject):
     return rec or None
 
 
-def require_screen(subject, override_reason=None):
-    """Refuse to commit a donor that no screen ever passed.
+def require_screen(subject, override_reason=None, donor_id=None, donor_ear=None):
+    """Refuse to commit a donor that was never MEASURED by a screen.
+
+    Since the screen stopped gating (2026-09-28) there is no "passed" state to
+    check, and the choice among measured candidates is the experimenter's. What
+    is still worth refusing is committing a donor nobody ever put in front of
+    the participant -- which is exactly how GM ran a whole study on an
+    unscreened composite. Pass the donor being committed and it is checked
+    against the screen record.
 
     The screen is a REJECT filter (donor_screening): its whole job is to stop a
     participant running four days on a composite that abolished their cue, or on
@@ -469,11 +549,25 @@ def require_screen(subject, override_reason=None):
     if rec is None:
         raise RuntimeError(
             f"no day-1 screen on record for {SUBJECT_ID}.\n"
-            f"    Run the SCREEN cell first:  screen_rows, screen_choice = "
+            f"    Run the SCREEN cell first:  screen_rows = "
             f"screen_donors(subject, native)\n"
             f"    To proceed without one, say so explicitly and it goes on the "
             f"record:\n"
             f"        build_donor_sofa(override_reason='...')")
+    if donor_id is not None:
+        screened = {(r.get("donor"), r.get("donor_ear")) for r in rec.get("rows", [])}
+        if (donor_id, donor_ear) not in screened:
+            have = ', '.join(sorted(f"{d}({e})" if e else str(d) for d, e in screened))
+            raise RuntimeError(
+                f"{donor_id}"
+                f"{f' ({donor_ear} ear)' if donor_ear else ''} was never screened "
+                f"for {SUBJECT_ID}.\n"
+                f"    screened so far: {have}\n"
+                f"    Screen it first:  screen_rows = screen_donors(subject, "
+                f"native, ranks=[<rank>])\n"
+                f"    To proceed without, say so explicitly and it goes on the "
+                f"record:\n"
+                f"        build_donor_sofa(override_reason='...')")
     return f"day-1 screen {rec['timestamp']}"
 
 
@@ -698,129 +792,46 @@ def show_status(subject):
 
 
 
+
 # %% status check (rerun anytime) --------------------------------------------
 subject = hr.Subject(SUBJECT_ID)
 collect_demographics(subject)      # once per participant; skipped if on file
 show_status(subject)
 
-# %% day 1: native reference (original HRIR, full field) ----------------------
-# Doubles as the first anchor: this is the best the chain can sound, so its
-# rating defines the top of the 0-10 scale for everything that follows.
+
+# %% day 1: native reference (original HRIR, full field) ---------------------
 native = run_phase("native", subject)
 collect_externalization_rating(native)
 
-# %% BEFORE THE SESSION: stage the top 3 donors -------------------------------
-# Run this with nobody in the rig. Builds the rank 0/1/2 composites AND their
-# pyBinSim databases (mirrored and un-mirrored), so that if the participant
-# turns out to be at floor with the rank-0 donor you can swap in seconds
-# instead of rebuilding filters while they wait. Leaves rank 0 active.
-# screen=True also builds the binaural database each screen block plays.
+
+# %% BEFORE THE SESSION: stage donors (minutes per donor -- nobody in the rig)
 prepare_donor_shortlist(n=3, screen=True)
 
-# %% day 1: SCREEN the staged donors -- run after the native reference --------
-# One 35-trial binaural full-field block per candidate (~3 min each), scored
-# against the native block above. This REJECTS unusable pairings; it does not
-# rank them -- 35 trials cannot separate two working donors, and the rank order
-# among survivors stays the pre-registered one. See donor_screening for the
-# three gates and where every threshold comes from.
-#
-# Retro-tested on every screen already run, with elevation gain leading:
-#   NR pilot/AH  REJECT  EG 0.00 -- the elevation cue is abolished, not degraded
-#   NR pilot/SW  PASS    EG 0.25, 39% of her own gain kept
-#   FP FS        REJECT  EG 0.00
-#   FP pilot/AH  PASS    EG 0.30, 37% kept
-#   LS pilot/AH  REJECT  EG 0.09, 7% kept -- she ran the whole study on it
-#   AS GS        REJECT  EG 0.41 looks fine in absolute terms, but that is 65%
-#                        of her own gain and the impairment was only +2.5 deg:
-#                        the manipulation never bit. This is the case the EG
-#                        RATIO catches and an absolute EG threshold cannot.
-#
-# NB the screen is itself donor exposure: take the day-1 impairment for the
-# chosen donor from ITS screen block, and report baseline A as post-screen.
-screen_rows, screen_choice = screen_donors(subject, native)
+# %% day 1: SCREEN -- run after the native reference -------------------------
+screen_rows = screen_donors(subject, native)
 
-# %% day 1: select the donor and build the modified HRTF -- run ONCE ----------
-# Prints the full candidate ranking, the chosen donor and why, writes
-# <SUBJECT_ID>_donor_<DONOR>.sofa with the selection embedded, plus a ranking
-# CSV and before/after figures, and records the donor in the subject file --
-# from here on every session picks it up automatically.
-#
-# With the screen above, pass its choice through so the reason is on record:
-#   use_donor(donor_id=screen_choice["donor"],
-#             donor_ear=screen_choice.get("donor_ear"), reason="day-1 screen")
-# The ear is REQUIRED since per-ear selection: a donor id alone now matches two
-# shortlist rows and use_donor refuses to guess between them.
-# If every candidate was rejected, stage more donors rather than run the
-# least-bad one -- prepare_donor_shortlist(n=5, screen=True).
-# Without a screen, this builds the rank-0 donor as before.
+# %% day 1: OPTIONAL -- measure more candidates, merged into the record ------
+# screen_rows = screen_more(subject, native, n=2)
+# screen_rows = screen_donors(subject, native, ranks=range(3, 6))
 
-if screen_choice is not None:
-    use_donor(donor_id=screen_choice["donor"],
-              donor_ear=screen_choice.get("donor_ear"),
-              reason="day-1 screen")
-build_donor_sofa(overwrite=False)
-# If this raises "no day-1 screen on record", that is the guard doing its job:
-# go back and run the SCREEN cell. Only if the screen genuinely cannot be run
-# (e.g. re-deriving an old subject) pass it through explicitly, and the reason
-# lands in the subject file:
-#   build_donor_sofa(overwrite=False, override_reason="re-deriving AS 18.08")
+# %% day 1: CHOOSE the donor -- edit both fields, run ONCE -------------------
+# Pick on elevation gain and polar error from the table above. `reason` is the
+# only record of why this participant got this composite. Do NOT also call
+# build_donor_sofa() -- it defaults to rank=0 and would undo this choice.
+use_donor(donor_id="GM", donor_ear="right",
+          reason="EG 0.41 (60% retained), impairment +5.0 deg -- mid-range on "
+                 "the midline screen, judged learnable")
 subject = hr.Subject(SUBJECT_ID)
 
-# %% later sessions: confirm which composite is loaded ------------------------bjm
-# NOT required -- the config cell already resolved the donor from the subject
-# file. This re-reads the SOFA's embedded params and prints them, so you can see
-# that what is on disk is what was built (donor, r_match, ridge, fallback flag)
-# before running a block on it.
-load_existing_donor()
+# %% day 1: ONLY if the donor was never staged -------------------------------
+# build_donor_sofa(overwrite=False, donor_id="GM", donor_ear="right")
 
-# %% IN SESSION: participant is at floor -- swap to the next donor ------------
-# Only when the composite has abolished the cue rather than degraded it (a
-# block at chance tells you nothing). Moves down the rule's ranked list, which
-# was fixed before the participant heard anything -- see selection.shortlist.
-# WRITE WHAT YOU SAW in reason=: the swap is a data-dependent decision and has
-# to be reportable as one. The new donor replaces the old one in the subject
-# file, so later sessions follow the swap on their own.
-#   use_donor(rank=1, reason
-#   ="EG 0.03 on baseline A, responses at chance")
-# use_donor(rank=1, reason="")
+# %% later sessions: OPTIONAL -- confirm which composite is on disk ----------
+# load_existing_donor()
 
-# ---------------------------------------------------------------------------
-# DAY-1 BASELINES -- all four cells, since 2026-09-28.
-#
-# Transfer is read from within-cell pre-post CHANGE scores, because the cells
-# start from different naive levels: even the mirror pair A/D differed by up
-# to +-0.25 EG on day 1 in the pilots, about the size of the change-score
-# noise band. Final-day B and C ranged 0.05-0.73 and 0.07-0.62 EG, so without
-# a day-1 value they cannot be read. Every cell therefore gets a baseline,
-# and the Ear x Side 2x2 can be analysed on change scores in full.
-#
-# What the four cells distinguish (+ = improves from day 1 to the final day):
-#
-#   where learning lives                          A  B  C  D
-#   trained ear's monaural pathway (ear-specific) +  +  -  -
-#   binaural stage organised by side (side)       +  -  +  -
-#   shared stage (ear- and side-general)          +  +  +  +
-#   only the trained ear x side combination       +  -  -  -
-#
-# Without C, the side-specific and combination-only accounts both predict
-# (+, -, -) and cannot be told apart. C is the only cell that tests transfer
-# to the other ear with the source kept on the trained side, so it turns the
-# binaural-stage account from an inference drawn from nulls in B and D into a
-# positive prediction. D, acoustically the mirror of A, tests only the
-# shared-stage account.
-#
-# B and C are far-ear cells: the donor detail reaches only the head-shadowed
-# far ear and the near ear gets the elevation-flat envelope. That acoustic
-# difference from A is why they need their own baselines, not a reason to
-# drop them.
-#
-# Run in the subject's FINAL_ORDER (Williams square from the block-order CSV),
-# so each cell holds the same position on day 1 and the final day.
-# ~150 trials more than before.
-#
-# Subjects run before this change (FS, IR, AS, LS, GM, NR, FP) have day-1 A and
-# D only: their B and C are post-only and drop out of the B/C change scores.
-# ---------------------------------------------------------------------------
+# %% IN SESSION: participant is at floor -- swap donor -----------------------
+# Only when the cue is abolished, not merely degraded. Write what you saw.
+# use_donor(rank=1, reason="EG 0.03 on baseline A, responses at chance")
 
 # %% day 1: baselines A/B/C/D in this subject's counterbalanced order --------
 subject = hr.Subject(SUBJECT_ID)
@@ -828,7 +839,8 @@ print(f"Running day-1 baselines in order: {FINAL_ORDER}")
 baselines = {}
 for key in FINAL_ORDER:
     baselines[key] = run_phase(f"baseline_{key}", subject)
-    collect_externalization_rating(baselines[key])
+    if key in RATED_BASELINES:
+        collect_externalization_rating(baselines[key])
 
 # %% day 1: baseline A -- trained ear, same loc (redo individually) -----------
 baseline_A = run_phase("baseline_A", subject)
@@ -836,19 +848,15 @@ collect_externalization_rating(baseline_A)
 
 # %% day 1: baseline B -- trained ear, mirrored loc (redo individually) -------
 baseline_B = run_phase("baseline_B", subject)
-collect_externalization_rating(baseline_B)
 
 # %% day 1: baseline C -- untrained ear, same loc (redo individually) ---------
 baseline_C = run_phase("baseline_C", subject)
-collect_externalization_rating(baseline_C)
 
 # %% day 1: baseline D -- untrained ear, mirrored loc (redo individually) -----
 baseline_D = run_phase("baseline_D", subject)
 collect_externalization_rating(baseline_D)
 # Condition identity (ear / mirror / hemifield) is carried into the sequence
-# name by run_phase(), so every figure titled from it says which cell it is --12
-
-# see `_condition_tag`.
+# name by run_phase() -- see `_condition_tag`.
 
 # ---------------------------------------------------------------------------
 # ADAPTATION DAYS1

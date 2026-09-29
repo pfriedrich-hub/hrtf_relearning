@@ -76,7 +76,7 @@ EDIT THE CONFIG BLOCK BELOW PER PARTICIPANT.
 """
 
 # %% imports and config #------------------------------------------------------
-SUBJECT_ID = ("PA")
+SUBJECT_ID = ("SH")
 
 import datetime  # timestamp on the persisted day-1 screen (screen_donors)
 import csv  # only for the block-order table below; the modification
@@ -813,8 +813,8 @@ prepare_donor_shortlist(n=6, screen=True)
 screen_rows = screen_donors(subject, native)
 
 # %% day 1: OPTIONAL -- measure more candidates, merged into the record ------
-screen_rows = screen_more(subject, native, n=3)
-screen_rows = screen_donors(subject, native, ranks=range(3, 6))
+# screen_rows = screen_more(subject, native, n=3)
+# screen_rows = screen_donors(subject, native, ranks=range(3, 6))
 
 # %% day 1: CHOOSE the donor -- edit both fields, run ONCE -------------------
 # Pick on elevation gain and polar error from the table above. `reason` is the
@@ -860,7 +860,7 @@ collect_externalization_rating(baseline_D)
 # Condition identity (ear / mirror / hemifield) is carried into the sequence
 # name by run_phase() -- see `_condition_tag`.
 
-# ---------------------------------------------------------------------------
+# -----------------------------------------------
 # ADAPTATION DAYS1
 # anchor -> PRE test -> train -> POST test, so within-session change is
 # separable from overnight consolidation and every rating has a same-day top.
@@ -895,16 +895,6 @@ run_phase("C", subject)
 
 # %% final day: D -- untrained ear, mirrored locations [MAIN] -----------------
 run_phase("D", subject)
-
-
-
-
-
-
-
-
-
-
 
 # ===========================================================================
 # MISC — diagnostics, not part of the per-participant protocol.

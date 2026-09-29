@@ -53,21 +53,21 @@ AZ_RANGE   = tuple(int(x) for x in os.environ.get("TRAINING_AZ_RANGE", "-35,0").
 
 # Sound
 SOUND_FILE = None if STIM == "noise" else STIM   # wav name in <database>/sounds
-# One pulse has a FIXED length; only the gap carries the distance. With the
-# burst as long as the gap (the old behaviour) the fast end of the ramp was a
-# 75 ms burst carrying a 30 ms ramp at each end -- a ~6 Hz flutter that is
-# perceptually continuous, i.e. barely distinguishable from the target sound
-# while the head was still OUTSIDE the window and no countdown was running.
-# Onset-to-onset spacing is still 2 * interval, so the distance -> rate mapping
-# is exactly as before.
-PULSE_BURST = 0.05        # s, length of one pulse
-PULSE_RAMP  = 0.01        # s, ramp at each end of a pulse
+# A pulse is as long as the gap that follows it: on for `interval`, off for
+# `interval` (onset spacing 2 * interval), each pulse freshly synthesised --
+# the original feedback, restored 2026-09-29 after a spell (v2) of fixed 50 ms
+# bursts. The ramp is 5 ms (it was 30 ms in v1), so even the shortest 75 ms
+# pulse has a clear on/off edge instead of fluttering into the continuous
+# target sound.
+PULSE_RAMP  = 0.005       # s, ramp at each end of a pulse
 TARGET_RAMP = 0.03        # s, ramp at each end of the continuous target sound
 # Bump whenever the feedback the participant hears changes. Stored on every
 # trial, so a session can be told apart from earlier ones in analysis.
 #   1 = burst length == gap, continuous cue derived from the pulse interval
 #   2 = fixed-length burst, continuous cue driven by the scoring countdown
-FEEDBACK_VERSION = 2
+#   3 = burst length == gap again (as 1) but 5 ms pulse ramps (1 had 30 ms),
+#       continuous cue driven by the countdown (as 2)
+FEEDBACK_VERSION = 3
 # Graphics
 # (the game UI process starts unconditionally below -- there is no flag for
 #  it; add one at the mp.Process(target=game_ui.run_ui) call if you want
@@ -130,10 +130,11 @@ if __name__ == "__main__":
 hrir = hrtf2binsim(hrir_settings, build=(__name__ == "__main__"))
 slab.set_default_samplerate(hrir.samplerate)
 HRIR_DIR = paths.BINSIM_DIR / hrir.name
-# Written once by build_stimuli() in the parent; the pulse worker only sends
-# these paths to pyBinSim afterwards, instead of re-synthesising and re-writing
-# a wav on every single pulse.
-STIM_FILES = {"pulse": HRIR_DIR / "sounds" / "pulse_burst.wav",
+# The target sound is written once by build_stimuli() in the parent. Pulses are
+# re-synthesised by the worker at the current interval's length, alternating
+# between two files so a pulse is never written over the one still playing.
+STIM_FILES = {"pulse": (HRIR_DIR / "sounds" / "pulse_a.wav",
+                        HRIR_DIR / "sounds" / "pulse_b.wav"),
               "target": HRIR_DIR / "sounds" / "target_sound.wav"}
 
 # Vet OUR gain against the headroom the build measured. The build cannot do this
@@ -226,11 +227,9 @@ def _write_stimulus(duration, ramp, path):
 def build_stimuli():
     """Write the two training stimuli once, in the parent, before any worker can
     touch them. Both are re-triggered by path afterwards (see send_soundfile)."""
-    _write_stimulus(PULSE_BURST, PULSE_RAMP, STIM_FILES["pulse"])
     _write_stimulus(float(settings["target_time"]), TARGET_RAMP, STIM_FILES["target"])
-    logging.info("Training stimulus: %s | pulse %.0f ms, target sound %.0f ms",
-                 SOUND_FILE or "pink noise", PULSE_BURST * 1000,
-                 float(settings["target_time"]) * 1000)
+    logging.info("Training stimulus: %s | pulse = interval, target sound %.0f ms",
+                 SOUND_FILE or "pink noise", float(settings["target_time"]) * 1000)
 
 
 def distance_to_interval(distance):
@@ -324,13 +323,15 @@ def pulse_maker(pulse_interval, pulse_state, on_target):
     pulses (up to 0.7 s) and could neither see a state change nor keep its hands
     off /pyBinSimFile while it did. Pulse onsets are scheduled instead, so any
     change of state is acted on within one 5 ms poll -- and no file is ever
-    re-triggered inside the 50 ms burst of the previous one, which is what
+    re-triggered inside the burst of the previous one, which is what
     rapid crossings of the target window used to do (a 26 ms onset gap turns
     the feedback into a chop).
     """
     osc = make_osc_client(port=10003)
     target_sound = False
     rearm_at = next_pulse_at = last_pulse_at = loudness_at = 0.0
+    last_burst = 0.0
+    pulse_slot = 0
     last_state = None
     while True:
         state = pulse_state.value
@@ -375,8 +376,12 @@ def pulse_maker(pulse_interval, pulse_state, on_target):
                     target_sound = False
                     next_pulse_at = 0.0
                 interval = pulse_interval.value
-                if interval > 0 and now >= max(next_pulse_at, last_pulse_at + PULSE_BURST):
-                    send_soundfile(osc, STIM_FILES["pulse"])
+                if interval > 0 and now >= max(next_pulse_at, last_pulse_at + last_burst):
+                    path = STIM_FILES["pulse"][pulse_slot]
+                    pulse_slot ^= 1
+                    _write_stimulus(float(interval), PULSE_RAMP, path)
+                    send_soundfile(osc, path)
+                    last_burst = float(interval)
                     last_pulse_at = now
                     next_pulse_at = now + 2 * interval   # onset spacing, as before
         last_state = state

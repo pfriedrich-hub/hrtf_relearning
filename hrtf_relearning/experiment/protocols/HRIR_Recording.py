@@ -40,6 +40,7 @@ from hrtf_relearning.hrtf.record.fit_head_radius import (
     record_head_radius, usable_radius, fit_from_sofa, FALLBACK_RADIUS_M)
 from hrtf_relearning.hrtf.record.calibration.calibrate_headphones import calibrate_headphones
 from hrtf_relearning.utils import paths
+from hrtf_relearning.experiment.misc.system_volume import set_windows_volume
 import json
 
 SUBJECT_ID   = 'PA'          # edit per participant
@@ -58,6 +59,8 @@ FS           = 48828
 HP_FREQ      = 120
 N_REC_HP     = 3
 SHOW         = True
+OS_VOLUME    = 50   # Windows master slider (%) for every AR localization -- the
+# pybinsim gain was matched at this setting; same constant as learning_transfer
 
 # step 0, acoustic head radius
 AZ_RANGE     = (-60, 60)      # lateral speakers to sweep, degrees
@@ -130,6 +133,8 @@ ar_loc_settings = {'kind': 'standard', 'azimuth_range': (-1, 1), 'elevation_rang
 dt990_hrir_settings = dict(name=SUBJECT_ID, subject_id=SUBJECT_ID, ear=None, mirror=False,
     reverb=True, drr=20, hp_filter=True, hp='DT990', convolution='cpu', storage='cpu')
 ar_loc = Localization(subject, dt990_hrir_settings, ar_loc_settings)
+if not set_windows_volume(OS_VOLUME):
+    print(f'  [!] OS volume NOT set programmatically -- set the slider to {OS_VOLUME}%')
 ar_loc.run()
 
 # %% helper: acoustic_test (run this cell before the Step 3 cell below) ---------
@@ -396,6 +401,8 @@ ar_loc_settings = {'kind': 'standard', 'azimuth_range': (-1, 1), 'elevation_rang
 mysphere_hrir_settings = dict(name=SUBJECT_ID, subject_id=SUBJECT_ID, ear=None, mirror=False,
     reverb=True, drr=20, hp_filter=True, hp='MYSPHERE', convolution='cpu', storage='cpu')
 ar_loc = Localization(subject, mysphere_hrir_settings, ar_loc_settings)
+if not set_windows_volume(OS_VOLUME):
+    print(f'  [!] OS volume NOT set programmatically -- set the slider to {OS_VOLUME}%')
 ar_loc.run()
 
 # %% step 0b: reference (ONCE per reference id -- skip if REFERENCE_ID exists) ---

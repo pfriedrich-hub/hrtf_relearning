@@ -93,11 +93,22 @@ DEFAULT_RESOLUTION = 'filterbank'
 # the same for everyone, so the manipulation is one sentence in the methods.
 # ---------------------------------------------------------------------------
 N_KEEP = 4                    # envelope coefficients kept (Kulkarni & Colburn 1998)
-# RECOMPUTED 2026-09-28 on the 12-recording pool with PER-EAR candidates, which
-# is the population the rule now draws from. Measured, `pairwise_r_match`:
+# RECOMPUTED 2026-09-29 on the 15-recording pool with PER-EAR candidates, which
+# is the population the rule draws from. Measured, `pairwise_r_match`:
 #
-#   per-person  n= 66 pairs | min  0.103 | Q1 0.490 | median 0.601 | Q3 0.702 | max 0.820
-#   per-EAR     n=264 pairs | min -0.189 | Q1 0.487 | median 0.626 | Q3 0.719 | max 0.861
+#   per-person  n=105 pairs | min  0.091 | Q1 0.397 | median 0.542 | Q3 0.661 | max 0.820
+#   per-EAR     n=420 pairs | min -0.454 | Q1 0.417 | median 0.573 | Q3 0.671 | max 0.861
+#
+# Adding LGL/PA/SH moved the per-ear median 0.626 -> 0.573, more than one
+# tolerance band, so this genuinely re-centres selection: the new recordings
+# make the pool MORE heterogeneous, not less. The per-ear minimum also fell
+# from -0.189 to -0.454 -- there are now donor ears strongly anti-correlated
+# with some listeners. Not selected (the target is mid-range), but the tail is
+# real and grew with the pool.
+#
+# PREVIOUS VALUES, for anyone re-deriving an already-run subject:
+#   2026-09-28, 12 recordings, per-ear n=264: median 0.626
+#   2026-08-xx,  7 recordings, per-person:    median 0.58
 #
 # The old 0.58 came from a SEVEN-member person-level pool (21 pairs). It was
 # 0.046 low -- just inside one tolerance band, so the band it defined,
@@ -113,7 +124,7 @@ N_KEEP = 4                    # envelope coefficients kept (Kulkarni & Colburn 1
 # RECOMPUTE WHENEVER THE POOL OR PER_EAR_SELECTION CHANGES:
 #   vals, _ = pairwise_r_match(load_candidates('__none__', pool=DONOR_POOL))
 #   numpy.median(vals)
-TARGET_R_MATCH = 0.626        # perturbation size: the median r_match between
+TARGET_R_MATCH = 0.573        # perturbation size: the median r_match between
                               # QUALIFIED donor ears, i.e. a typical difference
                               # between two people whose own cue demonstrably
                               # works.
@@ -1122,16 +1133,34 @@ def select_donor(subject_hrtf, candidates, target=TARGET_R_MATCH,
 # selection the pool is 12 recordings -> 24 donor ears, minus the one excluded
 # below, so 23 candidates per listener against 11 before.
 #
-# The EG column below was RE-DERIVED 2026-09-17 from the subject JSONs with
-# baseline_run's own rule (first finished non-dome own-HRTF run of >=50 trials)
-# at |el| <= 30: AS 0.63, CO 0.98, FD 0.82, FP 0.84, FS 0.86, GM 0.82, LS 1.30,
-# NR 0.70, AGV 0.96, AH 0.86 -- every one within +0.10 of the number quoted
-# here, and AS/IR/PF/SS/TS to the second decimal. The small positive offsets are
+# The EG column below was RE-DERIVED 2026-09-17 (and re-run 2026-09-29) from
+# the subject JSONs with baseline_run's own rule (first finished non-dome
+# own-HRTF run of >=50 trials) at |el| <= 30: AS 0.63, CO 0.98, FD 0.82,
+# FP 0.84, FS 0.86, GM 0.82, LS 1.30, NR 0.70, AGV 0.96, AH 0.86, and the
+# 2026-09-29 additions PA 1.02, LGL 0.87, SH 0.74 -- every legacy one within
+# +0.10 of the number quoted here, and AS/IR/PF/SS/TS to the second decimal. The small positive offsets are
 # the elevation-window convention (this table says |el| <= 30; vsi_rmse's
 # EL_LIMIT=None takes the narrowest span present instead). Do not read them as
 # disagreement.
+#
+# EXTENDED AGAIN 2026-09-29: + LGL (own EG 0.87), PA (1.02), SH (0.74), from the
+# HRIR recordings of 28-29.09. All three conform natively and all three are
+# current participants, which is fine -- load_candidates drops the listener's
+# own id, and AS/FP/LS/NR/GM are already in on the same basis. Their own runs
+# are pinned by subject.active_donor and are unaffected.
+#
+# Detail strength: PA 3.05 dB (L 3.00 / R 3.09), SH 2.94 (L 3.02 / R 2.85),
+# LGL 2.69 (L 2.63 / R 2.76). LGL sits just over the 2.66 dB floor.
+#
+# **LG IS NOT A CANDIDATE AND MUST NOT BE ADDED.** LG and LGL are the SAME
+# PERSON: the 29.09 recording was aborted and redone, and the id could not be
+# reused, so the first attempt lives under LG. It was deleted from the project
+# 2026-09-29. If it ever reappears, keep it out -- `load_candidates` drops the
+# listener's own id by STRING, so 'LG' in the pool would make LG a self-donor
+# for LGL: a near-zero perturbation that would look like a legitimate low
+# r_match. Same trap for any future re-record under a new id.
 DONOR_POOL = ('CO', 'pilot/AGV', 'pilot/SW', 'pilot/VD', 'pilot/AH', 'FS', 'FD',
-              'AS', 'FP', 'LS', 'NR', 'GM')
+              'AS', 'FP', 'LS', 'NR', 'GM', 'LGL', 'PA', 'SH')
 
 #: Donor EARS kept out of the pool while the recording itself stays in.
 #: Only meaningful with PER_EAR_SELECTION; a per-person pool cannot express it.

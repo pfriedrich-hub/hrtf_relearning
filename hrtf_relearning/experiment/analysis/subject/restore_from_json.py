@@ -161,14 +161,27 @@ def main():
     if json_trials is None:
         print("  [!] this archive predates trial backup — training data cannot "
               "be restored from it (raw pose traces are gone either way)")
-    elif len(json_trials) > len(target.get("trials") or []):
-        n_before = len(target.get("trials") or [])
-        target["trials"] = json_trials
-        print(f"  trials: {n_before} → {len(json_trials)} restored from archive "
-              f"(pose_trace summarised as pose_metrics, raw samples not recoverable)")
     else:
-        print(f"  trials: keeping target's {len(target.get('trials') or [])} "
-              f"(archive has {len(json_trials)})")
+        # MERGE, never replace: the target's own trials carry the raw
+        # pose_trace, the archive's only pose_metrics. Replacing them wholesale
+        # (the old behaviour) threw away every surviving trace — found on FP
+        # 2026-09-29, where it would have stripped 366 intact trials.
+        def _trial_key(t):
+            return (t.get("session_id"), t.get("trial_idx"), t.get("t_start"))
+        have = {_trial_key(t) for t in (target.get("trials") or []) if t}
+        new = []
+        for t in json_trials:
+            if not t or _trial_key(t) in have:
+                continue
+            t = dict(t)
+            if isinstance(t.get("target"), list):
+                t["target"] = tuple(t["target"])   # pickle schema stores a tuple
+            new.append(t)
+        n_before = len(target.get("trials") or [])
+        target["trials"] = list(target.get("trials") or []) + new
+        print(f"  trials: kept {n_before}, +{len(new)} from archive "
+              f"(archive has {len(json_trials)}); archived trials carry "
+              f"pose_metrics only, their raw samples are not recoverable")
 
     for field in ("demographics", "active_donor"):
         if raw.get(field) and not target.get(field):
@@ -181,7 +194,10 @@ def main():
 
     # last_sequence is archived as a key; repoint it at the reconstructed run
     name = raw.get("last_sequence")
-    if name and not target.get("last_sequence"):
+    # the archive wins when it names a run that only the archive had: then it
+    # is newer than whatever the target pointed at
+    if name and (not target.get("last_sequence")
+                 or (name in merged_loc and name not in existing_keys)):
         target["last_sequence"] = merged_loc.get(name)
         print(f"  last_sequence: repointed at {name!r}"
               if name in merged_loc else

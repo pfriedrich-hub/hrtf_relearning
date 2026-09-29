@@ -20,6 +20,7 @@ from hrtf_relearning.experiment.training.training_helpers.training_targets impor
 from hrtf_relearning.hrtf.binsim.hrtf2binsim import *
 from hrtf_relearning.hrtf.binsim.hrir2mat import check_gain
 from hrtf_relearning.utils import paths
+from hrtf_relearning.utils.pose_trace import pack_trace
 matplotlib.rcParams['figure.raise_window'] = False
 logging.getLogger().setLevel('INFO')
 
@@ -582,6 +583,8 @@ def play_trial(subject, trial_idx, current_trial, target, distance, pulse_interv
     # raw items are (t_wall, trial_id, yaw, pitch)
     trace = [(t, yaw, pitch,) for (t, tid, yaw, pitch) in raw
              if (tid == trial_idx) and (t0 <= t <= t1)]
+    # float32 (t - pose_t0, yaw, pitch); read back with utils.pose_trace.get_trace
+    pose, pose_t0 = pack_trace(trace)
 
     # Store on subject. Trials are appended sequentially (no index padding):
     # trial_idx is set to the position this trial will occupy, so it is a
@@ -601,7 +604,8 @@ def play_trial(subject, trial_idx, current_trial, target, distance, pulse_interv
         "duration": float(game_timer),              # legacy alias (== game_clock)
         # stimulus / response
         "target": tuple(target.tolist() if hasattr(target, "tolist") else target),
-        "pose_trace": trace,                        # [(t, yaw, pitch), ...]
+        "pose_trace": pose,                         # packed, see utils/pose_trace.py
+        "pose_t0": pose_t0,                         # wall clock of first sample
         "score": int(score),                        # 0 miss, 1 hit, 2 fast hit
         "reached_target": bool(score > 0),
         # provenance: what the participant was hearing and scoring against.

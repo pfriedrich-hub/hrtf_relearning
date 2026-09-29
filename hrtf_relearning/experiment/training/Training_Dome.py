@@ -94,6 +94,7 @@ from hrtf_relearning.experiment.training.training_helpers.pulse import distance_
 from hrtf_relearning.experiment.training.training_helpers.training_targets import (
     find_last_matching_sequence, set_target_probabilistic)
 from hrtf_relearning.utils import paths
+from hrtf_relearning.utils.pose_trace import pack_trace
 
 # ==================== quick config ====================
 # SUBJECT_ID = os.environ.get('TRAINING_SUBJECT_ID', 'test')
@@ -468,6 +469,8 @@ class TrainingDome:
 
         t1 = time.time()
         game_timer += t1 - t0
+        # float32 (t - pose_t0, yaw, pitch); read back with utils.pose_trace.get_trace
+        pose, pose_t0 = pack_trace(trace)
         self._store_trial(dict(
             trial_idx=int(trial_idx),
             game_idx=int(game_idx),
@@ -480,7 +483,8 @@ class TrainingDome:
             game_clock=float(game_timer),
             duration=float(game_timer),          # legacy alias (== game_clock)
             target=(float(self.target[0]), float(self.target[1])),
-            pose_trace=trace,
+            pose_trace=pose,
+            pose_t0=pose_t0,
             score=int(score),
             reached_target=bool(score > 0),
             # dome specific

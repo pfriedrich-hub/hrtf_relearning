@@ -244,6 +244,77 @@ def has_peer_below(rows: List[Tuple[str, int]], subject_id: str) -> bool:
     return bool(rows) and rows[-1][0] != subject_id
 
 
+# ────────────────────────────────────────────────────────────────
+# When the board is shown: only after moving up
+# ────────────────────────────────────────────────────────────────
+# The board is revealed only on a game that made the participant overtake
+# someone on it -- a reward for climbing, not a standing display. After
+# every reveal the ids ranked above them in the WHOLE field are stored here
+# (results/<id>/), and the next reveal compares against that: anyone who was
+# above them then and is below them on the board now has just been passed.
+# Field-wide rather than board-only so the baseline survives a re-picked
+# peer set, and so the game that first lifts a participant off the bottom
+# of the field (where no board exists yet) counts as moving up.
+# With no stored baseline (first game ever, or a participant from before
+# this rule) nothing counts as passed: that game only records the baseline.
+# Highscores never go down, so a pass is always the participant's own doing.
+SCOREBOARD_STATE_FILENAME = "scoreboard_state.json"
+
+
+def ids_above(ranked: List[Tuple[str, int]], subject_id: str) -> Optional[List[str]]:
+    """Ids ranked above `subject_id` in `ranked` (ties broken as rank_scores
+    does), or None if they are not in it."""
+    ids = [sid for sid, _ in rank_scores(dict(ranked))]
+    if subject_id not in ids:
+        return None
+    return ids[:ids.index(subject_id)]
+
+
+def load_ids_above(results_dir: Path, subject_id: str) -> Optional[List[str]]:
+    """The field-wide 'above me' list stored at the last reveal, or None."""
+    if not subject_id:
+        return None
+    try:
+        data = json.loads((results_dir / subject_id / SCOREBOARD_STATE_FILENAME)
+                          .read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    above = data.get("above")
+    if not isinstance(above, list):
+        return None
+    return [x for x in above if isinstance(x, str)]
+
+
+def save_ids_above(results_dir: Path, subject_id: str, above: List[str]) -> None:
+    if not subject_id:
+        return
+    path = results_dir / subject_id / SCOREBOARD_STATE_FILENAME
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps({"id": subject_id, "above": list(above),
+                        "updated": time.strftime("%Y-%m-%d %H:%M:%S")}, indent=2),
+            encoding="utf-8",
+        )
+    except Exception:
+        logging.exception("Could not persist the scoreboard baseline for %s; "
+                          "the next game will not show a board.", subject_id)
+
+
+def newly_passed(prev_above: Optional[List[str]], board: List[Tuple[str, int]],
+                 subject_id: str) -> List[str]:
+    """Board members who were above `subject_id` at the last reveal and are
+    below them now. Empty when there is no baseline."""
+    if prev_above is None:
+        return []
+    ids = [sid for sid, _ in board]
+    if subject_id not in ids:
+        return []
+    below = ids[ids.index(subject_id) + 1:]
+    was_above = set(prev_above)
+    return [sid for sid in below if sid in was_above]
+
+
 _PIXEL_FONT_FAMILY: Optional[str] = None
 
 # Candidate pixel/retro fonts bundled under data/ui/fonts/, selectable via
@@ -676,7 +747,7 @@ class GameWindow(QtWidgets.QMainWindow):
         self.backup_dir = backup_dir or SUBJECT_RESULTS_DIR
         self._session_over_since: Optional[float] = None
         self._reveal_ready = False       # past the SCORE_REVEAL_DELAY_S gate (button becomes available)
-        self._show_scoreboard = False    # reveal happened AND the player made the top N
+        self._show_scoreboard = False    # reveal happened AND the player moved up on the board
         self._break_due = False          # parent flagged this game as ending a block
         self._button_h = self.BUTTON_H   # shrunk on short screens (_fit_prompt_height)
         # Chrome scale: 1.0 on a 1080-tall screen, less on a shorter one. The
@@ -1214,9 +1285,10 @@ class GameWindow(QtWidgets.QMainWindow):
         # For state 3 (session over) we first show the bare score for
         # SCORE_REVEAL_DELAY_S, then reveal the continue prompt — and the
         # scoreboard too, as a window around wherever the participant
-        # stands (see _board_for_player). It is skipped entirely when there
-        # is nothing meaningful to show — a participant with no score yet,
-        # no one else to put beside them, or no one below them.
+        # stands (see _board_for_player), but ONLY on a game in which they
+        # overtook someone on it (see newly_passed). It is also skipped when
+        # there is nothing meaningful to show — a participant with no score
+        # yet, no one else to put beside them, or no one below them.
         if state == 3:
             if self._session_over_since is None:
                 self._session_over_since = time.monotonic()
@@ -1243,14 +1315,24 @@ class GameWindow(QtWidgets.QMainWindow):
                 # per-subject backups. Reading late (plus the live-highscore
                 # merge in _current_scoreboard) is what makes the standings
                 # include the run that just finished.
-                self._scoreboard_cache = self._board_for_player(
-                    self._current_scoreboard(highscore))
+                ranked = self._current_scoreboard(highscore)
+                self._scoreboard_cache = self._board_for_player(ranked)
+                # Moved up? Compare against the standings stored at the last
+                # reveal, then store the current ones as the next baseline --
+                # every game, shown or not.
+                passed = newly_passed(
+                    load_ids_above(self.backup_dir, self.subject_id),
+                    self._scoreboard_cache, self.subject_id)
+                above_now = ids_above(ranked, self.subject_id)
+                if above_now is not None:
+                    save_ids_above(self.backup_dir, self.subject_id, above_now)
                 # An empty or one-row board says nothing -- nobody else
                 # recorded yet, or the participant is last in the field and
-                # _board_for_player held the board back. The table is then
-                # left out. The page is still used when a break is due --
-                # it carries the banner.
-                self._show_scoreboard = len(self._scoreboard_cache) >= 2
+                # _board_for_player held the board back. The table is also
+                # left out when this game did not move them up. The page is
+                # still used when a break is due -- it carries the banner.
+                self._show_scoreboard = (len(self._scoreboard_cache) >= 2
+                                         and bool(passed))
                 self.scoreboard.setVisible(self._show_scoreboard)
                 if self._show_scoreboard:
                     self.scoreboard.set_scores(self._scoreboard_cache, self.subject_id)

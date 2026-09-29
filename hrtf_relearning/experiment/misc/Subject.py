@@ -203,8 +203,10 @@ class Subject:
             if not trial:
                 out.append({})
                 continue
+            # pose_t0 is only the packed trace's time origin; without the
+            # trace it means nothing (see utils/pose_trace.py)
             out.append(_to_jsonable({k: v for k, v in trial.items()
-                                     if k != "pose_trace"}))
+                                     if k not in ("pose_trace", "pose_t0")}))
         return out
 
     def _backup_pickle(self):

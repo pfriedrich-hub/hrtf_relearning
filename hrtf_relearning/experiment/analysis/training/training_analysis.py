@@ -14,7 +14,7 @@ Trial schema (see Training.py)::
     trial_duration   float, actual trial length (s)
     game_clock       float, cumulative time within the game (s)
     target           (yaw_deg, pitch_deg)
-    pose_trace       [(t_unix, yaw_deg, pitch_deg), ...]
+    pose_trace       head trace; read via utils.pose_trace.get_trace (legacy list or packed array)
     score            0 miss / 1 hit / 2 fast hit
     reached_target   bool
 
@@ -40,6 +40,9 @@ import numpy
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
+
+from hrtf_relearning.utils.pose_trace import (
+    get_trace, has_trace, trace_start, trace_end)
 
 
 # default gap thresholds (seconds) for auto-detecting training structure
@@ -100,13 +103,12 @@ class PoseAnalysis:
             numpy.unwrap(numpy.deg2rad(numpy.asarray(angle_deg, dtype=float)))
         )
 
-    def _trace_to_arrays(self, pose_trace):
-        if not pose_trace or len(pose_trace) < 2:
+    def _trace_to_arrays(self, trial):
+        trace = get_trace(trial)
+        if len(trace) < 2:
             return None
 
-        t = numpy.asarray([s[0] for s in pose_trace], dtype=float)
-        yaw = numpy.asarray([s[1] for s in pose_trace], dtype=float)
-        pitch = numpy.asarray([s[2] for s in pose_trace], dtype=float)
+        t, yaw, pitch = trace[:, 0], trace[:, 1], trace[:, 2]
 
         t_rel = t - t[0]
 
@@ -175,7 +177,7 @@ class PoseAnalysis:
 
     # ---- per-trial metrics ----
     def analyze_trial(self, trial):
-        data = self._trace_to_arrays(trial.get("pose_trace", []))
+        data = self._trace_to_arrays(trial)
         if data is None:
             return None
 
@@ -446,7 +448,7 @@ class PoseAnalysis:
     # ---- plotting: single-trial trajectory + velocity ----
     def _find_trial(self, trial_idx):
         for tr in self.subject.trials:
-            if tr.get("trial_idx") == trial_idx and tr.get("pose_trace"):
+            if tr.get("trial_idx") == trial_idx and has_trace(tr):
                 return tr
         return None
 
@@ -456,7 +458,7 @@ class PoseAnalysis:
             print(f"Trial {trial_idx} not found or has no pose trace.")
             return None
 
-        data = self._trace_to_arrays(trial["pose_trace"])
+        data = self._trace_to_arrays(trial)
         target = numpy.asarray(trial["target"], dtype=float)
         t, yaw, pitch, vspeed = data["t"], data["yaw"], data["pitch"], data["vspeed"]
         m = self.analyze_trial(trial)
@@ -512,7 +514,7 @@ class PoseAnalysis:
     def plot_session_trajectories(self, session_id=None, max_trials=12, show=True):
         trials = [
             tr for tr in self.subject.trials
-            if tr.get("pose_trace") and (session_id is None or tr.get("session_id") == session_id)
+            if has_trace(tr) and (session_id is None or tr.get("session_id") == session_id)
         ]
         if not trials:
             print("No trials with pose traces for that session.")
@@ -525,7 +527,7 @@ class PoseAnalysis:
         fig, axes = plt.subplots(nrow, ncol, figsize=(3.2 * ncol, 3.2 * nrow), squeeze=False)
 
         for ax, trial in zip(axes.ravel(), trials):
-            data = self._trace_to_arrays(trial["pose_trace"])
+            data = self._trace_to_arrays(trial)
             target = numpy.asarray(trial["target"], dtype=float)
             yaw, pitch, t = data["yaw"], data["pitch"], data["t"]
             pts = numpy.column_stack([yaw, pitch]).reshape(-1, 1, 2)
@@ -557,11 +559,11 @@ class PoseAnalysis:
 # ======================================================================
 
 def _trial_start(trial):
-    return trial["pose_trace"][0][0]
+    return trace_start(trial)
 
 
 def _trial_end(trial):
-    return trial["pose_trace"][-1][0]
+    return trace_end(trial)
 
 
 def segment_games(trials):
@@ -573,7 +575,7 @@ def segment_games(trials):
 
     Returns a list of games, each a time-ordered list of trial dicts.
     """
-    trials = [t for t in trials if t.get("pose_trace")]
+    trials = [t for t in trials if has_trace(t)]
     trials = sorted(trials, key=_trial_start)
     if not trials:
         return []

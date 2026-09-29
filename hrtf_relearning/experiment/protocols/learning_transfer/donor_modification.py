@@ -63,10 +63,15 @@ from hrtf_relearning.hrtf.modify.plot_compare import plot_ears
 from hrtf_relearning.hrtf.processing.envelope import envelope_dtf, ENVELOPE_BAND
 from hrtf_relearning.hrtf.processing.midline import (midline_arc, expand_from_midline,
                                                      qc_midline, format_qc)
-from hrtf_relearning.hrtf.record.fit_head_radius import usable_radius, FALLBACK_RADIUS_M
+from hrtf_relearning.hrtf.record.fit_head_radius import (usable_radius, fit_from_sofa,
+                                                         FALLBACK_RADIUS_M)
 from hrtf_relearning.utils import paths
 
 OTHER_EAR_TREATMENTS = ("flat", "envelope", "native")
+# A pipeline-built native reproduces the spherical model to ~0.3 us RMS; a
+# residual well above that means the SOFA was not expanded by this pipeline and
+# its "radius" is not a build parameter. See DonorModification.head_radius.
+NATIVE_FIT_MAX_RESIDUAL_US = 5.0
 
 
 class DonorModification:
@@ -548,8 +553,8 @@ class DonorModification:
             radius = self.head_radius()
             if not quiet:
                 print(f"azimuth re-expansion at head_radius {radius:.4f} m "
-                      f"(the subject's fitted value -- must match the native "
-                      f"SOFA, see DonorModification.head_radius)")
+                      f"(recovered from {self.native_sofa}.sofa so the "
+                      f"composite matches it, see DonorModification.head_radius)")
             own_arc = midline_arc(own)
             donor_arc = midline_arc(candidates[donor_id])
             detail_arc = donor_detail_dtf(own_arc, donor_arc, n_keep=n_keep,
@@ -658,7 +663,52 @@ class DonorModification:
 
         NB composites built before this fix are NOT comparable to ones built
         after it on any azimuth measure. See project_donor_screening_protocol.
+
+        **Second route to the same bug, closed 2026-09-29.** The native and the
+        composite still took their radius from two DIFFERENT places: the native
+        from whatever HEAD_RADIUS was when HRIR_Recording ran (the fit, or a
+        value set by hand after a failed fit), the composite from
+        head_radius_fit.json through `usable_radius`. When the phase fit fails,
+        `usable_radius` falls back to 0.0875 -- so LGL (native 0.0750) and PA
+        (native 0.0829) got composites at 0.0875, +13% / +4% ITD at 50 deg.
+
+        The requirement is not "the fitted radius", it is "the radius the
+        native was built with", and the native SOFA itself is the only record
+        of that which cannot disagree with it. So the radius is now RECOVERED
+        FROM THE NATIVE SOFA (`fit_from_sofa`: its azimuth ITDs are the model,
+        residual ~0.3 us, radius exact to ~1e-5 m). The JSON fit is kept only
+        as a printed cross-check, and as the fallback if the native cannot be
+        read or does not look like a spherical-model expansion.
         """
+        native = self.sofa_dir / f"{self.native_sofa}.sofa"
+        try:
+            fit = fit_from_sofa(native)
+        except Exception as exc:                       # noqa: BLE001
+            logging.error("could not recover the head radius from %s (%s) -- "
+                          "falling back to head_radius_fit.json", native, exc)
+            return self._radius_from_fit_json()
+        if fit["at_bound"] or fit["residual_us"] > NATIVE_FIT_MAX_RESIDUAL_US:
+            logging.error(
+                "%s does not look like a spherical-model expansion (radius "
+                "%.4f m, residual %.1f us%s) -- falling back to "
+                "head_radius_fit.json. Composites may NOT match the native.",
+                native.name, fit["head_radius"], fit["residual_us"],
+                ", at bound" if fit["at_bound"] else "")
+            return self._radius_from_fit_json()
+        radius = float(fit["head_radius"])
+        try:
+            fitted = self._radius_from_fit_json()
+        except Exception:                              # noqa: BLE001
+            fitted = None
+        if fitted is not None and abs(fitted - radius) > 0.001:
+            logging.warning(
+                "native %s was built at %.4f m but head_radius_fit.json gives "
+                "%.4f m -- using the NATIVE value so the composite matches it.",
+                native.name, radius, fitted)
+        return radius
+
+    def _radius_from_fit_json(self):
+        """The acoustic fit via `usable_radius` -- fallback / cross-check only."""
         # record_head_radius always writes the fit into rec/<id>/; the copy in
         # results/<id>/ only happens when it was called with save=. Look in both
         # so a fit that exists is never silently ignored.

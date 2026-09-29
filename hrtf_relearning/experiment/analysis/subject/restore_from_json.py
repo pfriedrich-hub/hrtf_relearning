@@ -209,7 +209,7 @@ def main():
                    "last_sequence": getattr(target.get("last_sequence"), "name", None),
                    "localization": _to_jsonable(target["localization"]),
                    "trials": [_to_jsonable({k: v for k, v in (t or {}).items()
-                                            if k != "pose_trace"})
+                                            if k not in ("pose_trace", "pose_t0")})
                               for t in (target.get("trials") or [])]}
         tmp = json_out.with_suffix(".json.tmp")
         with open(tmp, "w", encoding="utf-8") as f:

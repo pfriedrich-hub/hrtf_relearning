@@ -42,6 +42,8 @@ the reduced form. Keep the pickles.
 """
 import math
 
+from hrtf_relearning.utils.pose_trace import get_trace
+
 # Movement onset: first sample exceeding this angular speed, sustained.
 ONSET_SPEED_DEG_S = 5.0
 ONSET_SUSTAIN_SAMPLES = 3
@@ -64,7 +66,7 @@ METRIC_KEYS = (
 def _clean(trace):
     """(t, az, el) rows, sorted, with non-finite and duplicate-time rows dropped."""
     rows = []
-    for row in trace or ():
+    for row in (trace if trace is not None else ()):
         if len(row) < 3:
             continue
         t, az, el = float(row[0]), float(row[1]), float(row[2])
@@ -87,7 +89,7 @@ def pose_metrics(trial):
     samples) — an empty dict, not zeros, so a missing trace is never mistaken
     for a measured one.
     """
-    rows = _clean((trial or {}).get("pose_trace"))
+    rows = _clean(get_trace(trial))
     if len(rows) < 5:
         return {}
 

@@ -60,3 +60,6 @@ Thumbs.db
 *.toc
 writing/**/*.log
 writing/**/*.pdf
+
+# pre-migration copies from pack_pose_traces.py — delete once verified
+*.pkl.prepack.bak

@@ -1,11 +1,47 @@
 # Participant pool audit — learning_transfer (donor-detail)
 
-Updated 2026-09-28. Companion to `learning_transfer_block_order.csv`, which
+Updated 2026-09-29. Companion to `learning_transfer_block_order.csv`, which
 carries the same verdicts in the `analysis_set` column and is still read
 unchanged by `learning_transfer.py::_load_subject_params`. Backups:
 `...csv.bak_20260908`, `...csv.bak_20260928`.
 
-## The inclusion rule (Paul, 2026-09-28)
+## SUPERSEDED 2026-09-29 — current inclusion rule (Paul)
+**Completed the final 2×2 AND passes the day-1 manipulation check on EITHER metric:
+PE impairment ≥ +5° (raw) OR elevation-gain drop ≥ 0.22.** Both thresholds are
+~2 SE of a 75-trial A block minus a 150-trial own-HRTF block (test-retest floor
+1.61° / 0.07 at n=132, scaled 1/√n: SE 2.6° / 0.114). Same blocks for both
+metrics: first A block with the committed donor vs the day-1 own-HRTF 150-trial
+block, stimulus matched. The laser correction is **not** used for inclusion
+(it assumes free-field and own-HRTF-AR bias are equal); corrected PE is reported
+as a sensitivity column only. EG is immune to the offset by construction.
+
+| id | PE imp. raw (corr) | EG own → A = drop | check | analysis_set |
+|---|---|---|---|---|
+| FS | +13.6 (+17.2) | 0.84 → 0.37 = 0.47 | both | include |
+| IR | +9.6 (+11.5) | 0.49 → 0.20 = 0.29 | both | include |
+| LS | +13.9 (+13.9) | 1.20 → 0.09 = 1.11 | both | include |
+| GM | +5.8 (+8.2) | 0.78 → 0.34 = 0.44 | both (EG ~3.9 SE) | include |
+| AS | +4.1 (+2.4) | 0.63 → 0.35 = 0.28 | **EG only** | **include** (re-included) |
+| FP | +9.3 | 0.79 → 0.30 = 0.49 | both | exclude — protocol |
+| NR | +9.3 | 0.65 → 0.25 = 0.40 | both | exclude — protocol |
+| SH | +5.5 (+5.8) | 0.69 → 0.29 = 0.40 | both | pending completion |
+| LGL | +6.9 (+6.3) | 0.87 → 0.37 = 0.50 | both | pending completion |
+| PA | +12.3 (+11.7) | 0.99 → 0.20 = 0.79 | both | pending completion |
+
+Every subject run so far passes the check; under the OR rule, inclusion currently
+reduces to completion. AS is the only subject whose verdict depends on the rule
+(AND would exclude her). GM caveat: her own-HRTF (07.09) and A (08.09) blocks are
+on different days, so raw PE mixes two laser offsets; EG settles her.
+
+Sensitivity sets to report alongside the primary analysis:
+(a) completers only, no check (identical today); (b) clear passes only
+(both metrics beyond ~2 SE); (c) the superseded 2026-09-28 set (FS, IR, LS, GM).
+
+Prospectively: if a new subject fails on both metrics on day 1, swap donor before
+training starts (donor-swap protocol); the check is then read on the first A block
+with the committed donor. Backup of the pre-change CSV: `...csv.bak_20260929`.
+
+## The inclusion rule (Paul, 2026-09-28) — superseded, kept for the record
 **Completed the final 2×2 AND day-1 impairment ≥ +8° after the per-session laser
 correction.** Both conditions are measurable before any training, so **no
 exclusion depends on whether the subject learned.** Adaptation is reported as a

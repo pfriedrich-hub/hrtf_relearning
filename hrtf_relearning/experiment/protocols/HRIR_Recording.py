@@ -1,5 +1,3 @@
-
-0
 """
 HRIR_Recording.py
 
@@ -120,7 +118,11 @@ dome_loc = LocalizationDome(subject, {'targets_per_speaker': 3, 'min_distance': 
 dome_loc.run()
 
 # %% step 4b: OPTIONAL dome training -- only if step 4 is at floor ---------------
-training = TrainingDome(subject, region='midline')
+# TRAINING_STIM: 'ripple' = one new source spectrum per trial (as in
+# learning_transfer.py); set to 'noise' to go back to fixed pink noise.
+TRAINING_STIM = STIM
+training = TrainingDome(subject, region='midline',
+                        settings={'stim': TRAINING_STIM, 'stim_settings': STIM_SETTINGS})
 training.run(n_games=1)  # midline: 1 deg elevation window, single scores, no
 # game-over sounds (REGIONS['midline'] in Training_Dome; override via settings=)
 

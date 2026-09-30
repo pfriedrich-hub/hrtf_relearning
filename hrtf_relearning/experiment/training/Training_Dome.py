@@ -95,6 +95,8 @@ from hrtf_relearning.experiment.training.training_helpers.training_targets impor
     find_last_matching_sequence, set_target_probabilistic)
 from hrtf_relearning.utils import paths
 from hrtf_relearning.utils.pose_trace import pack_trace
+from hrtf_relearning.experiment.localization.localization_helpers.stimulus import (
+    draw_ripple_shape, apply_spectral_shape)
 
 # ==================== quick config ====================
 # SUBJECT_ID = os.environ.get('TRAINING_SUBJECT_ID', 'test')
@@ -162,6 +164,13 @@ DEFAULT_SETTINGS = dict(
     # non-spatial cue to the target.
     equalize=False,
     stim_level=None,        # dB; None -> level of the raw pinknoise, as in the old script
+    # 'noise' | 'ripple'. 'ripple' re-colours each trial's noise token by a new
+    # random smooth spectral shape (the localization ripple draw), so every
+    # pulse of a trial shares one source spectrum and the next trial gets a new
+    # one -- the same once-per-trial variation as Training_AR. Logged per trial
+    # as trial['stim_params'].
+    stim='noise',
+    stim_settings=None,     # e.g. {'rms_tilt': 3}; rms_tilt defaults to 3
     verbose=True,           # live head-pose readout in the console
 )
 
@@ -235,6 +244,7 @@ class TrainingDome:
         self.motion_sensor = None
         self._interval_written = None
         self._sounds = {}
+        self._stim_params = None        # ripple draw of the armed trial
 
         self.speakers = self._select_speakers()
         self._sources = _Sources(self.speakers)
@@ -491,6 +501,8 @@ class TrainingDome:
             condition='dome',
             region=self.region,
             speaker=int(speaker.index),
+            stim=self.settings['stim'],
+            stim_params=self._stim_params,
             settings=dict(self.settings),
         ))
         return game_timer, score
@@ -513,6 +525,14 @@ class TrainingDome:
 
     def _make_stim(self):
         stim = slab.Sound.pinknoise(duration=self.stim_duration)
+        self._stim_params = None
+        if self.settings['stim'] == 'ripple':
+            ss = self.settings['stim_settings'] or {}
+            coeffs, self._stim_params = draw_ripple_shape(
+                rms_tilt=float(ss.get('rms_tilt', 3.0)), rms_cue=float(ss.get('rms_cue', 0.0)))
+            stim = apply_spectral_shape(stim, coeffs)
+        elif self.settings['stim'] != 'noise':
+            raise ValueError(f"stim must be 'noise' or 'ripple', got {self.settings['stim']!r}")
         if self.settings['stim_level'] is not None:
             stim.level = self.settings['stim_level']
         return stim

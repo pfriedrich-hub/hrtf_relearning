@@ -168,6 +168,53 @@ def n_active_coefficients(ripple_max=RIPPLE_CUE_MAX):
     return int(numpy.flatnonzero(tilt_sel | cue_sel).max()) + 1
 
 
+def draw_ripple_shape(rms_tilt=RMS_TILT, rms_cue=RMS_CUE, ripple_max=RIPPLE_CUE_MAX,
+                      rng=None):
+    """One random source-spectrum shape, for callers that build their own sounds.
+
+    The training games use this: they draw ONE shape per trial and apply it to
+    every sound of that trial (pulses and target sound alike, see
+    `apply_spectral_shape`), so within a trial the spectrum only changes through
+    the HRTF as the head moves, while across trials the source spectrum moves as
+    in the ripple localization stimulus. Same draw as `make_rippled_pinknoise`.
+
+    Returns
+    -------
+    coeffs : array, the active DCT coefficients (feed to apply_spectral_shape)
+    params : dict with the same keys `make_rippled_pinknoise` logs, so training
+        and localization trials are reconstructed and analysed the same way.
+    """
+    coeffs = shape_coefficients(rms_tilt=rms_tilt, rms_cue=rms_cue, rng=rng,
+                                ripple_max=ripple_max)
+    coeffs = coeffs[:n_active_coefficients(ripple_max)]
+    params = {'kind': 'ripple', 'mode': 'banded',
+              'rms_tilt': float(rms_tilt), 'rms_cue': float(rms_cue),
+              'flat_rms': None, 'seed': None,
+              'tilt_max': RIPPLE_TILT_MAX, 'ripple_max': float(ripple_max),
+              'shape_flo': SHAPE_FLO, 'shape_fhi': SHAPE_FHI,
+              'coeffs': [float(c) for c in coeffs]}
+    return coeffs, params
+
+
+def apply_spectral_shape(sound, coeffs, level=None):
+    """`sound` (any duration, mono) times the zero-phase shape `coeffs`.
+
+    Same filtering as `make_rippled_pinknoise`. The level is set AFTER
+    filtering: to `level` if given, else to the sound's level before shaping.
+    """
+    if level is None:
+        level = sound.level
+    freqs, shape_db = shape_from_coefficients(coeffs)
+    n = sound.n_samples
+    bins = numpy.fft.rfftfreq(n, 1 / sound.samplerate)
+    gain = 10 ** (numpy.interp(numpy.clip(bins, SHAPE_FLO, SHAPE_FHI),
+                               freqs, shape_db) / 20)
+    data = numpy.fft.irfft(numpy.fft.rfft(sound.data[:, 0]) * gain, n)
+    out = slab.Sound(data[:, None], samplerate=sound.samplerate)
+    out.level = level
+    return out
+
+
 def make_gapped_pinknoise(level=80):
     """225 ms gapped pinknoise (5x25 ms bursts, 4x25 ms gaps). Uses the slab
     default samplerate, so callers should set it before calling."""

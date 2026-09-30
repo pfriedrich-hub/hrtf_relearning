@@ -82,6 +82,7 @@ SUBJECT_ID = ("PA")
 import datetime  # timestamp on the persisted day-1 screen (screen_donors)
 import csv  # only for the block-order table below; the modification
             # workflow now lives in donor_modification.py next door
+import json
 import os
 import subprocess
 import sys
@@ -197,7 +198,7 @@ GAIN               = 0.2
 # learned timbre->elevation lookup, which is what FS reported doing. The test
 # stimulus therefore varies its source spectrum on every trial, in EVERY block,
 # so the measure is source-invariant throughout rather than only on the last day.
-# Training stays on noise (SOUND_FILE=None -> pink noise).
+# Training follows TRAINING_STIM below (ripple since 2026-09-30; noise before).
 #
 # Subjects run before this date were tested on noise. They are pilots and are
 # not pooled with what follows.
@@ -224,6 +225,13 @@ STIM               = "ripple"
 # it runs the day-1 dome block and the day-1 AR check, and a mismatch puts a
 # stimulus difference inside the AR-vs-dome comparison the laser correction uses.
 STIM_SETTINGS      = {'rms_tilt': 3}
+# Training stimulus (Training_AR). 'ripple' = the localization ripple at
+# STIM_SETTINGS, one new source spectrum per trial shared by all its pulses and
+# the target sound, so training cannot be solved by learning the timbre of a
+# fixed stimulus (added 2026-09-30, on trial). Set to 'noise' to go back to the
+# fixed-spectrum pink noise used by every subject before that date. Recorded
+# per trial as trial['stim'] / trial['stim_params'].
+TRAINING_STIM      = STIM
 MIDLINE_TOL        = 1.0
 FULL_FIELD = (-35, 35)
 
@@ -748,6 +756,7 @@ def run_training(hrir_name=None, ear=None, az_range=None):
     print(f"TRAINING   subject={SUBJECT_ID}   ear={ear}   az_range={az_range}")
     print(f"           HRIR={hrir_name}.sofa   HP={HP}")
     print(f"           other ear={OTHER_EAR} (n_keep={ENV_NKEEP})")
+    print(f"           stim={TRAINING_STIM} {STIM_SETTINGS if TRAINING_STIM == 'ripple' else ''}")
     print("-" * 64)
     _fix_output_level()
 
@@ -760,7 +769,9 @@ def run_training(hrir_name=None, ear=None, az_range=None):
                TRAINING_NATIVE_SOFA=NATIVE_SOFA,
                TRAINING_AZ_RANGE=f"{az_range[0]},{az_range[1]}",
                TRAINING_HP=HP,
-               TRAINING_BREAK_EVERY=str(BREAK_EVERY))
+               TRAINING_BREAK_EVERY=str(BREAK_EVERY),
+               TRAINING_STIM=TRAINING_STIM,
+               TRAINING_STIM_SETTINGS=json.dumps(STIM_SETTINGS))
     subprocess.run(
         [sys.executable, "-m", "hrtf_relearning.experiment.training.Training_AR"],
         env=env, cwd=str(hr.PATH.parent), check=False)

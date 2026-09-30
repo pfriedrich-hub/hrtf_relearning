@@ -1,5 +1,6 @@
 from matplotlib import pyplot as plt
 import os
+import json
 import numpy
 import time
 import multiprocessing as mp
@@ -21,6 +22,8 @@ from hrtf_relearning.hrtf.binsim.hrtf2binsim import *
 from hrtf_relearning.hrtf.binsim.hrir2mat import check_gain
 from hrtf_relearning.utils import paths
 from hrtf_relearning.utils.pose_trace import pack_trace
+from hrtf_relearning.experiment.localization.localization_helpers.stimulus import (
+    draw_ripple_shape, apply_spectral_shape, n_active_coefficients)
 matplotlib.rcParams['figure.raise_window'] = False
 logging.getLogger().setLevel('INFO')
 
@@ -40,11 +43,22 @@ OTHER_EAR  = os.environ.get("TRAINING_OTHER_EAR", "flat")
 ENV_NKEEP  = int(os.environ.get("TRAINING_ENV_NKEEP", "4"))
 NATIVE_SOFA = os.environ.get("TRAINING_NATIVE_SOFA", SUBJECT_ID)
 
-# 'noise' -> pink noise synthesised at startup. Anything else is taken as the
-# name of a wav file in the database's sounds/ directory, cropped to the pulse
-# and target lengths below. This used to be read and then never used: SOUND_FILE
-# was hardcoded to None, so the game played pink noise whatever a protocol set.
+# 'noise'  -> pink noise, the same spectrum on every trial (the default).
+# 'ripple' -> pink noise re-coloured by a NEW random smooth spectral shape on
+#             every trial -- the localization 'ripple' draw (stimulus.py), at
+#             TRAINING_STIM_SETTINGS (JSON; rms_tilt defaults to 3, the settled
+#             localization depth). ONE shape per trial, applied to every pulse
+#             and to the target sound, so within a trial the spectrum changes
+#             only through the HRTF as the head moves, while across trials the
+#             source moves and a fixed timbre->elevation template cannot work.
+#             The draw is logged per trial as trial["stim_params"].
+# Anything else is taken as the name of a wav file in the database's sounds/
+# directory, cropped to the pulse and target lengths below.
 STIM       = os.environ.get("TRAINING_STIM", "noise")
+STIM_SETTINGS = json.loads(os.environ.get("TRAINING_STIM_SETTINGS") or "{}")
+RIPPLE = STIM == "ripple"
+RIPPLE_TILT = float(STIM_SETTINGS.get("rms_tilt", 3.0))
+RIPPLE_CUE = float(STIM_SETTINGS.get("rms_cue", 0.0))
 # Games per block: after every BREAK_EVERY-th game the game-over screen asks
 # for a short break (scoreboard first, then the break banner + a "ready?"
 # prompt). 0 disables it, which is the default when the script is run
@@ -53,7 +67,7 @@ BREAK_EVERY = int(os.environ.get("TRAINING_BREAK_EVERY", "0"))
 AZ_RANGE   = tuple(int(x) for x in os.environ.get("TRAINING_AZ_RANGE", "-35,0").split(","))
 
 # Sound
-SOUND_FILE = None if STIM == "noise" else STIM   # wav name in <database>/sounds
+SOUND_FILE = None if STIM in ("noise", "ripple") else STIM   # wav name in <database>/sounds
 # A pulse is as long as the gap that follows it (as in v1), but never longer
 # than PULSE_MAX_BURST: near the target the pulse fills half the onset spacing
 # (75 ms on / 75 ms off), far away it is capped (150 ms on / 550 ms off at
@@ -233,7 +247,8 @@ def send_soundfile(osc_client, path):
     osc_client.send_message("/pyBinSimFile", str(path))
 
 
-def _write_stimulus(duration, ramp, path):
+def _write_stimulus(duration, ramp, path, shape=None):
+    """Write one stimulus file; `shape` = this trial's ripple coefficients (or None)."""
     if SOUND_FILE:
         source = HRIR_DIR / "sounds" / SOUND_FILE
         if not source.exists():
@@ -244,8 +259,24 @@ def _write_stimulus(duration, ramp, path):
         sound = slab.Sound(sound.data[: int(hrir.samplerate * duration)])
     else:
         sound = slab.Sound.pinknoise(duration, level=77)
+    if shape is not None:
+        sound = apply_spectral_shape(sound, shape)   # level kept, set after filtering
     sound.ramp(duration=ramp).write(path)
     return path
+
+
+def new_trial_stimulus(shape_shared):
+    """Draw this trial's source spectrum (STIM='ripple').
+
+    Publishes the coefficients to the pulse worker through `shape_shared` and
+    rewrites the target sound with them. Called between trials, while the worker
+    is muted (state 0) and touches no files. Returns the params to log.
+    """
+    coeffs, params = draw_ripple_shape(rms_tilt=RIPPLE_TILT, rms_cue=RIPPLE_CUE)
+    shape_shared[:] = coeffs
+    _write_stimulus(float(settings["target_time"]), TARGET_RAMP, STIM_FILES["target"],
+                    shape=coeffs)
+    return params
 
 
 def build_stimuli():
@@ -253,7 +284,9 @@ def build_stimuli():
     touch them. Both are re-triggered by path afterwards (see send_soundfile)."""
     _write_stimulus(float(settings["target_time"]), TARGET_RAMP, STIM_FILES["target"])
     logging.info("Training stimulus: %s | pulse = interval, target sound %.0f ms",
-                 SOUND_FILE or "pink noise", float(settings["target_time"]) * 1000)
+                 SOUND_FILE or ("rippled pink noise, rms_tilt=%g, new shape per trial"
+                                % RIPPLE_TILT if RIPPLE else "pink noise"),
+                 float(settings["target_time"]) * 1000)
 
 
 def distance_to_interval(distance):
@@ -330,7 +363,7 @@ def binsim_stream():
     binsim = pybinsim.BinSim(HRIR_DIR / f"{hrir.name}_training_settings.txt")
     binsim.stream_start()
 
-def pulse_maker(pulse_interval, pulse_state, on_target):
+def pulse_maker(pulse_interval, pulse_state, on_target, shape=None):
     """state: 0 mute, 1 idle (audible, no pulses -- the main process owns the
     sound file and plays SFX), 2 play pulses; interval in seconds.
 
@@ -410,7 +443,8 @@ def pulse_maker(pulse_interval, pulse_state, on_target):
                     path = STIM_FILES["pulse"][pulse_slot]
                     pulse_slot ^= 1
                     burst = min(float(interval), PULSE_MAX_BURST)
-                    _write_stimulus(burst, PULSE_RAMP, path)
+                    _write_stimulus(burst, PULSE_RAMP, path,
+                                    shape=None if shape is None else numpy.array(shape[:]))
                     send_soundfile(osc, path)
                     last_burst = burst
                     last_pulse_at = now
@@ -477,7 +511,7 @@ def head_tracker(distance, target, sensor_state, pose_queue, current_trial, plot
 
 def play_trial(subject, trial_idx, current_trial, target, distance, pulse_interval, pulse_state, sensor_state,
                game_time_left, game_timer, session_total, last_goal_points, pose_queue, on_target,
-               game_idx, trial_in_game, game_start_wall, session_id):
+               game_idx, trial_in_game, game_start_wall, session_id, stim_params=None):
     """
     Returns: (game_timer, score)
     """
@@ -615,6 +649,8 @@ def play_trial(subject, trial_idx, current_trial, target, distance, pulse_interv
         "condition": "ar",
         "hrir_name": hrir.name,
         "stim": STIM,
+        "stim_settings": dict(STIM_SETTINGS),
+        "stim_params": stim_params,                 # this trial's ripple draw (None for noise)
         "feedback_version": FEEDBACK_VERSION,
         "settings": dict(settings),
     }
@@ -710,7 +746,10 @@ def play_session():
     tracking_worker.start()
     binsim_worker = mp.Process(target=binsim_stream, args=())
     binsim_worker.start()
-    pulse_worker = mp.Process(target=pulse_maker, args=(pulse_interval, pulse_state, on_target))
+    # this trial's ripple coefficients, written by the main process between trials
+    shape_shared = mp.Array("d", n_active_coefficients()) if RIPPLE else None
+    pulse_worker = mp.Process(target=pulse_maker,
+                              args=(pulse_interval, pulse_state, on_target, shape_shared))
     pulse_worker.start()
 
     if SHOW_TF:  # start plot_worker
@@ -762,6 +801,8 @@ def play_session():
                     logging.warning("Could not load target probabilities; "
                                     "sampling uniformly.")
                     set_target(target, settings, hrir)
+                # new source spectrum for this trial, written before the prompt
+                stim_params = new_trial_stimulus(shape_shared) if RIPPLE else None
 
                 # show "Press Enter" overlay and wait for user
                 ui_state.value = 1
@@ -784,7 +825,8 @@ def play_session():
                                                pulse_state, sensor_state, game_time_left, game_timer, session_total,
                                                last_goal_points, pose_queue, on_target,
                                                game_idx=games_played, trial_in_game=trial_in_game,
-                                               game_start_wall=game_start_wall, session_id=session_id)
+                                               game_start_wall=game_start_wall, session_id=session_id,
+                                               stim_params=stim_params)
                 scores.append(score)
 
                 # if time is up, break

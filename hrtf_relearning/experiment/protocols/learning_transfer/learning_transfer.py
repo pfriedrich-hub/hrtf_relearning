@@ -75,10 +75,9 @@ EDIT THE CONFIG BLOCK BELOW PER PARTICIPANT.
 ------------------------------------------------------------------------------
 """
 
+SUBJECT_ID = ("LGL")
 
 # %% imports and config #------------------------------------------------------
-SUBJECT_ID = ("SH")
-
 import datetime  # timestamp on the persisted day-1 screen (screen_donors)
 import csv  # only for the block-order table below; the modification
             # workflow now lives in donor_modification.py next door

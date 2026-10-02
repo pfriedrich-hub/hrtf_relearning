@@ -75,7 +75,7 @@ EDIT THE CONFIG BLOCK BELOW PER PARTICIPANT.
 ------------------------------------------------------------------------------
 """
 
-SUBJECT_ID = ("SH")
+SUBJECT_ID = ("LGL")
 
 # %% imports and config #------------------------------------------------------
 import datetime  # timestamp on the persisted day-1 screen (screen_donors)

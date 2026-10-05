@@ -1,6 +1,7 @@
 from matplotlib import pyplot as plt
 import os
 import json
+import random
 import numpy
 import time
 import multiprocessing as mp
@@ -52,11 +53,18 @@ NATIVE_SOFA = os.environ.get("TRAINING_NATIVE_SOFA", SUBJECT_ID)
 #             only through the HRTF as the head moves, while across trials the
 #             source moves and a fixed timbre->elevation template cannot work.
 #             The draw is logged per trial as trial["stim_params"].
+# 'mixed'  -> 'ripple' or 'noise' per trial, balanced within every game: the
+#             trials are drawn in shuffled pairs (one of each), so a game never
+#             drifts more than one trial towards either stimulus. The kind is
+#             logged per trial as trial["stim"] ('ripple' | 'noise'), with
+#             trial["stim_mode"] = 'mixed'. (learning_transfer_mixed, 2026-10-02)
 # Anything else is taken as the name of a wav file in the database's sounds/
 # directory, cropped to the pulse and target lengths below.
 STIM       = os.environ.get("TRAINING_STIM", "noise")
 STIM_SETTINGS = json.loads(os.environ.get("TRAINING_STIM_SETTINGS") or "{}")
-RIPPLE = STIM == "ripple"
+MIXED = STIM == "mixed"
+RIPPLE = STIM in ("ripple", "mixed")   # ripple machinery needed (shape buffer, draws)
+MIXED_KINDS = ("ripple", "noise")
 RIPPLE_TILT = float(STIM_SETTINGS.get("rms_tilt", 3.0))
 RIPPLE_CUE = float(STIM_SETTINGS.get("rms_cue", 0.0))
 # Games per block: after every BREAK_EVERY-th game the game-over screen asks
@@ -67,7 +75,7 @@ BREAK_EVERY = int(os.environ.get("TRAINING_BREAK_EVERY", "0"))
 AZ_RANGE   = tuple(int(x) for x in os.environ.get("TRAINING_AZ_RANGE", "-35,0").split(","))
 
 # Sound
-SOUND_FILE = None if STIM in ("noise", "ripple") else STIM   # wav name in <database>/sounds
+SOUND_FILE = None if STIM in ("noise", "ripple", "mixed") else STIM   # wav name in <database>/sounds
 # A pulse is as long as the gap that follows it (as in v1), but never longer
 # than PULSE_MAX_BURST: near the target the pulse fills half the onset spacing
 # (75 ms on / 75 ms off), far away it is capped (150 ms on / 550 ms off at
@@ -279,12 +287,33 @@ def new_trial_stimulus(shape_shared):
     return params
 
 
+def new_noise_trial(shape_shared):
+    """A plain pink-noise trial inside a 'mixed' session.
+
+    Zeroes the shared shape (the pulse worker treats an all-zero shape as 'no
+    shape', i.e. unfiltered pink noise) and rewrites the target sound flat.
+    """
+    shape_shared[:] = [0.0] * len(shape_shared)
+    _write_stimulus(float(settings["target_time"]), TARGET_RAMP, STIM_FILES["target"])
+    return {"kind": "noise"}
+
+
+def mixed_kinds():
+    """Endless stream of stimulus kinds in shuffled pairs (one of each)."""
+    while True:
+        pair = list(MIXED_KINDS)
+        random.shuffle(pair)
+        yield from pair
+
+
 def build_stimuli():
     """Write the two training stimuli once, in the parent, before any worker can
     touch them. Both are re-triggered by path afterwards (see send_soundfile)."""
     _write_stimulus(float(settings["target_time"]), TARGET_RAMP, STIM_FILES["target"])
     logging.info("Training stimulus: %s | pulse = interval, target sound %.0f ms",
-                 SOUND_FILE or ("rippled pink noise, rms_tilt=%g, new shape per trial"
+                 SOUND_FILE or ("MIXED: ripple (rms_tilt=%g) / pink noise, balanced per game"
+                                % RIPPLE_TILT if MIXED else
+                                "rippled pink noise, rms_tilt=%g, new shape per trial"
                                 % RIPPLE_TILT if RIPPLE else "pink noise"),
                  float(settings["target_time"]) * 1000)
 
@@ -443,8 +472,10 @@ def pulse_maker(pulse_interval, pulse_state, on_target, shape=None):
                     path = STIM_FILES["pulse"][pulse_slot]
                     pulse_slot ^= 1
                     burst = min(float(interval), PULSE_MAX_BURST)
-                    _write_stimulus(burst, PULSE_RAMP, path,
-                                    shape=None if shape is None else numpy.array(shape[:]))
+                    coeffs = None if shape is None else numpy.array(shape[:])
+                    if coeffs is not None and not coeffs.any():
+                        coeffs = None   # all-zero = a noise trial in a 'mixed' session
+                    _write_stimulus(burst, PULSE_RAMP, path, shape=coeffs)
                     send_soundfile(osc, path)
                     last_burst = burst
                     last_pulse_at = now
@@ -648,7 +679,8 @@ def play_trial(subject, trial_idx, current_trial, target, distance, pulse_interv
         # settings), so a change here was invisible in analysis.
         "condition": "ar",
         "hrir_name": hrir.name,
-        "stim": STIM,
+        "stim": ((stim_params or {}).get("kind", STIM) if MIXED else STIM),
+        "stim_mode": STIM,
         "stim_settings": dict(STIM_SETTINGS),
         "stim_params": stim_params,                 # this trial's ripple draw (None for noise)
         "feedback_version": FEEDBACK_VERSION,
@@ -779,6 +811,7 @@ def play_session():
                 break  # ESC / window closed -> end session
 
             scores = []
+            kinds = mixed_kinds() if MIXED else None   # balanced per game
             game_timer = 0.0
             game_time_left.value = float(settings["game_time"])
             # Explicit, per-game bookkeeping (recorded on every trial). This
@@ -802,7 +835,11 @@ def play_session():
                                     "sampling uniformly.")
                     set_target(target, settings, hrir)
                 # new source spectrum for this trial, written before the prompt
-                stim_params = new_trial_stimulus(shape_shared) if RIPPLE else None
+                if MIXED:
+                    stim_params = (new_trial_stimulus(shape_shared) if next(kinds) == "ripple"
+                                   else new_noise_trial(shape_shared))
+                else:
+                    stim_params = new_trial_stimulus(shape_shared) if RIPPLE else None
 
                 # show "Press Enter" overlay and wait for user
                 ui_state.value = 1

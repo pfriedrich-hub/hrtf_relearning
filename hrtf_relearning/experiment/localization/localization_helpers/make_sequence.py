@@ -6,19 +6,42 @@ import numpy
 import random
 import logging
 
+# Stimuli interleaved within a block when settings['stim'] == 'mixed'
+# (learning_transfer_mixed, 2026-10-02). Order matters only for the
+# tie-break of odd counts; both appear equally often otherwise.
+MIXED_KINDS = ('ripple', 'noise')
+
+
 def make_sequence(settings, hrir_sources):
     if settings['kind'] == 'standard':
-        return std_targets(settings, hrir_sources)  # play 3 times from each source in the sequence
+        seq = std_targets(settings, hrir_sources)  # play 3 times from each source in the sequence
     elif settings['kind'] == 'sectors':
-        return sector_targets(settings, hrir_sources)
+        seq = sector_targets(settings, hrir_sources)
     elif settings['kind'] == 'columns':
-        return column_targets(settings, hrir_sources)
+        seq = column_targets(settings, hrir_sources)
     elif settings['kind'] == 'midline_filler':
-        return midline_filler_targets(settings, hrir_sources)
+        seq = midline_filler_targets(settings, hrir_sources)
     else:
         raise ValueError(
             f"kind must be 'standard', 'sectors', 'columns' or 'midline_filler', "
             f"got {settings['kind']!r}")
+    if settings.get('stim') == 'mixed' and getattr(seq, 'stim_plan', None) is None:
+        # kinds without a sector structure: balanced over the whole block
+        seq.stim_plan = balanced_labels(len(seq.trials))
+    return seq
+
+
+def balanced_labels(n, kinds=MIXED_KINDS, offset=None):
+    """n stimulus labels, as equal as possible across `kinds`, in random order.
+
+    `offset` picks which kind gets the odd one out (random if None), so that
+    callers balancing many small groups can alternate it.
+    """
+    k = len(kinds)
+    off = numpy.random.randint(k) if offset is None else offset
+    labels = [kinds[(i + off) % k] for i in range(n)]
+    numpy.random.shuffle(labels)
+    return labels
 
 def az_el_distance(p, q):
     """Euclidean distance in az/el with circular azimuth."""
@@ -193,23 +216,43 @@ def sector_targets(settings, hrir_sources):
         el_ok = (src_el >= cel - el_size / 2) & (src_el <= cel + el_size / 2)
         return numpy.where(az_ok & el_ok & keep)[0]
 
+    # MIXED STIMULI, PAIRED (2026-10-02): with settings['stim'] == 'mixed' and an
+    # even targets_per_sector, each sector gets targets_per_sector/2 unique
+    # sources and every one of them is presented ONCE WITH EACH stimulus, so the
+    # ripple and noise trials of a block have identical target positions and the
+    # stimulus contrast is not confounded with where the targets fell. It also
+    # makes 4 per sector possible at all: the innermost 7-deg column of the
+    # 475-direction grid has only 3-4 sources once the midline is dropped.
+    # min_distance still separates successive trials, so a source never repeats
+    # back to back.
+    mixed = settings.get('stim') == 'mixed'
+    paired = mixed and settings.get('paired_stim', True) and n_per_sector % 2 == 0
+    n_unique = n_per_sector // 2 if paired else n_per_sector
+
     sector_samples = []
+    sample_labels = []
     used = set()
 
-    for caz, cel in sector_centers:
+    for s_i, (caz, cel) in enumerate(sector_centers):
         idx = sources_in_sector(caz, cel)
-        if len(idx) < n_per_sector and not replace:
+        if len(idx) < n_unique and not replace:
             raise ValueError(f"Not enough sources in sector ({caz},{cel})")
 
         picks = []
-        for _ in range(n_per_sector):
+        for _ in range(n_unique):
             cand = idx if replace else [i for i in idx if i not in used]
             if not cand:
                 raise ValueError("Global uniqueness violated")
             p = int(numpy.random.choice(cand))
             picks.append(p)
             used.add(p)
-        sector_samples.extend(picks)
+        if paired:
+            sector_samples.extend(picks + picks)
+            sample_labels.extend([MIXED_KINDS[0]] * len(picks) + [MIXED_KINDS[1]] * len(picks))
+        else:
+            sector_samples.extend(picks)
+            if mixed:   # unpaired: balanced within sector, odd one alternates
+                sample_labels.extend(balanced_labels(len(picks), offset=s_i % len(MIXED_KINDS)))
 
     # --- build point list ---
     points = numpy.column_stack([src_az[sector_samples], src_el[sector_samples]])
@@ -237,6 +280,7 @@ def sector_targets(settings, hrir_sources):
 
     order = order_with_min_distance(points)
     points = points[order]
+    stim_plan = [sample_labels[i] for i in order] if mixed else None
 
     # --- formatting ---
     points = numpy.round(points, 2)
@@ -245,6 +289,9 @@ def sector_targets(settings, hrir_sources):
     seq.trials = numpy.arange(1, len(points) + 1)
     seq.settings = settings
     seq.settings['sector_centers'] = sector_centers
+    if mixed:
+        seq.stim_plan = stim_plan          # per trial, in presentation order
+        seq.settings['paired_stim'] = paired
     return seq
 
 def std_targets(settings, hrir_sources, max_tries=1000):

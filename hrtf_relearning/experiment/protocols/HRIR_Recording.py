@@ -16,6 +16,7 @@ Steps:
     4. Dome localization          (real speakers, vertical midline)
     4b. Dome training             (only if step 4 is at floor)                 [optional]
     5. Virtual localization       (pybinsim, same locations, independent randomisation)
+    5c. Native left/right swap    (pybinsim, own HRTF with the ears exchanged, midline)
 """
 
 # %% imports and config ------------------------------------------------------
@@ -138,6 +139,23 @@ ar_loc = Localization(subject, dt990_hrir_settings, ar_loc_settings)
 if not set_windows_volume(OS_VOLUME):
     print(f'  [!] OS volume NOT set programmatically -- set the slider to {OS_VOLUME}%')
 ar_loc.run()
+
+# %% step 5c: virtual localization -- native LEFT/RIGHT SWAP (DT990, midline) -----
+# Same block as step 5b (same midline grid, stimulus, gain, headphone filter),
+# but with the participant's own HRTF ears EXCHANGED: hrtf.processing.mirror
+# swaps the channels and mirrors azimuth, so on the midline each ear simply
+# hears the OTHER ear's DTF at the same elevation. The drop from 5b to 5c says
+# how ear-specific the participant's own spectral cues are -- how much "transfer"
+# the native system already has before any training. Run directly after 5b.
+# Analysis: 'Claude outputs/friday_2026-10-02/scripts/native_swap.py' pairs it
+# with the acoustic left-vs-right detail similarity of this participant's SOFA.
+# Run label: <SUBJECT_ID>_mirrored.
+logging.info('--- Step 5c: HP localization, native L/R swap (DT990) ---')
+swap_hrir_settings = dict(dt990_hrir_settings, mirror=True)
+swap_loc = Localization(subject, swap_hrir_settings, dict(ar_loc_settings))
+if not set_windows_volume(OS_VOLUME):
+    print(f'  [!] OS volume NOT set programmatically -- set the slider to {OS_VOLUME}%')
+swap_loc.run()
 
 # %% helper: acoustic_test (run this cell before the Step 3 cell below) ---------
 def acoustic_test(hrir, hp_filter, subject_id, hp_id, *, equalize_dome,

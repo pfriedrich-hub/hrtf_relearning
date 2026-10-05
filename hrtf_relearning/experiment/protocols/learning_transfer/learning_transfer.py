@@ -75,7 +75,7 @@ EDIT THE CONFIG BLOCK BELOW PER PARTICIPANT.
 ------------------------------------------------------------------------------
 """
 
-SUBJECT_ID = ("PA"
+SUBJECT_ID = ("TE"
               )
 
 # %% imports and config #------------------------------------------------------

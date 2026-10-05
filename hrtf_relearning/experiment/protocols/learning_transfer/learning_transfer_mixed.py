@@ -109,7 +109,7 @@ EDIT THE CONFIG BLOCK BELOW PER PARTICIPANT.
 ------------------------------------------------------------------------------
 """
 
-SUBJECT_ID = ("NEW")   # put this id into an open row of learning_transfer_block_order.csv
+SUBJECT_ID = ("TE")   # put this id into an open row of learning_transfer_block_order.csv
 
 # %% imports and config #------------------------------------------------------
 import datetime  # timestamp on the persisted day-1 screen (screen_donors)

@@ -117,7 +117,7 @@ STIM_SETTINGS = {'rms_tilt': 3}        # empty = inherit localization_helpers.st
 logging.info('--- Step 4: Dome localization ---')
 dome_loc = LocalizationDome(subject, {'targets_per_speaker': 3, 'min_distance': 15,
     'stim': STIM, 'stim_settings': STIM_SETTINGS})
-dome_loc.run()
+dome_loc.run(n_runs=3)
 
 # %% step 4b: OPTIONAL dome training -- only if step 4 is at floor ---------------
 # TRAINING_STIM: 'ripple' = one new source spectrum per trial (as in

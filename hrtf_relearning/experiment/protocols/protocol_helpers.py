@@ -41,6 +41,67 @@ GENDER_CODES = {'f': 'female', 'm': 'male', 'd': 'diverse',
 AGE_RANGE = (16, 100)
 
 
+
+def review_block(new_figs, label=''):
+    """Show a just-finished block's figures and wait for a decision.
+
+    Figures made inside a cell loop are only drawn when the console gets its
+    prompt back, so between blocks of a loop they open as blank windows and
+    all appear at the end. This pumps the GUI event loop until a key is pressed
+    in one of the windows, so the figures are live (zoom, pan) while waiting:
+
+        n / space / enter   continue with the next block      -> returns True
+        q / escape          stop the loop here                -> returns False
+
+    Closing all of the block's windows counts as "continue". Without usable
+    windows (headless backend, or the Tk fallback to Agg after a failed figure)
+    it falls back to a console prompt.
+    """
+    import matplotlib
+    import matplotlib.pyplot as plt
+
+    figs = [plt.figure(n) for n in new_figs if plt.fignum_exists(n)]
+    interactive = matplotlib.get_backend().lower() not in ('agg', 'pdf', 'svg',
+                                                           'ps', 'cairo')
+    if not figs or not interactive:
+        ans = input(f"{label}: Enter = next block, q = stop: ").strip().lower()
+        return ans not in ('q', 'quit', 'stop')
+
+    decision = {'go_on': True}
+    hint = f"{label}  —  [n] next   [q] stop" if label else "[n] next   [q] stop"
+    loop_canvas = figs[-1].canvas
+
+    def on_key(event):
+        if event.key in ('n', ' ', 'enter', 'q', 'escape'):
+            decision['go_on'] = event.key not in ('q', 'escape')
+            loop_canvas.stop_event_loop()
+
+    def on_close(event):
+        if not any(plt.fignum_exists(f.number) for f in figs):
+            loop_canvas.stop_event_loop()
+
+    cids = []
+    for fig in figs:
+        try:
+            fig.canvas.manager.set_window_title(hint)
+        except Exception:
+            pass
+        cids.append((fig, fig.canvas.mpl_connect('key_press_event', on_key)))
+        cids.append((fig, fig.canvas.mpl_connect('close_event', on_close)))
+    print(f"\n>>> {hint}   (key press in the plot window)")
+    plt.show(block=False)
+    for fig in figs:
+        fig.canvas.draw_idle()
+    try:
+        loop_canvas.start_event_loop(timeout=-1)
+    finally:
+        for fig, cid in cids:
+            try:
+                fig.canvas.mpl_disconnect(cid)
+            except Exception:
+                pass
+    return decision['go_on']
+
 def collect_demographics(subject, force=False, age_range=AGE_RANGE):
     """Ask for age and gender once per participant and store them on the pkl.
 

@@ -38,6 +38,7 @@ ROOT = hrtf_relearning.PATH
 # from the HRIR in its __init__; the dome has no HRIR to take it from, so it is
 # pinned here.
 SAMPLERATE = 48828
+BEEP_LEVEL = 70  # dB, start beep -- same level as the dome training SFX
 slab.set_default_samplerate(SAMPLERATE)
 
 
@@ -77,18 +78,24 @@ class LocalizationDome:
 
     def __init__(self, subject, loc_settings=None):
         self.subject = subject
-        date = datetime.datetime.now().strftime('%d.%m_%H-%M')
-        self.filename = f"{subject.id}_{date}_dome"
-
         if loc_settings is None:
             loc_settings = {
                 'targets_per_speaker': 3,
                 'min_distance': 15,
             }
+        self.loc_settings = loc_settings
         self.stim_type = loc_settings.get('stim', 'noise')
         self.stim_settings = loc_settings.get('stim_settings', {}) or {}
         # see SAMPLERATE -- must happen before any stimulus is synthesised
         slab.set_default_samplerate(loc_settings.get('samplerate', SAMPLERATE))
+        self.sequences = []  # one entry per completed run of run()
+        self.target = None
+        self._new_block()
+
+    def _new_block(self):
+        """Fresh sequence + timestamped filename for one run (block)."""
+        date = datetime.datetime.now().strftime('%d.%m_%H-%M')
+        self.filename = f"{self.subject.id}_{date}_dome"
 
         # Vertical midline speaker positions (hardcoded to match dome layout)
         midline = numpy.array([[  0. , -37.5],
@@ -98,7 +105,7 @@ class LocalizationDome:
                                [  0. ,  12.5],
                                [  0. ,  25. ],
                                [  0. ,  37.5]])
-        self.sequence = make_sequence({'kind': 'standard', **loc_settings}, midline)
+        self.sequence = make_sequence({'kind': 'standard', **self.loc_settings}, midline)
         self.sequence.name = self.filename
         self.sequence.label = 'dome'
         # 'noise' | 'ripple', matching Localization_AR. Dome runs recorded before
@@ -110,7 +117,6 @@ class LocalizationDome:
         # 'noise'; for 'ripple' it holds that trial's DCT coefficients, so the
         # source spectrum of every trial is exactly reconstructible.
         self.sequence.stim_params = []
-        self.target = None
 
     def write(self):
         # Gravity-referenced head pitch at every trial's tracker zero, kept
@@ -123,23 +129,37 @@ class LocalizationDome:
         self.subject.localization[self.filename] = self.sequence
         self.subject.write()
 
-    def run(self):
+    def run(self, n_runs=1):
+        """Run the test `n_runs` times back to back.
+
+        Each run is its own block: fresh randomised sequence, own timestamped
+        filename, saved and plotted on completion -- identical to constructing
+        a new LocalizationDome per run. The sensor stays connected throughout;
+        between runs the script waits for Enter so the participant can rest.
+        """
         if freefield.PROCESSORS.mode != 'play_rec':
             freefield.initialize('dome', default='play_rec', sensor_tracking=False)
         self.motion_sensor = self._init_sensor()
 
         try:
-            for self.target in self.sequence:
-                self.wait_for_enter('Look at the center and press Enter...')
-                self.motion_sensor.calibrate()
-                self.play_trial()
+            for run_i in range(n_runs):
+                if run_i > 0:
+                    self.wait_for_enter(f'Run {run_i + 1}/{n_runs} -- press Enter to start...')
+                    self._new_block()
+                logging.info(f'Dome localization run {run_i + 1}/{n_runs}: {self.filename}')
+                self.play_beep()  # start signal, as in the AR test
+                for self.target in self.sequence:
+                    self.wait_for_enter('Look at the center and press Enter...')
+                    self.motion_sensor.calibrate()
+                    self.play_trial()
 
-            self.subject.last_sequence = self.sequence
-            self.write()
-            logging.info('Dome localization complete.')
-            plot_dir = paths.subject_plot_dir(self.subject.id)
-            plot_elevation_response(self.sequence, filepath=plot_dir)
-            plot_localization(self.sequence, report_stats=['elevation'], filepath=plot_dir)
+                self.subject.last_sequence = self.sequence
+                self.write()
+                self.sequences.append(self.sequence)
+                logging.info(f'Dome localization run {run_i + 1}/{n_runs} complete.')
+                plot_dir = paths.subject_plot_dir(self.subject.id)
+                plot_elevation_response(self.sequence, filepath=plot_dir)
+                plot_localization(self.sequence, report_stats=['elevation'], filepath=plot_dir)
         finally:
             self.motion_sensor.halt()
 
@@ -158,6 +178,25 @@ class LocalizationDome:
         logging.info(f'{progress:.1f}% | Target: {self.target} | Response: {response}')
         self.sequence.add_response(numpy.array((response, self.target)))
         self.write()
+
+    @staticmethod
+    def play_beep(level=BEEP_LEVEL):
+        """Start beep from the frontal midline speaker (0, 0), like the AR test.
+
+        Mixed down to mono (the dome buffer is a single channel) and resampled
+        to the processor rate.
+        """
+        logging.info('Playing beep sound')
+        beep = slab.Sound(paths.SOUNDS_DIR / 'beep.wav')
+        if beep.n_channels > 1:
+            beep = slab.Sound(beep.data.mean(axis=1), samplerate=beep.samplerate)
+        if beep.samplerate != SAMPLERATE:
+            beep = beep.resample(SAMPLERATE)
+        beep.level = level
+        speaker = freefield.pick_speakers((0.0, 0.0))[0]
+        freefield.set_signal_and_speaker(signal=beep, speaker=speaker.index, equalize=True)
+        freefield.play()
+        freefield.wait_to_finish_playing()
 
     @staticmethod
     def _legacy_burst_train_level(level=85):

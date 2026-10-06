@@ -92,7 +92,7 @@ from hrtf_relearning.experiment.localization.Localization_AR import Localization
 from hrtf_relearning.hrtf.analysis import donor_selection as selection
 from hrtf_relearning.experiment.protocols.protocol_helpers import (
     collect_demographics, collect_externalization_rating, externalization_check,
-    externalization_ladder)
+    externalization_ladder, review_block)
 from hrtf_relearning.experiment.misc.system_volume import set_windows_volume
 from hrtf_relearning.experiment.protocols.learning_transfer.donor_modification import DonorModification
 from hrtf_relearning.experiment.protocols.learning_transfer import donor_screening
@@ -396,7 +396,8 @@ def screen_loc_settings():
     return settings
 
 
-def screen_donors(subject, native, n=SCREEN_N, shuffle=True, ranks=None):
+def screen_donors(subject, native, n=SCREEN_N, shuffle=True, ranks=None,
+                  review=True):
     """Run one short binaural block per staged donor and apply the gates.
 
     `ranks` screens specific shortlist ranks instead of the first `n`, e.g.
@@ -417,6 +418,12 @@ def screen_donors(subject, native, n=SCREEN_N, shuffle=True, ranks=None):
     it is reproducible and reportable) because the screen is itself donor
     exposure: with a fixed order the rank-0 donor would always be heard first.
     The REPORT is in rank order regardless.
+
+    `review=True` pauses after every donor with that block's plots on screen:
+    press n in the plot window for the next donor, q to stop the screen there
+    (e.g. a suitable donor is already found). A stopped screen is measured,
+    reported and persisted for the donors that ran; the rest stay unscreened,
+    so screen_more() picks them up later. `review=False` runs straight through.
 
     Returns the measured rows. NOTHING is selected: read the table and call
     use_donor(donor_id=..., donor_ear=..., reason=...) yourself. See
@@ -464,8 +471,9 @@ def screen_donors(subject, native, n=SCREEN_N, shuffle=True, ranks=None):
           f"(resolves {donor_screening.resolution(n_trials)['pe']:.1f} deg of "
           f"polar error — enough to reject, not to rank)")
 
+    import matplotlib.pyplot as plt
     measured = {}
-    for row in order:
+    for i_row, row in enumerate(order):
         print("\n" + "=" * 70)
         ear = row.get("donor_ear")
         print(f"SCREEN: {_label(row)}  (shortlist rank {row['rank']}) — "
@@ -475,9 +483,21 @@ def screen_donors(subject, native, n=SCREEN_N, shuffle=True, ranks=None):
         test = Localization(subject,
                             donor.screen_settings(row["donor"], donor_ear=ear),
                             loc_settings=screen_loc_settings())
+        figs_before = set(plt.get_fignums())
         test.run()
         measured[_key(row)] = block_summary(test.sequence)
         print(f"Done: {test.filename}")
+        m = measured[_key(row)]
+        print(f"  PE {m['polar_error']:.1f} deg   EG {m['elevation_gain']:.2f}   "
+              f"az gain {m['azimuth_gain']:.2f}   (n={m['n']})")
+        if review and i_row < len(order) - 1:
+            new_figs = sorted(set(plt.get_fignums()) - figs_before)
+            if not review_block(new_figs, label=f"screen {_label(row)} "
+                                f"({i_row + 1}/{len(order)})"):
+                skipped = [_label(r) for r in order[i_row + 1:]]
+                print(f"screen stopped by experimenter; not run: "
+                      f"{', '.join(skipped)}")
+                break
 
     def as_row(row):
         m = measured[_key(row)]
@@ -489,7 +509,8 @@ def screen_donors(subject, native, n=SCREEN_N, shuffle=True, ranks=None):
     ref = block_summary(native.sequence)
     reference = dict(pe=ref["polar_error"], eg=ref["elevation_gain"],
                      az_rmse=ref["azimuth_rmse"], n=ref["n"])
-    fresh = donor_screening.measure(reference, [as_row(r) for r in rows])
+    fresh = donor_screening.measure(
+        reference, [as_row(r) for r in rows if _key(r) in measured])
     # MERGE with anything screened earlier in this session so the record holds
     # every candidate ever measured for this subject, keyed on (donor, ear).
     merged = {(r.get("donor"), r.get("donor_ear")): r for r in previous}

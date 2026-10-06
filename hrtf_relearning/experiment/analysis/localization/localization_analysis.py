@@ -677,6 +677,14 @@ def plot_elevation_response(sequence, axis=None, add_fit=True, filepath=None, n_
     title = (getattr(sequence, 'name', 'Localization')
              + (f"\n{_cond}" if _cond else "")
              + f"\nEG: {eg:.2f}, RMSE={ele_rmse:.1f}°, SD={ele_sd:.1f}°")
+    if _azimuth_span(sequence) <= 2:
+        # Midline test: plot_localization skips the response grid, so the
+        # azimuth error is reported here instead. Bias = mean signed error
+        # (response - target, in the sequence azimuth frame), wrapped to +-180 deg.
+        az_err = (responses[:, 0] - targets[:, 0] + 180) % 360 - 180
+        title += (f"\nAz: bias={numpy.mean(az_err):+.1f}°, "
+                  f"RMSE={numpy.sqrt(numpy.mean(az_err ** 2)):.1f}°, "
+                  f"SD={numpy.std(az_err, ddof=1) if len(az_err) > 1 else numpy.nan:.1f}°")
     axis.set_title(title, fontsize=fs)
 
     # Legend: EG only

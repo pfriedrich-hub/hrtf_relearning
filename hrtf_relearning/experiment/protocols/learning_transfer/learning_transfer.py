@@ -75,11 +75,9 @@ EDIT THE CONFIG BLOCK BELOW PER PARTICIPANT.
 ------------------------------------------------------------------------------
 """
 
-SUBJECT_ID = ("TE"
-              )
+SUBJECT_ID = ("AB")
 
 # %% imports and config #------------------------------------------------------
-import datetime  # timestamp on the persisted day-1 screen (screen_donors)
 import csv  # only for the block-order table below; the modification
             # workflow now lives in donor_modification.py next door
 import json
@@ -92,7 +90,7 @@ from hrtf_relearning.experiment.localization.Localization_AR import Localization
 from hrtf_relearning.hrtf.analysis import donor_selection as selection
 from hrtf_relearning.experiment.protocols.protocol_helpers import (
     collect_demographics, collect_externalization_rating, externalization_check,
-    externalization_ladder, review_block)
+    externalization_ladder)
 from hrtf_relearning.experiment.misc.system_volume import set_windows_volume
 from hrtf_relearning.experiment.protocols.learning_transfer.donor_modification import DonorModification
 from hrtf_relearning.experiment.protocols.learning_transfer import donor_screening
@@ -316,17 +314,11 @@ def donor_shortlist(refresh=False, quiet=False):
 def build_donor_sofa(overwrite=False, show_qc=True, n_keep=None, rank=0,
                      donor_id=None, donor_ear=None, set_active=True,
                      quiet=False, override_reason=None):
-    # Committing a donor without a screen is the failure this guard exists for;
-    # building one WITHOUT making it active (staging, rebuilds, analysis) is
-    # unaffected.
+    # override_reason is accepted so old cells still run; nothing is blocked.
     if set_active:
-        # resolve WHICH donor is about to be committed, so the guard can check
-        # that one was screened rather than just that some screen exists
         row = donor._pick(donor.shortlist(quiet=True), rank=rank,
                           donor_id=donor_id, donor_ear=donor_ear)
-        why = require_screen(hr.Subject(SUBJECT_ID), override_reason,
-                             donor_id=row["donor"], donor_ear=row.get("donor_ear"))
-        print(f"  donor provenance: {why}")
+        _screen_note(row)
     out = donor.build(overwrite=overwrite, show_qc=show_qc, n_keep=n_keep,
                       rank=rank, donor_id=donor_id, donor_ear=donor_ear,
                       set_active=set_active, quiet=quiet)
@@ -334,7 +326,8 @@ def build_donor_sofa(overwrite=False, show_qc=True, n_keep=None, rank=0,
     return out
 
 
-def prepare_donor_shortlist(n=3, mirrored=True, overwrite=False, screen=False):
+def prepare_donor_shortlist(n=None, mirrored=True, overwrite=False, screen=False):
+    n = SCREEN_N if n is None else n
     out = donor.prepare_shortlist(n=n, mirrored=mirrored, overwrite=overwrite,
                                   screen=screen)
     _sync()
@@ -343,10 +336,13 @@ def prepare_donor_shortlist(n=3, mirrored=True, overwrite=False, screen=False):
 
 def use_donor(rank=None, donor_id=None, donor_ear=None, reason="",
               override_reason=None):
+    # Never blocks. A donor with no screen block on file gets a warning and a
+    # note in the reason. override_reason is kept so old cells still run.
     row = donor._pick(donor.shortlist(quiet=True), rank=rank,
                       donor_id=donor_id, donor_ear=donor_ear)
-    require_screen(hr.Subject(SUBJECT_ID), override_reason,
-                   donor_id=row["donor"], donor_ear=row.get("donor_ear"))
+    if override_reason:
+        reason = f"{reason} [override: {override_reason}]".strip()
+    reason = _screen_note(row, reason)
     out = donor.use_donor(rank=rank, donor_id=donor_id, donor_ear=donor_ear,
                           reason=reason)
     _sync()
@@ -379,9 +375,8 @@ SCREEN_TPS = 1
 # externalization. The native anchor still defines the top of the scale.
 RATED_BASELINES = ("A", "D")
 
-SCREEN_N = 3       # candidates, matching prepare_donor_shortlist(n=3).
-                   # Retro-tested pass rate is ~50% per donor, so n=3 finds a
-                   # survivor ~87% of the time and n=5 ~97%.
+SCREEN_N = 6       # donors staged AND screened by default (Paul, 2026-10-06).
+                   # ~3 min and 35 trials of donor exposure each before baseline A.
 
 
 def screen_loc_settings():
@@ -396,212 +391,150 @@ def screen_loc_settings():
     return settings
 
 
-def screen_donors(subject, native, n=SCREEN_N, shuffle=True, ranks=None,
-                  review=True):
-    """Run one short binaural block per staged donor and apply the gates.
+def _settings_of(seq):
+    s = getattr(seq, "settings", None) or {}
+    return s if isinstance(s, dict) else {}
 
-    `ranks` screens specific shortlist ranks instead of the first `n`, e.g.
-    `ranks=range(3, 6)` after the first three were unconvincing. Ranks already
-    screened in this subject's record are skipped, and the new blocks are
-    MERGED into it rather than replacing it, so the record ends up holding
-    every donor ever screened for this subject. `screen_more()` below is the
-    convenience wrapper.
 
-    Screening is itself donor exposure: each extra block is 35 more trials
-    heard before the naive baselines. Two or three extra is cheap; a dozen is
-    not, and at some point the "naive" baseline is no longer naive.
+def load_native(quiet=False):
+    """The day-1 native reference block, read from the subject file.
 
-    `native` is the object `run_phase("native", subject)` returned -- the
-    own-HRTF reference the screen is measured against.
-
-    Presentation order is shuffled (deterministically, from the subject id, so
-    it is reproducible and reportable) because the screen is itself donor
-    exposure: with a fixed order the rank-0 donor would always be heard first.
-    The REPORT is in rank order regardless.
-
-    `review=True` pauses after every donor with that block's plots on screen:
-    press n in the plot window for the next donor, q to stop the screen there
-    (e.g. a suitable donor is already found). A stopped screen is measured,
-    reported and persisted for the donors that ran; the rest stay unscreened,
-    so screen_more() picks them up later. `review=False` runs straight through.
-
-    Returns the measured rows. NOTHING is selected: read the table and call
-    use_donor(donor_id=..., donor_ear=..., reason=...) yourself. See
-    donor_screening.measure for why the gates were removed.
+    Own HRTF, binaural, full field, finished, longer than an anchor (>12
+    trials); the most recent one if there are several. Every localization
+    block is written to disk trial by trial, so this survives console restarts
+    and crashes -- there is no `native` variable to keep alive.
+    Returns the sequence, or None if there is none on file.
     """
-    import random
+    subject = hr.Subject(SUBJECT_ID)
+    hits = [(name, seq) for name, seq in subject.localization.items()
+            if getattr(seq, "hrir", None) == NATIVE_SOFA
+            and getattr(seq, "ear", None) is None
+            and getattr(seq, "finished", False)
+            and tuple(_settings_of(seq).get("azimuth_range") or ()) == tuple(FULL_FIELD)
+            and int(getattr(seq, "n_trials", 0) or 0) > 12]
+    if not hits:
+        return None
+    name, seq = hits[-1]
+    if not quiet:
+        older = f"  ({len(hits) - 1} older ignored)" if len(hits) > 1 else ""
+        print(f"native reference: {name}  (n={seq.n_trials}){older}")
+    return seq
+
+
+def screen_block(donor_id, donor_ear=None, subject=None):
+    """The latest FINISHED screen block for this donor ear, or None.
+
+    Recognised by its composite name (donor.screen_name) and the screen grid
+    (SCREEN_SECTOR_SIZE), so baselines, ladder rungs and half-run blocks never
+    count. This IS the screen record -- nothing else is stored.
+    """
+    subject = subject or hr.Subject(SUBJECT_ID)
+    name = donor.screen_name(donor_id, donor_ear=donor_ear)
+    hits = [seq for seq in subject.localization.values()
+            if getattr(seq, "hrir", None) == name
+            and getattr(seq, "finished", False)
+            and tuple(_settings_of(seq).get("sector_size") or ())
+            == tuple(SCREEN_SECTOR_SIZE)]
+    return hits[-1] if hits else None
+
+
+def _label(row):
+    ear = row.get("donor_ear")
+    return f"{row['donor']}({ear} ear)" if ear else row["donor"]
+
+
+def show_screen():
+    """Print the screen table, computed from the blocks on disk. Run any time.
+
+    One row per shortlist candidate that has a finished screen block, in rank
+    order, measured against the native block on disk. Returns the rows.
+    """
     from hrtf_relearning.experiment.analysis.localization.localization_analysis \
         import block_summary
-
-    all_rows = donor.shortlist(quiet=True)
-    previous = (screen_on_record(subject) or {}).get("rows", [])
-    done = {(r.get("donor"), r.get("donor_ear")) for r in previous}
-    if ranks is not None:
-        wanted = [r for r in all_rows if r["rank"] in set(ranks)]
-    else:
-        wanted = [r for r in all_rows
-                  if (r["donor"], r.get("donor_ear")) not in done][:n]
-    rows = [r for r in wanted if (r["donor"], r.get("donor_ear")) not in done]
+    native = load_native()
+    if native is None:
+        print("no native reference on file -- run the native reference cell")
+        return []
+    ref = block_summary(native)
+    reference = dict(pe=ref["polar_error"], eg=ref["elevation_gain"],
+                     az_rmse=ref["azimuth_rmse"], n=ref["n"])
+    subject = hr.Subject(SUBJECT_ID)
+    rows = []
+    for row in sorted(donor.shortlist(quiet=True), key=lambda r: r["rank"]):
+        seq = screen_block(row["donor"], row.get("donor_ear"), subject)
+        if seq is None:
+            continue
+        m = block_summary(seq)
+        rows.append(dict(donor=row["donor"], donor_ear=row.get("donor_ear"),
+                         rank=row["rank"], n=m["n"],
+                         pe=m["polar_error"], eg=m["elevation_gain"],
+                         az_gain=m["azimuth_gain"], az_rmse=m["azimuth_rmse"]))
     if not rows:
-        print("every requested candidate is already screened for this subject; "
-              "nothing to run. Widen `ranks=` or clear subject.donor_screen.")
-        return previous
+        print("no finished screen blocks on file yet")
+        return []
+    out = donor_screening.measure(reference, rows)
+    donor_screening.report(out, reference)
+    return out
+
+
+def screen_donors(subject=None, native=None, n=SCREEN_N, shuffle=True):
+    """Screen the top `n` shortlist donors, then print the table.
+
+    One short binaural full-field block per donor ear (35 trials). Donors that
+    already have a finished screen block on disk are SKIPPED, so after a crash
+    or console restart just run this again: only what is missing runs. A block
+    interrupted half-way does not count and is run again.
+
+    `subject` and `native` are accepted so old cells still run, and ignored:
+    the subject and the native reference are read from disk.
+
+    Presentation order is shuffled deterministically from the subject id
+    (reproducible, and rank 0 is not always heard first). Nothing is selected:
+    read the table, then use_donor(donor_id=..., donor_ear=..., reason=...).
+    To screen more candidates later: screen_donors(n=8) (stage them first).
+    """
+    import random
+    if load_native(quiet=True) is None:
+        raise RuntimeError("no native reference on file for "
+                           f"{SUBJECT_ID} -- run the native reference cell first")
+    subject = hr.Subject(SUBJECT_ID)
+    candidates = sorted(donor.shortlist(quiet=True), key=lambda r: r["rank"])[:n]
+    todo = [r for r in candidates
+            if screen_block(r["donor"], r.get("donor_ear"), subject) is None]
+    done = [_label(r) for r in candidates if r not in todo]
     if done:
-        print(f"already screened: "
-              f"{', '.join(f'{d}({e})' if e else d for d, e in sorted(done))}")
-    order = list(rows)
+        print(f"already screened (skipped): {', '.join(done)}")
+    if not todo:
+        print("nothing left to screen")
+        return show_screen()
+    order = list(todo)
     if shuffle:
         random.Random(SUBJECT_ID).shuffle(order)
-    # PER-EAR: a donor id is no longer unique in this list -- the same
-    # recording can appear twice, once per ear -- so everything keyed off a
-    # candidate must use (donor, donor_ear). Keying by id alone silently made
-    # the second block overwrite the first.
-    def _key(row):
-        return (row["donor"], row.get("donor_ear"))
-
-    def _label(row):
-        ear = row.get("donor_ear")
-        return f"{row['donor']}({ear} ear)" if ear else row["donor"]
-
-    print(f"\nscreening {len(order)} donor ears, presentation order: "
+    print(f"\nscreening {len(order)} donor ears, order: "
           f"{', '.join(_label(r) for r in order)}")
-    n_trials = (_n_sectors(FULL_FIELD, SCREEN_SECTOR_SIZE[0])
-                * _n_sectors(ELEVATION_RANGE, SCREEN_SECTOR_SIZE[1]) * SCREEN_TPS)
-    print(f"{n_trials} trials each, binaural, full field  "
-          f"(resolves {donor_screening.resolution(n_trials)['pe']:.1f} deg of "
-          f"polar error — enough to reject, not to rank)")
-
-    import matplotlib.pyplot as plt
-    measured = {}
     for i_row, row in enumerate(order):
-        print("\n" + "=" * 70)
         ear = row.get("donor_ear")
-        print(f"SCREEN: {_label(row)}  (shortlist rank {row['rank']}) — "
-              f"{donor.screen_name(row['donor'], donor_ear=ear)}")
+        print("\n" + "=" * 70)
+        print(f"SCREEN {i_row + 1}/{len(order)}: {_label(row)}  (rank {row['rank']}) "
+              f"-- {donor.screen_name(row['donor'], donor_ear=ear)}")
         print("=" * 70)
         _fix_output_level()
         test = Localization(subject,
                             donor.screen_settings(row["donor"], donor_ear=ear),
                             loc_settings=screen_loc_settings())
-        figs_before = set(plt.get_fignums())
-        test.run()
-        measured[_key(row)] = block_summary(test.sequence)
+        test.run()     # writes the subject file trial by trial
         print(f"Done: {test.filename}")
-        m = measured[_key(row)]
-        print(f"  PE {m['polar_error']:.1f} deg   EG {m['elevation_gain']:.2f}   "
-              f"az gain {m['azimuth_gain']:.2f}   (n={m['n']})")
-        if review and i_row < len(order) - 1:
-            new_figs = sorted(set(plt.get_fignums()) - figs_before)
-            if not review_block(new_figs, label=f"screen {_label(row)} "
-                                f"({i_row + 1}/{len(order)})"):
-                skipped = [_label(r) for r in order[i_row + 1:]]
-                print(f"screen stopped by experimenter; not run: "
-                      f"{', '.join(skipped)}")
-                break
-
-    def as_row(row):
-        m = measured[_key(row)]
-        return dict(donor=row["donor"], donor_ear=row.get("donor_ear"),
-                    rank=row["rank"], n=m["n"],
-                    pe=m["polar_error"], eg=m["elevation_gain"],
-                    az_gain=m["azimuth_gain"], az_rmse=m["azimuth_rmse"])
-
-    ref = block_summary(native.sequence)
-    reference = dict(pe=ref["polar_error"], eg=ref["elevation_gain"],
-                     az_rmse=ref["azimuth_rmse"], n=ref["n"])
-    fresh = donor_screening.measure(
-        reference, [as_row(r) for r in rows if _key(r) in measured])
-    # MERGE with anything screened earlier in this session so the record holds
-    # every candidate ever measured for this subject, keyed on (donor, ear).
-    merged = {(r.get("donor"), r.get("donor_ear")): r for r in previous}
-    merged.update({(r.get("donor"), r.get("donor_ear")): r for r in fresh})
-    out = sorted(merged.values(), key=lambda r: r.get("rank", 99))
-    donor_screening.report(out, reference)
-    # Persist it. Without this the screen lives only in the notebook's memory:
-    # a later session cannot tell a screened donor from an unscreened one, and
-    # `require_screen` below has nothing to check. GM ran her whole study on an
-    # unscreened donor because there was no record either way (2026-09-11).
-    subject.donor_screen = {
-        "timestamp": datetime.datetime.now().isoformat(timespec="seconds"),
-        "reference": reference,
-        "rows": out,
-        # no "chosen" any more: the screen measures, use_donor() selects and
-        # records the choice in active_donor. (A leftover `chosen` reference
-        # here raised NameError AFTER the blocks ran, so nothing was persisted
-        # -- LGL, 2026-09-29.)
-        "n_trials": int(fresh[0].get("n", 0)) if fresh else None,
-        "batches": ((screen_on_record(subject) or {}).get("batches", 0)) + 1,
-    }
-    subject.write()
-    return out
+    return show_screen()
 
 
-def screen_more(subject, native, n=2, shuffle=True):
-    """Screen the next `n` unscreened candidates and merge into the record.
-
-    For when the first batch was unconvincing. Staging is the slow part: if a
-    candidate's binaural database was not built by prepare_donor_shortlist it
-    is built here, which costs minutes with the participant in the chair. Stage
-    generously BEFORE the session instead -- prepare_donor_shortlist(n=6,
-    screen=True) is only wall-clock, and unused builds cost nothing but disk
-    (discard_unused clears them afterwards).
-    """
-    return screen_donors(subject, native, n=n, shuffle=shuffle)
-
-
-def screen_on_record(subject):
-    """The stored day-1 screen for this subject, or None."""
-    rec = getattr(subject, "donor_screen", None)
-    return rec or None
-
-
-def require_screen(subject, override_reason=None, donor_id=None, donor_ear=None):
-    """Refuse to commit a donor that was never MEASURED by a screen.
-
-    Since the screen stopped gating (2026-09-28) there is no "passed" state to
-    check, and the choice among measured candidates is the experimenter's. What
-    is still worth refusing is committing a donor nobody ever put in front of
-    the participant -- which is exactly how GM ran a whole study on an
-    unscreened composite. Pass the donor being committed and it is checked
-    against the screen record.
-
-    The screen is a REJECT filter (donor_screening): its whole job is to stop a
-    participant running four days on a composite that abolished their cue, or on
-    one that never bit. Skipping it is silent -- the study runs, the data look
-    normal, and the verdict is only available afterwards, which is exactly how
-    GM ran to completion on a donor that was never screened.
-
-    Pass `override_reason` to proceed deliberately; the text is recorded in
-    `subject.active_donor['reason']`, so a deviation stays reportable instead of
-    becoming invisible.
-    """
-    if override_reason:
-        return f"NO SCREEN -- override: {override_reason}"
-    rec = screen_on_record(subject)
-    if rec is None:
-        raise RuntimeError(
-            f"no day-1 screen on record for {SUBJECT_ID}.\n"
-            f"    Run the SCREEN cell first:  screen_rows = "
-            f"screen_donors(subject, native)\n"
-            f"    To proceed without one, say so explicitly and it goes on the "
-            f"record:\n"
-            f"        build_donor_sofa(override_reason='...')")
-    if donor_id is not None:
-        screened = {(r.get("donor"), r.get("donor_ear")) for r in rec.get("rows", [])}
-        if (donor_id, donor_ear) not in screened:
-            have = ', '.join(sorted(f"{d}({e})" if e else str(d) for d, e in screened))
-            raise RuntimeError(
-                f"{donor_id}"
-                f"{f' ({donor_ear} ear)' if donor_ear else ''} was never screened "
-                f"for {SUBJECT_ID}.\n"
-                f"    screened so far: {have}\n"
-                f"    Screen it first:  screen_rows = screen_donors(subject, "
-                f"native, ranks=[<rank>])\n"
-                f"    To proceed without, say so explicitly and it goes on the "
-                f"record:\n"
-                f"        build_donor_sofa(override_reason='...')")
-    return f"day-1 screen {rec['timestamp']}"
-
+def _screen_note(row, reason=""):
+    """Warn (never block) when committing a donor with no screen block on file,
+    and put that on the record."""
+    if screen_block(row["donor"], row.get("donor_ear")) is not None:
+        return reason
+    print(f"  [!] {_label(row)} has no finished screen block on file for "
+          f"{SUBJECT_ID} -- committing anyway; noted in the reason")
+    return f"{reason} [no screen block on file]".strip()
 
 
 def load_existing_donor():
@@ -805,13 +738,13 @@ def show_status(subject):
           f"{DONOR_ID or '(not selected yet)'}   other ear={OTHER_EAR}")
     print(f"hemifields -> trained {TRAINED_HEMI}, mirrored {MIRRORED_HEMI}")
     print(f"modified SOFA: {MODIFIED_SOFA}    final-day order: {'-'.join(FINAL_ORDER)}")
-    rec = screen_on_record(subject)
-    if rec is None:
-        print("day-1 screen: *** NOT RUN *** -- run the SCREEN cell before "
-              "selecting a donor")
-    else:
-        print(f"day-1 screen: {rec['timestamp']}  chosen={rec.get('chosen', '-')}  "
-              f"(n={rec.get('n_trials')} per donor)")
+    native_seq = load_native(quiet=True)
+    print(f"native reference on file: {'yes' if native_seq is not None else 'NO'}")
+    screened = [_label(r) for r in sorted(donor.shortlist(quiet=True),
+                                          key=lambda r: r["rank"])
+                if screen_block(r["donor"], r.get("donor_ear"), subject) is not None]
+    print(f"day-1 screen on file: {', '.join(screened) if screened else 'none'}"
+          f"   (table: show_screen())")
     done = list(getattr(subject, "localization", {}).keys())
     if done:
         print(f"\nLocalization runs on file for {SUBJECT_ID} ({len(done)}):")
@@ -843,11 +776,14 @@ collect_externalization_rating(native)
 prepare_donor_shortlist(n=6, screen=True)
 
 # %% day 1: SCREEN -- run after the native reference -------------------------
-screen_rows = screen_donors(subject, native)
+# Screens the top SCREEN_N (6) donors. Everything is read from disk: after a
+# crash or console restart just rerun this cell -- donors with a finished
+# screen block are skipped, and `native` is not needed.
+screen_rows = screen_donors()
+# screen_rows = screen_donors(n=8)    # more candidates (stage them first)
 
-# %% day 1: OPTIONAL -- measure more candidates, merged into the record ------
-# screen_rows = screen_more(subject, native, n=3)
-# screen_rows = screen_donors(subject, native, ranks=range(3, 6))
+# %% day 1: screen table again (from disk, any time) -------------------------
+screen_rows = show_screen()
 
 # %% day 1: CHOOSE the donor -- edit both fields, run ONCE -------------------
 # Pick on elevation gain and polar error from the table above. `reason` is the

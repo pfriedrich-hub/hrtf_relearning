@@ -42,7 +42,7 @@ from hrtf_relearning.utils import paths
 from hrtf_relearning.experiment.misc.system_volume import set_windows_volume
 import json
 
-SUBJECT_ID   = 'TE'          # edit per participant
+SUBJECT_ID   = 'AB'          # edit per participant
 REFERENCE_ID = 'ref_31.08'   # fresh id -> step 0b records it; reused id -> loaded
 EQUALIZE_DOME = False        # subject AND reference; they must match. See step 0b.
 HEAD_RADIUS = FALLBACK_RADIUS_M   # fallback if step 0 is skipped -- MUST be
@@ -91,6 +91,7 @@ HEAD_RADIUS = usable_radius(az_fit)
 logging.info('--- Step 1: HRIR recording ---')
 hrir = record_hrir(
     subject_id     = SUBJECT_ID,
+
     reference_id   = REFERENCE_ID,
     n_directions   = N_DIRECTIONS,
     n_recordings   = N_RECORDINGS,

@@ -204,8 +204,11 @@ def measure(reference, candidates):
     Parameters
     ----------
     reference : dict
-        The own-HRTF block, SAME geometry and stimulus as the screens --
-        normally the `native` phase (binaural, full field). Needs ``pe``,
+        The own-HRTF block -- the `native` phase (binaural, full field). Since
+        2026-10-07 the screens play the monaural test condition in the trained
+        hemifield, so this is no longer the same geometry: ``impairment`` and
+        ``eg_retained`` now include the cost of reducing the other ear, not the
+        donor's cost alone. That is the number that predicts baseline A. Needs ``pe``,
         ``eg`` and ``az_rmse``; ``n`` sets the resolution note.
     candidates : list of dict
         One per screened donor, each with ``donor``, ``donor_ear``, ``rank``,
@@ -243,25 +246,30 @@ def report(rows, reference):
     print("\n" + "=" * 78)
     print("DAY-1 DONOR SCREEN — measurement, not a verdict. You choose.")
     print("=" * 78)
-    print(f"own HRTF, same geometry: EG {reference.get('eg', float('nan')):.2f}"
+    print(f"own HRTF (native, binaural full field): EG {reference.get('eg', float('nan')):.2f}"
           f"   PE {reference['pe']:.1f} deg"
           f"   azRMSE {reference['az_rmse']:.1f} deg"
           + (f"   n={reference['n']}" if reference.get("n") else ""))
     print(f"screen blocks n={'/'.join(str(x) for x in ns)}  ->  two candidates "
           f"differ meaningfully only beyond {res['eg']:.2f} gain / "
           f"{res['pe']:.1f} deg polar error.")
+    print("screen blocks = the TEST CONDITION (monaural composite, trained "
+          "hemifield), so kept/impairment\ninclude the reduced other ear -- "
+          "they predict baseline A, not the donor's cost alone.")
     print("Order is donor_selection.shortlist() rank, NOT a ranking by these "
           "numbers.\n")
 
     print(f"{'rank':>4} {'donor':>13} {'ear':>6} {'EG':>14} {'kept':>13} "
-          f"{'PE':>7} {'impairment':>14}")
+          f"{'PE':>7} {'impairment':>14} {'ext':>5}")
     for r in rows:
         kept = (f"{r['eg_retained']*100:4.0f}% ±{r['eg_retained_se']*100:.0f}"
                 if numpy.isfinite(r.get("eg_retained", float("nan"))) else "        —")
+        ext = (f"{r['ext']:g}" if r.get("ext") is not None else "—")
         print(f"{r['rank']:>4} {r['donor']:>13} "
               f"{(r.get('donor_ear') or 'same'):>6} "
               f"{r['eg']:7.2f} ±{r['eg_se']:.2f} {kept:>13} "
-              f"{r['pe']:7.1f} {r['impairment']:+8.1f} ±{r['impairment_se']:.1f}")
+              f"{r['pe']:7.1f} {r['impairment']:+8.1f} ±{r['impairment_se']:.1f}"
+              f" {ext:>5}")
 
     print("\nazimuth — SANITY ONLY. Azimuth is invariant to a spectral "
           "manipulation, so a bad value\nmeans the BLOCK was a write-off "
@@ -272,7 +280,9 @@ def report(rows, reference):
               f"   gain {r['az_gain']:5.2f}   RMSE {r['az_rmse']:5.1f} deg "
               f"(own {reference['az_rmse']:.1f}){flag}")
 
-    print(f"\nreference bands — for orientation, NOTHING here is enforced:")
+    print(f"\nreference bands — for orientation, NOTHING here is enforced. Set on "
+          f"the old BINAURAL\nscreens; monaural values run lower, so they are "
+          f"not directly comparable:")
     print(f"  elevation gain   target ~{EG_TARGET:.2f}, good pairings land "
           f"{EG_TARGET_BAND[0]:.2f}-{EG_TARGET_BAND[1]:.2f}; below {MIN_EG:.2f} "
           f"the cue is effectively gone")
@@ -282,8 +292,10 @@ def report(rows, reference):
           f"of polar error vs own")
     print("\nSelect with:  use_donor(donor_id='XX', donor_ear='left|right', "
           "reason='what you saw')")
+    print("ext = externalization 0-10 (native rating is the top of the scale). "
+          "Missing after a crash:\n  rate_screen_block('XX', 'left|right')")
     print("If nothing looks usable, screen more rather than take the least-bad:"
-          "\n  screen_rows = screen_more(subject, native, n=2)")
+          "\n  screen_rows = screen_donors(n=8)   (stage them first)")
     print("\nNOTE the screen is itself donor exposure. THIS block is the naive "
           "measurement of\nwhichever donor you pick — take the day-1 "
           "impairment from here, not from baseline A.")

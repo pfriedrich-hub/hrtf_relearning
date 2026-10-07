@@ -354,10 +354,13 @@ def use_donor(rank=None, donor_id=None, donor_ear=None, reason="",
 # not rank, and where every threshold comes from.
 # ---------------------------------------------------------------------------
 
-SCREEN_SECTOR_SIZE = (10, 14)   # -> 7 azimuth x 5 elevation sectors over
-                                # FULL_FIELD, i.e. 35 trials at tps=1, ~3 min.
-                                # Coarser in azimuth than the protocol's (7,14)
-                                # ONLY here, to keep the screen short.
+SCREEN_SECTOR_SIZE = (7, 10)    # -> 5 azimuth x 7 elevation sectors over
+                                # TRAINED_HEMI, i.e. 35 trials at tps=1, ~3 min.
+                                # Same azimuth columns as baseline A's (7,14);
+                                # finer in elevation so 35 trials still spread
+                                # over 7 elevation rows for the gain fit.
+                                # (Before 2026-10-07: (10,14) over FULL_FIELD,
+                                # binaural.)
 SCREEN_TPS = 1
 
 # Why 35 and not 50 or 75. The azimuth gate — the only one with a demonstrated
@@ -380,15 +383,31 @@ SCREEN_N = 6       # donors staged AND screened by default (Paul, 2026-10-06).
 
 
 def screen_loc_settings():
-    """Full field, binaural, coarse -- geometrically identical to `native`.
+    """The TEST CONDITION's geometry: trained hemifield, midline excluded.
 
-    That match is the point: the impairment gate is screen PE minus native PE,
-    so the two blocks have to differ ONLY in the HRTF.
+    Changed 2026-10-07 (Paul, after AB lost externalization on the composite he
+    had been screened binaurally on). The screen used to play the binaural
+    composite over the full field so it matched `native` like-for-like; it now
+    plays what baseline A and the daily test play, so the EG, polar error and
+    externalization rating it reports are the ones the participant will
+    actually start from. Only the grid is coarser (35 vs 75 trials).
     """
-    settings = loc_settings(FULL_FIELD)
+    settings = loc_settings(TRAINED_HEMI, exclude_midline=True)
     settings.update(sector_size=SCREEN_SECTOR_SIZE,
                     targets_per_sector=SCREEN_TPS)
     return settings
+
+
+def screen_hrir_settings(donor_id, donor_ear=None):
+    """hrir_settings for one screen block = baseline A's renderer for that donor.
+
+    The monaural composite on TRAINED_EAR with the protocol's OTHER_EAR
+    treatment, un-mirrored. prepare_donor_shortlist() already builds this
+    database for every staged donor, so the binaural `screen=True` builds are
+    no longer needed.
+    """
+    return hrir_settings(donor.modified_name(donor_id, donor_ear=donor_ear),
+                         ear=TRAINED_EAR)
 
 
 def _settings_of(seq):
@@ -424,18 +443,45 @@ def load_native(quiet=False):
 def screen_block(donor_id, donor_ear=None, subject=None):
     """The latest FINISHED screen block for this donor ear, or None.
 
-    Recognised by its composite name (donor.screen_name) and the screen grid
-    (SCREEN_SECTOR_SIZE), so baselines, ladder rungs and half-run blocks never
-    count. This IS the screen record -- nothing else is stored.
+    Recognised by the tag screen_donors() puts on the sequence
+    (seq.phase == "screen", seq.screen_donor), NOT by the HRIR name: the screen
+    now plays the same composite as baseline A, so the name alone cannot tell
+    them apart. Half-run blocks never count. This IS the screen record --
+    nothing else is stored.
+
+    Binaural screen blocks from before 2026-10-07 carry no tag and are not
+    found here; they stay on disk untouched.
     """
     subject = subject or hr.Subject(SUBJECT_ID)
-    name = donor.screen_name(donor_id, donor_ear=donor_ear)
+    want = dict(donor=donor_id, donor_ear=donor_ear)
     hits = [seq for seq in subject.localization.values()
-            if getattr(seq, "hrir", None) == name
-            and getattr(seq, "finished", False)
-            and tuple(_settings_of(seq).get("sector_size") or ())
-            == tuple(SCREEN_SECTOR_SIZE)]
+            if getattr(seq, "phase", None) == "screen"
+            and getattr(seq, "screen_donor", None) == want
+            and getattr(seq, "finished", False)]
     return hits[-1] if hits else None
+
+
+def rate_screen_block(donor_id, donor_ear=None):
+    """Add or redo the externalization rating of a finished screen block.
+
+    For the case where the console died between the end of a block and its
+    rating. Asks the same 0-10 question and stores it on that block.
+    """
+    subject = hr.Subject(SUBJECT_ID)
+    seq = screen_block(donor_id, donor_ear, subject)
+    if seq is None:
+        print(f"no finished screen block on file for {donor_id} ({donor_ear})")
+        return None
+    raw = None
+    while raw is None:
+        try:
+            raw = float(input(f"Externalization for {seq.name} (0-10): ").strip())
+        except ValueError:
+            print("Please enter a number 0-10.")
+    subject.localization[seq.name].externalization_rating = raw
+    subject.write()
+    print(f"Recorded: externalization={raw} on {seq.name}")
+    return raw
 
 
 def _label(row):
@@ -468,7 +514,8 @@ def show_screen():
         rows.append(dict(donor=row["donor"], donor_ear=row.get("donor_ear"),
                          rank=row["rank"], n=m["n"],
                          pe=m["polar_error"], eg=m["elevation_gain"],
-                         az_gain=m["azimuth_gain"], az_rmse=m["azimuth_rmse"]))
+                         az_gain=m["azimuth_gain"], az_rmse=m["azimuth_rmse"],
+                         ext=getattr(seq, "externalization_rating", None)))
     if not rows:
         print("no finished screen blocks on file yet")
         return []
@@ -480,7 +527,9 @@ def show_screen():
 def screen_donors(subject=None, native=None, n=SCREEN_N, shuffle=True):
     """Screen the top `n` shortlist donors, then print the table.
 
-    One short binaural full-field block per donor ear (35 trials). Donors that
+    One block per donor ear in the TEST CONDITION -- monaural composite,
+    trained hemifield (35 trials) -- followed by the 0-10 externalization
+    rating. Donors that
     already have a finished screen block on disk are SKIPPED, so after a crash
     or console restart just run this again: only what is missing runs. A block
     interrupted half-way does not count and is run again.
@@ -516,14 +565,20 @@ def screen_donors(subject=None, native=None, n=SCREEN_N, shuffle=True):
         ear = row.get("donor_ear")
         print("\n" + "=" * 70)
         print(f"SCREEN {i_row + 1}/{len(order)}: {_label(row)}  (rank {row['rank']}) "
-              f"-- {donor.screen_name(row['donor'], donor_ear=ear)}")
+              f"-- {donor.modified_name(row['donor'], donor_ear=ear)} "
+              f"on the {TRAINED_EAR} ear, {TRAINED_HEMI}")
         print("=" * 70)
         _fix_output_level()
         test = Localization(subject,
-                            donor.screen_settings(row["donor"], donor_ear=ear),
+                            screen_hrir_settings(row["donor"], donor_ear=ear),
                             loc_settings=screen_loc_settings())
+        # the tag is what screen_block() and the analysis filter read: this
+        # block has the same HRIR, ear and hemifield as baseline A
+        test.sequence.phase = "screen"
+        test.sequence.screen_donor = dict(donor=row["donor"], donor_ear=ear)
         test.run()     # writes the subject file trial by trial
         print(f"Done: {test.filename}")
+        collect_externalization_rating(test)
     return show_screen()
 
 
@@ -773,7 +828,7 @@ collect_externalization_rating(native)
 
 
 # %% BEFORE THE SESSION: stage donors (minutes per donor -- nobody in the rig)
-prepare_donor_shortlist(n=6, screen=True)
+prepare_donor_shortlist(n=6)    # screen=True (binaural builds) no longer needed
 
 # %% day 1: SCREEN -- run after the native reference -------------------------
 # Screens the top SCREEN_N (6) donors. Everything is read from disk: after a
@@ -781,6 +836,7 @@ prepare_donor_shortlist(n=6, screen=True)
 # screen block are skipped, and `native` is not needed.
 screen_rows = screen_donors()
 # screen_rows = screen_donors(n=8)    # more candidates (stage them first)
+# rate_screen_block("GM", "right")     # rating lost to a crash after the block
 
 # %% day 1: screen table again (from disk, any time) -------------------------
 screen_rows = show_screen()

@@ -8,13 +8,13 @@ reasoning only.
 ## Native reference
 The first anchor. This is the best the chain can sound, so its externalization
 rating defines the top of the 0–10 scale for everything after it. Also the
-own-HRTF block every screen is measured against, so it must share geometry and
-stimulus with them.
+own-HRTF block every screen is measured against. Since 2026-10-07 it no longer
+shares their geometry (see Screening), only their stimulus.
 
 ## Staging — before the session
-`prepare_donor_shortlist(n, screen=True)` builds the top-n composites, their
-pyBinSim databases (mirrored and un-mirrored) and the binaural database each
-screen block plays. Run it with nobody in the rig: `write_filters` passes over
+`prepare_donor_shortlist(n)` builds the top-n composites and their pyBinSim
+databases (mirrored and un-mirrored). The un-mirrored one is what the screen
+plays, so `screen=True` (the old binaural screen databases) is no longer needed. Run it with nobody in the rig: `write_filters` passes over
 all 475 directions, so it is minutes per donor. Rank 0 is left active.
 
 n=3 is the minimum. n=5–6 costs only wall-clock and means `screen_more()` never
@@ -22,15 +22,32 @@ has to build filters with the participant waiting. Unused builds cost disk
 only; `discard_unused()` clears them.
 
 ## Screening
-One 35-trial binaural full-field block per candidate, ~3 min each, scored
-against the native block. It MEASURES — it does not gate and does not choose
+One 35-trial block per candidate in the TEST CONDITION — the monaural composite
+on the trained ear, trained hemifield, midline excluded, i.e. baseline A's
+renderer on a coarser grid (7x10 sectors) — ~3 min each, followed by the 0–10
+externalization rating, and scored against the native block.
+
+Changed 2026-10-07 (Paul): AB was screened on the binaural composite and then
+lost externalization in the monaural condition. The binaural screen measured
+the donor's cost alone, like-for-like with native; the monaural one measures
+what the participant will actually start from, including the reduced other
+ear, and catches an externalization collapse before four days are committed.
+Consequence: kept-% and impairment now run lower/higher than the binaural
+values in the table below, so that table and the reference bands are for
+orientation only. A midline column was considered and dropped — split from the
+hemifield at 35 trials, each half would carry EG SE ~0.2.
+
+Screen blocks are tagged `phase="screen"` / `screen_donor` on the sequence;
+`screen_block()` finds them by that tag, and `elevation_learning._is_analysable`
+drops them so they never enter the learning curve as an extra day-1 A test.
+A rating lost to a crash: `rate_screen_block(donor, ear)`. It MEASURES — it does not gate and does not choose
 (simplified 2026-09-28; see `donor_screening.measure` for why). Read elevation
 gain and polar error off the table and pick.
 
 The screen is itself donor exposure. Take the day-1 impairment for the chosen
 donor from ITS screen block, and report baseline A as post-screen.
 
-Retro-test on every screen run before the gates were removed, with elevation
+Retro-test (BINAURAL screens) on every screen run before the gates were removed, with elevation
 gain leading — kept because it shows what the numbers look like in practice:
 
 | subject | donor | reading |
@@ -46,7 +63,7 @@ gain leading — kept because it shows what the numbers look like in practice:
 AS/GS is the case an absolute EG threshold cannot catch and the RATIO can.
 
 ### Screening more
-`screen_more(subject, native, n=2)` measures the next unscreened candidates and
+`screen_donors(n=8)` (stage them first) measures the next unscreened candidates and
 MERGES them into the record — earlier blocks are kept, keyed on (donor, ear).
 Each extra block is 35 more trials of exposure before the naive baselines. Two
 or three is cheap; past that the "naive" baseline is drifting and that belongs

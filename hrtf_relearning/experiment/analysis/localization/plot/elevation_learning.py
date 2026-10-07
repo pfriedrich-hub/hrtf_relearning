@@ -505,6 +505,11 @@ def _is_analysable(seq):
     """
     if not bool(getattr(seq, "finished", False)):
         return False
+    # Day-1 donor screen blocks (learning_transfer, since 2026-10-07) play the
+    # same composite, ear and hemifield as baseline A -- without this they
+    # would land on the learning curve as an extra day-1 A test.
+    if getattr(seq, "phase", None) == "screen":
+        return False
     data = getattr(seq, "data", None)
     if not data:
         return False

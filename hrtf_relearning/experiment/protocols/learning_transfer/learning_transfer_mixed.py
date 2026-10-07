@@ -435,7 +435,7 @@ def _settings_of(seq):
     return s if isinstance(s, dict) else {}
 
 
-def load_native(quiet=False):
+def load_native(quiet=False, subject=None):
     """The day-1 native reference block, read from the subject file.
 
     Own HRTF, binaural, full field, finished, longer than an anchor (>12
@@ -444,7 +444,7 @@ def load_native(quiet=False):
     and crashes -- there is no `native` variable to keep alive.
     Returns the sequence, or None if there is none on file.
     """
-    subject = hr.Subject(SUBJECT_ID)
+    subject = subject or hr.Subject(SUBJECT_ID)
     hits = [(name, seq) for name, seq in subject.localization.items()
             if getattr(seq, "hrir", None) == NATIVE_SOFA
             and getattr(seq, "ear", None) is None
@@ -800,11 +800,18 @@ def show_status(subject):
           f"{DONOR_ID or '(not selected yet)'}   other ear={OTHER_EAR}")
     print(f"hemifields -> trained {TRAINED_HEMI}, mirrored {MIRRORED_HEMI}")
     print(f"modified SOFA: {MODIFIED_SOFA}    final-day order: {'-'.join(FINAL_ORDER)}")
-    native_seq = load_native(quiet=True)
+    native_seq = load_native(quiet=True, subject=subject)
     print(f"native reference on file: {'yes' if native_seq is not None else 'NO'}")
-    screened = [_label(r) for r in sorted(donor.shortlist(quiet=True),
-                                          key=lambda r: r["rank"])
-                if screen_block(r["donor"], r.get("donor_ear"), subject) is not None]
+    # Read straight off the subject file -- NOT via donor.shortlist(), which
+    # scores the whole pool (~20 s) whenever the config cell has been rerun.
+    # Same recognition rule as screen_block(): finished, composite name, screen grid.
+    prefix = f"{SUBJECT_ID}_donor_"
+    screened = sorted({seq.hrir[len(prefix):]
+                       for seq in subject.localization.values()
+                       if str(getattr(seq, "hrir", "")).startswith(prefix)
+                       and getattr(seq, "finished", False)
+                       and tuple(_settings_of(seq).get("sector_size") or ())
+                       == tuple(SCREEN_SECTOR_SIZE)})
     print(f"day-1 screen on file: {', '.join(screened) if screened else 'none'}"
           f"   (table: show_screen())")
     done = list(getattr(subject, "localization", {}).keys())

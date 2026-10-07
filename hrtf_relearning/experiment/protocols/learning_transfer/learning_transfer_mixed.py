@@ -752,6 +752,7 @@ def run_phase(key, subject, other_ear=None):
     test = Localization(subject,
                         hrir_settings(sofa, ear=ear, mirror=mirror, other_ear=other_ear),
                         loc_settings=settings)
+    test.sequence.phase = key     # -> test name in the plot file (native, day1-A, daily, final-D)
     test.run()
     print(f"Done: {test.filename}")
     return test

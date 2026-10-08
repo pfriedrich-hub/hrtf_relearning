@@ -109,7 +109,7 @@ EDIT THE CONFIG BLOCK BELOW PER PARTICIPANT.
 ------------------------------------------------------------------------------
 """
 
-SUBJECT_ID = ("TE")   # put this id into an open row of learning_transfer_block_order.csv
+SUBJECT_ID = ("AB")   # put this id into an open row of learning_transfer_block_order.csv
 
 # %% imports and config #------------------------------------------------------
 import csv  # only for the block-order table below; the modification
@@ -888,7 +888,6 @@ show_status(subject)
 # %% day 1: native reference (original HRIR, full field) ---------------------
 native = run_phase("native", subject)
 collect_externalization_rating(native)
-
 
 # %% BEFORE THE SESSION: stage donors (minutes per donor -- nobody in the rig)
 prepare_donor_shortlist(n=6)    # screen=True (binaural builds) no longer needed

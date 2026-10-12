@@ -141,7 +141,7 @@ def find_last_matching_sequence(subject, settings, min_overlap=0.5):
     return None
 
 "5) New set_target that uses response_errors from target_p(...)"
-def set_target_probabilistic(target, settings, sequence, hrir, max_sector_hops=10):
+def set_target_probabilistic(target, settings, sequence, hrir, max_sector_hops=10, note=None):
     """
     Pick next target using per-sector probabilities (response_errors[:,3]),
     constrained by training az/el ranges and min distance to the previous target.
@@ -214,8 +214,9 @@ def set_target_probabilistic(target, settings, sequence, hrir, max_sector_hops=1
         if picked is not None:
             # success
             target[:] = picked  # already (-180,180] az; el linear
-            logging.info("Set Target (prob) to [%.1f, %.1f] in sector (%.1f, %.1f)",
-                         picked[0], picked[1], sector_centers[s,0], sector_centers[s,1])
+            logging.info("Set Target (prob) to [%.1f, %.1f] in sector (%.1f, %.1f)%s",
+                         picked[0], picked[1], sector_centers[s,0], sector_centers[s,1],
+                         f"  | stim: {note}" if note else "")
             return
 
         # soft backoff: temporarily zero out this sector prob and renormalize
@@ -236,14 +237,15 @@ def set_target_probabilistic(target, settings, sequence, hrir, max_sector_hops=1
             continue
         if prev is None or _az_el_distance_deg(prev, (az, el)) >= min_dist:
             target[:] = (float(az), float(el))
-            logging.info("Fallback Set Target to [%.1f, %.1f]", az, el)
+            logging.info("Fallback Set Target to [%.1f, %.1f]%s", az, el,
+                         f"  | stim: {note}" if note else "")
             return
 
     # Last resort: keep previous target (should be extremely rare)
     logging.error("No valid target found given min_dist; keeping previous target.")
 
 """ Fallback if no sequence exists """
-def set_target(target, settings, hrir):
+def set_target(target, settings, hrir, note=None):
     logging.debug(f'Setting target...')
     sources = hrir.sources.vertical_polar
     az_range = settings['az_range']
@@ -266,4 +268,5 @@ def set_target(target, settings, hrir):
             break
     next_tar[0] = (next_tar[0] + 180) % 360 - 180
     target[:] = next_tar
-    logging.info("Fallback Set Target to [%.1f, %.1f]" % (next_tar[0], next_tar[1]))
+    logging.info("Fallback Set Target to [%.1f, %.1f]%s" % (next_tar[0], next_tar[1],
+                 f"  | stim: {note}" if note else ""))

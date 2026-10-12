@@ -825,18 +825,21 @@ def play_session():
                 # next trial goes at the end of the list (sequential append)
                 trial_idx = len(subject.trials)
 
+                # stimulus kind for this trial, drawn first so the target log
+                # line can show it (same one draw per trial as before)
+                kind = next(kinds) if MIXED else STIM
                 # pick next target. On failure fall back to uniform sampling --
                 # never run the trial with the target left at its (0,0) initial
                 # value (= the calibration pose -> instant hit).
                 try:
-                    set_target_probabilistic(target, settings, sequence, hrir)
+                    set_target_probabilistic(target, settings, sequence, hrir, note=kind)
                 except AttributeError:
                     logging.warning("Could not load target probabilities; "
                                     "sampling uniformly.")
-                    set_target(target, settings, hrir)
+                    set_target(target, settings, hrir, note=kind)
                 # new source spectrum for this trial, written before the prompt
                 if MIXED:
-                    stim_params = (new_trial_stimulus(shape_shared) if next(kinds) == "ripple"
+                    stim_params = (new_trial_stimulus(shape_shared) if kind == "ripple"
                                    else new_noise_trial(shape_shared))
                 else:
                     stim_params = new_trial_stimulus(shape_shared) if RIPPLE else None

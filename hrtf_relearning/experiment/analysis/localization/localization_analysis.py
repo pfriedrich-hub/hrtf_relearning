@@ -7,6 +7,7 @@ from hrtf_relearning.utils.mpl_backend import use_interactive, use_headless
 use_interactive()
 from matplotlib import pyplot as plt
 from matplotlib.lines import Line2D
+import re
 import numpy
 import scipy
 import logging
@@ -403,6 +404,110 @@ def _azimuth_span(sequence):
     return float(target_az.max() - target_az.min())
 
 
+# --- plot file names ----------------------------------------------------------
+# Added 2026-10-07 (Paul): the PNGs are the main way the data get checked, so a
+# file name has to say what the block WAS -- which test, which donor, which ear
+# carried the donor cue, which side was sampled -- without opening it.
+# `sequence.name` (and so the localization keys every analysis parses) is NOT
+# changed; only the files written by the two plot functions below.
+
+_ENV_EAR = re.compile(r"_env\d+_(left|right)(?:_|$)")
+_DONOR_TAG = re.compile(r"_donor_(.+?)(?:_n\d+)?(?:_env\d+_(?:left|right))?(?:_mirrored)?$")
+_SIDE = {"left": "L", "right": "R"}
+
+
+def cue_ear(sequence):
+    """'left' / 'right': the ear that carries the modified (donor) cue, or None.
+
+    Read from the HRIR name on v2 (the monaural reduction is baked into the
+    SOFA, `_env<k>_<trained ear>`, and `sequence.ear` is None), from
+    `sequence.ear` on v1. A MIRRORED block swaps the channels, so the cue sits
+    on the other ear -- that is what blocks C and D test.
+    """
+    hrir = getattr(sequence, "hrir", None) or ""
+    match = _ENV_EAR.search(hrir)
+    ear = match.group(1) if match else getattr(sequence, "ear", None)
+    if ear not in ("left", "right"):
+        return None
+    if getattr(sequence, "mirrored", False) or hrir.endswith("_mirrored"):
+        ear = "right" if ear == "left" else "left"
+    return ear
+
+
+def _field_label(sequence):
+    az_range = (getattr(sequence, "settings", None) or {}).get("azimuth_range")
+    if az_range is None:
+        return None
+    lo, hi = float(min(az_range)), float(max(az_range))
+    if hi - lo <= 2:
+        return "midline"
+    if lo < 0 < hi:
+        return "full-field"
+    # negative azimuth = left in the experiment's frame (see condition_tag)
+    return "L-field" if hi <= 0 else "R-field"
+
+
+def _phase_label(sequence):
+    phase = getattr(sequence, "phase", None)
+    if not phase:
+        return None
+    if phase.startswith("baseline_"):
+        return f"day1-{phase.split('_', 1)[1]}"
+    if phase in ("A", "B", "C", "D"):
+        return f"final-{phase}"
+    return phase              # native, screen, daily, ...
+
+
+def is_screen_block(sequence):
+    """Day-1 donor screen block -- tagged ones, and the untagged BINAURAL donor
+    blocks from before 2026-10-07 (a donor composite without the `_env<k>_`
+    monaural tail was only ever played by the screen)."""
+    if getattr(sequence, "phase", None) == "screen":
+        return True
+    hrir = getattr(sequence, "hrir", None) or ""
+    return ("_donor_" in hrir and not _ENV_EAR.search(hrir)
+            and not re.search(r"_n\d+", hrir) and not getattr(sequence, "phase", None))
+
+
+def plot_basename(sequence):
+    """e.g. '07.10_12-05_daily_donor-AS-L_on-R-ear_R-field'.
+
+    date_time | test (if tagged) | HRTF | which ear carries the donor cue |
+    which side of the field was sampled. Untagged (older) blocks just lack the
+    test part.
+    """
+    name = getattr(sequence, "name", "") or ""
+    pieces = name.split("_")
+    stamp = "_".join(pieces[1:3]) if len(pieces) >= 3 else name
+    hrir = getattr(sequence, "hrir", None)
+
+    parts = [stamp]
+    phase = _phase_label(sequence)
+    if phase:
+        parts.append(phase)
+    elif is_screen_block(sequence):
+        parts.append("screen")      # pre-2026-10-07 binaural screen
+    if not hrir:
+        parts.append("dome")
+    else:
+        donor = _DONOR_TAG.search(hrir)
+        parts.append(f"donor-{donor.group(1)}" if donor
+                     else ("own-HRTF" if hrir == pieces[0] else hrir))
+        ear = cue_ear(sequence)
+        parts.append(f"on-{_SIDE[ear]}-ear" if ear else "binaural")
+    field = _field_label(sequence)
+    if field:
+        parts.append(field)
+    return "_".join(parts)
+
+
+def plot_folder(sequence, filepath):
+    """Screen blocks go to plots/screen/, everything else stays in plots/."""
+    folder = filepath / "screen" if is_screen_block(sequence) else filepath
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder
+
+
 def condition_tag(sequence):
     """One-line 'which condition is this' tag: listening ear, mirroring, hemifield.
 
@@ -423,10 +528,12 @@ def condition_tag(sequence):
     """
     parts = []
 
-    ear = getattr(sequence, 'ear', None)
+    # cue_ear also covers v2, where the reduction is baked into the SOFA and
+    # sequence.ear is None -- this used to print "binaural" for those blocks
+    ear = cue_ear(sequence)
     if ear:
         other = getattr(sequence, 'other_ear', None)
-        parts.append(f"{ear} ear" + (f" (other: {other})" if other else ""))
+        parts.append(f"donor cue on {ear} ear" + (f" (other: {other})" if other else ""))
     elif hasattr(sequence, 'ear'):
         parts.append("binaural")
 
@@ -571,9 +678,7 @@ def plot_localization(sequence, report_stats=['elevation', 'azimuth'], axis=None
 
     plt.tight_layout()
     if filepath:
-        if not filepath.exists():
-            filepath.mkdir(parents=True, exist_ok=True)
-        plt.savefig(filepath / f'{sequence.name}.png')
+        plt.savefig(plot_folder(sequence, filepath) / f'{plot_basename(sequence)}_grid.png')
 
 def plot_elevation_response(sequence, axis=None, add_fit=True, filepath=None, n_ticks=3):
     """
@@ -698,9 +803,7 @@ def plot_elevation_response(sequence, axis=None, add_fit=True, filepath=None, n_
     plt.tight_layout()
 
     if filepath:
-        if not filepath.exists():
-            filepath.mkdir(parents=True, exist_ok=True)
-        plt.savefig(filepath / f'{sequence.name}_el_response.png')
+        plt.savefig(plot_folder(sequence, filepath) / f'{plot_basename(sequence)}_elevation.png')
 
     return fig
 

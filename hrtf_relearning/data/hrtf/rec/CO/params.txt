@@ -11,4 +11,4 @@ signal:
   samplerate: 48828
 highpass_frequency: 120
 equalize_dome: False
-datetime: 2026-07-17T16:14:15.891390
+datetime: 2026-10-13T09:30:39.658727

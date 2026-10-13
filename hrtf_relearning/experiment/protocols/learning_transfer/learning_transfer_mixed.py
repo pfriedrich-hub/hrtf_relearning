@@ -150,6 +150,19 @@ def _load_subject_params(subject_id, csv_path=CSV_PATH):
 
 TRAINED_EAR, FINAL_ORDER = _load_subject_params(SUBJECT_ID)
 
+# EXCEPTION -- AM only (Paul, 2026-10-13). Her composite was built for the right
+# ear (..._env4_right) and her day-1 2x2 showed the donor detail usable on her
+# LEFT ear only, so she trains on the LEFT with that same composite played
+# mirrored, instead of a new env4_left build. Her csv row says trained_ear=left
+# and lists her conditions in the new labels. BUILD_EAR is the ear the composite
+# was built for, and every phase's `mirror` flag is inverted, so the day-1
+# blocks on file map onto the cells exactly: A = old D, B = old C, C = old B,
+# D = old A (same SOFA, same mirror code path -- identical renders).
+MIRRORED_RENDER_EXCEPTIONS = {"AM"}
+RENDER_MIRRORED = SUBJECT_ID in MIRRORED_RENDER_EXCEPTIONS
+_OTHER = {"left": "right", "right": "left"}
+BUILD_EAR = _OTHER[TRAINED_EAR] if RENDER_MIRRORED else TRAINED_EAR
+
 NATIVE_SOFA = f"{SUBJECT_ID}"      # individual measured HRTF
 
 # The donor is chosen ONCE, on day 1, by prepare_donor_shortlist() or
@@ -319,7 +332,7 @@ def loc_settings(azimuth_range, exclude_midline=False):
 
 donor = DonorModification(
     SUBJECT_ID,
-    trained_ear=TRAINED_EAR,
+    trained_ear=BUILD_EAR,      # == TRAINED_EAR unless RENDER_MIRRORED
     native_sofa=NATIVE_SOFA,
     other_ear=OTHER_EAR,
     env_n_keep=ENV_NKEEP,
@@ -446,7 +459,7 @@ def screen_hrir_settings(donor_id, donor_ear=None):
     no longer needed.
     """
     return hrir_settings(donor.modified_name(donor_id, donor_ear=donor_ear),
-                         ear=TRAINED_EAR)
+                         ear=BUILD_EAR, mirror=RENDER_MIRRORED)
 
 
 def _settings_of(seq):
@@ -681,17 +694,20 @@ else:
 
 def phases():
     """Built on demand so MODIFIED_SOFA is picked up after the build cell."""
+    # trained-ear cells play the composite un-mirrored (_M0), untrained-ear
+    # cells mirrored (_M1) -- both inverted when RENDER_MIRRORED.
+    _M0, _M1 = RENDER_MIRRORED, not RENDER_MIRRORED
     return {
         "native":     ("Native reference",         "Day 1", NATIVE_SOFA,   None,        False, FULL_FIELD,    "binaural, native HRTF, full field"),
-        "baseline_A": ("Baseline A: trained/same", "Day 1", MODIFIED_SOFA, TRAINED_EAR, False, TRAINED_HEMI,  "naive trained ear, modified filter (matches final A)"),
-        "baseline_B": ("Baseline B: trained/mirr", "Day 1", MODIFIED_SOFA, TRAINED_EAR, False, MIRRORED_HEMI, "naive trained ear, modified filter, mirrored locations (matches final B)"),
-        "baseline_C": ("Baseline C: untrnd/same",  "Day 1", MODIFIED_SOFA, TRAINED_EAR, True,  TRAINED_HEMI,  "naive untrained ear, MIRRORED modified filter, same locations (matches final C)"),
-        "baseline_D": ("Baseline D: untrnd/mirr",  "Day 1", MODIFIED_SOFA, TRAINED_EAR, True,  MIRRORED_HEMI, "naive untrained ear, MIRRORED modified filter (matches final D)"),
-        "daily":      ("Daily training test",      "Adaptation days", MODIFIED_SOFA, TRAINED_EAR, False, TRAINED_HEMI,  "monaural trained ear, trained hemifield"),
-        "A":          ("Final A: trained/same",    "Final day", MODIFIED_SOFA, TRAINED_EAR, False, TRAINED_HEMI,  "trained ear, same locations (baseline retest)"),
-        "B":          ("Final B: trained/mirr",    "Final day", MODIFIED_SOFA, TRAINED_EAR, False, MIRRORED_HEMI, "trained ear, mirrored locations"),
-        "C":          ("Final C: untrnd/same",     "Final day", MODIFIED_SOFA, TRAINED_EAR, True,  TRAINED_HEMI,  "untrained ear (mirrored modified HRIR), same locations"),
-        "D":          ("Final D: untrnd/mirr",     "Final day", MODIFIED_SOFA, TRAINED_EAR, True,  MIRRORED_HEMI, "untrained ear (mirrored modified HRIR), mirrored locations  [MAIN]"),
+        "baseline_A": ("Baseline A: trained/same", "Day 1", MODIFIED_SOFA, BUILD_EAR, _M0, TRAINED_HEMI,  "naive trained ear, modified filter (matches final A)"),
+        "baseline_B": ("Baseline B: trained/mirr", "Day 1", MODIFIED_SOFA, BUILD_EAR, _M0, MIRRORED_HEMI, "naive trained ear, modified filter, mirrored locations (matches final B)"),
+        "baseline_C": ("Baseline C: untrnd/same",  "Day 1", MODIFIED_SOFA, BUILD_EAR, _M1,  TRAINED_HEMI,  "naive untrained ear, MIRRORED modified filter, same locations (matches final C)"),
+        "baseline_D": ("Baseline D: untrnd/mirr",  "Day 1", MODIFIED_SOFA, BUILD_EAR, _M1,  MIRRORED_HEMI, "naive untrained ear, MIRRORED modified filter (matches final D)"),
+        "daily":      ("Daily training test",      "Adaptation days", MODIFIED_SOFA, BUILD_EAR, _M0, TRAINED_HEMI,  "monaural trained ear, trained hemifield"),
+        "A":          ("Final A: trained/same",    "Final day", MODIFIED_SOFA, BUILD_EAR, _M0, TRAINED_HEMI,  "trained ear, same locations (baseline retest)"),
+        "B":          ("Final B: trained/mirr",    "Final day", MODIFIED_SOFA, BUILD_EAR, _M0, MIRRORED_HEMI, "trained ear, mirrored locations"),
+        "C":          ("Final C: untrnd/same",     "Final day", MODIFIED_SOFA, BUILD_EAR, _M1,  TRAINED_HEMI,  "untrained ear (mirrored modified HRIR), same locations"),
+        "D":          ("Final D: untrnd/mirr",     "Final day", MODIFIED_SOFA, BUILD_EAR, _M1,  MIRRORED_HEMI, "untrained ear (mirrored modified HRIR), mirrored locations  [MAIN]"),
     }
 
 
@@ -803,10 +819,11 @@ def ladder_settings(rung):
         # composite STRENGTH: same donor, same other-ear treatment, only n_keep
         # differs. Lower n_keep hands over more of the cue.
         n_keep = int(rung.split("_n")[1])
-        return (hrir_settings(donor.modified_name(DONOR_ID, n_keep), ear=TRAINED_EAR),
-                settings)
+        return (hrir_settings(donor.modified_name(DONOR_ID, n_keep), ear=BUILD_EAR,
+                              mirror=RENDER_MIRRORED), settings)
     # ear TREATMENT: n_keep=4 composite on the trained ear, other ear varies
-    return hrir_settings(MODIFIED_SOFA, ear=TRAINED_EAR, other_ear=rung), settings
+    return hrir_settings(MODIFIED_SOFA, ear=BUILD_EAR, other_ear=rung,
+                         mirror=RENDER_MIRRORED), settings
 
 
 TRAINING_SCRIPT = hr.PATH / "experiment" / "training" / "Training_AR.py"
@@ -817,7 +834,10 @@ def run_training(hrir_name=None, ear=None, az_range=None):
     hrir_name = MODIFIED_SOFA if hrir_name is None else hrir_name
     if hrir_name is None:
         raise RuntimeError("MODIFIED_SOFA is not set — build or load the donor SOFA first")
-    ear = TRAINED_EAR if ear is None else ear
+    # BUILD_EAR, not TRAINED_EAR: Training_AR re-applies the other-ear envelope
+    # to the channel opposite `ear` BEFORE mirroring, so it must be the ear the
+    # composite was built for -- the opposite ear would flatten the donor detail.
+    ear = BUILD_EAR if ear is None else ear
     az_range = TRAINED_HEMI if az_range is None else az_range
 
     sofa_path = paths.SOFA_DIR / SUBJECT_ID / f"{hrir_name}.sofa"
@@ -825,7 +845,8 @@ def run_training(hrir_name=None, ear=None, az_range=None):
         raise FileNotFoundError(f"Modified HRIR not found:\n  {sofa_path}")
 
     print("-" * 64)
-    print(f"TRAINING   subject={SUBJECT_ID}   ear={ear}   az_range={az_range}")
+    print(f"TRAINING   subject={SUBJECT_ID}   ear={ear}   az_range={az_range}"
+          f"   mirror={RENDER_MIRRORED}")
     print(f"           HRIR={hrir_name}.sofa   HP={HP}")
     print(f"           other ear={OTHER_EAR} (n_keep={ENV_NKEEP})")
     print(f"           stim={TRAINING_STIM} {STIM_SETTINGS if TRAINING_STIM in ('ripple', 'mixed') else ''}")
@@ -836,6 +857,7 @@ def run_training(hrir_name=None, ear=None, az_range=None):
                TRAINING_SUBJECT_ID=SUBJECT_ID,
                TRAINING_HRIR_NAME=hrir_name,
                TRAINING_EAR=ear,
+               TRAINING_MIRROR="1" if RENDER_MIRRORED else "0",
                TRAINING_OTHER_EAR=OTHER_EAR,
                TRAINING_ENV_NKEEP=str(ENV_NKEEP),
                TRAINING_NATIVE_SOFA=NATIVE_SOFA,
@@ -852,6 +874,9 @@ def run_training(hrir_name=None, ear=None, az_range=None):
 def show_status(subject):
     print("\n" + "-" * 70)
     print(f"SUBJECT: {SUBJECT_ID}    TRAINED EAR: {TRAINED_EAR}    UNTRAINED: {UNTRAINED_EAR}")
+    if RENDER_MIRRORED:
+        print(f"RENDER MIRRORED: composite built for the {BUILD_EAR} ear, trained on the "
+              f"{TRAINED_EAR} via mirror=True  (day-1 map: A=old D, B=old C, C=old B, D=old A)")
     print(f"manipulation: donor detail (n_keep={selection.N_KEEP}), donor="
           f"{DONOR_ID or '(not selected yet)'}   other ear={OTHER_EAR}")
     print(f"hemifields -> trained {TRAINED_HEMI}, mirrored {MIRRORED_HEMI}")

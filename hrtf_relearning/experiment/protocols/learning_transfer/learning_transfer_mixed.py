@@ -424,11 +424,9 @@ SCREEN_TPS = 1
 # fix it — the MARGINAL verdict does, by sending borderline calls to a re-check
 # against baseline A. 35 keeps the grid symmetric about the midline
 # (-30..+30 in 10 deg steps), which 30 trials would not.
-# Externalization ratings on the day-1 baselines. A is the trained-ear
-# condition and D is the main transfer cell; B and C are far-ear variants of
-# the same two composites, so a rating on all four measures boredom rather than
-# externalization. The native anchor still defines the top of the scale.
-RATED_BASELINES = ("A", "D")
+# No externalization ratings on the day-1 baselines A/B/C/D (Paul, 2026-10-13):
+# the donor screen already asks for one on the same composite, so a second
+# rating adds nothing. The native anchor still defines the top of the scale.
 
 SCREEN_N = 6       # donors staged AND screened by default (Paul, 2026-10-06).
                    # ~3 min and 35 trials of donor exposure each before baseline A.
@@ -958,12 +956,9 @@ print(f"Running day-1 baselines in order: {FINAL_ORDER}")
 baselines = {}
 for key in FINAL_ORDER:
     baselines[key] = run_phase(f"baseline_{key}", subject)
-    if key in RATED_BASELINES:
-        collect_externalization_rating(baselines[key])
 
 # %% day 1: baseline A -- trained ear, same loc (redo individually) -----------
 baseline_A = run_phase("baseline_A", subject)
-collect_externalization_rating(baseline_A)
 
 # %% day 1: baseline B -- trained ear, mirrored loc (redo individually) -------
 baseline_B = run_phase("baseline_B", subject)
@@ -973,7 +968,6 @@ baseline_C = run_phase("baseline_C", subject)
 
 # %% day 1: baseline D -- untrained ear, mirrored loc (redo individually) -----
 baseline_D = run_phase("baseline_D", subject)
-collect_externalization_rating(baseline_D)
 # Condition identity (ear / mirror / hemifield) is carried into the sequence
 # name by run_phase() -- see `_condition_tag`.
 

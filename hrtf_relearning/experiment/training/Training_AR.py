@@ -43,6 +43,10 @@ HP         = os.environ.get("TRAINING_HP", "DT990")
 OTHER_EAR  = os.environ.get("TRAINING_OTHER_EAR", "flat")
 ENV_NKEEP  = int(os.environ.get("TRAINING_ENV_NKEEP", "4"))
 NATIVE_SOFA = os.environ.get("TRAINING_NATIVE_SOFA", SUBJECT_ID)
+# swap left/right after the other-ear reduction (hrtf2binsim `mirror`): trains
+# on the composite's mirrored render. Set by learning_transfer_mixed when the
+# subject is in its MIRRORED_RENDER_EXCEPTIONS (AM).
+MIRROR     = os.environ.get("TRAINING_MIRROR", "0").strip().lower() in ("1", "true", "yes")
 
 # 'noise'  -> pink noise, the same spectrum on every trial (the default).
 # 'ripple' -> pink noise re-coloured by a NEW random smooth spectral shape on
@@ -149,6 +153,7 @@ hrir_settings = dict(
     other_ear=OTHER_EAR,
     env_n_keep=ENV_NKEEP,
     native_sofa=NATIVE_SOFA,
+    mirror=MIRROR,
     reverb=True,
     drr=20,
     hp_filter=True,

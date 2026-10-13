@@ -160,6 +160,7 @@ class LocalizationDome:
                 plot_dir = paths.subject_plot_dir(self.subject.id)
                 plot_elevation_response(self.sequence, filepath=plot_dir)
                 plot_localization(self.sequence, report_stats=['elevation'], filepath=plot_dir)
+                self._show_figures()
         finally:
             self.motion_sensor.halt()
 
@@ -263,4 +264,33 @@ class LocalizationDome:
             if key == keyboard.Key.enter:
                 listener.stop()
         with keyboard.Listener(on_press=on_press) as listener:
-            listener.join()
+            # Pump the GUI while waiting instead of listener.join(): a bare
+            # join blocks the Tk event loop, so the plots made at the end of a
+            # run stayed blank/invisible until run() returned to the console.
+            while listener.running:
+                LocalizationDome._pump_figures()
+                listener.join(0.05)
+
+    @staticmethod
+    def _show_figures():
+        """Open and draw the figures just plotted, without blocking."""
+        try:
+            import matplotlib.pyplot as plt
+            if not plt.get_fignums() or matplotlib.get_backend().lower() == 'agg':
+                return
+            plt.show(block=False)
+            for num in plt.get_fignums():
+                plt.figure(num).canvas.draw_idle()
+            LocalizationDome._pump_figures()
+        except Exception as exc:  # never let plotting break a session
+            logging.warning(f'could not show figures: {type(exc).__name__}: {exc}')
+
+    @staticmethod
+    def _pump_figures():
+        """Process pending GUI events of all open figures (keeps them live)."""
+        try:
+            from matplotlib import _pylab_helpers
+            for manager in _pylab_helpers.Gcf.get_all_fig_managers():
+                manager.canvas.flush_events()
+        except Exception:
+            pass

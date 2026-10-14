@@ -93,6 +93,50 @@ DEFAULT_RESOLUTION = 'filterbank'
 # the same for everyone, so the manipulation is one sentence in the methods.
 # ---------------------------------------------------------------------------
 N_KEEP = 4                    # envelope coefficients kept (Kulkarni & Colburn 1998)
+# RECOMPUTED 2026-10-13 on the 19-recording pool (+ AB, AM, TE, IK), by
+# `experiment/protocols/dev/donor_pool_audit.py`. Measured, `pairwise_r_match`:
+#
+#   per-EAR     n=684 pairs | min -0.454 | Q1 0.392 | median 0.553 | Q3 0.680 | max 0.887
+#
+# The pool grew by four in one day and the net move is -0.020, but that is a sum
+# of two opposite effects worth keeping apart. AB, TE and IK sit near the middle
+# of the pool's detail space and barely move it (15 -> 17 recordings: median
+# 0.573 -> 0.574; adding IK last: 0.536 -> 0.553, and she RAISES Q1 as well).
+# THE WHOLE -0.038 SHIFT IS AM, and
+# it was taken deliberately (Paul's call): she qualifies behaviourally (EG 0.68,
+# polar 10.7 deg, n=127) while her two ears are the 2nd and 4th LEAST correlated
+# of all 36 in the pool -- AM:L 0.158, AM:R 0.271 mean r_match against every
+# other ear, where the median ear sits near 0.55. Keeping outliers IN is the
+# point: they are the only candidates that can reach a listener whose own detail
+# is far from the pool centre, and the tier machinery already handles them (the
+# target is mid-range, so an anti-correlated ear is available without being
+# preferred). Her detail is the weakest of the three additions (2.57/2.73 dB,
+# monotonicity 0.59/0.68).
+#
+# WHAT THE SHIFT COSTS, stated so it is not rediscovered later. The band moves
+# from [0.524, 0.624] to [0.486, 0.586]. The two overlap across most of their
+# width, so a subject selected under 0.574 would mostly have been selected the
+# same way under 0.536 -- but not always, and SH/LGL/PA/GM and everyone before
+# them were selected against an EARLIER number. Re-derive an already-run
+# subject with the value from that date's commit, not this one. The ledger below
+# exists for exactly that.
+#
+# AM IS ALSO AN OUTLIER AS A LISTENER, which is a separate fact with its own
+# consequence: her own shortlist falls to the `widened` tier with a best r_match
+# of 0.30, i.e. every donor in the pool perturbs her harder than the pool
+# perturbs itself. Same pattern as PF (project_pf_outlier_r_match). Her day-1
+# screen should be read with that in mind rather than as a verdict on the donor.
+#
+# IK went in once her own-HRTF AR block was pulled off the rig later the same
+# day: EG 0.91, polar 5.5 deg, n=129 -- among the strongest own-HRTF results in
+# the pool, behind only LS (1.30), TE (1.19), PA (1.02) and AB (1.00). Detail
+# 2.79/2.77 dB, monotonicity 0.88/0.93, decodability 0.98/0.94, and a clean
+# head-radius fit (0.0615 m, 75 us residual, monotonic ITDs). Note for the next
+# time this happens: for a few hours she read as "needs block" in the audit
+# purely because the data had not been transferred, which is indistinguishable
+# from never having run one. The audit cannot tell those apart -- only the
+# archive can.
+#
 # RECOMPUTED 2026-09-29 on the 15-recording pool with PER-EAR candidates, which
 # is the population the rule draws from. Measured, `pairwise_r_match`:
 #
@@ -107,6 +151,13 @@ N_KEEP = 4                    # envelope coefficients kept (Kulkarni & Colburn 1
 # real and grew with the pool.
 #
 # PREVIOUS VALUES, for anyone re-deriving an already-run subject:
+#   2026-10-13, 18 recordings, per-ear n=612: median 0.536  (+ AM)
+#   2026-10-13, 17 recordings, per-ear n=544: median 0.574  (+ AB, TE)
+#   Both of those were committed and superseded on the SAME DAY as the 19-member
+#   value above, in the order AB/TE -> AM -> IK. NO SUBJECT WAS SELECTED against
+#   either one; they are in this ledger for commit-history continuity only. The
+#   last value any subject was actually run against is 0.573 (2026-09-29).
+#   2026-09-29, 15 recordings, per-ear n=420: median 0.573
 #   2026-09-28, 12 recordings, per-ear n=264: median 0.626
 #   2026-08-xx,  7 recordings, per-person:    median 0.58
 #
@@ -124,7 +175,10 @@ N_KEEP = 4                    # envelope coefficients kept (Kulkarni & Colburn 1
 # RECOMPUTE WHENEVER THE POOL OR PER_EAR_SELECTION CHANGES:
 #   vals, _ = pairwise_r_match(load_candidates('__none__', pool=DONOR_POOL))
 #   numpy.median(vals)
-TARGET_R_MATCH = 0.573        # perturbation size: the median r_match between
+# `experiment/protocols/dev/donor_pool_audit.py` does this and the behavioural
+# qualification together, and prints both edits ready to paste. Run it after a
+# recording week; it changes nothing by itself.
+TARGET_R_MATCH = 0.553        # perturbation size: the median r_match between
                               # QUALIFIED donor ears, i.e. a typical difference
                               # between two people whose own cue demonstrably
                               # works.
@@ -1152,6 +1206,36 @@ def select_donor(subject_hrtf, candidates, target=TARGET_R_MATCH,
 # Detail strength: PA 3.05 dB (L 3.00 / R 3.09), SH 2.94 (L 3.02 / R 2.85),
 # LGL 2.69 (L 2.63 / R 2.76). LGL sits just over the 2.66 dB floor.
 #
+# EXTENDED 2026-10-13: + AB (own EG 1.00, polar 6.1 deg, n=130), TE (1.19,
+# 10.8 deg, n=129), AM (0.68, 10.7 deg, n=127) and IK (0.91, 5.5 deg, n=129),
+# from the recordings of 05-13.10. All four conform natively, and AB/TE/AM are
+# also enrolled participants (block_order pids 13, 12, 14) -- which is fine, and
+# the same basis AS/FP/LS/NR/GM/SH/PA/LGL came in on: `load_candidates` drops
+# the listener's own id, so none of them can be their own donor.
+#
+# AM was added ON PURPOSE despite being a detail-space outlier -- see the
+# TARGET_R_MATCH comment for the numbers and what the -0.038 re-centring costs.
+#
+# Found by `dev/donor_pool_audit.py`, which is now the way this list is kept
+# current: it applies the two rules below to every recording on disk and prints
+# the pool and target to paste. Run it after a recording week.
+#
+# CO WAS RE-RECORDED 2026-10-13 AND THIS ENTRY NOW POINTS AT THE NEW FILE.
+# He stays in the pool: qualification asks whether a person's own cue is
+# demonstrably usable, his ears have not changed, and July's EG 0.98 (n=129,
+# results/pilot/CO/CO.json) still answers that. But the RECORDING is not the one
+# that number was measured on, and it is measurably weaker -- detail strength
+# 2.68/2.55 dB against 3.3 dB in July, the right ear now under the 2.66 dB level
+# the old acoustic floor sat at, and mean r_match 0.324/0.422 against the pool
+# where the median ear is near 0.55. The head-radius fit from the same session
+# came out at 0.115 m on a 447 us residual with non-monotonic ITDs (-996 us at
+# -17.5 deg, -1101 at -52.5), which is the signature of a badly seated in-ear
+# mic (cf. project_gm_head_radius_fit, flagged at 87 us). SO: the two composites
+# already built from CO -- AB_donor_CO (06.10) and PA_donor_CO-R (29.09) --
+# predate the re-record and are unaffected, but any NEW composite built from CO
+# uses the weaker recording. Check the mic seating before relying on it; the
+# July sweeps survive as rec/CO/recordings_20260717_155512.npz.
+#
 # **LG IS NOT A CANDIDATE AND MUST NOT BE ADDED.** LG and LGL are the SAME
 # PERSON: the 29.09 recording was aborted and redone, and the id could not be
 # reused, so the first attempt lives under LG. It was deleted from the project
@@ -1160,7 +1244,8 @@ def select_donor(subject_hrtf, candidates, target=TARGET_R_MATCH,
 # for LGL: a near-zero perturbation that would look like a legitimate low
 # r_match. Same trap for any future re-record under a new id.
 DONOR_POOL = ('CO', 'pilot/AGV', 'pilot/SW', 'pilot/VD', 'pilot/AH', 'FS', 'FD',
-              'AS', 'FP', 'LS', 'NR', 'GM', 'LGL', 'PA', 'SH')
+              'AS', 'FP', 'LS', 'NR', 'GM', 'LGL', 'PA', 'SH', 'AB', 'TE',
+              'AM', 'IK')
 
 #: Donor EARS kept out of the pool while the recording itself stays in.
 #: Only meaningful with PER_EAR_SELECTION; a per-person pool cannot express it.
@@ -1202,10 +1287,15 @@ EXCLUDED_DONOR_EARS = frozenset({('GM', 'left')})
 #: (AGV 0.96 n=64, AH 0.86 n=62). An earlier audit looked only for
 #: pilot/<id>/<id>.json and missed both spellings.
 #:
-#: Still unverifiable: pilot/SW (0.93) and pilot/VD (0.89). No json, no pkl,
-#: empty learning_result/ folders. Their qualification rests on numbers nobody
-#: can reproduce and they cannot be re-qualified if this constant moves again.
-#: Report those two as legacy; the other nine are re-derivable.
+#: CORRECTED 2026-10-13: pilot/SW and pilot/VD are NOT unverifiable either.
+#: Both reproduce to two decimals from the FLAT pilot pickles --
+#: results/pilot/SW.pkl gives 0.934 (n=128) and results/pilot/VD.pkl gives
+#: 0.889 (n=45), against the 0.93 and 0.89 quoted here. This is the same lookup
+#: shape that hid AGV and AH until 2026-09-17: results/pilot/ has four layouts
+#: (<id>/<id>, flat <id>, backup/<id>, _corrected) and an audit that checks one
+#: of them reports the others as missing data. `dev/donor_pool_audit.py`
+#: searches all four. EVERY pool member is now re-derivable; nothing in this
+#: list rests on a number nobody can reproduce.
 #:
 #: Qualified from data that still exists: CO 0.97, FS 0.84, FD 0.81, FP 0.79,
 #: NR 0.65, AS 0.63, LS 1.20 (LS's >1 gain is itself anomalous -- see
@@ -1318,6 +1408,22 @@ def conform_recording(hrtf, taps=REQUIRED_TAPS, samplerate=REQUIRED_SAMPLERATE):
     logger.info('conformed %s: %d sources x %d taps -> %d x %d',
                 conformed.name, hrtf.n_sources, n_taps, len(keep), taps)
     return conformed
+
+
+def resolve_donor_id(name, pool=DONOR_POOL):
+    """Map a bare id to its pool spelling: ``'VD'`` -> ``'pilot/VD'``.
+
+    An exact pool entry always wins, so a bare id that is in the pool as itself
+    (``'CO'``) is never redirected to a pilot copy. Names not in the pool, or
+    matching several pool entries, are returned unchanged and left to the
+    caller's own error.
+    """
+    if name is None or name in pool:
+        return name
+    # set(): with per-ear selection the shortlist lists each donor twice
+    # (once per ear), which must not count as two different matches.
+    hits = sorted({entry for entry in pool if entry.split('/')[-1] == name})
+    return hits[0] if len(hits) == 1 else name
 
 
 def load_candidates(subject_id, pool=DONOR_POOL, sofa_dir=None, suffix='',

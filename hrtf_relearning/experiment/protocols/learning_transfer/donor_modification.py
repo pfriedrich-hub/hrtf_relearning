@@ -54,6 +54,9 @@ import shutil
 import slab
 
 import hrtf_relearning as hr
+
+#: Reason stored by use_donor() when none is given -- it is almost always this.
+DEFAULT_SWAP_REASON = "seems learnable"
 from hrtf_relearning.hrtf.analysis import donor_selection as selection
 from hrtf_relearning.hrtf.analysis.vsi import vsi as vsi_of
 from hrtf_relearning.hrtf.modify.donor_detail import donor_detail_dtf, modification_params
@@ -144,6 +147,7 @@ class DonorModification:
                 donor_ear = self._recorded_donor_ear()
         if donor_ear is not None and donor_ear not in ("left", "right"):
             raise ValueError("donor_ear must be 'left', 'right' or None")
+        donor_id = selection.resolve_donor_id(donor_id)
         self.donor_id = donor_id
         # None == the donor's SAME side as trained_ear, i.e. every build made
         # before per-ear selection. Kept as None rather than normalised to the
@@ -361,6 +365,9 @@ class DonorModification:
         raises rather than silently taking whichever ranked higher.
         """
         if donor_id is not None:
+            # 'VD' finds 'pilot/VD' -- no need to type the pilot/ prefix.
+            pool = [row["donor"] for row in rows]
+            donor_id = selection.resolve_donor_id(donor_id, pool=pool)
             matches = [row for row in rows if row["donor"] == donor_id
                        and (donor_ear is None
                             or row.get("donor_ear") == donor_ear)]
@@ -833,7 +840,8 @@ class DonorModification:
         print("once the donor is settled: discard_unused()")
         return staged
 
-    def use_donor(self, rank=None, donor_id=None, donor_ear=None, reason=""):
+    def use_donor(self, rank=None, donor_id=None, donor_ear=None,
+                  reason=DEFAULT_SWAP_REASON):
         """Switch the active donor mid-session. Instant if pre-staged.
 
         Use when a participant cannot localize at all with the current
@@ -893,9 +901,6 @@ class DonorModification:
         print(f"modified_sofa = {self.modified_sofa}")
         print(f"  recorded in {self.subject_id}'s subject file -- later "
               f"sessions load {row['donor']} automatically; nothing to edit.")
-        if not reason:
-            print("  !! no reason recorded -- re-run use_donor(..., reason=...) "
-                  "to say what was observed.")
         return row
 
     def load_existing(self):

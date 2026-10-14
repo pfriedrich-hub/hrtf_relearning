@@ -386,7 +386,8 @@ def prepare_donor_shortlist(n=None, mirrored=True, overwrite=False, screen=False
     return out
 
 
-def use_donor(rank=None, donor_id=None, donor_ear=None, reason="",
+def use_donor(rank=None, donor_id=None, donor_ear=None,
+              reason="seems learnable",
               override_reason=None):
     # Never blocks. A donor with no screen block on file gets a warning and a
     # note in the reason. override_reason is kept so old cells still run.
@@ -503,7 +504,7 @@ def screen_block(donor_id, donor_ear=None, subject=None):
     found here; they stay on disk untouched.
     """
     subject = subject or hr.Subject(SUBJECT_ID)
-    want = dict(donor=donor_id, donor_ear=donor_ear)
+    want = dict(donor=selection.resolve_donor_id(donor_id), donor_ear=donor_ear)
     hits = [seq for seq in subject.localization.values()
             if getattr(seq, "phase", None) == "screen"
             and getattr(seq, "screen_donor", None) == want

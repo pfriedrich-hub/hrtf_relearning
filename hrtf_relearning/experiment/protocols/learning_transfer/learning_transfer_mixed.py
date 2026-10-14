@@ -109,7 +109,7 @@ EDIT THE CONFIG BLOCK BELOW PER PARTICIPANT.
 ------------------------------------------------------------------------------
 """
 
-SUBJECT_ID = ("AM")   # put this id into an open row of learning_transfer_block_order.csv
+SUBJECT_ID = ("CO")   # put this id into an open row of learning_transfer_block_order.csv
 
 # %% imports and config #------------------------------------------------------
 import csv  # only for the block-order table below; the modification
@@ -960,16 +960,7 @@ for key in FINAL_ORDER:
 # %% day 1: baseline A -- trained ear, same loc (redo individually) -----------
 baseline_A = run_phase("baseline_A", subject)
 
-# %% day 1: baseline B -- trained ear, mirrored loc (redo individually) -------
-baseline_B = run_phase("baseline_B", subject)
 
-# %% day 1: baseline C -- untrained ear, same loc (redo individually) ---------
-baseline_C = run_phase("baseline_C", subject)
-
-# %% day 1: baseline D -- untrained ear, mirrored loc (redo individually) -----
-baseline_D = run_phase("baseline_D", subject)
-# Condition identity (ear / mirror / hemifield) is carried into the sequence
-# name by run_phase() -- see `_condition_tag`.
 
 # -----------------------------------------------
 # ADAPTATION DAYS1
@@ -988,6 +979,8 @@ run_training()
 # %% adaptation day: 3. POST-training test ------------------------------------
 subject = hr.Subject(SUBJECT_ID)
 daily_post = run_phase("daily", subject)
+
+
 
 # %% final day: all 4 conditions in this subject's counterbalanced order -------
 subject = hr.Subject(SUBJECT_ID)

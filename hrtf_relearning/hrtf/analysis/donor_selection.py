@@ -1221,20 +1221,33 @@ def select_donor(subject_hrtf, candidates, target=TARGET_R_MATCH,
 # the pool and target to paste. Run it after a recording week.
 #
 # CO WAS RE-RECORDED 2026-10-13 AND THIS ENTRY NOW POINTS AT THE NEW FILE.
-# He stays in the pool: qualification asks whether a person's own cue is
-# demonstrably usable, his ears have not changed, and July's EG 0.98 (n=129,
-# results/pilot/CO/CO.json) still answers that. But the RECORDING is not the one
-# that number was measured on, and it is measurably weaker -- detail strength
-# 2.68/2.55 dB against 3.3 dB in July, the right ear now under the 2.66 dB level
-# the old acoustic floor sat at, and mean r_match 0.324/0.422 against the pool
-# where the median ear is near 0.55. The head-radius fit from the same session
-# came out at 0.115 m on a 447 us residual with non-monotonic ITDs (-996 us at
-# -17.5 deg, -1101 at -52.5), which is the signature of a badly seated in-ear
-# mic (cf. project_gm_head_radius_fit, flagged at 87 us). SO: the two composites
-# already built from CO -- AB_donor_CO (06.10) and PA_donor_CO-R (29.09) --
-# predate the re-record and are unaffected, but any NEW composite built from CO
-# uses the weaker recording. Check the mic seating before relying on it; the
-# July sweeps survive as rec/CO/recordings_20260717_155512.npz.
+# RE-QUALIFIED ON IT the same day: CO_13.10_09-51_CO, 150 trials, EG 0.94 /
+# polar 5.0 deg at |el| <= 30 (results/CO/CO.json). So this entry no longer
+# rests on July's EG 0.98 measured on the OLD recording -- it has its own
+# number, on the file actually in the pool. July's 0.98 / 5.3 deg is now just
+# a test-retest comparison, and the two agree well inside the +-0.13 band that
+# n~130 carries (project_behavioural_noise_floor).
+#
+# WHICH SETTLES THE ACOUSTIC WORRY BEHAVIOURALLY, and that is worth recording
+# because the acoustic numbers looked bad: the October recording has detail
+# strength 2.68/2.55 dB against 3.3 dB in July, the right ear below the 2.66 dB
+# level the old acoustic floor sat at, and mean r_match 0.324/0.422 against a
+# pool whose median ear is near 0.55. Its head-radius fit came out at 0.115 m
+# on a 447 us residual with non-monotonic ITDs (-996 us at -17.5 deg, -1101 at
+# -52.5) -- the signature of a badly seated in-ear mic (cf.
+# project_gm_head_radius_fit, flagged at 87 us). CO then localized at 0.94 with
+# it. One more instance of the thing this pool is built around: an acoustic
+# proxy said the recording was poor and the listener's own performance said it
+# was not. The bad ITD fit did NOT propagate -- CO_donor_SW_env4_left was built
+# at head_radius 0.0812 (GLOBAL_ModificationParams), not 0.115 and not the
+# 0.0875 pipeline default, so the azimuth expansion is on a plausible radius.
+# Note `subject.head_radius` is None in his record even so; the value that was
+# used lives only in the composite's params.
+#
+# The two older composites from CO -- AB_donor_CO (06.10) and PA_donor_CO-R
+# (29.09) -- predate the re-record and so were built from the JULY recording.
+# Neither is in use (AB's active donor is FS right, PA's is pilot/AGV right).
+# The July sweeps survive as rec/CO/recordings_20260717_155512.npz.
 #
 # **LG IS NOT A CANDIDATE AND MUST NOT BE ADDED.** LG and LGL are the SAME
 # PERSON: the 29.09 recording was aborted and redone, and the id could not be

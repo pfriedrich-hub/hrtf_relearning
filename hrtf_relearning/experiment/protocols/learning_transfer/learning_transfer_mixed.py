@@ -109,7 +109,7 @@ EDIT THE CONFIG BLOCK BELOW PER PARTICIPANT.
 ------------------------------------------------------------------------------
 """
 
-SUBJECT_ID = ("AM")   # put this id into an open row of learning_transfer_block_order.csv
+SUBJECT_ID = ("CO")   # put this id into an open row of learning_transfer_block_order.csv
 
 # %% imports and config #------------------------------------------------------
 import csv  # only for the block-order table below; the modification

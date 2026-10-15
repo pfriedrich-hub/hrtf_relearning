@@ -488,7 +488,8 @@ def pulse_maker(pulse_interval, pulse_state, on_target, shape=None):
         last_state = state
         time.sleep(0.005)
 
-def head_tracker(distance, target, sensor_state, pose_queue, current_trial, plot_filter_idx):
+def head_tracker(distance, target, sensor_state, pose_queue, current_trial, plot_filter_idx,
+                 calib_info=None):
     import logging
     logging.getLogger().setLevel('INFO')
     osc = make_osc_client(port=10000)
@@ -510,10 +511,16 @@ def head_tracker(distance, target, sensor_state, pose_queue, current_trial, plot
             break
         elif sensor_state.value == 2:  # to be calibrated flag
             logging.debug('Calibrating sensor..')
-            motion_sensor.calibrate()
-            while not motion_sensor.is_calibrated:
-                time.sleep(0.1)
-            sensor_state.value = 1
+            info = motion_sensor.calibrate()
+            if calib_info is not None:
+                # raw sensor heading/pitch of this trial's zero (NDOF yaw is
+                # magnetometer-absolute, so this places the trial in the room)
+                calib_info[:] = [info['offset_az'], info['offset_el'],
+                                 info['spread_az'], info['spread_el'],
+                                 float(info['stable']),
+                                 numpy.nan if info['residual'] is None else info['residual'],
+                                 float(info['attempts'])]
+            sensor_state.value = 1  # ack: calibration done (play_trial waits for this)
             last_idx = -1
         elif sensor_state.value == 3:
             pose = motion_sensor.get_pose()
@@ -547,7 +554,8 @@ def head_tracker(distance, target, sensor_state, pose_queue, current_trial, plot
 
 def play_trial(subject, trial_idx, current_trial, target, distance, pulse_interval, pulse_state, sensor_state,
                game_time_left, game_timer, session_total, last_goal_points, pose_queue, on_target,
-               game_idx, trial_in_game, game_start_wall, session_id, stim_params=None):
+               game_idx, trial_in_game, game_start_wall, session_id, stim_params=None,
+               calib_info=None):
     """
     Returns: (game_timer, score)
     """
@@ -564,11 +572,22 @@ def play_trial(subject, trial_idx, current_trial, target, distance, pulse_interv
     count_down = False
     on_target.value = 0
 
+    # Calibrate, and WAIT for the tracker's ack (2 -> 1) before switching it
+    # to tracking. calibrate() now takes >= ~0.3 s (median over a still
+    # window); the old fixed 0.1 s sleep would set 3 while it was still
+    # running, and the tracker's closing `= 1` would then switch tracking off
+    # for the whole trial.
+    if calib_info is not None:
+        calib_info[:] = [numpy.nan] * len(calib_info)
     sensor_state.value = 2  # calibrate
-    time.sleep(0.1)
-    while not sensor_state.value == 3:
-        sensor_state.value = 3
-        time.sleep(0.05)
+    t_cal = time.time()
+    while sensor_state.value == 2:
+        if time.time() - t_cal > 10:
+            logging.warning("No calibration ack from the head tracker after 10 s; "
+                            "starting the trial anyway")
+            break
+        time.sleep(0.01)
+    sensor_state.value = 3
 
     # Start pulser
     pulse_interval.value = distance_to_interval(distance.value)
@@ -690,6 +709,12 @@ def play_trial(subject, trial_idx, current_trial, target, distance, pulse_interv
         "stim_params": stim_params,                 # this trial's ripple draw (None for noise)
         "feedback_version": FEEDBACK_VERSION,
         "settings": dict(settings),
+        # this trial's tracker zero (meta_motion.Sensor.calibrate): raw sensor
+        # offset_az/offset_el, window spread (MAD), whether the head was still,
+        # residual of the post-calibration check (deg) and attempts used
+        "calibration": (None if calib_info is None else dict(zip(
+            ("offset_az", "offset_el", "spread_az", "spread_el", "stable",
+             "residual", "attempts"), (float(v) for v in calib_info[:])))),
     }
     if 0 <= trial_idx < len(subject.trials):
         # defensive: overwrite if a slot already exists (e.g. resumed run)
@@ -746,6 +771,9 @@ def play_session():
     plot_filter_idx = mp.Value("i", -1)
     current_trial = mp.Value('i', -1)  # -1 = no active trial
     pose_queue = mp.Queue(maxsize=10000)
+    # last calibration, written by the tracker: offset_az, offset_el,
+    # spread_az, spread_el, stable, residual, attempts
+    calib_info = mp.Array("d", [float("nan")] * 7)
 
     # UI shared state
     current_score   = mp.Value("i", 0)   # optional (not used directly)
@@ -779,7 +807,7 @@ def play_session():
 
     # Start workers
     tracking_worker = mp.Process(target=head_tracker, args=(distance, target, sensor_state, pose_queue,
-                                                            current_trial, plot_filter_idx))
+                                                            current_trial, plot_filter_idx, calib_info))
     tracking_worker.start()
     binsim_worker = mp.Process(target=binsim_stream, args=())
     binsim_worker.start()
@@ -871,7 +899,7 @@ def play_session():
                                                last_goal_points, pose_queue, on_target,
                                                game_idx=games_played, trial_in_game=trial_in_game,
                                                game_start_wall=game_start_wall, session_id=session_id,
-                                               stim_params=stim_params)
+                                               stim_params=stim_params, calib_info=calib_info)
                 scores.append(score)
 
                 # if time is up, break

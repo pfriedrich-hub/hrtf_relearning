@@ -504,6 +504,8 @@ class TrainingDome:
             stim=self.settings['stim'],
             stim_params=self._stim_params,
             settings=dict(self.settings),
+            # this trial's tracker zero, see meta_motion.Sensor.calibrate
+            calibration=dict(getattr(self.motion_sensor, 'last_calibration', None) or {}) or None,
         ))
         return game_timer, score
 

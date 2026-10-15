@@ -82,6 +82,8 @@ class Sensor:
         #: guarantee that the laser matches the head is manual (Paul,
         #: 2026-09-11); this only makes it auditable.
         self.calibration_log = []
+        #: Details of the most recent `calibrate()` (see its docstring).
+        self.last_calibration = None
 
     @staticmethod
     def _connect(state):
@@ -141,36 +143,132 @@ class Sensor:
                 logging.info('head pose: azimuth: %.1f, elevation: %.1f' % (pose[0], pose[1]))
         return pose
 
-    def calibrate(self):
+    def calibrate(self, window_s=0.25, stable_mad=0.5, timeout_s=1.5,
+                  check_n=5, check_tol=3.0, max_attempts=3):
         """
-        Calibrate the motion sensor offset to 0° Azimuth and 0° Elevation. A LED will light up to guide head orientation
-        towards the center speaker. After a button is pressed, head orientation will be measured until it remains stable.
-        The average is then used as an offset for pose estimation.
-            Args:
-            led_feedback: whether to turn on the central led to assist gaze control during calibration
-            button_control (str): whether to initialize calibration by button response; may be 'processor' if a button is
-             connected to the RP2 or 'keyboard', if usb keyboard inumpyut is to be used.
-        Returns:
-            bool: True if difference between pose and fix is smaller than var, False otherwise
+        Set the 0 deg azimuth / 0 deg elevation offset to the current head pose.
+
+        The offset is the MEDIAN over `window_s` of DISTINCT sensor updates
+        (counted by `State.samples`), taken once that window is still: median
+        absolute deviation <= `stable_mad` deg on both axes. The previous version
+        re-read the cached `state.pose` ~100 times within a millisecond, so its
+        stability test always passed on one or two sensor packets and a single
+        glitched packet became the zero for a whole trial (AM 15.10: still head
+        reading +56 deg / +152 deg from trial start). It also averaged in a
+        leading row of zeros, biasing the zero by raw_heading/102 (~1.5 deg).
+
+        After setting the offset, `check_n` fresh calibrated samples must have a
+        median within `check_tol` deg of (0, 0); otherwise it re-calibrates, up
+        to `max_attempts` times. Never blocks: if the head never settles within
+        `timeout_s`, or every attempt fails the check, it keeps the last result
+        and logs a warning.
+
+        Returns `self.last_calibration` (dict): offset_az, offset_el (raw
+        sensor frame), spread_az, spread_el (MAD, deg), stable, n_samples,
+        residual (deg, from the check), attempts.
         """
-        log_size = 100
-        limit = 0.2
-        logging.debug('calibrating')
-        log = numpy.zeros(2)
-        while True:  # wait in loop for sensor to stabilize
-            pose = self.get_pose(calibrate=False)
-            log = numpy.vstack((log, pose))
-            # check if orientation is stable for at least 30 data points
-            if len(log) > log_size:
-                diff = numpy.mean(numpy.abs(numpy.diff(log[-log_size:], axis=0)), axis=0)
-                logging.debug('calibration: az diff: %f,  ele diff: %f' % (diff[0], diff[1]))
-                if diff[0] < limit and diff[1] < limit:  # limit in degree
+        info = None
+        for attempt in range(1, max_attempts + 1):
+            az, el, mad_az, mad_el, stable, n = self._measure_offset(
+                window_s, stable_mad, timeout_s)
+            self.pose_offset = numpy.array((az, el), dtype=float)
+            self.is_calibrated = True
+            residual = self._check_zero(check_n)
+            info = dict(offset_az=az, offset_el=el, spread_az=mad_az,
+                        spread_el=mad_el, stable=bool(stable), n_samples=int(n),
+                        residual=residual, attempts=attempt)
+            if residual is not None and residual <= check_tol:
+                break
+            logging.warning('Calibration check failed (attempt %d/%d): pose %s deg '
+                            'from zero right after calibrating -- recalibrating',
+                            attempt, max_attempts,
+                            'unknown' if residual is None else '%.1f' % residual)
+        else:
+            logging.warning('Calibration check still failing after %d attempts; '
+                            'keeping the last offset', max_attempts)
+        if not info['stable']:
+            logging.warning('Head did not settle within %.1f s; calibrated on the '
+                            'last %.2f s anyway (spread az %.1f, el %.1f deg)',
+                            timeout_s, window_s, info['spread_az'], info['spread_el'])
+        self.last_calibration = info
+        self.calibration_log.append([float(info['offset_az']),
+                                     float(info['offset_el'])])
+        logging.debug('Sensor calibration complete: %s', info)
+        return info
+
+    def _wait_new_sample(self, last, timeout=0.5):
+        """Block until the sensor delivers a packet after count `last`. Returns
+        the new count, or None if nothing arrived within `timeout` s."""
+        t_end = time.time() + timeout
+        while self.state.samples == last:
+            if time.time() > t_end:
+                return None
+            time.sleep(0.001)
+        return self.state.samples
+
+    @staticmethod
+    def _robust_center(az, el):
+        """Median and MAD of yaw (wrap-safe around +-180) and pitch."""
+        az, el = numpy.asarray(az, float), numpy.asarray(el, float)
+        ref = az[-1]
+        d = (az - ref + 180) % 360 - 180
+        med_d = numpy.median(d)
+        az_c = (ref + med_d + 180) % 360 - 180
+        el_c = numpy.median(el)
+        return (float(az_c), float(el_c),
+                float(numpy.median(numpy.abs(d - med_d))),
+                float(numpy.median(numpy.abs(el - el_c))))
+
+    def _measure_offset(self, window_s, stable_mad, timeout_s):
+        """Sliding window of distinct raw samples until it is still (or timeout)."""
+        buf = []                       # (t, az, el), raw: calibrate=False
+        t_stop = time.time() + timeout_s
+        last = self.state.samples
+        stable = False
+        while True:
+            nxt = self._wait_new_sample(last)
+            if nxt is None:
+                logging.warning('Motion sensor delivered no new samples for 0.5 s '
+                                'during calibration')
+                if time.time() > t_stop:
                     break
-        self.pose_offset = numpy.mean(log, axis=0).astype('float16')
-        self.is_calibrated = True
-        self.calibration_log.append([float(self.pose_offset[0]),
-                                     float(self.pose_offset[1])])
-        logging.debug('Sensor calibration complete.')
+                continue
+            last = nxt
+            p = self.get_pose(calibrate=False)
+            now = time.time()
+            buf.append((now, float(p[0]), float(p[1])))
+            while buf[0][0] < now - window_s:
+                buf.pop(0)
+            if len(buf) >= 5 and now - buf[0][0] >= 0.8 * window_s:
+                _, _, mad_az, mad_el = self._robust_center(
+                    [b[1] for b in buf], [b[2] for b in buf])
+                if mad_az <= stable_mad and mad_el <= stable_mad:
+                    stable = True
+                    break
+            if now > t_stop:
+                break
+        if not buf:  # sensor silent the whole time: fall back to one read
+            p = self.get_pose(calibrate=False)
+            buf = [(time.time(), float(p[0]), float(p[1]))]
+        az, el, mad_az, mad_el = self._robust_center(
+            [b[1] for b in buf], [b[2] for b in buf])
+        return az, el, mad_az, mad_el, stable, len(buf)
+
+    def _check_zero(self, n):
+        """Median distance (deg) of `n` fresh calibrated samples from (0, 0);
+        None if the sensor delivered nothing."""
+        az, el = [], []
+        last = self.state.samples
+        for _ in range(n):
+            nxt = self._wait_new_sample(last)
+            if nxt is None:
+                break
+            last = nxt
+            p = self.get_pose(calibrate=True)
+            az.append(float(p[0])); el.append(float(p[1]))
+        if not az:
+            return None
+        return float(numpy.hypot(numpy.median(az), numpy.median(el)))
 
     def halt(self):
         """

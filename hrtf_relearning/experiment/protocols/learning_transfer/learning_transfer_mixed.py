@@ -1113,7 +1113,8 @@ def run_own_monaural(subject, ear):
     _fix_output_level()
     loc = loc_settings(hemi, exclude_midline=True)
     loc.update(stim="ripple", targets_per_sector=2)   # ripple only, 5x5 sectors x 2 = 50 trials
-    test = Localization(subject, settings_h, loc_settings=loc)
+    test = Localization(
+        subject, settings_h, loc_settings=loc)
     test.sequence.phase = f"monaural_own_{ear}"
     test.run()
     return test

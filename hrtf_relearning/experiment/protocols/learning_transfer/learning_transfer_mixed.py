@@ -647,14 +647,93 @@ def screen_donors(subject=None, native=None, n=SCREEN_N, shuffle=True, review=Tr
     return show_screen()
 
 
+#: Marks of a `reason` left as the choose-the-donor cell's template. Paul does
+#: not write prose at the rig (2026-10-15) and should not be nagged for it, so
+#: an unfilled reason is DROPPED rather than recorded: the numbers below are a
+#: better record than "EG ... (..% retained)" ever was.
+_UNFILLED_REASON_MARKS = ("...", "..%", "+..", "??")
+
+
+def _reason_is_unfilled(reason):
+    text = (reason or "").strip()
+    return (not text
+            or text == "seems learnable"          # the function's own default
+            or any(mark in text for mark in _UNFILLED_REASON_MARKS))
+
+
+def _screen_facts(row):
+    """The chosen donor's own screen numbers as record text, or "".
+
+    Goes through `donor_screening.measure` on the same block `show_screen`
+    tabulates, so this string carries exactly the numbers that were on screen
+    when the choice was made -- no second definition of "retained" or
+    "impairment" to drift from the table. Never raises and never blocks: if
+    anything is missing the reason simply carries no numbers.
+    """
+    try:
+        from hrtf_relearning.experiment.analysis.localization.localization_analysis \
+            import block_summary
+        native = load_native()
+        seq = screen_block(row["donor"], row.get("donor_ear"))
+        if native is None or seq is None:
+            return ""
+        ref, m = block_summary(native), block_summary(seq)
+        out = donor_screening.measure(
+            dict(pe=ref["polar_error"], eg=ref["elevation_gain"],
+                 az_rmse=ref["azimuth_rmse"], n=ref["n"]),
+            [dict(donor=row["donor"], donor_ear=row.get("donor_ear"),
+                  rank=row["rank"], n=m["n"], pe=m["polar_error"],
+                  eg=m["elevation_gain"], az_gain=m["azimuth_gain"],
+                  az_rmse=m["azimuth_rmse"])])[0]
+        import math
+        retained = out.get("eg_retained")
+        kept = (f"{retained * 100:.0f}% retained"
+                if retained is not None and math.isfinite(retained)
+                else "retained n/a")
+        return (f"[screen rank {out['rank']}: EG {out['eg']:.2f} ({kept}), "
+                f"PE {out['pe']:.1f} deg, impairment {out['impairment']:+.1f} "
+                f"deg, n={out['n']}]")
+    except Exception as exc:                      # provenance must never block
+        print(f"  [!] could not read the screen numbers for the record "
+              f"({type(exc).__name__}: {exc})")
+        return ""
+
+
 def _screen_note(row, reason=""):
-    """Warn (never block) when committing a donor with no screen block on file,
-    and put that on the record."""
-    if screen_block(row["donor"], row.get("donor_ear")) is not None:
-        return reason
-    print(f"  [!] {_label(row)} has no finished screen block on file for "
-          f"{SUBJECT_ID} -- committing anyway; noted in the reason")
-    return f"{reason} [no screen block on file]".strip()
+    """Build what gets stored as WHY this donor was chosen. Never blocks.
+
+    `reason` is the only record of this choice -- the screen record itself is
+    just the tagged sequences, and for a non-default rank nothing else says why
+    that rank was taken. Three things can happen to it:
+
+    no screen block on file
+        warned about, and said so on the record.
+
+    the cell's template, unedited
+        dropped. It commits verbatim otherwise -- donor_id="??" fails loudly
+        but free text does not -- and reads like a justification with the
+        numbers missing, which is harder to spot later than an empty field.
+        AB (2026-10-08) and CO (2026-10-14) are both stored that way.
+
+    anything else
+        kept as written.
+
+    In every case the donor's own screen numbers are appended when they can be
+    read, so the record stands on the measurement whether or not anyone typed
+    a sentence.
+    """
+    notes = []
+    if screen_block(row["donor"], row.get("donor_ear")) is None:
+        print(f"  [!] {_label(row)} has no finished screen block on file for "
+              f"{SUBJECT_ID} -- committing anyway; noted in the reason")
+        notes.append("[no screen block on file]")
+    else:
+        facts = _screen_facts(row)
+        if facts:
+            notes.append(facts)
+    if _reason_is_unfilled(reason):
+        reason = ""
+    return " ".join([reason, *notes]).strip()
 
 
 def load_existing_donor():
@@ -1016,6 +1095,32 @@ run_phase("D", subject)
 plot_split_qc(slab.HRTF(str(paths.SOFA_DIR / SUBJECT_ID / f"{NATIVE_SOFA}.sofa")),
               envelope_n_keep=selection.N_KEEP, ear=TRAINED_EAR,
               band=selection.DEFAULT_BAND)
+
+# %% misc: monaural OWN-HRTF ear test -- run after the final battery -----------
+# Can this listener use spectral detail on each ear at all? Her OWN unmodified
+# DTF on one ear, the other ear reduced to its n_keep envelope averaged over
+# elevation (the same treatment the composites give the untrained ear), each
+# ear tested in its own near hemifield, as baseline A. No donor involved.
+# Added 2026-10-15 for AM: donor detail worked on her left ear (0.29-0.39) and
+# failed on her right for all six donors (<=0.21). If her OWN detail also fails
+# on the right, the asymmetry is hers (hearing / ear weighting), not the donors'.
+# Order R then L; 50 trials, ripple only, ~3 min per block.
+def run_own_monaural(subject, ear):
+    hemi = (-35, 0) if ear == "left" else (0, 35)
+    settings_h = hrir_settings(NATIVE_SOFA, ear=ear, other_ear="envelope")
+    settings_h["env_elevation_average"] = True   # match the composites' other ear
+    print(f"\nOWN-HRTF MONAURAL: own detail on the {ear} ear only, hemifield {hemi}")
+    _fix_output_level()
+    loc = loc_settings(hemi, exclude_midline=True)
+    loc.update(stim="ripple", targets_per_sector=2)   # ripple only, 5x5 sectors x 2 = 50 trials
+    test = Localization(subject, settings_h, loc_settings=loc)
+    test.sequence.phase = f"monaural_own_{ear}"
+    test.run()
+    return test
+
+subject = hr.Subject(SUBJECT_ID)
+mono_R = run_own_monaural(subject, "right")
+mono_L = run_own_monaural(subject, "left")
 
 # %% misc: build the second composite strength (n_keep=8) ---------------------
 # Half as much of the cue handed over. Only needed as a rung of the

@@ -109,7 +109,7 @@ EDIT THE CONFIG BLOCK BELOW PER PARTICIPANT.
 ------------------------------------------------------------------------------
 """
 
-SUBJECT_ID = ("AM")   # put this id into an open row of learning_transfer_block_order.csv
+SUBJECT_ID = ("CO")   # put this id into an open row of learning_transfer_block_order.csv
 
 # %% imports and config #------------------------------------------------------
 import csv  # only for the block-order table below; the modification
@@ -1040,8 +1040,6 @@ for key in FINAL_ORDER:
 # %% day 1: baseline A -- trained ear, same loc (redo individually) -----------
 baseline_A = run_phase("baseline_A", subject)
 
-
-
 # -----------------------------------------------
 # ADAPTATION DAYS1
 # anchor -> PRE test -> train -> POST test, so within-session change is
@@ -1071,14 +1069,6 @@ for key in FINAL_ORDER:
 # %% final day: A -- trained ear, same locations (redo individually) -----------
 run_phase("A", subject)
 
-# %% final day: B -- trained ear, mirrored locations (redo individually) -------
-run_phase("B", subject)
-
-# %% final day: C -- untrained ear, same locations (redo individually) ---------
-run_phase("C", subject)
-
-# %% final day: D -- untrained ear, mirrored locations [MAIN] -----------------
-run_phase("D", subject)
 
 # ===========================================================================
 # MISC — diagnostics, not part of the per-participant protocol.

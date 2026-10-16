@@ -1086,6 +1086,26 @@ show_donor_log()
 subject = hr.Subject(SUBJECT_ID)
 run_anchor(subject)
 
+# %% misc: native LEFT/RIGHT ear swap (own HRTF, ears exchanged, midline) -----
+# Same block as HRIR_Recording step 5c, so the two are directly comparable:
+# participant's own HRTF, binaural, channels swapped and azimuth mirrored
+# (hrtf.processing.mirror) -- on the midline each ear hears the OTHER ear's DTF
+# at the same elevation. Midline grid, stimulus and gain as in step 5b/5c, not
+# this file's sector grid. The drop from the unswapped own-HRTF midline block
+# says how ear-specific the native spectral cues are before any training.
+# Analysis: 'Claude outputs/friday_2026-10-02/scripts/native_swap.py'.
+# Plot name carries 'native-swap' ... own-HRTF ... midline.
+subject = hr.Subject(SUBJECT_ID)
+_fix_output_level()
+swap_loc = Localization(
+    subject, hrir_settings(NATIVE_SOFA, ear=None, mirror=True),
+    loc_settings={"kind": "standard", "azimuth_range": (-1, 1),
+                  "elevation_range": ELEVATION_RANGE, "targets_per_speaker": 2,
+                  "min_distance": 15, "gain": GAIN, "stim": STIM,
+                  "stim_settings": STIM_SETTINGS})
+swap_loc.sequence.phase = "native-swap"
+swap_loc.run()
+
 # %% misc: force the OS output level on its own -------------------------------
 # run_phase() and run_training() already do this. Use it when checking levels
 # by ear outside a block, or after someone has touched the volume slider.

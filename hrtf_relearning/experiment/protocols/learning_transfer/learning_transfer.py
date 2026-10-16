@@ -75,7 +75,7 @@ EDIT THE CONFIG BLOCK BELOW PER PARTICIPANT.
 ------------------------------------------------------------------------------
 """
 
-SUBJECT_ID = ("CO")
+SUBJECT_ID = ("CO")   # put this id into an open row of learning_transfer_block_order.csv
 
 # %% imports and config #------------------------------------------------------
 import csv  # only for the block-order table below; the modification
@@ -90,7 +90,7 @@ from hrtf_relearning.experiment.localization.Localization_AR import Localization
 from hrtf_relearning.hrtf.analysis import donor_selection as selection
 from hrtf_relearning.experiment.protocols.protocol_helpers import (
     collect_demographics, collect_externalization_rating, externalization_check,
-    externalization_ladder)
+    externalization_ladder, review_block)
 from hrtf_relearning.experiment.misc.system_volume import set_windows_volume
 from hrtf_relearning.experiment.protocols.learning_transfer.donor_modification import DonorModification
 from hrtf_relearning.experiment.protocols.learning_transfer import donor_screening
@@ -373,11 +373,9 @@ SCREEN_TPS = 1
 # fix it — the MARGINAL verdict does, by sending borderline calls to a re-check
 # against baseline A. 35 keeps the grid symmetric about the midline
 # (-30..+30 in 10 deg steps), which 30 trials would not.
-# Externalization ratings on the day-1 baselines. A is the trained-ear
-# condition and D is the main transfer cell; B and C are far-ear variants of
-# the same two composites, so a rating on all four measures boredom rather than
-# externalization. The native anchor still defines the top of the scale.
-RATED_BASELINES = ("A", "D")
+# No externalization ratings on the day-1 baselines A/B/C/D (Paul, 2026-10-13):
+# the donor screen already asks for one on the same composite, so a second
+# rating adds nothing. The native anchor still defines the top of the scale.
 
 SCREEN_N = 6       # donors staged AND screened by default (Paul, 2026-10-06).
                    # ~3 min and 35 trials of donor exposure each before baseline A.
@@ -525,7 +523,7 @@ def show_screen():
     return out
 
 
-def screen_donors(subject=None, native=None, n=SCREEN_N, shuffle=True):
+def screen_donors(subject=None, native=None, n=SCREEN_N, shuffle=True, review=True):
     """Screen the top `n` shortlist donors, then print the table.
 
     One block per donor ear in the TEST CONDITION -- monaural composite,
@@ -542,8 +540,14 @@ def screen_donors(subject=None, native=None, n=SCREEN_N, shuffle=True):
     (reproducible, and rank 0 is not always heard first). Nothing is selected:
     read the table, then use_donor(donor_id=..., donor_ear=..., reason=...).
     To screen more candidates later: screen_donors(n=8) (stage them first).
+
+    `review=True` pauses after every donor with that block's plots on screen:
+    press n in the plot window for the next donor, q to stop there. Rerunning
+    later picks up the donors that did not run. `review=False` runs straight
+    through.
     """
     import random
+    import matplotlib.pyplot as plt
     if load_native(quiet=True) is None:
         raise RuntimeError("no native reference on file for "
                            f"{SUBJECT_ID} -- run the native reference cell first")
@@ -577,9 +581,17 @@ def screen_donors(subject=None, native=None, n=SCREEN_N, shuffle=True):
         # block has the same HRIR, ear and hemifield as baseline A
         test.sequence.phase = "screen"
         test.sequence.screen_donor = dict(donor=row["donor"], donor_ear=ear)
+        figs_before = set(plt.get_fignums())
         test.run()     # writes the subject file trial by trial
         print(f"Done: {test.filename}")
         collect_externalization_rating(test)
+        if review and i_row < len(order) - 1:
+            new_figs = sorted(set(plt.get_fignums()) - figs_before)
+            if not review_block(new_figs, label=f"screen {_label(row)} "
+                                f"({i_row + 1}/{len(order)})"):
+                print(f"screen stopped; not run: "
+                      f"{', '.join(_label(r) for r in order[i_row + 1:])}")
+                break
     return show_screen()
 
 
@@ -931,9 +943,10 @@ screen_rows = show_screen()
 # Pick on elevation gain and polar error from the table above. `reason` is the
 # only record of why this participant got this composite. Do NOT also call
 # build_donor_sofa() -- it defaults to rank=0 and would undo this choice.
-use_donor(donor_id="GM", donor_ear="right",
-          reason="EG 0.41 (60% retained), impairment +5.0 deg -- mid-range on "
-                 "the midline screen, judged learnable")
+# FILL IN from the screen table, then run (left as a template in this copy so
+# the previous participant's choice cannot be applied by accident):
+use_donor(donor_id="??", donor_ear="??",
+          reason="EG ... (..% retained), impairment +.. deg -- ...")
 subject = hr.Subject(SUBJECT_ID)
 
 # %% day 1: ONLY if the donor was never staged -------------------------------
@@ -952,24 +965,9 @@ print(f"Running day-1 baselines in order: {FINAL_ORDER}")
 baselines = {}
 for key in FINAL_ORDER:
     baselines[key] = run_phase(f"baseline_{key}", subject)
-    if key in RATED_BASELINES:
-        collect_externalization_rating(baselines[key])
 
 # %% day 1: baseline A -- trained ear, same loc (redo individually) -----------
 baseline_A = run_phase("baseline_A", subject)
-collect_externalization_rating(baseline_A)
-
-# %% day 1: baseline B -- trained ear, mirrored loc (redo individually) -------
-baseline_B = run_phase("baseline_B", subject)
-
-# %% day 1: baseline C -- untrained ear, same loc (redo individually) ---------
-baseline_C = run_phase("baseline_C", subject)
-
-# %% day 1: baseline D -- untrained ear, mirrored loc (redo individually) -----
-baseline_D = run_phase("baseline_D", subject)
-collect_externalization_rating(baseline_D)
-# Condition identity (ear / mirror / hemifield) is carried into the sequence
-# name by run_phase() -- see `_condition_tag`.
 
 # -----------------------------------------------
 # ADAPTATION DAYS1
@@ -998,15 +996,6 @@ for key in FINAL_ORDER:
 # %% final day: A -- trained ear, same locations (redo individually) -----------
 run_phase("A", subject)
 
-# %% final day: B -- trained ear, mirrored locations (redo individually) -------
-run_phase("B", subject)
-
-# %% final day: C -- untrained ear, same locations (redo individually) ---------
-run_phase("C", subject)
-
-# %% final day: D -- untrained ear, mirrored locations [MAIN] -----------------
-run_phase("D", subject)
-
 # ===========================================================================
 # MISC — diagnostics, not part of the per-participant protocol.
 # Nothing below runs as a matter of course. Reach for it when something looks
@@ -1022,6 +1011,33 @@ run_phase("D", subject)
 plot_split_qc(slab.HRTF(str(paths.SOFA_DIR / SUBJECT_ID / f"{NATIVE_SOFA}.sofa")),
               envelope_n_keep=selection.N_KEEP, ear=TRAINED_EAR,
               band=selection.DEFAULT_BAND)
+
+# %% misc: monaural OWN-HRTF ear test -- run after the final battery -----------
+# Can this listener use spectral detail on each ear at all? Her OWN unmodified
+# DTF on one ear, the other ear reduced to its n_keep envelope averaged over
+# elevation (the same treatment the composites give the untrained ear), each
+# ear tested in its own near hemifield, as baseline A. No donor involved.
+# Added 2026-10-15 for AM: donor detail worked on her left ear (0.29-0.39) and
+# failed on her right for all six donors (<=0.21). If her OWN detail also fails
+# on the right, the asymmetry is hers (hearing / ear weighting), not the donors'.
+# Order R then L; 50 trials, ripple only, ~3 min per block.
+def run_own_monaural(subject, ear):
+    hemi = (-35, 0) if ear == "left" else (0, 35)
+    settings_h = hrir_settings(NATIVE_SOFA, ear=ear, other_ear="envelope")
+    settings_h["env_elevation_average"] = True   # match the composites' other ear
+    print(f"\nOWN-HRTF MONAURAL: own detail on the {ear} ear only, hemifield {hemi}")
+    _fix_output_level()
+    loc = loc_settings(hemi, exclude_midline=True)
+    loc.update(stim="ripple", targets_per_sector=2)   # ripple only, 5x5 sectors x 2 = 50 trials
+    test = Localization(
+        subject, settings_h, loc_settings=loc)
+    test.sequence.phase = f"monaural_own_{ear}"
+    test.run()
+    return test
+
+subject = hr.Subject(SUBJECT_ID)
+mono_R = run_own_monaural(subject, "right")
+mono_L = run_own_monaural(subject, "left")
 
 # %% misc: build the second composite strength (n_keep=8) ---------------------
 # Half as much of the cue handed over. Only needed as a rung of the
@@ -1085,26 +1101,6 @@ show_donor_log()
 # adaptation.
 subject = hr.Subject(SUBJECT_ID)
 run_anchor(subject)
-
-# %% misc: native LEFT/RIGHT ear swap (own HRTF, ears exchanged, midline) -----
-# Same block as HRIR_Recording step 5c, so the two are directly comparable:
-# participant's own HRTF, binaural, channels swapped and azimuth mirrored
-# (hrtf.processing.mirror) -- on the midline each ear hears the OTHER ear's DTF
-# at the same elevation. Midline grid, stimulus and gain as in step 5b/5c, not
-# this file's sector grid. The drop from the unswapped own-HRTF midline block
-# says how ear-specific the native spectral cues are before any training.
-# Analysis: 'Claude outputs/friday_2026-10-02/scripts/native_swap.py'.
-# Plot name carries 'native-swap' ... own-HRTF ... midline.
-subject = hr.Subject(SUBJECT_ID)
-_fix_output_level()
-swap_loc = Localization(
-    subject, hrir_settings(NATIVE_SOFA, ear=None, mirror=True),
-    loc_settings={"kind": "standard", "azimuth_range": (-1, 1),
-                  "elevation_range": ELEVATION_RANGE, "targets_per_speaker": 2,
-                  "min_distance": 15, "gain": GAIN, "stim": STIM,
-                  "stim_settings": STIM_SETTINGS})
-swap_loc.sequence.phase = "native-swap"
-swap_loc.run()
 
 # %% misc: force the OS output level on its own -------------------------------
 # run_phase() and run_training() already do this. Use it when checking levels

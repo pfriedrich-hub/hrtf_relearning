@@ -346,6 +346,7 @@ def use_donor(rank=None, donor_id=None, donor_ear=None,
     reason = _screen_note(row, reason)
     out = donor.use_donor(rank=rank, donor_id=donor_id, donor_ear=donor_ear,
                           reason=reason)
+    donor_screening.record_choice(SUBJECT_ID, row["donor"], row.get("donor_ear"))
     _sync()
     return out
 
@@ -492,7 +493,9 @@ def show_screen():
     """Print the screen table, computed from the blocks on disk. Run any time.
 
     One row per shortlist candidate that has a finished screen block, in rank
-    order, measured against the native block on disk. Returns the rows.
+    order, measured against the native block on disk. Returns the rows, and
+    stores them on the subject record (Subject.donor_screen) -- rerun it on an
+    older subject to fill that field in.
     """
     from hrtf_relearning.experiment.analysis.localization.localization_analysis \
         import block_summary
@@ -504,12 +507,13 @@ def show_screen():
     reference = dict(pe=ref["polar_error"], eg=ref["elevation_gain"],
                      az_rmse=ref["azimuth_rmse"], n=ref["n"])
     subject = hr.Subject(SUBJECT_ID)
-    rows = []
+    rows, blocks = [], {}
     for row in sorted(donor.shortlist(quiet=True), key=lambda r: r["rank"]):
         seq = screen_block(row["donor"], row.get("donor_ear"), subject)
         if seq is None:
             continue
         m = block_summary(seq)
+        blocks[(row["donor"], row.get("donor_ear"))] = seq.name
         rows.append(dict(donor=row["donor"], donor_ear=row.get("donor_ear"),
                          rank=row["rank"], n=m["n"],
                          pe=m["polar_error"], eg=m["elevation_gain"],
@@ -520,6 +524,10 @@ def show_screen():
         return []
     out = donor_screening.measure(reference, rows)
     donor_screening.report(out, reference)
+    # keep the table on the subject record too (Subject.donor_screen); the
+    # tagged blocks stay the primary record, this never raises
+    donor_screening.record_screen(SUBJECT_ID, native.name, reference, out,
+                                  blocks)
     return out
 
 

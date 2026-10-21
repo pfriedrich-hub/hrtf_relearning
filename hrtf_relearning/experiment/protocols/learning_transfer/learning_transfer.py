@@ -927,11 +927,9 @@ subject = hr.Subject(SUBJECT_ID)
 collect_demographics(subject)      # once per participant; skipped if on file
 show_status(subject)
 
-
 # %% day 1: native reference (original HRIR, full field) ---------------------
 native = run_phase("native", subject)
 collect_externalization_rating(native)
-
 
 # %% BEFORE THE SESSION: stage donors (minutes per donor -- nobody in the rig)
 prepare_donor_shortlist(n=6)    # screen=True (binaural builds) no longer needed

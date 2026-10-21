@@ -23,6 +23,7 @@ from hrtf_relearning.hrtf.binsim.hrtf2binsim import *
 from hrtf_relearning.hrtf.binsim.hrir2mat import check_gain
 from hrtf_relearning.utils import paths
 from hrtf_relearning.utils.pose_trace import pack_trace
+from hrtf_relearning.hrtf.binsim.filter_lookup import nearest_filter_idx
 from hrtf_relearning.experiment.localization.localization_helpers.stimulus import (
     draw_ripple_shape, apply_spectral_shape, n_active_coefficients)
 matplotlib.rcParams['figure.raise_window'] = False
@@ -541,7 +542,7 @@ def head_tracker(distance, target, sensor_state, pose_queue, current_trial, plot
             # find closest HRTF index and send to BinSim
             rel[0] = (-rel[0] + 360) % 360
             rel_target = numpy.array((rel[0], rel[1], hrtf_sources[0, 2]))
-            filter_idx = numpy.argmin(numpy.linalg.norm(rel_target - hrtf_sources, axis=1))
+            filter_idx = nearest_filter_idx(hrtf_sources, rel_target[0], rel_target[1])
             rel_hrtf_coords = hrtf_sources[filter_idx]
             if filter_idx != last_idx:
                 osc.send_message('/pyBinSim_ds_Filter', [0, 0, 0, 0, 0, 0, 0, 0, 0, 0,

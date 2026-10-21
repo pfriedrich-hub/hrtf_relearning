@@ -14,6 +14,7 @@ from hrtf_relearning.experiment.misc import meta_motion
 from hrtf_relearning.hrtf.binsim.hrtf2binsim import hrtf2binsim
 from pynput import keyboard
 from hrtf_relearning.utils import paths
+from hrtf_relearning.hrtf.binsim.filter_lookup import nearest_filter_idx
 
 logging.getLogger().setLevel('INFO')
 ROOT = hr.PATH
@@ -204,7 +205,7 @@ class Localization:
         # find the closest filter idx and send to pybinsim
         relative_coords[0] = (-relative_coords[0] + 360) % 360  # mirror and convert to HRTF convention [0 < az < 360]
         rel_target = numpy.array((relative_coords[0], relative_coords[1], self.hrir_sources[0, 2]))
-        filter_idx = numpy.argmin(numpy.linalg.norm(rel_target - self.hrir_sources, axis=1))
+        filter_idx = nearest_filter_idx(self.hrir_sources, rel_target[0], rel_target[1])
         rel_hrtf_coords = self.hrir_sources[filter_idx]
         self.osc_client_1.send_message('/pyBinSim_ds_Filter', [0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                                                         float(rel_hrtf_coords[0]), float(rel_hrtf_coords[1]), 0,

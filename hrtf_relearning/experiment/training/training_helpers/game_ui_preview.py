@@ -35,7 +35,8 @@ Usage:
 
 The peer set is kept across the demo's repeated fake games: watch the
 subject climb PAST the same names, and the next higher-ranked demo players
-join at the top once they have passed someone (game_ui.extend_peer_set).
+join at the top once they have reached the top of the board
+(game_ui.extend_peer_set).
 Each launch starts from a clean temp dir, so the set is re-picked per launch.
 
 To A/B test the retro pixel font (see game_ui._PIXEL_FONT_CHOICES), set

@@ -6,6 +6,7 @@ from analysis.localization import *
 from hrtf_relearning.hrtf.binsim.hrtf2binsim import hrtf2binsim
 from hrtf_relearning.experiment.misc.Subject import Subject
 from hrtf_relearning.utils import paths
+from hrtf_relearning.hrtf.binsim.filter_lookup import nearest_filter_idx
 date = datetime.datetime.now()
 date = f'{date.strftime("%d")}.{date.strftime("%m")}_{date.strftime("%H")}.{date.strftime("%M")}'
 logging.getLogger().setLevel('INFO')
@@ -97,7 +98,7 @@ class Localization:
         # find the closest filter idx and send to pybinsim
         relative_coords[0] = (-relative_coords[0] + 360) % 360  # mirror and convert to HRTF convention [0 < az < 360]
         rel_target = numpy.array((relative_coords[0], relative_coords[1], self.hrir_sources[0, 2]))
-        filter_idx = numpy.argmin(numpy.linalg.norm(rel_target - self.hrir_sources, axis=1))
+        filter_idx = nearest_filter_idx(self.hrir_sources, rel_target[0], rel_target[1])
         # --- use slab to filter and play the sound --- #
         self.hrir[filter_idx].apply(self.stim).play()
         time.sleep(self.stim.duration)

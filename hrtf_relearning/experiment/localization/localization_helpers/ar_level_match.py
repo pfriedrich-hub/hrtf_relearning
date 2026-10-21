@@ -47,6 +47,7 @@ import slab
 import freefield
 
 from hrtf_relearning.utils import paths
+from hrtf_relearning.hrtf.binsim.filter_lookup import nearest_filter_idx
 
 DEFAULT_BAND = (200.0, 16000.0)   # same convention as ild_band in record/processing.py
 
@@ -159,7 +160,7 @@ def _filter_index(loc, source):
     """Index of the binsim filter for `source` = (az, el), mirroring play_stimulus."""
     rel_az = (-float(source[0]) + 360) % 360
     rel = numpy.array((rel_az, float(source[1]), loc.hrir_sources[0, 2]))
-    return int(numpy.argmin(numpy.linalg.norm(rel - loc.hrir_sources, axis=1)))
+    return nearest_filter_idx(loc.hrir_sources, rel[0], rel[1])
 
 
 def _capture_silent(duration, samplerate, speaker=(0, 0)):

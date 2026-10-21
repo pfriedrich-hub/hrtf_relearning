@@ -169,9 +169,10 @@ def save_peer_set(results_dir: Path, subject_id: str, peers: List[str]) -> None:
 
     Written the first time they are shown a board and read back on every
     later game and session, so the cast is stable: as the participant
-    improves they climb PAST the same names. It is re-written only when it
-    grows -- higher-ranked players join once the participant has passed
-    someone (extend_peer_set) -- or is re-picked off the bottom row.
+    improves they climb PAST the same names. It is re-written only when
+    higher-ranked players join -- once the participant has reached the top
+    of their board (extend_peer_set) -- or when it is re-picked off the
+    bottom row.
     """
     if not subject_id:
         return
@@ -234,26 +235,34 @@ def board_rows(ranked: List[Tuple[str, int]], subject_id: str,
 
 def extend_peer_set(ranked: List[Tuple[str, int]], subject_id: str, peers: List[str],
                     n_above: int = BOARD_ABOVE, n_below: int = BOARD_BELOW) -> List[str]:
-    """Bring in higher-ranked players as the participant climbs.
+    """Bring in higher-ranked players once the participant has reached the
+    top of their board.
 
-    The cast is kept, but whenever fewer than `n_above` of it rank above the
-    participant -- they have just passed someone -- the players ranked
-    nearest above them who are not on the board yet join it, until there are
-    `n_above` above again (or nobody is left above in the field). To keep the
-    board at n_above + n_below + 1 rows, the cast members furthest BELOW the
-    participant are dropped, never going under `n_below` below them.
+    While anyone in the cast is still ahead of the participant, the cast is
+    left alone: they climb past the same names, one by one, and the board
+    shows them moving up it. Only when they have REACHED the top -- their
+    score equals or beats the best score in the cast -- do the players
+    ranked nearest above them in the field, who are not on the board yet,
+    join it, until there are `n_above` above them again (or nobody is left
+    above in the field). A tied cast member still counts as above
+    (rank_scores breaks ties by id), so fewer newcomers are needed then.
 
-    So improving both moves the participant up past familiar names AND
-    reveals new, higher-ranked ones at the top; familiar names only leave at
-    the bottom, once they are far behind. Returns `peers` unchanged when
-    nothing needs adding.
+    To keep the board at n_above + n_below + 1 rows, the cast members
+    furthest BELOW the participant are dropped, never going under `n_below`
+    below them -- so the names they have just passed stay on as the rows
+    under them.
+
+    Returns `peers` unchanged when nothing needs adding.
     """
     ids = [sid for sid, _ in rank_scores(dict(ranked))]
     if subject_id not in ids:
         return list(peers)
+    scores = dict(ranked)
     pos = {sid: k for k, sid in enumerate(ids)}
     me = pos[subject_id]
     cast = [p for p in peers if p in pos and p != subject_id]
+    if cast and scores[subject_id] < max(scores[p] for p in cast):
+        return list(peers)  # still someone on the board to catch
     n_cast_above = sum(pos[p] < me for p in cast)
     if n_cast_above >= n_above:
         return list(peers)
@@ -1136,10 +1145,10 @@ class GameWindow(QtWidgets.QMainWindow):
         results/<id>/. Every later game and session reuses it.
 
         That persistence is the point, not an optimisation: as they improve
-        they climb PAST the same people. Once they have passed someone,
-        the next higher-ranked players join at the top (extend_peer_set),
-        so there are always new names to chase; familiar names leave only
-        at the bottom, once they are far behind. Their peers' scores are
+        they climb PAST the same people. Only once they have reached the
+        top of the board do the next higher-ranked players join above them
+        (extend_peer_set), so the new names are earned and there is always
+        someone left to chase; familiar names leave only at the bottom. Their peers' scores are
         always the current ones, so being overtaken still happens.
 
         Returns an empty board (and freezes nothing) while the participant
@@ -1162,8 +1171,8 @@ class GameWindow(QtWidgets.QMainWindow):
                 # anyone below them.
                 return []
             save_peer_set(self.backup_dir, self.subject_id, peers)
-        # Climbed past someone? Bring in the next higher-ranked players (see
-        # extend_peer_set) and persist the grown cast.
+        # Reached the top of the board? Bring in the next higher-ranked
+        # players (see extend_peer_set) and persist the new cast.
         grown = extend_peer_set(ranked, self.subject_id, peers)
         if grown != list(peers):
             save_peer_set(self.backup_dir, self.subject_id, grown)

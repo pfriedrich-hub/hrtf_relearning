@@ -110,6 +110,13 @@ class Localization:
         self.subject.write()
 
     def run(self):
+        # Playback route (local_config "audio_output"/"audio_volume", see
+        # misc/audio_device). Here and not only under __main__: the protocols
+        # import Localization and call run(), so a __main__ check never fires
+        # for them. preflight() raises AudioRouteError (stops the cell, keeps
+        # the console) rather than preflight_or_exit()'s SystemExit.
+        audio_device.preflight()
+
         # init pybinsim
         self.osc_client_1 = self._make_osc_client(port=10000)
         self.osc_client_2 = self._make_osc_client(port=10003)

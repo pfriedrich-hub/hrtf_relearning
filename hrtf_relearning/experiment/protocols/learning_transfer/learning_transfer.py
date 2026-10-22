@@ -75,7 +75,7 @@ EDIT THE CONFIG BLOCK BELOW PER PARTICIPANT.
 ------------------------------------------------------------------------------
 """
 
-SUBJECT_ID = ("DA")   # put this id into an open row of learning_transfer_block_order.csv
+SUBJECT_ID = ("SK")   # put this id into an open row of learning_transfer_block_order.csv
 
 # %% imports and config #------------------------------------------------------
 import csv  # only for the block-order table below; the modification
@@ -1000,7 +1000,7 @@ for key in FINAL_ORDER:
     run_phase(key, subject)
 
 # %% final day: A -- trained ear, same locations (redo individually) -----------
-run_phase("A", subject)
+run_phase("D", subject)
 
 # ===========================================================================
 # MISC — diagnostics, not part of the per-participant protocol.

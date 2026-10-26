@@ -88,6 +88,11 @@ az_fit = record_head_radius(
 # error if the fit hit a bound / has a huge residual / the two ITD estimators
 # disagree. Read the printed table anyway: KEMAR gives 0.0722 m, residual 27 us.
 HEAD_RADIUS = usable_radius(az_fit)
+# the radius the native SOFA is built with (step 1 passes HEAD_RADIUS), on the
+# subject record so it travels with the behavioural data. Set on THIS `subject`
+# because every later step writes through it.
+subject.head_radius = float(HEAD_RADIUS)
+subject.write()
 
 
 # %% step 1: record / load HRIR ------------------------------------------------

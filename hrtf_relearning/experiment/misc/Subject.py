@@ -26,12 +26,18 @@ class Subject:
         before demographics were collected; fill with
         ``protocol_helpers.collect_demographics(subject)``.
     donor_screen : dict
-        The day-1 behavioural donor screen — ``{'timestamp', 'reference',
-        'rows', 'chosen', 'n_trials'}``, or ``{}`` if it was never run. It is
-        the record that a composite was checked against the gates in
-        ``donor_screening`` BEFORE four days were spent on it; without it a
-        screened and an unscreened donor are indistinguishable afterwards.
-        Written by ``learning_transfer.screen_donors``.
+        The day-1 behavioural donor screen as it was tabulated —
+        ``{'timestamp', 'reference', 'rows', 'chosen'}``, or ``{}`` if it was
+        never run. ``reference`` is the native block's numbers plus its
+        ``block`` name; each row carries the donor, ear, EG, retained,
+        polar error, impairment (with SEs), azimuth sanity values, the
+        externalization rating and its screen ``block`` name; ``chosen`` is
+        ``{'donor', 'donor_ear', 'screened', 'timestamp'}``. Derived from the
+        tagged screen blocks (``seq.phase == 'screen'``), which stay the
+        primary record. Written by ``show_screen()`` (also at the end of
+        ``screen_donors()``) and ``use_donor()`` in the learning-transfer
+        protocols, via ``donor_screening.record_screen`` / ``record_choice``;
+        rerun ``show_screen()`` to fill it in for an older subject.
     active_donor : dict
         Which donor this participant's composite HRTF is currently built from
         — ``{'donor', 'rank', 'tier', 'timestamp'}``, or ``{}`` if none has
@@ -42,11 +48,14 @@ class Subject:
         candidate ranking is not here — it is embedded in the composite SOFA
         as ``GLOBAL_ModificationParams``.
     head_radius : float or None
-        Effective head radius in metres, fitted acoustically from this
-        participant's lateral ITDs by ``fit_head_radius.record_head_radius``
-        (step 0 of the recording protocol) and passed to ``record_hrir`` as
-        ``head_radius=``. ``None`` for records made before it was measured —
-        those HRIRs used the pipeline default. The full fit (residual, both
+        Head radius in metres that the native SOFA was built with: the
+        acoustic fit from this participant's lateral ITDs
+        (``fit_head_radius.record_head_radius``, step 0 of HRIR_Recording)
+        as accepted by ``usable_radius`` — or its 0.0875 m fallback when the
+        fit was rejected — i.e. exactly what step 1 passes to ``record_hrir``
+        as ``head_radius=``. Written by HRIR_Recording step 0; rerunning that
+        cell reloads the stored sweeps, so it fills this in for older
+        subjects. ``None`` when step 0 never ran on this record. The full fit (residual, both
         estimators, per-direction ITDs) is not kept here; it is logged when
         measured, and can be recovered from any SOFA with ``fit_from_sofa``.
     localization : dict[str, slab.Trialsequence]

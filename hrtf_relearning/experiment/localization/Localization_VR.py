@@ -11,8 +11,9 @@ from hrtf_relearning.experiment.misc import meta_motion
 from hrtf_relearning.experiment.misc.system_volume import set_windows_volume
 from hrtf_relearning.hrtf.binsim.hrtf2binsim import hrtf2binsim
 from hrtf_relearning.hrtf.binsim.hrir2mat import check_gain
-from pynput import keyboard
+from hrtf_relearning.experiment.misc.response_pad import get_pad
 from hrtf_relearning.utils import paths
+from hrtf_relearning.hrtf.binsim.filter_lookup import nearest_filter_idx
 logging.getLogger().setLevel('INFO')
 ROOT = hr.PATH
 
@@ -124,11 +125,11 @@ class Localization:
         self._wait_for_binsim()
         self.play_sound('beep')
         for self.target in self.sequence:
-            self.wait_for_button('Look at the Center and press Enter')
+            self.wait_for_button('Look at the Center and press {key}')
             # self.motion_sensor.calibrate()
 
             self.send_ue_state("center")
-            self.wait_for_button('Look at the Center and press Enter')
+            self.wait_for_button('Look at the Center and press {key}')
             self.calibrate_pose()
 
             self.send_ue_state("stimulus", target=self.target)
@@ -197,7 +198,7 @@ class Localization:
         # find the closest filter idx and send to pybinsim
         relative_coords[0] = (-relative_coords[0] + 360) % 360  # mirror and convert to HRTF convention [0 < az < 360]
         rel_target = numpy.array((relative_coords[0], relative_coords[1], self.hrir_sources[0, 2]))
-        filter_idx = numpy.argmin(numpy.linalg.norm(rel_target - self.hrir_sources, axis=1))
+        filter_idx = nearest_filter_idx(self.hrir_sources, rel_target[0], rel_target[1])
         rel_hrtf_coords = self.hrir_sources[filter_idx]
         self.osc_client_1.send_message('/pyBinSim_ds_Filter', [0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                                                         float(rel_hrtf_coords[0]), float(rel_hrtf_coords[1]), 0,
@@ -256,12 +257,11 @@ class Localization:
 
     @staticmethod
     def wait_for_button(msg=None):
-        if msg: print(msg)
-        def on_press(key):
-            if key == keyboard.Key.enter:
-                listener.stop()  # stop listening once Enter is pressed
-        with keyboard.Listener(on_press=on_press) as listener:
-            listener.join()  # block until listener.stop() is called
+        # Participant response: A on the gamepad, or Enter on a machine
+        # without one (freefield PC) -- see misc/response_pad. `{key}` in msg
+        # is filled with whichever applies.
+        pad = get_pad()
+        pad.wait('A', msg.format(key=pad.label('A')) if msg else None)
 import threading
 from pythonosc import dispatcher, osc_server, udp_client
 

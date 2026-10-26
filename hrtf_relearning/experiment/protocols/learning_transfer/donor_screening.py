@@ -301,3 +301,107 @@ def report(rows, reference):
           "impairment from here, not from baseline A.")
     print("=" * 78)
     return rows
+
+
+# ---------------------------------------------------------------------------
+# The screen on the subject record (Subject.donor_screen)
+# ---------------------------------------------------------------------------
+# The tagged screen blocks (seq.phase == "screen") stay the primary record --
+# everything below is derived from them and can be rebuilt with show_screen().
+# This copy exists so the numbers the choice was made on travel with the
+# subject file (and its JSON archive) without re-running the analysis.
+# Bookkeeping only: nothing here may raise into a session.
+
+def _row_key(row):
+    return (row.get("donor"), row.get("donor_ear"))
+
+
+def record_screen(subject_id, reference_block, reference, rows, blocks=None):
+    """Store the screen table on ``Subject.donor_screen``. Never raises.
+
+    Parameters
+    ----------
+    subject_id : str
+    reference_block : str
+        Name of the native reference block the table was measured against.
+    reference : dict
+        The reference numbers as passed to :func:`measure`.
+    rows : list of dict
+        The output of :func:`measure`.
+    blocks : dict, optional
+        ``{(donor, donor_ear): block name}`` for each row's screen block.
+
+    Writes ``{'timestamp', 'reference', 'rows', 'chosen'}``. ``chosen`` is
+    kept from the existing record (set by :func:`record_choice`); if there is
+    none yet and ``active_donor`` names a screened donor, it is taken from
+    there, so running show_screen() on an existing subject fills it in. The
+    subject file is only rewritten when the table actually changed.
+    """
+    import datetime
+    import json
+    from hrtf_relearning.experiment.misc.Subject import Subject, _to_jsonable
+    try:
+        blocks = blocks or {}
+        subject = Subject(subject_id)
+        if not subject.file_path.exists():      # never create a stub record
+            print(f"  [!] no subject file for {subject_id} -- screen not stored")
+            return None
+        previous = dict(subject.donor_screen or {})
+        record = {
+            "reference": _to_jsonable(dict(reference, block=reference_block)),
+            "rows": [_to_jsonable(dict(r, block=blocks.get(_row_key(r))))
+                     for r in rows],
+        }
+        # compared as JSON text so NaN (eg_retained when own EG is tiny)
+        # equals itself and an unchanged table is not rewritten every call
+        same = (json.dumps([previous.get("reference"), previous.get("rows")],
+                           sort_keys=True, default=str)
+                == json.dumps([record["reference"], record["rows"]],
+                              sort_keys=True, default=str))
+        if same:
+            return previous                     # unchanged -- no rewrite
+        chosen = previous.get("chosen")
+        if not chosen:
+            active = subject.active_donor or {}
+            key = (active.get("donor"), active.get("donor_ear"))
+            if active.get("donor") and key in {_row_key(r) for r in rows}:
+                chosen = dict(donor=key[0], donor_ear=key[1],
+                              timestamp=active.get("timestamp"), screened=True)
+        record["timestamp"] = datetime.datetime.now().isoformat(timespec="seconds")
+        record["chosen"] = chosen
+        subject.donor_screen = record
+        subject.write()
+        return record
+    except Exception as exc:                     # noqa: BLE001
+        print(f"  [!] could not store the screen on {subject_id}'s record "
+              f"({type(exc).__name__}: {exc}) -- the screen blocks are on "
+              f"disk; rerun show_screen() to retry")
+        return None
+
+
+def record_choice(subject_id, donor_id, donor_ear=None):
+    """Mark the donor taken by use_donor() in ``Subject.donor_screen``. Never raises.
+
+    ``screened`` says whether that donor ear has a row in the stored table, so
+    a donor chosen without a screen block stays distinguishable afterwards.
+    """
+    import datetime
+    from hrtf_relearning.experiment.misc.Subject import Subject
+    try:
+        subject = Subject(subject_id)
+        if not subject.file_path.exists():      # never create a stub record
+            print(f"  [!] no subject file for {subject_id} -- choice not stored")
+            return None
+        record = dict(subject.donor_screen or {})
+        screened = (donor_id, donor_ear) in {_row_key(r)
+                                             for r in record.get("rows") or []}
+        record["chosen"] = dict(
+            donor=donor_id, donor_ear=donor_ear, screened=screened,
+            timestamp=datetime.datetime.now().isoformat(timespec="seconds"))
+        subject.donor_screen = record
+        subject.write()
+        return record
+    except Exception as exc:                     # noqa: BLE001
+        print(f"  [!] could not store the donor choice on {subject_id}'s "
+              f"record ({type(exc).__name__}: {exc})")
+        return None

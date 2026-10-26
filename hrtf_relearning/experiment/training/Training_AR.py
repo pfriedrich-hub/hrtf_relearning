@@ -23,6 +23,7 @@ from hrtf_relearning.hrtf.binsim.hrtf2binsim import *
 from hrtf_relearning.hrtf.binsim.hrir2mat import check_gain
 from hrtf_relearning.utils import paths
 from hrtf_relearning.utils.pose_trace import pack_trace
+from hrtf_relearning.hrtf.binsim.filter_lookup import nearest_filter_idx
 from hrtf_relearning.experiment.localization.localization_helpers.stimulus import (
     draw_ripple_shape, apply_spectral_shape, n_active_coefficients)
 matplotlib.rcParams['figure.raise_window'] = False
@@ -541,7 +542,7 @@ def head_tracker(distance, target, sensor_state, pose_queue, current_trial, plot
             # find closest HRTF index and send to BinSim
             rel[0] = (-rel[0] + 360) % 360
             rel_target = numpy.array((rel[0], rel[1], hrtf_sources[0, 2]))
-            filter_idx = numpy.argmin(numpy.linalg.norm(rel_target - hrtf_sources, axis=1))
+            filter_idx = nearest_filter_idx(hrtf_sources, rel_target[0], rel_target[1])
             rel_hrtf_coords = hrtf_sources[filter_idx]
             if filter_idx != last_idx:
                 osc.send_message('/pyBinSim_ds_Filter', [0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -782,7 +783,7 @@ def play_session():
     trial_time_left = mp.Value("f", float(settings["trial_time"]))
     last_goal_points = mp.Value("i", 0)  # 0/1/2 → UI coin animation trigger
     enter_pressed    = mp.Value("i", 0)  # UI sets to 1 when user presses Enter
-    ui_state         = mp.Value("i", 0)  # 0 idle, 1 awaiting enter, 2 running, 3 over
+    ui_state         = mp.Value("i", 0)  # 0 idle, 1 awaiting trial start (A), 2 running, 3 over, 4 awaiting game start (START)
     quit_pressed     = mp.Value("i", 0)  # UI sets to 1 on ESC at the game-over prompt
     break_due        = mp.Value("i", 0)  # 1 -> game-over screen asks for a break
 
@@ -838,10 +839,13 @@ def play_session():
             enter_pressed.value = 0
             break_due.value = 0
 
-            # --- PRE-GAME PROMPT ---
-            ui_state.value = 1  # waiting to start
-            if not _wait_for_enter(enter_pressed, quit_pressed, ui_proc):
-                break  # ESC / window closed -> end session
+            # --- PRE-GAME PROMPT --- first game only. From the second game on,
+            # the START press at the play-again prompt already starts the game
+            # (one press, not play-again + start).
+            if games_played == 1:
+                ui_state.value = 4  # waiting to start the game (START on the pad)
+                if not _wait_for_enter(enter_pressed, quit_pressed, ui_proc):
+                    break  # ESC / window closed -> end session
 
             scores = []
             kinds = mixed_kinds() if MIXED else None   # balanced per game

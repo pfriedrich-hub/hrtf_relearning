@@ -57,6 +57,7 @@ import hrtf_relearning as hr
 from hrtf_relearning.experiment.misc.system_volume import set_windows_volume
 from hrtf_relearning.experiment.localization.Localization_AR import Localization
 from hrtf_relearning.experiment.localization.Localization_dome import LocalizationDome
+from hrtf_relearning.hrtf.binsim.filter_lookup import nearest_filter_idx
 
 OS_VOLUME = 50   # Windows master volume (%) the loudness match is made at
 
@@ -94,7 +95,7 @@ loc._wait_for_binsim()
 # frontal filter index for the pybinsim path (mirror az like play_stimulus does)
 _rel_az = (-REF_SOURCE[0] + 360) % 360
 _rel = numpy.array((_rel_az, REF_SOURCE[1], loc.hrir_sources[0, 2]))
-FILTER_IDX = int(numpy.argmin(numpy.linalg.norm(_rel - loc.hrir_sources, axis=1)))
+FILTER_IDX = nearest_filter_idx(loc.hrir_sources, _rel[0], _rel[1])
 print(f"pybinsim reference filter -> {loc.hrir_sources[FILTER_IDX]}")
 
 # dome for the loudspeaker reference.

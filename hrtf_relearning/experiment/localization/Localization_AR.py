@@ -12,8 +12,9 @@ from pythonosc import udp_client
 from hrtf_relearning.experiment.misc import audio_device
 from hrtf_relearning.experiment.misc import meta_motion
 from hrtf_relearning.hrtf.binsim.hrtf2binsim import hrtf2binsim
-from pynput import keyboard
+from hrtf_relearning.experiment.misc.response_pad import get_pad
 from hrtf_relearning.utils import paths
+from hrtf_relearning.hrtf.binsim.filter_lookup import nearest_filter_idx
 
 logging.getLogger().setLevel('INFO')
 ROOT = hr.PATH
@@ -109,6 +110,13 @@ class Localization:
         self.subject.write()
 
     def run(self):
+        # Playback route (local_config "audio_output"/"audio_volume", see
+        # misc/audio_device). Here and not only under __main__: the protocols
+        # import Localization and call run(), so a __main__ check never fires
+        # for them. preflight() raises AudioRouteError (stops the cell, keeps
+        # the console) rather than preflight_or_exit()'s SystemExit.
+        audio_device.preflight()
+
         # init pybinsim
         self.osc_client_1 = self._make_osc_client(port=10000)
         self.osc_client_2 = self._make_osc_client(port=10003)
@@ -127,7 +135,7 @@ class Localization:
             self._wait_for_binsim()
             self.play_sound('beep')
             for self.target in self.sequence:
-                self.wait_for_button('Look at the Center and press Enter')
+                self.wait_for_button('Look at the Center and press {key}')
                 self.motion_sensor.calibrate()
                 self.play_trial()  # generate and play stim, get pose response and write to file
             self.subject.last_sequence = self.sequence
@@ -204,7 +212,7 @@ class Localization:
         # find the closest filter idx and send to pybinsim
         relative_coords[0] = (-relative_coords[0] + 360) % 360  # mirror and convert to HRTF convention [0 < az < 360]
         rel_target = numpy.array((relative_coords[0], relative_coords[1], self.hrir_sources[0, 2]))
-        filter_idx = numpy.argmin(numpy.linalg.norm(rel_target - self.hrir_sources, axis=1))
+        filter_idx = nearest_filter_idx(self.hrir_sources, rel_target[0], rel_target[1])
         rel_hrtf_coords = self.hrir_sources[filter_idx]
         self.osc_client_1.send_message('/pyBinSim_ds_Filter', [0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                                                         float(rel_hrtf_coords[0]), float(rel_hrtf_coords[1]), 0,
@@ -288,12 +296,11 @@ class Localization:
 
     @staticmethod
     def wait_for_button(msg=None):
-        if msg: print(msg)
-        def on_press(key):
-            if key == keyboard.Key.enter:
-                listener.stop()  # stop listening once Enter is pressed
-        with keyboard.Listener(on_press=on_press) as listener:
-            listener.join()  # block until listener.stop() is called
+        # Participant response: A on the gamepad, or Enter on a machine
+        # without one (freefield PC) -- see misc/response_pad. `{key}` in msg
+        # is filled with whichever applies.
+        pad = get_pad()
+        pad.wait('A', msg.format(key=pad.label('A')) if msg else None)
 
 if __name__ == "__main__":
 

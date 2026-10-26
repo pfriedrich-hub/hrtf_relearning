@@ -32,9 +32,10 @@ What changed relative to the old script
   sensor, so the RP2/arduino circuit is no longer needed. The sensor is
   recalibrated at the start of every trial, as before.
 * The full head trajectory of every trial is recorded (`pose_trace`).
-* Targets come from the shared helpers in `training_helpers.training_targets`:
-  sectors of the last matching localization run are weighted by response error,
-  with uniform sampling as a fallback.
+* No trial or game time limit. A game presents every speaker of the region
+  `n_repeats` times (default twice) in random order, consecutive targets at
+  least `min_dist` apart; a trial lasts until the target is found, or until the
+  experimenter skips it with Esc.
 * `goal_len` is now written together with every `goal_data` (the old script wrote
   it once, so `coins.wav` played truncated to the length of `coin.wav`), and the
   goal sounds are converted to mono at the playback rate before they are written
@@ -66,12 +67,11 @@ protocol cell:
     from hrtf_relearning.experiment.training.Training_Dome import TrainingDome
 
     training = TrainingDome(Subject('AH'), region='midline',
-                            settings={'trial_time': 8, 'game_time': 60})
+                            settings={'n_repeats': 2, 'target_size': 5})
     training.run()
 
-Note on target probabilities: a midline localization run is a 'standard'
-sequence without sectors, so midline training always samples uniformly. Whole
-dome training uses the sector weights of the last matching sector-style run.
+Targets are balanced, not weighted: every speaker of the region comes up
+exactly `n_repeats` times per game, whatever the last localization run showed.
 """
 import datetime
 import logging
@@ -89,10 +89,9 @@ from freefield import freefield as freefield_core
 from pynput import keyboard
 
 from hrtf_relearning.experiment.misc import meta_motion
+from hrtf_relearning.experiment.misc.response_pad import get_pad
 from hrtf_relearning.experiment.misc.Subject import Subject
 from hrtf_relearning.experiment.training.training_helpers.pulse import distance_to_interval
-from hrtf_relearning.experiment.training.training_helpers.training_targets import (
-    find_last_matching_sequence, set_target_probabilistic)
 from hrtf_relearning.utils import paths
 from hrtf_relearning.utils.pose_trace import pack_trace
 from hrtf_relearning.experiment.localization.localization_helpers.stimulus import (
@@ -101,15 +100,21 @@ from hrtf_relearning.experiment.localization.localization_helpers.stimulus impor
 # ==================== quick config ====================
 # SUBJECT_ID = os.environ.get('TRAINING_SUBJECT_ID', 'test')
 # REGION = os.environ.get('TRAINING_REGION', 'dome')      # 'dome' | 'midline'
-# SETTINGS = {}       # e.g. {'game_time': 60, 'trial_time': 8, 'target_size': 5}
+# SETTINGS = {}       # e.g. {'n_repeats': 2, 'target_size': 5}
 SUBJECT_ID = 'NW'
 REGION = 'midline'      # 'dome' | 'midline'
-SETTINGS = {}       # e.g. {'game_time': 60, 'trial_time': 8, 'target_size': 5}
+SETTINGS = {}       # e.g. {'n_repeats': 2, 'target_size': 5}
 # ======================================================
 
 # TDT playback rate. The stimulus is synthesised with slab, whose module default
 # is 8000 Hz -- see the same note in Localization_dome.
 SAMPLERATE = 48828
+
+# Length of the pulse-train noise token. Trials are open-ended, so the token is
+# not matched to a trial length: the circuit's SerSource loops over it for as
+# long as the trial runs. 10 s stays inside the circuit's data buffer
+# (Size=500000 samples = 10.24 s at 48828 Hz).
+STIM_DURATION = 10.0    # s
 
 # Pulse-train circuit. It is not part of the freefield package (which has no
 # pulse circuit at all), so it is kept next to the game that needs it. The
@@ -148,8 +153,9 @@ DEFAULT_SETTINGS = dict(
                             # the window is a box: |d_az| <= target_size and
                             # |d_el| <= target_size_el
     target_time=0.5,        # s the pose must stay inside the window to score
-    trial_time=10,          # s before a trial is given up
-    game_time=90,           # s of playing time per game (trial time only)
+    n_repeats=2,            # presentations of every speaker per game (random order);
+                            # no trial or game time limit -- a trial runs until
+                            # the target is found or Esc skips it
     score_time=3,           # s below which a hit is worth 2 points instead of 1
     double_score=True,      # False -> every hit is worth 1 point
     game_over_sounds=True,  # False -> no high-score / buzzer sound at game end
@@ -182,32 +188,16 @@ def angular_distance(pose, target):
     return float(numpy.hypot(d_az, d_el))
 
 
-class _Sources:
-    """Minimal stand-in for a `slab.HRTF` for the shared target helpers.
-
-    They only ever touch `.sources.vertical_polar`, an (N, 3) array of
-    azimuth (0..360), elevation and radius -- so the dome speakers can be fed
-    through exactly the same target selection as the AR HRIR positions.
-    """
-
-    class _VP:
-        def __init__(self, array):
-            self.vertical_polar = array
-
-    def __init__(self, speakers, radius=1.4):
-        self.speakers = list(speakers)
-        self.sources = self._VP(numpy.array(
-            [[s.azimuth % 360, s.elevation, radius] for s in self.speakers], dtype=float))
-
-
 class TrainingDome:
     """Sound localization training in the dome, with real loudspeakers.
 
     A pulse train plays from the target speaker; the interval shortens as the
     subject turns towards it and goes continuous inside the target window.
     Holding the pose there for `target_time` scores a coin (two coins if it took
-    less than `score_time`). A game lasts `game_time` seconds of playing time;
-    several games make a session.
+    less than `score_time`). There is no time limit: a game presents every
+    speaker of the region `n_repeats` times in random order, and each trial
+    lasts until the target is found (Esc skips it). Several games make a
+    session.
 
     Parameters
     ----------
@@ -215,8 +205,8 @@ class TrainingDome:
     region : str
         Key of `REGIONS`: 'dome' (all speakers) or 'midline' (the az 0 column).
     settings : dict, optional
-        Overrides for `DEFAULT_SETTINGS` (target_size, target_time, trial_time,
-        game_time, score_time, min_dist, pulse_map, equalize, ...).
+        Overrides for `DEFAULT_SETTINGS` (target_size, target_time, n_repeats,
+        score_time, min_dist, pulse_map, equalize, ...).
     """
 
     def __init__(self, subject, region=REGION, settings=None):
@@ -237,8 +227,7 @@ class TrainingDome:
 
         # see SAMPLERATE -- must happen before any stimulus is synthesised
         slab.set_default_samplerate(SAMPLERATE)
-        # buffer a little longer than a trial, so the pulse train never runs out
-        self.stim_duration = float(self.settings['trial_time']) + 1.0
+        self.stim_duration = STIM_DURATION
 
         self.target = [0.0, 0.0]        # (az, el) of the current target
         self.motion_sensor = None
@@ -247,10 +236,7 @@ class TrainingDome:
         self._stim_params = None        # ripple draw of the armed trial
 
         self.speakers = self._select_speakers()
-        self._sources = _Sources(self.speakers)
         self._check_min_dist()
-        # sector weights from the last localization run covering this area
-        self.sequence = find_last_matching_sequence(self.subject, self.settings)
         logging.info('Dome training | region %r | %d target speakers | az=%s el=%s',
                      region, len(self.speakers), self.settings['az_range'],
                      self.settings['ele_range'])
@@ -282,9 +268,8 @@ class TrainingDome:
     def _check_min_dist(self):
         """Fail fast if a speaker has no partner far enough away.
 
-        The uniform sampler loops until it finds a target at least `min_dist`
-        from the previous one, so a min_dist that no pair of speakers satisfies
-        would hang the session mid-game rather than here.
+        A min_dist that no pair of speakers satisfies makes every schedule
+        impossible, so say so here rather than at the start of a game.
         """
         min_dist = self.settings['min_dist']
         positions = [(s.azimuth, s.elevation) for s in self.speakers]
@@ -348,15 +333,18 @@ class TrainingDome:
             while n_games is None or games_played < n_games:
                 games_played += 1
                 print(f'\n=== {self.subject.id} | {self.region} | game {games_played} ===')
-                print('Enter: start   |   Esc: quit')
-                if self.wait_for_key() == 'esc':
-                    games_played -= 1
-                    break
+                # Start prompt for the first game only; afterwards the
+                # play-again press below already starts the next game.
+                if games_played == 1:
+                    print(f"{get_pad().label('START')}: start   |   Esc: quit")
+                    if self.wait_for_key('START') == 'esc':
+                        games_played -= 1
+                        break
                 self.play_game(games_played)
                 if n_games is not None and games_played >= n_games:
                     break
-                print('\nEnter: play again   |   Esc: end session')
-                if self.wait_for_key() == 'esc':
+                print(f"\n{get_pad().label('START')}: play again   |   Esc: end session")
+                if self.wait_for_key('START') == 'esc':
                     break
         except KeyboardInterrupt:
             print('\nInterrupted -- ending session.')
@@ -369,19 +357,21 @@ class TrainingDome:
             logging.info('Dome training session ended after %d game(s).', games_played)
 
     def play_game(self, game_idx):
-        """One `game_time` game. Returns the total score."""
-        game_timer, trial_in_game, total = 0.0, 0, 0
+        """One game: every speaker `n_repeats` times, in random order. Returns the total score."""
+        schedule = self.make_schedule()
+        n_trials = len(schedule)
+        game_timer, total = 0.0, 0
         game_start_wall = time.time()
-        while game_timer < self.settings['game_time']:
-            trial_in_game += 1
-            self.set_target()
+        for trial_in_game, target in enumerate(schedule, start=1):
+            self.target = [float(target[0]), float(target[1])]
+            logging.info('Target: azimuth %.1f, elevation %.1f', *self.target)
             # arm the speaker before the prompt: writing the stimulus takes a
             # moment, and it must not sit between calibration and playback
             speaker = self.speaker_at(self.target)
             self._arm_speaker(speaker)
-            print(f"\nTrial {trial_in_game} | {self.settings['game_time'] - game_timer:.0f} s left"
-                  f" | look at the center speaker and press Enter (Esc: end game)")
-            if self.wait_for_key() == 'esc':
+            print(f"\nTrial {trial_in_game}/{n_trials}"
+                  f" | look at the center speaker and press {get_pad().label('A')} (Esc: end game)")
+            if self.wait_for_key('A') == 'esc':
                 break
             self.motion_sensor.calibrate()
             game_timer, score = self.play_trial(
@@ -406,40 +396,60 @@ class TrainingDome:
                 self._play_goal_sound('buzzer')
 
     # ------------------------------------------------------------ trial
-    def set_target(self):
-        """Pick the next target speaker, at least `min_dist` from the current one.
+    def make_schedule(self, max_attempts=1000):
+        """Target order of one game: every speaker `n_repeats` times, shuffled.
 
-        Sectors of the last matching localization run are weighted by response
-        error; without such a run (or if the pick violates min_dist) the target
-        is drawn uniformly from the region.
+        Consecutive targets are at least `min_dist` apart. The order is built
+        greedily -- each step draws among the speakers far enough from the last
+        one, weighted by how many presentations they have left, so the end of
+        the list does not jam -- and restarted if it runs into a dead end. If no
+        such order turns up, it falls back to a plain shuffle with only direct
+        repeats of a speaker avoided, and says so.
         """
-        previous = tuple(self.target)
-        if self.sequence is not None:
-            set_target_probabilistic(self.target, self.settings, self.sequence, self._sources)
-        # The uniform fallback inside the shared helper compares a wrapped
-        # azimuth against an unwrapped one, so its min_dist check can pass
-        # spuriously for negative azimuths. Verify here and resample if needed.
-        if (self.sequence is None
-                or (previous != (0.0, 0.0)
-                    and angular_distance(self.target, previous) < self.settings['min_dist'])):
-            self._set_target_uniform(previous)
-        self.target = [float(self.target[0]), float(self.target[1])]
-        logging.info('Target: azimuth %.1f, elevation %.1f', self.target[0], self.target[1])
-
-    def _set_target_uniform(self, previous):
-        candidates = [(s.azimuth, s.elevation) for s in self.speakers]
-        if previous != (0.0, 0.0):
-            candidates = [c for c in candidates
-                          if angular_distance(c, previous) >= self.settings['min_dist']]
-        choice = candidates[int(numpy.random.randint(len(candidates)))]
-        self.target[:] = [float(choice[0]), float(choice[1])]
+        n_repeats = int(self.settings['n_repeats'])
+        min_dist = self.settings['min_dist']
+        positions = [(float(s.azimuth), float(s.elevation)) for s in self.speakers]
+        for _ in range(max_attempts):
+            remaining = {p: n_repeats for p in positions}
+            order, previous = [], None
+            while remaining:
+                candidates = [p for p in remaining
+                              if previous is None or angular_distance(p, previous) >= min_dist]
+                if not candidates:
+                    break
+                weights = numpy.array([remaining[p] for p in candidates], dtype=float)
+                previous = candidates[numpy.random.choice(len(candidates), p=weights / weights.sum())]
+                order.append(previous)
+                remaining[previous] -= 1
+                if not remaining[previous]:
+                    del remaining[previous]
+            else:
+                return order
+        logging.warning('No order with min_dist=%s deg found in %d attempts -- '
+                        'shuffling with only direct repeats avoided.', min_dist, max_attempts)
+        order = positions * n_repeats
+        for _ in range(max_attempts):
+            numpy.random.shuffle(order)
+            if all(a != b for a, b in zip(order, order[1:])):
+                break
+        return order
 
     def play_trial(self, speaker, trial_idx, game_idx, trial_in_game, game_start_wall, game_timer):
         """One target presentation, on the speaker armed by `_arm_speaker`.
 
-        Returns (game_timer, score).
+        No time limit: the trial ends when the target is found, or when Esc is
+        pressed (skipped, scores 0). Returns (game_timer, score).
         """
         trace, score, count_down, on_target_since = [], 0, False, 0.0
+        skip = {}
+
+        def on_press(key):
+            if key == keyboard.Key.esc:
+                skip['esc'] = True
+                return False
+
+        skip_listener = keyboard.Listener(on_press=on_press)
+        skip_listener.start()
         self._write_interval(self.motion_sensor.get_pose())
         freefield.play(kind='zBusA', proc='all')     # start the pulse train
 
@@ -467,16 +477,13 @@ class TrainingDome:
                 print(f'\nScore! {score}')
                 self._play_goal_sound('coins' if score == 2 else 'coin')
                 break
-            if trial_timer >= self.settings['trial_time']:
-                print('\nMiss.')
-                freefield.play(kind='zBusB', proc='all')   # interrupt the pulse train
-                break
-            if game_timer + trial_timer >= self.settings['game_time']:
-                print('\nTime up.')
+            if skip.get('esc'):
+                print('\nSkipped.')
                 freefield.play(kind='zBusB', proc='all')   # interrupt the pulse train
                 break
             time.sleep(0.02)
 
+        skip_listener.stop()
         t1 = time.time()
         game_timer += t1 - t0
         # float32 (t - pose_t0, yaw, pitch); read back with utils.pose_trace.get_trace
@@ -497,6 +504,7 @@ class TrainingDome:
             pose_t0=pose_t0,
             score=int(score),
             reached_target=bool(score > 0),
+            skipped=bool(skip.get('esc')),
             # dome specific
             condition='dome',
             region=self.region,
@@ -605,12 +613,17 @@ class TrainingDome:
 
     # ------------------------------------------------------------ input
     @staticmethod
-    def wait_for_key(keys=('enter', 'esc')):
-        """Block until Enter or Esc; returns the name of the key that was pressed."""
+    def wait_for_key(button='A', keys=('enter', 'esc')):
+        """Block until the participant responds or Esc; returns 'enter' or 'esc'.
+
+        With the gamepad connected, `button` (A or START) is the response and
+        Enter is ignored; without one (the freefield PC) Enter is, as before.
+        Esc is always the keyboard (global listener, unchanged)."""
+        pad = get_pad()
         pressed = {}
 
         def on_press(key):
-            if key == keyboard.Key.enter and 'enter' in keys:
+            if key == keyboard.Key.enter and 'enter' in keys and not pad.available:
                 pressed['key'] = 'enter'
                 return False
             if key == keyboard.Key.esc and 'esc' in keys:
@@ -618,7 +631,17 @@ class TrainingDome:
                 return False
 
         with keyboard.Listener(on_press=on_press) as listener:
-            listener.join()
+            def on_button():
+                pressed.setdefault('key', 'enter')
+                listener.stop()
+
+            if pad.available:
+                pad.on_press(button, on_button)
+            try:
+                listener.join()
+            finally:
+                if pad.available:
+                    pad.remove(button, on_button)
         return pressed.get('key', 'enter')
 
 

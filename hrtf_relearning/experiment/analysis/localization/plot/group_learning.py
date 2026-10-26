@@ -60,7 +60,10 @@ day's value is their mean; ``aggregate='first'`` or ``'last'`` picks one.
 Run this file directly; it saves to ``ANALYSIS_RESULTS_DIR``.
 """
 
+import csv
+import datetime
 from collections import OrderedDict, Counter
+from zoneinfo import ZoneInfo
 
 import numpy
 from matplotlib import pyplot as plt
@@ -83,6 +86,32 @@ MIN_TRIALS_FRACTION = 0.5   # of the modal test length — see _curve_n_trials
 #: participant's modal one. 'fill_gaps' puts it on the curve only where the day
 #: has nothing else (IR's day 1); 'never' keeps it off; 'always' pools it in.
 OFF_STIMULUS = 'fill_gaps'  # 'fill_gaps' | 'never' | 'always'
+#: keep the final-day 2x2 battery's block A off the curve. The battery tests the
+#: four conditions against each other and is its own result/figure; averaging
+#: its A into the last day mixes that comparison into the learning curve.
+EXCLUDE_FINAL_2X2 = True
+#: which trained-condition tests from day 2 on go on the curve: 'all' (the day's
+#: mean, or AGGREGATE), 'post' (after that day's training) or 'pre' (before it).
+#: Day 1 is the baseline in every mode — it has no training to be pre or post of.
+TESTS = 'all'              # 'all' | 'pre' | 'post'
+#: post-training curve, final day: 'best' takes the better of the post-training
+#: test(s) and the final battery's A — better on BOTH gain and polar error; if
+#: the two metrics disagree, their two picks are averaged. 'post' never lets the
+#: battery's A in unless there is nothing else (the August protocol). Optimistic
+#: by construction (best of ~2 runs, final day only) — state it where reported.
+FINAL_DAY = 'best'         # 'best' | 'post'
+#: unlogged training is inferred when a test follows an earlier same-day test on
+#: the curve's composite by at least this long (FS's 29.07 was never logged)
+TRAINING_GAP = datetime.timedelta(minutes=30)
+LOCAL_TZ = ZoneInfo('Europe/Berlin')   # localization keys are lab-local times
+#: runs that finished but are not valid measurements, with the reason. Dropped
+#: before anything else, so they can never land on a curve or in a battery.
+INVALID_RUNS = {
+    'SK_22.10_15-55_SK_donor_SH_env4_left':
+        'response-button error in the final battery; A re-run at 16:03 (Paul)',
+}
+BLOCK_ORDER_CSV = (hr.PATH / 'experiment' / 'protocols' / 'learning_transfer'
+                   / 'learning_transfer_block_order.csv')
 SHOW = False
 
 #: (row label, extractor) for the three panels, in drawing order.
@@ -98,7 +127,8 @@ def _runs(subject_id):
     localization = hr.Subject(subject_id).localization
     items = sorted(localization.items(), key=lambda kv: parse_loc_key(kv[0]))
     return [(key, seq) for key, seq in items
-            if _is_analysable(seq) and not is_degenerate(seq)]
+            if key not in INVALID_RUNS
+            and _is_analysable(seq) and not is_degenerate(seq)]
 
 
 def _learning_runs(runs):
@@ -151,7 +181,79 @@ def _curve_n_trials(runs):
     return Counter(counts).most_common(1)[0][0] if counts else 0
 
 
-def subject_series(subject_id, aggregate=AGGREGATE, off_stimulus=OFF_STIMULUS):
+def _training_ends(subject_id):
+    """End time of every logged AR training trial, lab-local and naive."""
+    trials = getattr(hr.Subject(subject_id), 'trials', None) or []
+    return [datetime.datetime.fromtimestamp(t['t_end'], LOCAL_TZ).replace(tzinfo=None)
+            for t in trials if t.get('t_end')]
+
+
+def test_phase(key, curve_times, training_ends):
+    """'post' if training happened earlier on the same day as this test, else 'pre'.
+
+    Training counts when a logged training trial ended that day before the test
+    started, or — for unlogged sessions — when an earlier same-day test on the
+    curve's composite lies at least TRAINING_GAP before this one.
+    """
+    t = parse_loc_key(key)
+    if any(e.date() == t.date() and e < t for e in training_ends):
+        return 'post'
+    earlier = [c for c in curve_times if c.date() == t.date() and c < t]
+    return 'post' if earlier and t - min(earlier) >= TRAINING_GAP else 'pre'
+
+
+def _best_tests(seqs):
+    """The run better on both gain and polar error, or the two metric-wise picks."""
+    gains = [localization_accuracy(s)[0] for s in seqs]
+    polars = [polar_error(s)[0] for s in seqs]
+    i, j = int(numpy.nanargmax(gains)), int(numpy.nanargmin(polars))
+    return [seqs[i]] if i == j else [seqs[i], seqs[j]]
+
+
+def _block_order(subject_id):
+    """The subject's final-battery order from the block-order sheet, e.g. ['A','B','D','C']."""
+    try:
+        with BLOCK_ORDER_CSV.open(newline='') as f:
+            for row in csv.DictReader(f):
+                if row.get('subject') == subject_id and row.get('block_order'):
+                    return [c.strip() for c in row['block_order'].split('-')]
+    except OSError:
+        pass
+    return None
+
+
+def final_battery(runs, metas, hrir, field, subject_id):
+    """{cell: key} of the final-day 2x2 battery, or {} if there is none yet.
+
+    The battery is four consecutive runs on the curve's composite (and its
+    mirror) on the last day, one per cell. Matched against the subject's
+    block_order from the sheet, because a battery day can also hold a
+    post-training A just before it (SH) or a repeated block after it (FS, GM),
+    and only the order tells which runs belong to the battery. Subjects not in
+    the sheet fall back to the first window holding each cell once.
+    """
+    if not runs:
+        return {}
+    last_day = extract_day(runs[-1][0])
+    family = {hrir, f'{hrir}_mirrored'}
+    seq_cells = [(key, transfer_block({**meta, 'stim': None}, field))
+                 for (key, _seq), meta in zip(runs, metas)
+                 if extract_day(key) == last_day and meta.get('hrir') in family]
+    order = _block_order(subject_id)
+    for i in range(len(seq_cells) - 3):
+        window = seq_cells[i:i + 4]
+        cells = [cell for _key, cell in window]
+        if (cells == order) if order else (sorted(cells) == list('ABCD')):
+            return {cell: key for key, cell in window}
+    return {}
+
+
+def _final_battery_a(runs, metas, hrir, field, subject_id):
+    """Key of block A of the final-day 2x2 battery, or None."""
+    return final_battery(runs, metas, hrir, field, subject_id).get('A')
+
+def subject_series(subject_id, aggregate=AGGREGATE, off_stimulus=OFF_STIMULUS,
+                   tests=None):
     """One participant's curve.
 
     Returns
@@ -169,8 +271,17 @@ def subject_series(subject_id, aggregate=AGGREGATE, off_stimulus=OFF_STIMULUS):
     min_trials = MIN_TRIALS_FRACTION * _curve_n_trials(runs)
 
     last_day = extract_day(runs[-1][0]) if runs else None
+    tests = TESTS if tests is None else tests
+    battery_a = _final_battery_a(runs, metas, hrir, field, subject_id)
+    final_a = battery_a if EXCLUDE_FINAL_2X2 else None
+    first_day = extract_day(runs[0][0]) if runs else None
+    if tests != 'all':
+        training_ends = _training_ends(subject_id)
+        curve_times = [parse_loc_key(k) for (k, _s), m in zip(runs, metas)
+                       if m.get('hrir') == hrir]
 
     by_day, uso_by_day, excluded = OrderedDict(), OrderedDict(), []
+    battery_fallback = None
     own_reference, dome_reference, post_reference = None, None, None
     for (key, seq), meta in zip(runs, metas):
         day = extract_day(key)
@@ -205,6 +316,17 @@ def subject_series(subject_id, aggregate=AGGREGATE, off_stimulus=OFF_STIMULUS):
         if transfer_block({**meta, 'stim': None}, field) != 'A':
             excluded.append((key, 'not the trained condition'))
             continue
+        if key == final_a:
+            if (tests == 'post' and len(seq.data) >= min_trials
+                    and run_stim == stim):
+                battery_fallback = (day, key, seq)
+            excluded.append((key, 'final 2x2 block A (separate result)'))
+            continue
+        if tests != 'all' and day != first_day:
+            phase = test_phase(key, curve_times, training_ends)
+            if phase != tests:
+                excluded.append((key, f'{phase}-training test (curve is {tests})'))
+                continue
         if len(seq.data) < min_trials:
             excluded.append((key, f'{len(seq.data)} trials — a probe, not a test'))
             continue
@@ -236,6 +358,29 @@ def subject_series(subject_id, aggregate=AGGREGATE, off_stimulus=OFF_STIMULUS):
     # since those days already have the real measurement and mixing a second
     # stimulus in would only add variance the day does not have.
     filled = set()
+    # Post-training curve, protocol without a standalone post-test before the
+    # final battery (the August cohort: training ran straight into the 2x2).
+    # The battery's A is then the only post-training test of the trained
+    # condition that day, so it stands in for one — flagged like an
+    # off-stimulus stand-in, and only on a day that has nothing else.
+    # Runs BEFORE the off-stimulus fill: an on-stimulus post-training test beats
+    # an off-stimulus probe for the same day (FS's 31.07 USO probe).
+    battery_days = set()
+    if battery_fallback is not None:
+        day, fallback_key, seq = battery_fallback
+        others = list(by_day.get(day) or [])
+        if not others:
+            chosen = [seq]
+        elif FINAL_DAY == 'best':
+            chosen = _best_tests(others + [seq])
+        else:
+            chosen = others
+        by_day[day] = chosen
+        if any(c is seq for c in chosen):
+            filled.add(day)
+            battery_days.add(day)
+            excluded = [(k, r) for k, r in excluded if k != fallback_key]
+
     if off_stimulus in ('fill_gaps', 'always'):
         for day, seqs in uso_by_day.items():
             if off_stimulus == 'always' or not by_day.get(day):
@@ -247,7 +392,11 @@ def subject_series(subject_id, aggregate=AGGREGATE, off_stimulus=OFF_STIMULUS):
     series = {'subject_id': subject_id, 'hrir': hrir, 'trained_field': field,
               'stim': stim, 'min_trials': min_trials, 'off_stimulus': off_stimulus,
               'dates': days, 'excluded': excluded, 'uso_dates': uso_days,
-              'n_tests': [len(by_day[d]) for d in days]}
+              'n_tests': [len(by_day[d]) for d in days], 'tests': tests,
+              #: True once the final-day 2x2 battery has been run
+              'complete': battery_a is not None,
+              #: days whose point is the final battery's A (see battery_fallback)
+              'battery_dates': sorted(battery_days)}
     # Day index counts EVERY session the subject attended, so a day whose
     # trained-condition blocks were all excluded leaves a visible gap in x
     # rather than silently closing up.
@@ -259,7 +408,7 @@ def subject_series(subject_id, aggregate=AGGREGATE, off_stimulus=OFF_STIMULUS):
     series['filled'] = numpy.array([day in filled for day in days], dtype=bool)
     #: which stimulus those stand-ins were run on (they are all the same one
     #: on this cohort; the first is representative).
-    stand_in = [seq for day in filled for seq in uso_by_day[day]]
+    stand_in = [seq for day in filled for seq in uso_by_day.get(day, [])]
     series['uso_stim'] = ((getattr(stand_in[0], 'stim', None) or '').lower()
                           if stand_in else None)
 

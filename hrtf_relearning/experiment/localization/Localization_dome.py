@@ -5,7 +5,7 @@ Mirrors Localization_AR.Localization in API and conventions:
   - Subject for data persistence
   - make_sequence (std_targets) for trial sequences
   - meta-motion sensor for head-pose response
-  - Enter key to advance trials
+  - A on the gamepad (Enter where there is no pad) to advance trials
 """
 import matplotlib
 from hrtf_relearning.utils.mpl_backend import use_interactive
@@ -15,13 +15,13 @@ import slab
 import freefield
 import datetime
 import logging
-from pynput import keyboard
 
 import hrtf_relearning
 from hrtf_relearning.experiment.localization.localization_helpers.make_sequence import make_sequence
 from hrtf_relearning.experiment.localization.localization_helpers.stimulus import (
     make_gapped_pinknoise, make_rippled_pinknoise, RMS_TILT, RMS_CUE, RIPPLE_CUE_MAX)
 from hrtf_relearning.experiment.misc import meta_motion
+from hrtf_relearning.experiment.misc.response_pad import get_pad
 from hrtf_relearning.experiment.analysis.localization.localization_analysis import (
     plot_localization, plot_elevation_response,
 )
@@ -135,7 +135,7 @@ class LocalizationDome:
         Each run is its own block: fresh randomised sequence, own timestamped
         filename, saved and plotted on completion -- identical to constructing
         a new LocalizationDome per run. The sensor stays connected throughout;
-        between runs the script waits for Enter so the participant can rest.
+        between runs the script waits for A/Enter so the participant can rest.
         """
         if freefield.PROCESSORS.mode != 'play_rec':
             freefield.initialize('dome', default='play_rec', sensor_tracking=False)
@@ -144,12 +144,12 @@ class LocalizationDome:
         try:
             for run_i in range(n_runs):
                 if run_i > 0:
-                    self.wait_for_enter(f'Run {run_i + 1}/{n_runs} -- press Enter to start...')
+                    self.wait_for_enter(f'Run {run_i + 1}/{n_runs} -- press {{key}} to start...')
                     self._new_block()
                 logging.info(f'Dome localization run {run_i + 1}/{n_runs}: {self.filename}')
                 self.play_beep()  # start signal, as in the AR test
                 for self.target in self.sequence:
-                    self.wait_for_enter('Look at the center and press Enter...')
+                    self.wait_for_enter('Look at the center and press {key}...')
                     self.motion_sensor.calibrate()
                     self.play_trial()
 
@@ -258,18 +258,15 @@ class LocalizationDome:
 
     @staticmethod
     def wait_for_enter(msg=None):
-        if msg:
-            print(msg)
-        def on_press(key):
-            if key == keyboard.Key.enter:
-                listener.stop()
-        with keyboard.Listener(on_press=on_press) as listener:
-            # Pump the GUI while waiting instead of listener.join(): a bare
-            # join blocks the Tk event loop, so the plots made at the end of a
-            # run stayed blank/invisible until run() returned to the console.
-            while listener.running:
-                LocalizationDome._pump_figures()
-                listener.join(0.05)
+        # Participant response: A on the gamepad, or Enter on a machine
+        # without one (the freefield PC) -- see misc/response_pad. `{key}` in
+        # msg is filled with whichever applies.
+        pad = get_pad()
+        # Pump the GUI while waiting instead of blocking: a bare wait blocks
+        # the Tk event loop, so the plots made at the end of a run stayed
+        # blank/invisible until run() returned to the console.
+        pad.wait('A', msg.format(key=pad.label('A')) if msg else None,
+                 tick=LocalizationDome._pump_figures)
 
     @staticmethod
     def _show_figures():

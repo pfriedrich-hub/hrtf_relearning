@@ -23,6 +23,7 @@ ROOT = hrtf_relearning.PATH
 # rest of the training stack (slab, pybinsim, ...) may not be loaded here.
 from hrtf_relearning.utils.paths import RESULTS_DIR as SUBJECT_RESULTS_DIR
 from hrtf_relearning.utils import paths
+from hrtf_relearning.experiment.misc.response_pad import get_pad
 
 # ────────────────────────────────────────────────────────────────
 # Shared structure for multiprocessing.Values
@@ -35,7 +36,8 @@ class UIShared:
     last_goal_points: Any
     session_total: Any
     enter_pressed: Any
-    ui_state: Any    # 0=idle, 1=waiting to start trial, 2=running, 3=session over/prompt
+    ui_state: Any    # 0=idle, 1=waiting to start trial, 2=running, 3=session over/prompt,
+                     # 4=waiting to start game (1 is used for this too by older drivers)
     highscore: Any
     quit_pressed: Any = None  # UI sets to 1 on ESC at the game-over prompt (optional)
     # Parent sets to 1 BEFORE flipping ui_state to 3 when the game that just
@@ -922,8 +924,10 @@ class GameWindow(QtWidgets.QMainWindow):
         root.addWidget(self.start_holder, 0, QtCore.Qt.AlignHCenter)
 
         # In-app shortcuts: only fire when the game window is the focused
-        # application. Kept as a fallback for when the global listener below
-        # can't start (e.g. pynput missing / no OS accessibility permission).
+        # application. Enter/Space here serve every prompt (experimenter at
+        # the game window, or the fallback when the global listener below
+        # can't start); Esc is ONLY ever handled here, so an Esc typed into
+        # another window can't end a participant's session.
         for key in (QtCore.Qt.Key_Return, QtCore.Qt.Key_Enter, QtCore.Qt.Key_Space):
             sc = QtWidgets.QShortcut(QtGui.QKeySequence(key), self)
             sc.setContext(QtCore.Qt.ApplicationShortcut)
@@ -932,11 +936,19 @@ class GameWindow(QtWidgets.QMainWindow):
         esc.setContext(QtCore.Qt.ApplicationShortcut)
         esc.activated.connect(self._on_esc_pressed)
 
-        # OS-level global listener so Enter/Space also work when another
-        # window (terminal, plot, etc.) is focused, matching Localization_AR.
+        # Participant input. With the gamepad: START starts a game (pre-game
+        # and play-again prompts), A starts a trial; pad buttons never reach
+        # the keyboard, so the experimenter can work at the PC meanwhile.
+        # Without a pad: the OS-level Enter/Space listener as before, so it
+        # also works when another window (terminal, plot) is focused.
         self._hotkey_listener = None
         self._last_hotkey_ts = 0.0
-        self._start_global_hotkeys()
+        self._pad = get_pad()
+        if self._pad.available:
+            self._pad.on_press("START", self._on_start_pressed)
+            self._pad.on_press("A", self._on_a_pressed)
+        else:
+            self._start_global_hotkeys()
 
         QtCore.QTimer.singleShot(0, self._init_overlays)
 
@@ -1180,10 +1192,24 @@ class GameWindow(QtWidgets.QMainWindow):
         return rows
 
     def _on_enter_pressed(self):
+        """Keyboard Enter/Space (and the overlay button): answers any prompt."""
         state = int(self.shared.ui_state.value)
-        if state == 1:  # start prompt
+        if state in (1, 4):  # trial / game start prompt
             self.shared.enter_pressed.value = 1
         elif state == 3 and self._reveal_ready:  # play-again prompt (after the reveal delay)
+            self.shared.enter_pressed.value = 1
+
+    def _on_start_pressed(self):
+        """Pad START: starts a game -- the pre-game prompt (4) and the
+        play-again prompt (3, after the reveal delay). Runs on the pad's poll
+        thread; only touches the shared multiprocessing Values."""
+        state = int(self.shared.ui_state.value)
+        if state == 4 or (state == 3 and self._reveal_ready):
+            self.shared.enter_pressed.value = 1
+
+    def _on_a_pressed(self):
+        """Pad A: starts a trial (prompt 1)."""
+        if int(self.shared.ui_state.value) == 1:
             self.shared.enter_pressed.value = 1
 
     def _on_esc_pressed(self):
@@ -1200,6 +1226,8 @@ class GameWindow(QtWidgets.QMainWindow):
     def _start_global_hotkeys(self):
         """Start an OS-level keyboard listener (pynput) so Enter/Space are
         caught even when the game window isn't the focused application.
+        Only used when no gamepad is connected. Esc is deliberately NOT
+        handled here (focused-window QShortcut only).
 
         The callback runs on pynput's own thread; it only reads shared
         state and sets the enter_pressed multiprocessing.Value (both
@@ -1219,16 +1247,13 @@ class GameWindow(QtWidgets.QMainWindow):
         trigger_keys = {keyboard.Key.enter, keyboard.Key.space}
 
         def on_press(key):
-            if key not in trigger_keys and key != keyboard.Key.esc:
+            if key not in trigger_keys:
                 return
             now = time.monotonic()
             if now - self._last_hotkey_ts < 0.3:  # debounce key-repeat
                 return
             self._last_hotkey_ts = now
-            if key == keyboard.Key.esc:
-                self._on_esc_pressed()
-            else:
-                self._on_enter_pressed()
+            self._on_enter_pressed()
 
         try:
             self._hotkey_listener = keyboard.Listener(on_press=on_press)
@@ -1240,6 +1265,9 @@ class GameWindow(QtWidgets.QMainWindow):
             self._hotkey_listener = None
 
     def closeEvent(self, ev):
+        if self._pad.available:
+            self._pad.remove("START", self._on_start_pressed)
+            self._pad.remove("A", self._on_a_pressed)
         if self._hotkey_listener is not None:
             try:
                 self._hotkey_listener.stop()
@@ -1317,15 +1345,19 @@ class GameWindow(QtWidgets.QMainWindow):
                 self._break_due = False
                 self.break_banner.setVisible(False)
 
-        show_prompt = (state == 1) or (state == 3 and self._reveal_ready)
+        show_prompt = state in (1, 4) or (state == 3 and self._reveal_ready)
         if show_prompt:
             self.start_stack.setCurrentIndex(0)
-            if state == 1:
-                self.overlay_btn.setText("PRESS ENTER TO START")
+            pad = self._pad.available
+            start = self._pad.label("START")
+            if state == 4:
+                self.overlay_btn.setText("PRESS START TO PLAY" if pad else "PRESS ENTER TO START")
+            elif state == 1:
+                self.overlay_btn.setText("PRESS A TO START" if pad else "PRESS ENTER TO START")
             elif self._break_due:
-                self.overlay_btn.setText("ENTER WHEN YOU'RE READY  ·  ESC: QUIT")
+                self.overlay_btn.setText(f"{start} WHEN YOU'RE READY  ·  ESC: QUIT")
             else:
-                self.overlay_btn.setText("GAME OVER — ENTER: PLAY AGAIN  ·  ESC: QUIT")
+                self.overlay_btn.setText(f"GAME OVER — {start}: PLAY AGAIN  ·  ESC: QUIT")
         else:
             self.start_stack.setCurrentIndex(1)
         # The game-over page is shown for the scoreboard, for the break

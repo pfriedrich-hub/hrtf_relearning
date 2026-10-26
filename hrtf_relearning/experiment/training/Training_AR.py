@@ -783,7 +783,7 @@ def play_session():
     trial_time_left = mp.Value("f", float(settings["trial_time"]))
     last_goal_points = mp.Value("i", 0)  # 0/1/2 → UI coin animation trigger
     enter_pressed    = mp.Value("i", 0)  # UI sets to 1 when user presses Enter
-    ui_state         = mp.Value("i", 0)  # 0 idle, 1 awaiting enter, 2 running, 3 over
+    ui_state         = mp.Value("i", 0)  # 0 idle, 1 awaiting trial start (A), 2 running, 3 over, 4 awaiting game start (START)
     quit_pressed     = mp.Value("i", 0)  # UI sets to 1 on ESC at the game-over prompt
     break_due        = mp.Value("i", 0)  # 1 -> game-over screen asks for a break
 
@@ -839,10 +839,13 @@ def play_session():
             enter_pressed.value = 0
             break_due.value = 0
 
-            # --- PRE-GAME PROMPT ---
-            ui_state.value = 1  # waiting to start
-            if not _wait_for_enter(enter_pressed, quit_pressed, ui_proc):
-                break  # ESC / window closed -> end session
+            # --- PRE-GAME PROMPT --- first game only. From the second game on,
+            # the START press at the play-again prompt already starts the game
+            # (one press, not play-again + start).
+            if games_played == 1:
+                ui_state.value = 4  # waiting to start the game (START on the pad)
+                if not _wait_for_enter(enter_pressed, quit_pressed, ui_proc):
+                    break  # ESC / window closed -> end session
 
             scores = []
             kinds = mixed_kinds() if MIXED else None   # balanced per game

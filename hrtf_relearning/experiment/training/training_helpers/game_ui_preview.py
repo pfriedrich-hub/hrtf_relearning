@@ -156,16 +156,19 @@ class FakeSessionDriver(QtCore.QObject):
             if phase is not None:
                 phase()
 
-    def _start_prompt(self):
+    def _start_prompt(self, prompt=True):
         self.shared.session_total.value = 0
         self.shared.last_goal_points.value = 0
         self.shared.game_time_left.value = FAKE_GAME_TIME
-        self.shared.ui_state.value = 1  # waiting to start
+        self.shared.ui_state.value = 4  # waiting to start the game
         self.shared.enter_pressed.value = 0
         if self.shared.break_due is not None:
             self.shared.break_due.value = 0
         self._game_elapsed = 0.0
-        self._wait_for_enter(self._run_game)
+        if prompt:
+            self._wait_for_enter(self._run_game)
+        else:  # play-again press already started this game (as Training_AR)
+            self._run_game()
 
     def _run_game(self):
         self.shared.ui_state.value = 2  # running
@@ -193,7 +196,7 @@ class FakeSessionDriver(QtCore.QObject):
             self.shared.break_due.value = int(
                 FAKE_BREAK_EVERY and self._games_played % FAKE_BREAK_EVERY == 0)
         self.shared.ui_state.value = 3  # session over -> GameWindow handles the reveal delay
-        self._wait_for_enter(self._start_prompt)
+        self._wait_for_enter(lambda: self._start_prompt(prompt=False))
 
 
 def main():

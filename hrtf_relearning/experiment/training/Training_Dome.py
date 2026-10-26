@@ -89,6 +89,7 @@ from freefield import freefield as freefield_core
 from pynput import keyboard
 
 from hrtf_relearning.experiment.misc import meta_motion
+from hrtf_relearning.experiment.misc.response_pad import get_pad
 from hrtf_relearning.experiment.misc.Subject import Subject
 from hrtf_relearning.experiment.training.training_helpers.pulse import distance_to_interval
 from hrtf_relearning.experiment.training.training_helpers.training_targets import (
@@ -348,15 +349,18 @@ class TrainingDome:
             while n_games is None or games_played < n_games:
                 games_played += 1
                 print(f'\n=== {self.subject.id} | {self.region} | game {games_played} ===')
-                print('Enter: start   |   Esc: quit')
-                if self.wait_for_key() == 'esc':
-                    games_played -= 1
-                    break
+                # Start prompt for the first game only; afterwards the
+                # play-again press below already starts the next game.
+                if games_played == 1:
+                    print(f"{get_pad().label('START')}: start   |   Esc: quit")
+                    if self.wait_for_key('START') == 'esc':
+                        games_played -= 1
+                        break
                 self.play_game(games_played)
                 if n_games is not None and games_played >= n_games:
                     break
-                print('\nEnter: play again   |   Esc: end session')
-                if self.wait_for_key() == 'esc':
+                print(f"\n{get_pad().label('START')}: play again   |   Esc: end session")
+                if self.wait_for_key('START') == 'esc':
                     break
         except KeyboardInterrupt:
             print('\nInterrupted -- ending session.')
@@ -380,8 +384,8 @@ class TrainingDome:
             speaker = self.speaker_at(self.target)
             self._arm_speaker(speaker)
             print(f"\nTrial {trial_in_game} | {self.settings['game_time'] - game_timer:.0f} s left"
-                  f" | look at the center speaker and press Enter (Esc: end game)")
-            if self.wait_for_key() == 'esc':
+                  f" | look at the center speaker and press {get_pad().label('A')} (Esc: end game)")
+            if self.wait_for_key('A') == 'esc':
                 break
             self.motion_sensor.calibrate()
             game_timer, score = self.play_trial(
@@ -605,12 +609,17 @@ class TrainingDome:
 
     # ------------------------------------------------------------ input
     @staticmethod
-    def wait_for_key(keys=('enter', 'esc')):
-        """Block until Enter or Esc; returns the name of the key that was pressed."""
+    def wait_for_key(button='A', keys=('enter', 'esc')):
+        """Block until the participant responds or Esc; returns 'enter' or 'esc'.
+
+        With the gamepad connected, `button` (A or START) is the response and
+        Enter is ignored; without one (the freefield PC) Enter is, as before.
+        Esc is always the keyboard (global listener, unchanged)."""
+        pad = get_pad()
         pressed = {}
 
         def on_press(key):
-            if key == keyboard.Key.enter and 'enter' in keys:
+            if key == keyboard.Key.enter and 'enter' in keys and not pad.available:
                 pressed['key'] = 'enter'
                 return False
             if key == keyboard.Key.esc and 'esc' in keys:
@@ -618,7 +627,17 @@ class TrainingDome:
                 return False
 
         with keyboard.Listener(on_press=on_press) as listener:
-            listener.join()
+            def on_button():
+                pressed.setdefault('key', 'enter')
+                listener.stop()
+
+            if pad.available:
+                pad.on_press(button, on_button)
+            try:
+                listener.join()
+            finally:
+                if pad.available:
+                    pad.remove(button, on_button)
         return pressed.get('key', 'enter')
 
 

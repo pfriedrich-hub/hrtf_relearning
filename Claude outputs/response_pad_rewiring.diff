@@ -1,0 +1,455 @@
+--- a/localization/Localization_AR.py
++++ b/localization/Localization_AR.py
+@@ -12,7 +12,7 @@
+ from hrtf_relearning.experiment.misc import audio_device
+ from hrtf_relearning.experiment.misc import meta_motion
+ from hrtf_relearning.hrtf.binsim.hrtf2binsim import hrtf2binsim
+-from pynput import keyboard
++from hrtf_relearning.experiment.misc.response_pad import get_pad
+ from hrtf_relearning.utils import paths
+ from hrtf_relearning.hrtf.binsim.filter_lookup import nearest_filter_idx
+ 
+@@ -135,7 +135,7 @@
+             self._wait_for_binsim()
+             self.play_sound('beep')
+             for self.target in self.sequence:
+-                self.wait_for_button('Look at the Center and press Enter')
++                self.wait_for_button('Look at the Center and press {key}')
+                 self.motion_sensor.calibrate()
+                 self.play_trial()  # generate and play stim, get pose response and write to file
+             self.subject.last_sequence = self.sequence
+@@ -296,12 +296,11 @@
+ 
+     @staticmethod
+     def wait_for_button(msg=None):
+-        if msg: print(msg)
+-        def on_press(key):
+-            if key == keyboard.Key.enter:
+-                listener.stop()  # stop listening once Enter is pressed
+-        with keyboard.Listener(on_press=on_press) as listener:
+-            listener.join()  # block until listener.stop() is called
++        # Participant response: A on the gamepad, or Enter on a machine
++        # without one (freefield PC) -- see misc/response_pad. `{key}` in msg
++        # is filled with whichever applies.
++        pad = get_pad()
++        pad.wait('A', msg.format(key=pad.label('A')) if msg else None)
+ 
+ if __name__ == "__main__":
+ 
+--- a/localization/Localization_VR.py
++++ b/localization/Localization_VR.py
+@@ -11,7 +11,7 @@
+ from hrtf_relearning.experiment.misc.system_volume import set_windows_volume
+ from hrtf_relearning.hrtf.binsim.hrtf2binsim import hrtf2binsim
+ from hrtf_relearning.hrtf.binsim.hrir2mat import check_gain
+-from pynput import keyboard
++from hrtf_relearning.experiment.misc.response_pad import get_pad
+ from hrtf_relearning.utils import paths
+ from hrtf_relearning.hrtf.binsim.filter_lookup import nearest_filter_idx
+ logging.getLogger().setLevel('INFO')
+@@ -125,11 +125,11 @@
+         self._wait_for_binsim()
+         self.play_sound('beep')
+         for self.target in self.sequence:
+-            self.wait_for_button('Look at the Center and press Enter')
++            self.wait_for_button('Look at the Center and press {key}')
+             # self.motion_sensor.calibrate()
+ 
+             self.send_ue_state("center")
+-            self.wait_for_button('Look at the Center and press Enter')
++            self.wait_for_button('Look at the Center and press {key}')
+             self.calibrate_pose()
+ 
+             self.send_ue_state("stimulus", target=self.target)
+@@ -257,12 +257,11 @@
+ 
+     @staticmethod
+     def wait_for_button(msg=None):
+-        if msg: print(msg)
+-        def on_press(key):
+-            if key == keyboard.Key.enter:
+-                listener.stop()  # stop listening once Enter is pressed
+-        with keyboard.Listener(on_press=on_press) as listener:
+-            listener.join()  # block until listener.stop() is called
++        # Participant response: A on the gamepad, or Enter on a machine
++        # without one (freefield PC) -- see misc/response_pad. `{key}` in msg
++        # is filled with whichever applies.
++        pad = get_pad()
++        pad.wait('A', msg.format(key=pad.label('A')) if msg else None)
+ import threading
+ from pythonosc import dispatcher, osc_server, udp_client
+ 
+--- a/localization/Localization_dome.py
++++ b/localization/Localization_dome.py
+@@ -5,7 +5,7 @@
+   - Subject for data persistence
+   - make_sequence (std_targets) for trial sequences
+   - meta-motion sensor for head-pose response
+-  - Enter key to advance trials
++  - A on the gamepad (Enter where there is no pad) to advance trials
+ """
+ import matplotlib
+ from hrtf_relearning.utils.mpl_backend import use_interactive
+@@ -15,13 +15,13 @@
+ import freefield
+ import datetime
+ import logging
+-from pynput import keyboard
+ 
+ import hrtf_relearning
+ from hrtf_relearning.experiment.localization.localization_helpers.make_sequence import make_sequence
+ from hrtf_relearning.experiment.localization.localization_helpers.stimulus import (
+     make_gapped_pinknoise, make_rippled_pinknoise, RMS_TILT, RMS_CUE, RIPPLE_CUE_MAX)
+ from hrtf_relearning.experiment.misc import meta_motion
++from hrtf_relearning.experiment.misc.response_pad import get_pad
+ from hrtf_relearning.experiment.analysis.localization.localization_analysis import (
+     plot_localization, plot_elevation_response,
+ )
+@@ -135,7 +135,7 @@
+         Each run is its own block: fresh randomised sequence, own timestamped
+         filename, saved and plotted on completion -- identical to constructing
+         a new LocalizationDome per run. The sensor stays connected throughout;
+-        between runs the script waits for Enter so the participant can rest.
++        between runs the script waits for A/Enter so the participant can rest.
+         """
+         if freefield.PROCESSORS.mode != 'play_rec':
+             freefield.initialize('dome', default='play_rec', sensor_tracking=False)
+@@ -144,12 +144,12 @@
+         try:
+             for run_i in range(n_runs):
+                 if run_i > 0:
+-                    self.wait_for_enter(f'Run {run_i + 1}/{n_runs} -- press Enter to start...')
++                    self.wait_for_enter(f'Run {run_i + 1}/{n_runs} -- press {{key}} to start...')
+                     self._new_block()
+                 logging.info(f'Dome localization run {run_i + 1}/{n_runs}: {self.filename}')
+                 self.play_beep()  # start signal, as in the AR test
+                 for self.target in self.sequence:
+-                    self.wait_for_enter('Look at the center and press Enter...')
++                    self.wait_for_enter('Look at the center and press {key}...')
+                     self.motion_sensor.calibrate()
+                     self.play_trial()
+ 
+@@ -258,18 +258,15 @@
+ 
+     @staticmethod
+     def wait_for_enter(msg=None):
+-        if msg:
+-            print(msg)
+-        def on_press(key):
+-            if key == keyboard.Key.enter:
+-                listener.stop()
+-        with keyboard.Listener(on_press=on_press) as listener:
+-            # Pump the GUI while waiting instead of listener.join(): a bare
+-            # join blocks the Tk event loop, so the plots made at the end of a
+-            # run stayed blank/invisible until run() returned to the console.
+-            while listener.running:
+-                LocalizationDome._pump_figures()
+-                listener.join(0.05)
++        # Participant response: A on the gamepad, or Enter on a machine
++        # without one (the freefield PC) -- see misc/response_pad. `{key}` in
++        # msg is filled with whichever applies.
++        pad = get_pad()
++        # Pump the GUI while waiting instead of blocking: a bare wait blocks
++        # the Tk event loop, so the plots made at the end of a run stayed
++        # blank/invisible until run() returned to the console.
++        pad.wait('A', msg.format(key=pad.label('A')) if msg else None,
++                 tick=LocalizationDome._pump_figures)
+ 
+     @staticmethod
+     def _show_figures():
+--- a/training/Training_Dome.py
++++ b/training/Training_Dome.py
+@@ -89,6 +89,7 @@
+ from pynput import keyboard
+ 
+ from hrtf_relearning.experiment.misc import meta_motion
++from hrtf_relearning.experiment.misc.response_pad import get_pad
+ from hrtf_relearning.experiment.misc.Subject import Subject
+ from hrtf_relearning.experiment.training.training_helpers.pulse import distance_to_interval
+ from hrtf_relearning.experiment.training.training_helpers.training_targets import (
+@@ -348,15 +349,18 @@
+             while n_games is None or games_played < n_games:
+                 games_played += 1
+                 print(f'\n=== {self.subject.id} | {self.region} | game {games_played} ===')
+-                print('Enter: start   |   Esc: quit')
+-                if self.wait_for_key() == 'esc':
+-                    games_played -= 1
+-                    break
++                # Start prompt for the first game only; afterwards the
++                # play-again press below already starts the next game.
++                if games_played == 1:
++                    print(f"{get_pad().label('START')}: start   |   Esc: quit")
++                    if self.wait_for_key('START') == 'esc':
++                        games_played -= 1
++                        break
+                 self.play_game(games_played)
+                 if n_games is not None and games_played >= n_games:
+                     break
+-                print('\nEnter: play again   |   Esc: end session')
+-                if self.wait_for_key() == 'esc':
++                print(f"\n{get_pad().label('START')}: play again   |   Esc: end session")
++                if self.wait_for_key('START') == 'esc':
+                     break
+         except KeyboardInterrupt:
+             print('\nInterrupted -- ending session.')
+@@ -380,8 +384,8 @@
+             speaker = self.speaker_at(self.target)
+             self._arm_speaker(speaker)
+             print(f"\nTrial {trial_in_game} | {self.settings['game_time'] - game_timer:.0f} s left"
+-                  f" | look at the center speaker and press Enter (Esc: end game)")
+-            if self.wait_for_key() == 'esc':
++                  f" | look at the center speaker and press {get_pad().label('A')} (Esc: end game)")
++            if self.wait_for_key('A') == 'esc':
+                 break
+             self.motion_sensor.calibrate()
+             game_timer, score = self.play_trial(
+@@ -605,12 +609,17 @@
+ 
+     # ------------------------------------------------------------ input
+     @staticmethod
+-    def wait_for_key(keys=('enter', 'esc')):
+-        """Block until Enter or Esc; returns the name of the key that was pressed."""
++    def wait_for_key(button='A', keys=('enter', 'esc')):
++        """Block until the participant responds or Esc; returns 'enter' or 'esc'.
++
++        With the gamepad connected, `button` (A or START) is the response and
++        Enter is ignored; without one (the freefield PC) Enter is, as before.
++        Esc is always the keyboard (global listener, unchanged)."""
++        pad = get_pad()
+         pressed = {}
+ 
+         def on_press(key):
+-            if key == keyboard.Key.enter and 'enter' in keys:
++            if key == keyboard.Key.enter and 'enter' in keys and not pad.available:
+                 pressed['key'] = 'enter'
+                 return False
+             if key == keyboard.Key.esc and 'esc' in keys:
+@@ -618,7 +627,17 @@
+                 return False
+ 
+         with keyboard.Listener(on_press=on_press) as listener:
+-            listener.join()
++            def on_button():
++                pressed.setdefault('key', 'enter')
++                listener.stop()
++
++            if pad.available:
++                pad.on_press(button, on_button)
++            try:
++                listener.join()
++            finally:
++                if pad.available:
++                    pad.remove(button, on_button)
+         return pressed.get('key', 'enter')
+ 
+ 
+--- a/training/Training_AR.py
++++ b/training/Training_AR.py
+@@ -783,7 +783,7 @@
+     trial_time_left = mp.Value("f", float(settings["trial_time"]))
+     last_goal_points = mp.Value("i", 0)  # 0/1/2 → UI coin animation trigger
+     enter_pressed    = mp.Value("i", 0)  # UI sets to 1 when user presses Enter
+-    ui_state         = mp.Value("i", 0)  # 0 idle, 1 awaiting enter, 2 running, 3 over
++    ui_state         = mp.Value("i", 0)  # 0 idle, 1 awaiting trial start (A), 2 running, 3 over, 4 awaiting game start (START)
+     quit_pressed     = mp.Value("i", 0)  # UI sets to 1 on ESC at the game-over prompt
+     break_due        = mp.Value("i", 0)  # 1 -> game-over screen asks for a break
+ 
+@@ -839,10 +839,13 @@
+             enter_pressed.value = 0
+             break_due.value = 0
+ 
+-            # --- PRE-GAME PROMPT ---
+-            ui_state.value = 1  # waiting to start
+-            if not _wait_for_enter(enter_pressed, quit_pressed, ui_proc):
+-                break  # ESC / window closed -> end session
++            # --- PRE-GAME PROMPT --- first game only. From the second game on,
++            # the START press at the play-again prompt already starts the game
++            # (one press, not play-again + start).
++            if games_played == 1:
++                ui_state.value = 4  # waiting to start the game (START on the pad)
++                if not _wait_for_enter(enter_pressed, quit_pressed, ui_proc):
++                    break  # ESC / window closed -> end session
+ 
+             scores = []
+             kinds = mixed_kinds() if MIXED else None   # balanced per game
+--- a/training/training_helpers/game_ui.py
++++ b/training/training_helpers/game_ui.py
+@@ -23,6 +23,7 @@
+ # rest of the training stack (slab, pybinsim, ...) may not be loaded here.
+ from hrtf_relearning.utils.paths import RESULTS_DIR as SUBJECT_RESULTS_DIR
+ from hrtf_relearning.utils import paths
++from hrtf_relearning.experiment.misc.response_pad import get_pad
+ 
+ # ────────────────────────────────────────────────────────────────
+ # Shared structure for multiprocessing.Values
+@@ -35,7 +36,8 @@
+     last_goal_points: Any
+     session_total: Any
+     enter_pressed: Any
+-    ui_state: Any    # 0=idle, 1=waiting to start trial, 2=running, 3=session over/prompt
++    ui_state: Any    # 0=idle, 1=waiting to start trial, 2=running, 3=session over/prompt,
++                     # 4=waiting to start game (1 is used for this too by older drivers)
+     highscore: Any
+     quit_pressed: Any = None  # UI sets to 1 on ESC at the game-over prompt (optional)
+     # Parent sets to 1 BEFORE flipping ui_state to 3 when the game that just
+@@ -922,8 +924,10 @@
+         root.addWidget(self.start_holder, 0, QtCore.Qt.AlignHCenter)
+ 
+         # In-app shortcuts: only fire when the game window is the focused
+-        # application. Kept as a fallback for when the global listener below
+-        # can't start (e.g. pynput missing / no OS accessibility permission).
++        # application. Enter/Space here serve every prompt (experimenter at
++        # the game window, or the fallback when the global listener below
++        # can't start); Esc is ONLY ever handled here, so an Esc typed into
++        # another window can't end a participant's session.
+         for key in (QtCore.Qt.Key_Return, QtCore.Qt.Key_Enter, QtCore.Qt.Key_Space):
+             sc = QtWidgets.QShortcut(QtGui.QKeySequence(key), self)
+             sc.setContext(QtCore.Qt.ApplicationShortcut)
+@@ -932,11 +936,19 @@
+         esc.setContext(QtCore.Qt.ApplicationShortcut)
+         esc.activated.connect(self._on_esc_pressed)
+ 
+-        # OS-level global listener so Enter/Space also work when another
+-        # window (terminal, plot, etc.) is focused, matching Localization_AR.
++        # Participant input. With the gamepad: START starts a game (pre-game
++        # and play-again prompts), A starts a trial; pad buttons never reach
++        # the keyboard, so the experimenter can work at the PC meanwhile.
++        # Without a pad: the OS-level Enter/Space listener as before, so it
++        # also works when another window (terminal, plot) is focused.
+         self._hotkey_listener = None
+         self._last_hotkey_ts = 0.0
+-        self._start_global_hotkeys()
++        self._pad = get_pad()
++        if self._pad.available:
++            self._pad.on_press("START", self._on_start_pressed)
++            self._pad.on_press("A", self._on_a_pressed)
++        else:
++            self._start_global_hotkeys()
+ 
+         QtCore.QTimer.singleShot(0, self._init_overlays)
+ 
+@@ -1180,12 +1192,26 @@
+         return rows
+ 
+     def _on_enter_pressed(self):
++        """Keyboard Enter/Space (and the overlay button): answers any prompt."""
+         state = int(self.shared.ui_state.value)
+-        if state == 1:  # start prompt
++        if state in (1, 4):  # trial / game start prompt
+             self.shared.enter_pressed.value = 1
+         elif state == 3 and self._reveal_ready:  # play-again prompt (after the reveal delay)
+             self.shared.enter_pressed.value = 1
+ 
++    def _on_start_pressed(self):
++        """Pad START: starts a game -- the pre-game prompt (4) and the
++        play-again prompt (3, after the reveal delay). Runs on the pad's poll
++        thread; only touches the shared multiprocessing Values."""
++        state = int(self.shared.ui_state.value)
++        if state == 4 or (state == 3 and self._reveal_ready):
++            self.shared.enter_pressed.value = 1
++
++    def _on_a_pressed(self):
++        """Pad A: starts a trial (prompt 1)."""
++        if int(self.shared.ui_state.value) == 1:
++            self.shared.enter_pressed.value = 1
++
+     def _on_esc_pressed(self):
+         """ESC quits the session, but ONLY at the game-over prompt (between
+         games) — never mid-game or at a trial prompt, so a stray ESC can't
+@@ -1200,6 +1226,8 @@
+     def _start_global_hotkeys(self):
+         """Start an OS-level keyboard listener (pynput) so Enter/Space are
+         caught even when the game window isn't the focused application.
++        Only used when no gamepad is connected. Esc is deliberately NOT
++        handled here (focused-window QShortcut only).
+ 
+         The callback runs on pynput's own thread; it only reads shared
+         state and sets the enter_pressed multiprocessing.Value (both
+@@ -1219,16 +1247,13 @@
+         trigger_keys = {keyboard.Key.enter, keyboard.Key.space}
+ 
+         def on_press(key):
+-            if key not in trigger_keys and key != keyboard.Key.esc:
++            if key not in trigger_keys:
+                 return
+             now = time.monotonic()
+             if now - self._last_hotkey_ts < 0.3:  # debounce key-repeat
+                 return
+             self._last_hotkey_ts = now
+-            if key == keyboard.Key.esc:
+-                self._on_esc_pressed()
+-            else:
+-                self._on_enter_pressed()
++            self._on_enter_pressed()
+ 
+         try:
+             self._hotkey_listener = keyboard.Listener(on_press=on_press)
+@@ -1240,6 +1265,9 @@
+             self._hotkey_listener = None
+ 
+     def closeEvent(self, ev):
++        if self._pad.available:
++            self._pad.remove("START", self._on_start_pressed)
++            self._pad.remove("A", self._on_a_pressed)
+         if self._hotkey_listener is not None:
+             try:
+                 self._hotkey_listener.stop()
+@@ -1317,15 +1345,19 @@
+                 self._break_due = False
+                 self.break_banner.setVisible(False)
+ 
+-        show_prompt = (state == 1) or (state == 3 and self._reveal_ready)
++        show_prompt = state in (1, 4) or (state == 3 and self._reveal_ready)
+         if show_prompt:
+             self.start_stack.setCurrentIndex(0)
+-            if state == 1:
+-                self.overlay_btn.setText("PRESS ENTER TO START")
++            pad = self._pad.available
++            start = self._pad.label("START")
++            if state == 4:
++                self.overlay_btn.setText("PRESS START TO PLAY" if pad else "PRESS ENTER TO START")
++            elif state == 1:
++                self.overlay_btn.setText("PRESS A TO START" if pad else "PRESS ENTER TO START")
+             elif self._break_due:
+-                self.overlay_btn.setText("ENTER WHEN YOU'RE READY  ·  ESC: QUIT")
++                self.overlay_btn.setText(f"{start} WHEN YOU'RE READY  ·  ESC: QUIT")
+             else:
+-                self.overlay_btn.setText("GAME OVER — ENTER: PLAY AGAIN  ·  ESC: QUIT")
++                self.overlay_btn.setText(f"GAME OVER — {start}: PLAY AGAIN  ·  ESC: QUIT")
+         else:
+             self.start_stack.setCurrentIndex(1)
+         # The game-over page is shown for the scoreboard, for the break
+--- a/training/training_helpers/game_ui_preview.py
++++ b/training/training_helpers/game_ui_preview.py
+@@ -156,16 +156,19 @@
+             if phase is not None:
+                 phase()
+ 
+-    def _start_prompt(self):
++    def _start_prompt(self, prompt=True):
+         self.shared.session_total.value = 0
+         self.shared.last_goal_points.value = 0
+         self.shared.game_time_left.value = FAKE_GAME_TIME
+-        self.shared.ui_state.value = 1  # waiting to start
++        self.shared.ui_state.value = 4  # waiting to start the game
+         self.shared.enter_pressed.value = 0
+         if self.shared.break_due is not None:
+             self.shared.break_due.value = 0
+         self._game_elapsed = 0.0
+-        self._wait_for_enter(self._run_game)
++        if prompt:
++            self._wait_for_enter(self._run_game)
++        else:  # play-again press already started this game (as Training_AR)
++            self._run_game()
+ 
+     def _run_game(self):
+         self.shared.ui_state.value = 2  # running
+@@ -193,7 +196,7 @@
+             self.shared.break_due.value = int(
+                 FAKE_BREAK_EVERY and self._games_played % FAKE_BREAK_EVERY == 0)
+         self.shared.ui_state.value = 3  # session over -> GameWindow handles the reveal delay
+-        self._wait_for_enter(self._start_prompt)
++        self._wait_for_enter(lambda: self._start_prompt(prompt=False))
+ 
+ 
+ def main():

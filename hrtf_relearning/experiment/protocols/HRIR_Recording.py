@@ -19,9 +19,6 @@ Steps:
     5c. Native left/right swap    (pybinsim, own HRTF with the ears exchanged, midline)
 """
 
-
-
-
 # %% imports and config ------------------------------------------------------
 import matplotlib
 from hrtf_relearning.utils.mpl_backend import use_interactive
@@ -45,7 +42,7 @@ from hrtf_relearning.utils import paths
 from hrtf_relearning.experiment.misc.system_volume import set_windows_volume
 import json
 
-SUBJECT_ID   = ('EM')          # edit per participant
+SUBJECT_ID   = ('MM')          # edit per participant
 REFERENCE_ID = 'ref_31.08'   # fresh id -> step 0b records it; reused id -> loaded
 EQUALIZE_DOME = False        # subject AND reference; they must match. See step 0b.
 HEAD_RADIUS = FALLBACK_RADIUS_M   # fallback if step 0 is skipped -- MUST be
@@ -112,6 +109,12 @@ hrir = record_hrir(
 
 # %% step 2: headphone calibration ---------------------------------------------
 logging.info('--- Step 2: HP calibration ---')
+
+
+
+
+
+
 # hp_filter = calibrate_headphones(SUBJECT_ID, 'MYSPHERE', N_REC_HP, SHOW, True)
 hp_filter = calibrate_headphones(SUBJECT_ID, 'DT990', N_REC_HP, SHOW, False, overwrite=True)
 
@@ -122,12 +125,14 @@ STIM_SETTINGS = {'rms_tilt': 3}        # empty = inherit localization_helpers.st
 # %% step 4: dome localization ---------------------------------------------------
 logging.info('--- Step 4: Dome localization ---')
 dome_loc = LocalizationDome(subject, {'targets_per_speaker': 3, 'min_distance': 15,
+
     'stim': STIM, 'stim_settings': STIM_SETTINGS})
 dome_loc.run(n_runs=3)
 
 # %% step 4b: OPTIONAL dome training -- only if step 4 is at floor ---------------
 # TRAINING_STIM: 'ripple' = one new source spectrum per trial (as in
 # learning_transfer.py); set to 'noise' to go back to fixed pink noise.
+
 TRAINING_STIM = STIM
 training = TrainingDome(subject, region='midline',
                         settings={'stim': TRAINING_STIM, 'stim_settings': STIM_SETTINGS})

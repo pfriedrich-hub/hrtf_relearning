@@ -236,6 +236,13 @@ def final_battery(runs, metas, hrir, field, subject_id):
         return {}
     last_day = extract_day(runs[-1][0])
     family = {hrir, f'{hrir}_mirrored'}
+    # The day-1 2x2 baseline runs the same four cells, often in the same order
+    # as the sheet (EM 26.10: D-A-C-B both times). A battery on the first day
+    # carrying the composite is that baseline, not the final 2x2.
+    composite_days = [extract_day(key) for (key, _s), meta in zip(runs, metas)
+                      if meta.get('hrir') in family]
+    if not composite_days or last_day == composite_days[0]:
+        return {}
     seq_cells = [(key, transfer_block({**meta, 'stim': None}, field))
                  for (key, _seq), meta in zip(runs, metas)
                  if extract_day(key) == last_day and meta.get('hrir') in family]

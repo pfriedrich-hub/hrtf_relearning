@@ -93,10 +93,50 @@ DEFAULT_RESOLUTION = 'filterbank'
 # the same for everyone, so the manipulation is one sentence in the methods.
 # ---------------------------------------------------------------------------
 N_KEEP = 4                    # envelope coefficients kept (Kulkarni & Colburn 1998)
-# RECOMPUTED 2026-10-13 on the 19-recording pool (+ AB, AM, TE, IK), by
+# RECOMPUTED 2026-10-27 on the 24-recording pool (+ DA, EM, MM, SK, LP), by
 # `experiment/protocols/dev/donor_pool_audit.py`. Measured, `pairwise_r_match`:
 #
-#   per-EAR     n=684 pairs | min -0.454 | Q1 0.392 | median 0.553 | Q3 0.680 | max 0.887
+#   per-EAR     n=1104 pairs | min -0.454 | Q1 0.378 | median 0.561 | Q3 0.693 | max 0.921
+#
+# Five recordings of 19-27.10, all qualifying comfortably: DA 0.75/6.7 deg,
+# EM 0.73/6.8, MM 1.01/7.4, SK 0.82/8.4, LP 0.67/7.3 (EG / polar error, n~130
+# each). The median moves +0.008 against the 19-member 0.553, well inside one
+# TOLERANCE band, so this adds candidates without re-centring selection. The
+# TAILS keep growing though -- Q1 0.392 -> 0.378 and max 0.887 -> 0.921 --
+# which is what a pool of 24 unrelated people should look like and is the
+# argument for having kept AM. (0.562 was the same-day value for the pool
+# without LP; it was never committed and nothing was selected against it.)
+#
+# LP qualified only after his pickle was repaired: results/LP/LP.pkl had been
+# destroyed by a UTF-8 text round-trip (every non-ASCII byte replaced by
+# U+FFFD, so unrecoverable from the pickle itself) and was rebuilt from the
+# append-only results/LP/LP.json -- see project_pkl_utf8_corruption. He reads
+# 3.27/3.48 dB of detail with decodability 0.95/0.92, the best-mapped of this
+# batch.
+#
+# EM's RECORDING WAS REBUILT the same day (frontal ITD of +290 to +350 us on
+# the three rows of dome speaker 23, from the phase-slope estimator being
+# pulled by a right-ear notch near 1.3-1.5 kHz; the old files are under
+# data/hrtf/superseded/EM_2026-10-26_frontal_itd/ with the full account). The
+# fix is PHASE ONLY and does not move anything in this module: detail strength
+# reads 3.68/2.98 dB on both the faulty and the rebuilt native, to two
+# decimals, so EM's contribution to every r_match and to this median is
+# unchanged. Re-deriving EM from either file gives the same answer.
+#
+# SK IS NOT pilot/SK. Two different people with the same initials, both with a
+# base recording on disk: the SK in this pool is the 19-27.10 participant
+# (EG 0.82, results/SK/SK.json), while pilot/SK is from 17.03 and localizes at
+# 0.10. `load_candidates` resolves a BARE name against the participant folders
+# first, so 'SK' here is the right one -- but never "simplify" it to pilot/SK,
+# and never add pilot/SK on the strength of this entry. Same trap as AS, LS and
+# PF, which also exist in both trees. The audit scores them as separate rows
+# and refuses to cross trees when it cannot tell which archive belongs to whom.
+#
+# MM's LEFT ear is 2.28 dB of detail, under the 2.66 dB the old acoustic floor
+# sat at (right 2.73). EM's RIGHT ear is the weakest-MAPPED ear of the four --
+# monotonicity 0.70, decodability 0.72, against 0.83/0.93 on his left. Neither
+# gates anything, and neither should: qualification is behavioural. Noted so a
+# shortlist that lands on MM-left or EM-right is read with it in mind.
 #
 # The pool grew by four in one day and the net move is -0.020, but that is a sum
 # of two opposite effects worth keeping apart. AB, TE and IK sit near the middle
@@ -151,6 +191,9 @@ N_KEEP = 4                    # envelope coefficients kept (Kulkarni & Colburn 1
 # real and grew with the pool.
 #
 # PREVIOUS VALUES, for anyone re-deriving an already-run subject:
+#   2026-10-13, 19 recordings, per-ear n=684: median 0.553  (+ IK) -- the value
+#                                                             SH..IK-era
+#                                                             shortlists used
 #   2026-10-13, 18 recordings, per-ear n=612: median 0.536  (+ AM)
 #   2026-10-13, 17 recordings, per-ear n=544: median 0.574  (+ AB, TE)
 #   Both of those were committed and superseded on the SAME DAY as the 19-member
@@ -178,7 +221,7 @@ N_KEEP = 4                    # envelope coefficients kept (Kulkarni & Colburn 1
 # `experiment/protocols/dev/donor_pool_audit.py` does this and the behavioural
 # qualification together, and prints both edits ready to paste. Run it after a
 # recording week; it changes nothing by itself.
-TARGET_R_MATCH = 0.553        # perturbation size: the median r_match between
+TARGET_R_MATCH = 0.561        # perturbation size: the median r_match between
                               # QUALIFIED donor ears, i.e. a typical difference
                               # between two people whose own cue demonstrably
                               # works.
@@ -1206,6 +1249,12 @@ def select_donor(subject_hrtf, candidates, target=TARGET_R_MATCH,
 # Detail strength: PA 3.05 dB (L 3.00 / R 3.09), SH 2.94 (L 3.02 / R 2.85),
 # LGL 2.69 (L 2.63 / R 2.76). LGL sits just over the 2.66 dB floor.
 #
+# EXTENDED 2026-10-27: + DA (own EG 0.75, polar 6.7 deg, n=130), EM (0.73, 6.8,
+# n=131), MM (1.01, 7.4, n=128), SK (0.82, 8.4, n=129) and LP (0.67, 7.3,
+# n=127), from the recordings of 19-27.10. All five conform natively. See the TARGET_R_MATCH comment for
+# the SK / pilot/SK same-initials warning, which matters here because this
+# entry is the BARE name.
+#
 # EXTENDED 2026-10-13: + AB (own EG 1.00, polar 6.1 deg, n=130), TE (1.19,
 # 10.8 deg, n=129), AM (0.68, 10.7 deg, n=127) and IK (0.91, 5.5 deg, n=129),
 # from the recordings of 05-13.10. All four conform natively, and AB/TE/AM are
@@ -1258,7 +1307,7 @@ def select_donor(subject_hrtf, candidates, target=TARGET_R_MATCH,
 # r_match. Same trap for any future re-record under a new id.
 DONOR_POOL = ('CO', 'pilot/AGV', 'pilot/SW', 'pilot/VD', 'pilot/AH', 'FS', 'FD',
               'AS', 'FP', 'LS', 'NR', 'GM', 'LGL', 'PA', 'SH', 'AB', 'TE',
-              'AM', 'IK')
+              'AM', 'IK', 'DA', 'EM', 'MM', 'SK', 'LP')
 
 #: Donor EARS kept out of the pool while the recording itself stays in.
 #: Only meaningful with PER_EAR_SELECTION; a per-person pool cannot express it.

@@ -172,8 +172,8 @@ def save_peer_set(results_dir: Path, subject_id: str, peers: List[str]) -> None:
     Written the first time they are shown a board and read back on every
     later game and session, so the cast is stable: as the participant
     improves they climb PAST the same names. It is re-written only when
-    higher-ranked players join -- once the participant has reached the top
-    of their board (extend_peer_set) -- or when it is re-picked off the
+    the next higher-ranked player joins -- once the participant has reached
+    the top of their board (extend_peer_set) -- or when it is re-picked off the
     bottom row.
     """
     if not subject_id:
@@ -237,20 +237,20 @@ def board_rows(ranked: List[Tuple[str, int]], subject_id: str,
 
 def extend_peer_set(ranked: List[Tuple[str, int]], subject_id: str, peers: List[str],
                     n_above: int = BOARD_ABOVE, n_below: int = BOARD_BELOW) -> List[str]:
-    """Bring in higher-ranked players once the participant has reached the
-    top of their board.
+    """Bring in the next higher-ranked player once the participant has
+    reached the top of their board.
 
     While anyone in the cast is still ahead of the participant, the cast is
     left alone: they climb past the same names, one by one, and the board
     shows them moving up it. Only when they have REACHED the top -- their
-    score equals or beats the best score in the cast -- do the players
-    ranked nearest above them in the field, who are not on the board yet,
-    join it, until there are `n_above` above them again (or nobody is left
-    above in the field). A tied cast member still counts as above
-    (rank_scores breaks ties by id), so fewer newcomers are needed then.
+    score equals or beats the best score in the cast -- does ONE new player
+    join: the one ranked nearest above them in the field who is not on the
+    board yet. So there is always exactly one new target, and the board
+    changes as little as possible. A tied cast member still counts as above
+    (rank_scores breaks ties by id) and stays on the board.
 
-    To keep the board at n_above + n_below + 1 rows, the cast members
-    furthest BELOW the participant are dropped, never going under `n_below`
+    To keep the board at n_above + n_below + 1 rows, the cast member
+    furthest BELOW the participant is dropped, never going under `n_below`
     below them -- so the names they have just passed stay on as the rows
     under them.
 
@@ -265,11 +265,8 @@ def extend_peer_set(ranked: List[Tuple[str, int]], subject_id: str, peers: List[
     cast = [p for p in peers if p in pos and p != subject_id]
     if cast and scores[subject_id] < max(scores[p] for p in cast):
         return list(peers)  # still someone on the board to catch
-    n_cast_above = sum(pos[p] < me for p in cast)
-    if n_cast_above >= n_above:
-        return list(peers)
     newcomers = [sid for sid in reversed(ids[:me]) if sid not in cast]  # nearest above first
-    add = newcomers[: n_above - n_cast_above]
+    add = newcomers[:1]
     if not add:
         return list(peers)  # already the top of the field
     cast = sorted(cast + add, key=pos.__getitem__)
@@ -1158,8 +1155,8 @@ class GameWindow(QtWidgets.QMainWindow):
 
         That persistence is the point, not an optimisation: as they improve
         they climb PAST the same people. Only once they have reached the
-        top of the board do the next higher-ranked players join above them
-        (extend_peer_set), so the new names are earned and there is always
+        top of the board does the next higher-ranked player join above them
+        (extend_peer_set), so each new name is earned and there is always
         someone left to chase; familiar names leave only at the bottom. Their peers' scores are
         always the current ones, so being overtaken still happens.
 
@@ -1184,7 +1181,7 @@ class GameWindow(QtWidgets.QMainWindow):
                 return []
             save_peer_set(self.backup_dir, self.subject_id, peers)
         # Reached the top of the board? Bring in the next higher-ranked
-        # players (see extend_peer_set) and persist the new cast.
+        # player (see extend_peer_set) and persist the new cast.
         grown = extend_peer_set(ranked, self.subject_id, peers)
         if grown != list(peers):
             save_peer_set(self.backup_dir, self.subject_id, grown)

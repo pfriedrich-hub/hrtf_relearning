@@ -34,8 +34,8 @@ Usage:
     python -m hrtf_relearning.experiment.training.training_helpers.game_ui_preview --new-player
 
 The peer set is kept across the demo's repeated fake games: watch the
-subject climb PAST the same names, and the next higher-ranked demo players
-join at the top once they have reached the top of the board
+subject climb PAST the same names, and the next higher-ranked demo player
+joins at the top once they have reached the top of the board
 (game_ui.extend_peer_set).
 Each launch starts from a clean temp dir, so the set is re-picked per launch.
 

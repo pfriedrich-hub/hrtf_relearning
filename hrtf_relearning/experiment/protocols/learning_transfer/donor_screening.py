@@ -132,6 +132,17 @@ MAX_EG_RETAINED = 0.55    # donor EG / own EG. Above this the manipulation did
                           # not bite. AS 0.65 (rejected); FS 0.44, IR 0.41,
                           # FP 0.38, NR 0.38 (all pass); LS 0.075 (floor).
 
+# SCREEN WINDOW (Paul, 2026-10-30). The 30-55% band above is the target for the
+# day-1 baseline A, the 75-trial measurement the change scores are taken from.
+# The 35-trial screen block of the chosen donor runs HIGHER than that baseline:
+# gain -0.094 on average from screen to day-1 A (SD 0.13, n=13, p=.02; polar error
+# +1.2 deg, n.s.), same composite, hemifield and grid. Not explained by position in
+# the screen, time between the blocks, block length, or regression to the mean
+# (which predicts ~0 for the donors actually chosen). So the screen is read against
+# a window shifted up by ~10 points of retained gain; baseline A is then checked
+# against the 30-55% target itself (check_baseline_A). Reported, never enforced.
+SCREEN_EG_RETAINED = (0.40, 0.65)
+
 # Polar-error impairment is KEPT as a co-gate, not demoted, because for the one
 # question the EG ratio answers weakly it answers strongly: against an AS-like
 # donor whose true impairment is +2.5 deg, a 35-trial block catches it 84% of
@@ -287,7 +298,9 @@ def report(rows, reference):
           f"{EG_TARGET_BAND[0]:.2f}-{EG_TARGET_BAND[1]:.2f}; below {MIN_EG:.2f} "
           f"the cue is effectively gone")
     print(f"  retained         {MIN_EG_RETAINED*100:.0f}-{MAX_EG_RETAINED*100:.0f}% "
-          f"of the listener's own gain")
+          f"of the listener's own gain -- the TARGET for day-1 baseline A")
+    print(f"  retained, SCREEN {SCREEN_EG_RETAINED[0]*100:.0f}-{SCREEN_EG_RETAINED[1]*100:.0f}% "
+          f"-- read the screen against THIS: it runs ~0.09 gain above baseline A")
     print(f"  impairment       {IMPAIRMENT_TARGET[0]:g}-{IMPAIRMENT_TARGET[1]:g} deg "
           f"of polar error vs own")
     print("\nSelect with:  use_donor(donor_id='XX', donor_ear='left|right', "
@@ -405,3 +418,46 @@ def record_choice(subject_id, donor_id, donor_ear=None):
         print(f"  [!] could not store the donor choice on {subject_id}'s "
               f"record ({type(exc).__name__}: {exc})")
         return None
+
+
+
+def check_baseline_A(test, subject):
+    """Print where day-1 baseline A landed against the 30-55% retained target.
+
+    Information only: nothing is blocked or changed. Own gain is the native
+    full-field block the screen used as its reference (subject.donor_screen);
+    without a screen record it says so and prints the raw numbers.
+    """
+    from hrtf_relearning.experiment.analysis.localization.localization_analysis import (
+        localization_accuracy, polar_error)
+    seq = getattr(test, "sequence", test)
+    eg = float(localization_accuracy(seq)[0])
+    pe = float(polar_error(seq)[0])
+    ref = (getattr(subject, "donor_screen", None) or {}).get("reference") or {}
+    own_eg, own_pe = ref.get("eg"), ref.get("pe")
+    if not own_eg:
+        # no screen record (screens run 2026-10-06..20 left it empty): fall back to
+        # the latest native full-field block, the same block the screen would use
+        native = [q for k, q in (getattr(subject, "localization", {}) or {}).items()
+                  if k.endswith(f"_{subject.id}") and len(getattr(q, "data", [])) >= 100]
+        if native:
+            own_eg = float(localization_accuracy(native[-1])[0])
+            own_pe = float(polar_error(native[-1])[0])
+    print("\n" + "-" * 70)
+    print(f"BASELINE A CHECK   EG {eg:.2f}   PE {pe:.1f} deg   (n={len(seq.data)})")
+    if not own_eg:
+        print("  no screen reference on record -- cannot express EG as retained")
+        print("-" * 70)
+        return {"eg": eg, "pe": pe}
+    kept = eg / own_eg
+    lo, hi = MIN_EG_RETAINED, MAX_EG_RETAINED
+    print(f"  retained {kept*100:.0f}% of own EG {own_eg:.2f}   (target {lo*100:.0f}-{hi*100:.0f}%)"
+          + (f"   impairment {pe - own_pe:+.1f} deg" if own_pe else ""))
+    if lo <= kept <= hi:
+        print("  -> on target.")
+    else:
+        side = "too little of the cue left" if kept < lo else "the manipulation barely bit"
+        print(f"  -> OUTSIDE the target ({side}). If you swap now: use_donor(rank=1, ...),")
+        print("     then re-run ALL day-1 baselines -- B/C/D must be on the same composite as A.")
+    print("-" * 70)
+    return {"eg": eg, "pe": pe, "retained": kept}

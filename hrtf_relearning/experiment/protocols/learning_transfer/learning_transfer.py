@@ -75,7 +75,7 @@ EDIT THE CONFIG BLOCK BELOW PER PARTICIPANT.
 ------------------------------------------------------------------------------
 """
 
-SUBJECT_ID = ("LP")   # put this id into an open row of learning_transfer_block_order.csv
+SUBJECT_ID = ("EM")   # put this id into an open row of learning_transfer_block_order.csv
 
 # %% imports and config #------------------------------------------------------
 import csv  # only for the block-order table below; the modification
@@ -964,6 +964,7 @@ subject = hr.Subject(SUBJECT_ID)
 # %% IN SESSION: participant is at floor -- swap donor -----------------------
 # Only when the cue is abolished, not merely degraded. Write what you saw.
 # use_donor(rank=1, reason="EG 0.03 on baseline A, responses at chance")
+# After a swap on day 1, re-run ALL four baselines: B/C/D must match A's composite.
 
 # %% day 1: baselines A/B/C/D in this subject's counterbalanced order --------
 subject = hr.Subject(SUBJECT_ID)
@@ -971,9 +972,12 @@ print(f"Running day-1 baselines in order: {FINAL_ORDER}")
 baselines = {}
 for key in FINAL_ORDER:
     baselines[key] = run_phase(f"baseline_{key}", subject)
+    if key == "A":   # printed the moment A is done, so a swap costs the fewest blocks
+        donor_screening.check_baseline_A(baselines[key], subject)
 
 # %% day 1: baseline A -- trained ear, same loc (redo individually) -----------
 baseline_A = run_phase("baseline_A", subject)
+donor_screening.check_baseline_A(baseline_A, subject)
 
 # -----------------------------------------------
 # ADAPTATION DAYS1

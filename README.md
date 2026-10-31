@@ -117,10 +117,11 @@ conda install pywin32
 
 ## Running
 
-The install puts an `hrtf` command on `PATH`. Run it with no arguments to list
-the commands:
+The install puts an `hrtf` command on `PATH` — inside the conda env, so activate
+it first in every new terminal. Run `hrtf` with no arguments to list the commands:
 
 ```bash
+conda activate hrtf_relearning
 hrtf
 ```
 
@@ -130,6 +131,7 @@ hrtf
 | `hrtf localize-ar` | `experiment.localization.Localization_AR` | Localization test, AR headset |
 | `hrtf localize-vr` | `experiment.localization.Localization_VR` | Localization test, VR / pybinsim |
 | `hrtf analyze` | `experiment.analysis.localization.localization_analysis` | Localization analysis + plots |
+| `hrtf restore <ID>` | `experiment.analysis.subject.restore_from_json` | Rebuild a broken subject pkl from its JSON (see below) |
 
 Each is equivalently runnable as a module, which is what you want when
 attaching a debugger in PyCharm:
@@ -137,6 +139,29 @@ attaching a debugger in PyCharm:
 ```bash
 python -m hrtf_relearning.experiment.training.Training_AR
 ```
+
+### Broken subject pkl
+
+If a subject's pkl won't load ("was destroyed by a text editor", "invalid load
+key '\xef'"), rebuild it from the JSON archive next to it. In a terminal with the
+env active (not in a Python console):
+
+```bash
+conda activate hrtf_relearning
+hrtf restore LP
+```
+
+- The broken file is kept next to it as `LP.pkl.broken_<timestamp>`, the JSON
+  is not touched, and the rebuilt pkl is test-loaded and summarised (runs,
+  trials, last run, donor, screen).
+- If the pkl still loads it does nothing; `hrtf restore LP --force` rebuilds anyway.
+- Lost: only the raw head-tracker traces of training trials (their summaries
+  survive). Everything else, including donor and screen, comes back.
+- Then copy the pkl to the other machines by hand or commit it, and make sure
+  the committing machine has the guard on: `git config core.hooksPath .githooks`.
+
+From a Python console instead:
+`from hrtf_relearning.experiment.analysis.subject.restore_from_json import restore_subject; restore_subject("LP")`
 
 ### Not CLI commands
 

@@ -19,16 +19,42 @@ normalisation is available here):
     between the listener's own in-band detail and the composite's detail at the
     SAME elevation — the quantity Van Wanrooij & Van Opstal's proposed
     mechanism, a correlation against a stored representation of the listener's
-    own ears, says should drive performance. Targeted mid-range, not minimised:
-    they found insufficiently perturbed listeners never reached stable
-    performance, while Trapeau et al. (2016) found stronger perturbation gave
-    slower and less complete recovery.
+    own ears, says should drive performance.
+
+    WHAT IT DOES AND DOES NOT DO (measured 2026-10-31, see EVIDENCE below).
+    It orders donors by the size of the ACUTE effect, within a listener: mean
+    Spearman +0.33 against retained elevation gain over 6 listeners with 4-6
+    screened donors each, positive in 5 and zero in 1. That is a real effect and
+    it is why this quantity is still computed.
+
+    It does NOT grade a listener's prospects, and the mid-range TARGET below is
+    not supported by the only cohort in which relearning happened. The earmolds
+    sit at r_match ~0.24 -- roughly twice the perturbation targeted here -- and
+    recovered 47% of polar error and 81% of elevation gain; across 27 mold cells
+    no acoustic property of the perturbation predicts recovery (best |rho| 0.31
+    for r_match, nothing clearing the n=27 significance line). So read `target`
+    as "stage a perturbation of about this size", never as a prediction about
+    outcome, and do not restate the Van Wanrooij / Trapeau dose argument in a
+    methods section as though this rig had reproduced it.
 
 ``ridge_slope``
     Whether the perturbation is ABSORBABLE. Elevation of the best-matching own
     detail regressed on true elevation; ~+1 means the old map can read the
     composite as a coherent but displaced elevation and take up the change as a
-    constant bias, which is the case that never relearns.
+    constant bias.
+
+    "The case that never relearns" is the hypothesis this guard was built on and
+    it is NOT established. Two things stand against it. The mold cohort's day-1
+    RMSE is dominated by its bias term -- a coherent displacement -- and those
+    subjects recovered 47%/81%, so a coherent bias is the most learnable
+    perturbation on record here, not the least. And measured against the acute
+    effect (2026-10-31) ridge_slope -> retained gain is POSITIVE, mean +0.43
+    over 6 listeners, which is close to definitional: a coherently ordered
+    perturbation leaves the elevation mapping intact. So this is a
+    weak-perturbation exclusion wearing a mechanism's clothes, and it is the
+    least stable measure in the set (per-listener rho from -0.09 to +0.94).
+    Keep it as a crude upper bound on perturbation weakness; do not argue from
+    absorbability until something tests it.
 
 Neither substitutes for the other: across 1860 real donor pairings they
 correlate at rho = +0.14, and 31% of pairings with r_match <= 0.3 still have
@@ -45,6 +71,20 @@ supply; ``i_sim`` is the SD down each column of a correlation matrix, and SD is
 invariant to permuting the rows, so it scores a listener's own ear and their own
 ear relabelled by 17 degrees identically (measured: 0.542 for shifts of 0, 4, 8
 and 17 deg, while r_match falls 1.00 -> 0.69).
+
+TESTED 2026-10-31 AND STILL OUT, now on evidence rather than on principle:
+``peak_r`` is flat against the acute effect (+0.18 pooled, signs 5/0/1 but every
+value near zero) and absent from every mold correlation. ``i_sim`` tracks
+impairment (+0.34, 5 of 6 listeners) but `detail_strength` tracks it better
+(-0.45, 6 of 6) without being permutation-invariant, so i_sim adds nothing it
+does not also corrupt. ``vsi_dissimilarity`` is the interesting one: on this
+rig's geometry it is NOT redundant with r_match (rho -0.46) and predicts the
+acute effect about equally well (-0.34 within listener, 5 of 6) -- but on the
+mold cohort, in both of Trapeau's bands and against all six outcomes, it
+predicts NOTHING, including recovery (|rho| <= 0.31 vs %PE and %EG recovered).
+Its scalar cousin |VSI_own - VSI_composite| is pure noise here (means -0.05 and
+-0.02, signs 2/4 and 3/3). So VSI stays a diagnostic: it would duplicate, less
+accurately, what the day-1 screen measures directly.
 
 Method
 ------
@@ -229,6 +269,64 @@ MAX_RIDGE_SLOPE = 0.5         # above this the old map can read the composite as
                               # a coherent elevation and absorb it as a bias
 TOLERANCE = 0.05              # half-width of the band around the target
 
+# ---------------------------------------------------------------------------
+# EVIDENCE for the three paragraphs above (added 2026-10-31). Two analyses, and
+# the numbers are quoted here rather than only in a scratch file so this comment
+# stands on its own.
+#
+# 1. ACUTE EFFECT, WITHIN LISTENER. Every tagged day-1 screen on disk: 40
+#    pairings, 9 listeners, 4-6 donors each, 29-34 trials per block. Outcome =
+#    retained elevation gain (screen EG / own-HRTF EG) and impairment (screen
+#    polar error - own). Mean per-listener Spearman over the 6 listeners with
+#    >=4 donors:
+#
+#      r_match          +0.33  (signs 5/0/1)      vsi_diss (full)  -0.34  (1/5/0)
+#      ridge_slope      +0.43  (5/1/0)            vsi_diss (detail)-0.28  (0/5/1)
+#      detail_strength  +0.25  (4/2/0)            |dVSI|           -0.05  (2/4/0)
+#      cue_gradient     +0.31  (5/1/0)            peak_r           +0.18  (5/0/1)
+#
+#    vs IMPAIRMENT the same predictors give -0.42, -0.29, -0.45 (6/6), -0.47,
+#    and +0.43 for vsi_diss. Note retained gain and impairment are ONE axis
+#    here: rho -0.61 pooled and -0.77..-1.00 within every listener. So the
+#    "retained EG catches one end, impairment the other" rationale in
+#    project_retained_eg_criterion is one measurement twice, not two
+#    dimensions. Only 14 of 40 pairings land in the 0.30-0.55 retained band and
+#    5 of 40 abolish the cue (retained <= 0).
+#
+#    Caveat: SE on a 35-trial gain is ~0.14 and same-composite test-retest moves
+#    0.13, so the SIGN CONSISTENCY is the result; the magnitudes are not
+#    resolvable. IK and SK span only ~20 points of retained gain, so a null in
+#    those two is uninformative.
+#
+# 2. LEARNING, BETWEEN SUBJECTS. The earmold cohort, 27 cells with both
+#    acoustics and behaviour, `processed` DTFs (the only data here with a
+#    quasi-diffuse-field normalisation, so the closest this project gets to
+#    Trapeau's geometry), both of their bands, against day-1 impairment, day-1
+#    PE, day-1 EG, best EG, %PE recovered and %EG recovered. NOTHING predicts
+#    recovery. vsi_dissimilarity reaches |rho| 0.31 at best; r_match 0.31. The
+#    only coherent cluster is VSI OF THE MOLDED EARS against the day-1 measures
+#    (impairment +0.40, PE +0.41, EG -0.44 in the 5657-11314 octave), which is
+#    the acute axis again and does not survive correction for 30 tests
+#    (Bonferroni would need |rho| ~0.58 at n=27). Two further significant cells
+#    -- |dVSI| and VSI-of-free-ears against %PE recovered -- FLIP SIGN between
+#    the two bands and should be read as multiple-comparison artefacts.
+#
+# WHAT THIS LICENSES. Ordering donors by acute perturbation size: yes, weakly.
+# Predicting who relearns from any acoustic quantity: no, and this is now the
+# third independent negative (detail_strength rho +0.09/+0.18 vs own-HRTF
+# localization; the n=27 cue_gradient back-test; this one). The day-1 screen
+# measures the acute axis directly in 35 trials, which is why it, and not this
+# module, is the thing that chooses.
+#
+# STILL OPEN, and the one change these findings actually argue for: replace the
+# accept/reject band with a SPREAD rule -- stage 6 donors spanning the pool's
+# r_match range instead of 6 clustered within TOLERANCE of a target, so the
+# screen has something to discriminate. Six candidates matched on r_match to two
+# decimals produced retained gains of 52%, 61%, -5% and 30% for AB, so the band
+# is not controlling what it claims to. Not implemented: it changes which
+# composites get built, and that is Paul's call.
+# ---------------------------------------------------------------------------
+
 # A CANDIDATE IS A DONOR *EAR*, NOT A DONOR (2026-09-17, Paul's call).
 # The protocol is monaural: exactly one of a donor's two ears is transplanted,
 # onto the listener's trained ear. Scoring the ear AVERAGE -- which is what
@@ -249,9 +347,22 @@ PER_EAR_SELECTION = True
 
 # How the BAND tier is ordered. 'strength' is what shortlist.__doc__ has
 # described since the tier was introduced and what the tier is for; 'distance'
-# is what the code actually did until 2026-09-17. Default stays 'distance' so
-# no subject already run has their rank-0 pick moved by this file alone.
-BAND_RANK_BY = 'distance'
+# is what the code actually did until 2026-09-17.
+#
+# CHANGED 'distance' -> 'strength' on 2026-10-31, and this moves rank-0 picks.
+# Inside the band every candidate is by construction the same perturbation size
+# to within TOLERANCE, so ordering by distance-to-target spends the only free
+# choice on a quantity that is already matched -- and it was measurably costing
+# cue depth: for both AB and IK it put AS-right (1.7 dB of detail) ahead of
+# FS-right (2.7 dB) on 0.01 of r_match, and for GM it put pilot/VD ahead of FD
+# on 0.0003. Depth is the thing a donor actually hands over, and
+# `detail_strength` is the most consistent acute predictor measured (-0.45
+# against impairment, the only 6-of-6 in the table).
+#
+# Set back to 'distance' to reproduce any ranking produced before this date.
+# Subjects already run are unaffected: their donors are pinned by
+# subject.active_donor, not recomputed.
+BAND_RANK_BY = 'strength'
 
 MIN_CUE_GRADIENT = None       # DELIBERATELY OFF. `cue_gradient` is reported for
 MIN_CUE_MONOTONICITY = None   # every candidate but gates nothing, because over

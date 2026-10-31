@@ -46,14 +46,14 @@ from matplotlib import pyplot as plt
 from matplotlib.patches import Rectangle
 from matplotlib.lines import Line2D
 
-from hrtf_relearning.experiment.analysis.localization.plot import group_learning as gl
+from hrtf_relearning.experiment.learning_transfer.figures import group_learning as gl
 from hrtf_relearning.experiment.analysis.localization.plot.elevation_learning import (
     extract_day, extract_seq_meta, trained_hemifield, transfer_block)
 from hrtf_relearning.utils import paths
 
 # --- configuration -----------------------------------------------------------
 #: the learning-curve group. New participants go here as soon as they start.
-SUBJECT_IDS = ('FS', 'IR', 'SH', 'PA', 'SK', 'DA', 'EM', 'MM', 'LP')
+SUBJECT_IDS = ('FS', 'IR', 'SH', 'PA', 'SK', 'DA', 'LP')
 #: participants deliberately kept off the curve, with the reason (printed on run)
 EXCLUDED = {
     'LGL': 'not counted as a learner — EG trend only, polar error flat (2026-10-22)',
@@ -63,6 +63,9 @@ EXCLUDED = {
     'LS': 'borderline, kept out like LGL: dEG +.19, dPE 4.1 deg, both inside the noise band',
     'NR': 'aborted — no final 2x2',
     'IK': 'mixed-stimulus cohort; borderline like LGL/LS: dEG +.18, dPE 3.4 deg',
+    # week of 26.10 (Paul, 2026-10-30): only LP makes it
+    'EM': 'not counted (Paul): no gain change over 3 days (.27 -> .23); HRTF rebuilt after day 1, day-1 baselines on the old file',
+    'MM': 'not counted (Paul): got worse, gain .27 -> .18 after day 2; composite kept only 28% of her own gain',
 }
 #: the paper figure uses only participants who have completed the final 2x2
 PAPER_COMPLETE_ONLY = True

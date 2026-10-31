@@ -5,7 +5,7 @@ Adaptation-transfer experiment protocol — DONOR-DETAIL cue manipulation.
 
 This is the current protocol. The previous version, which translated the
 participant's own spectral detail along the ERB axis, is kept for reference at
-protocols/dev/old/learning_transfer_erbshift.py; design, grid, counterbalancing
+experiment/learning_transfer/dev/old/learning_transfer_erbshift.py; design, grid, counterbalancing
 and the final-day 2x2 are unchanged from it, only the cue manipulation differs.
 Instead of moving the participant's own detail, it is REPLACED with a donor's:
 
@@ -14,7 +14,7 @@ Instead of moving the participant's own detail, it is REPLACED with a donor's:
 
 with the participant's own phase and own per-direction broadband level, so ITD
 and broadband ILD are exactly as measured and only the spectral shape above the
-envelope scale changes. See hrtf.modify.donor_detail.
+envelope scale changes. See experiment.learning_transfer.donor_detail.
 
 WHY NOT THE ERB SHIFT. A constant translation keeps the participant's own
 pattern intact, so the existing spectral-to-spatial map can still match each
@@ -27,7 +27,7 @@ own-vs-modified correlation ridge at slope ~1.0, i.e. fully absorbable as a
 bias; a donor's detail collapses it.
 
 DONOR SELECTION is the only thing that varies between participants, and it is
-made by a fixed rule in hrtf.analysis.donor_selection — see
+made by a fixed rule in experiment.learning_transfer.donor_selection — see
 DONOR_POOL / TARGET_R_MATCH / TOLERANCE / MAX_RIDGE_SLOPE there, and
 docs/methods_donor_detail.md for the paragraph this becomes in a paper.
 Everything else (n_keep, band, filter bank, target) is identical for everyone.
@@ -49,7 +49,7 @@ in the composite SOFA as GLOBAL_ModificationParams.
 
 The monaural ear treatment is orthogonal and selectable via OTHER_EAR
 ('flat' | 'envelope' | 'native'); which one to use is still an open question,
-tested per participant by the ladder in protocols/dev/ladder.py.
+tested per participant by the ladder in experiment/learning_transfer/dev/ladder.py.
 
 Counterbalancing is read from learning_transfer_block_order.csv IN THIS FOLDER.
 Write each subject's id into the 'subject' column before running.
@@ -87,18 +87,17 @@ import sys
 import slab
 import hrtf_relearning as hr
 from hrtf_relearning.experiment.localization.Localization_AR import Localization
-from hrtf_relearning.hrtf.analysis import donor_selection as selection
+from hrtf_relearning.experiment.learning_transfer import donor_selection as selection
 from hrtf_relearning.experiment.protocols.protocol_helpers import (
     collect_demographics, collect_externalization_rating, externalization_check,
     externalization_ladder, review_block)
 from hrtf_relearning.experiment.misc.system_volume import set_windows_volume
-from hrtf_relearning.experiment.protocols.learning_transfer.donor_modification import DonorModification
-from hrtf_relearning.experiment.protocols.learning_transfer import donor_screening
+from hrtf_relearning.experiment.learning_transfer.donor_modification import DonorModification
+from hrtf_relearning.experiment.learning_transfer import donor_screening
 from hrtf_relearning.hrtf.modify.plot_compare import plot_split_qc
 from hrtf_relearning.utils import paths
 
-CSV_PATH = (hr.PATH / "experiment" / "protocols" / "learning_transfer"
-            / "learning_transfer_block_order.csv")
+CSV_PATH = hr.PATH / "experiment" / "learning_transfer" / "learning_transfer_block_order.csv"
 
 
 def _load_subject_params(subject_id, csv_path=CSV_PATH):

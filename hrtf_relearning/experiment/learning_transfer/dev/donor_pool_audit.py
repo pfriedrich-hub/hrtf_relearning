@@ -27,7 +27,7 @@ THE TWO RULES, both taken from donor_selection
 ----------------------------------------------
 acoustic
     The recording must match the current measurement grid as it stands or after
-    :func:`~hrtf_relearning.hrtf.analysis.donor_selection.conform_recording`
+    :func:`~hrtf_relearning.experiment.learning_transfer.donor_selection.conform_recording`
     (512 taps, 48828 Hz, 19 median-plane elevations). Nothing else is repaired,
     because the only repair available is interpolation across direction and
     that smooths precisely the notches this manipulation transplants.
@@ -112,7 +112,7 @@ import logging
 
 import numpy
 
-from hrtf_relearning.hrtf.analysis import donor_selection as selection
+from hrtf_relearning.experiment.learning_transfer import donor_selection as selection
 from hrtf_relearning.experiment.analysis.database import vsi_rmse
 from hrtf_relearning.experiment.analysis.localization.localization_analysis import (
     localization_accuracy, polar_error)
@@ -481,7 +481,7 @@ def _stat_line(label, stats):
 def paste_block(pool, stats, previous_stats=None):
     """Print the two edits to make in ``donor_selection.py``, ready to paste."""
     print('\n' + '=' * 104)
-    print('TO APPLY — two edits in hrtf/analysis/donor_selection.py')
+    print('TO APPLY — two edits in experiment/learning_transfer/donor_selection.py')
     print('=' * 104)
     print(f'\nTARGET_R_MATCH = {stats["median"]:.3f}')
     print(f'\n  per-ear  {"PER_EAR_SELECTION=True" if selection.PER_EAR_SELECTION else "per-person"}, '

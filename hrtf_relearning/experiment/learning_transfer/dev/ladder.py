@@ -89,8 +89,7 @@ from hrtf_relearning.utils import paths
 
 NATIVE_SOFA = SUBJECT_ID
 ELEVATION_RANGE = (-35, 35)
-CSV_PATH = (hr.PATH / "experiment" / "protocols" / "learning_transfer"
-            / "learning_transfer_block_order.csv")
+CSV_PATH = hr.PATH / "experiment" / "learning_transfer" / "learning_transfer_block_order.csv"
 
 
 def trained_ear(subject_id=SUBJECT_ID, csv_path=CSV_PATH):
@@ -119,7 +118,7 @@ def donor_sofa_name():
     if not matches:
         raise FileNotFoundError(
             f'no {SUBJECT_ID}_donor_*.sofa — run build_donor_sofa() in '
-            f'protocols/learning_transfer/learning_transfer.py first')
+            f'experiment/learning_transfer/learning_transfer.py first')
     if len(matches) > 1:
         raise RuntimeError(f'several donor SOFAs: {[p.name for p in matches]}')
     params = read_modification_params(matches[0]) or {}

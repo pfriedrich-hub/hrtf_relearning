@@ -17,7 +17,7 @@ Stage 3 is read from disk rather than rebuilt, so the figure is a picture of
 the stimulus that was presented, not of a reconstruction of it. Stage 2 is the
 one synthetic panel: it is the common base both ears of stage 3 are built on
 (`envelope_dtf(ear='both')` is exactly the split
-`hrtf.modify.donor_detail.split_log_magnitude` performs), and it is drawn so the
+`experiment.learning_transfer.donor_detail.split_log_magnitude` performs), and it is drawn so the
 step from 2 to 3 reads as "the donor's detail is written back on the left, and
 the right keeps the envelope with its elevation dependence averaged out".
 
@@ -33,7 +33,7 @@ from pathlib import Path
 
 import slab
 
-from hrtf_relearning.hrtf.analysis import donor_selection as selection
+from hrtf_relearning.experiment.learning_transfer import donor_selection as selection
 from hrtf_relearning.hrtf.modify.plot_compare import plot_stages
 from hrtf_relearning.hrtf.processing.envelope import envelope_dtf
 from hrtf_relearning.hrtf.processing.midline import midline_arc

@@ -42,7 +42,7 @@ from hrtf_relearning.experiment.misc.system_volume import set_windows_volume
 
 SUBJECT_ID = "SZ"   # edit per participant
 
-CSV_PATH = hr.PATH / "experiment" / "protocols" / "dev" / "expectation_transfer_block_order.csv"
+CSV_PATH = hr.PATH / "experiment" / "protocols" / "dev" / "expectation_transfer" / "expectation_transfer_block_order.csv"
 
 
 

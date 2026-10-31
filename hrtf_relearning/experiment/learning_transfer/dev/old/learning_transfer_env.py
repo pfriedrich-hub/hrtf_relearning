@@ -1,7 +1,7 @@
 """
 learning_transfer_env.py
 
-PILOT VARIANT of experiment/protocols/learning_transfer/learning_transfer.py.
+PILOT VARIANT of experiment/learning_transfer/learning_transfer.py.
 Everything (design, grid, counterbalancing, ERB-shift modification, final-day 2x2)
 is identical EXCEPT what the non-listening ear receives:
 
@@ -85,7 +85,7 @@ from hrtf_relearning.utils import paths
 # by this id. On day 1, write each subject's id into the 'subject' column of:
 #   learning_transfer_env_block_order.csv   (this folder; replace an '(assign)' cell)
 
-CSV_PATH = (hr.PATH / "experiment" / "protocols" / "dev"
+CSV_PATH = (hr.PATH / "experiment" / "learning_transfer" / "dev" / "old"
             / "learning_transfer_env_block_order.csv")
 
 

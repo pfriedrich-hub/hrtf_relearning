@@ -45,7 +45,7 @@ Usage (via the binsim pipeline, not by hand)::
     hrir_settings = dict(..., ear='left', other_ear='envelope', env_n_keep=4)
 
 See :func:`hrtf_relearning.hrtf.binsim.hrtf2binsim.hrtf2binsim`, and the pilot
-protocol experiment/protocols/learning_transfer/learning_transfer.py.
+protocol experiment/learning_transfer/learning_transfer.py.
 """
 
 import copy

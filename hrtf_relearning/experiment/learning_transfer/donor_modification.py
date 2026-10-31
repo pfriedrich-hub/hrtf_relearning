@@ -57,9 +57,9 @@ import hrtf_relearning as hr
 
 #: Reason stored by use_donor() when none is given -- it is almost always this.
 DEFAULT_SWAP_REASON = "seems learnable"
-from hrtf_relearning.hrtf.analysis import donor_selection as selection
+from hrtf_relearning.experiment.learning_transfer import donor_selection as selection
 from hrtf_relearning.hrtf.analysis.vsi import vsi as vsi_of
-from hrtf_relearning.hrtf.modify.donor_detail import donor_detail_dtf, modification_params
+from hrtf_relearning.experiment.learning_transfer.donor_detail import donor_detail_dtf, modification_params
 from hrtf_relearning.hrtf.modify.edge_shift import (embed_modification_params,
                                                     read_modification_params)
 from hrtf_relearning.hrtf.modify.plot_compare import plot_ears

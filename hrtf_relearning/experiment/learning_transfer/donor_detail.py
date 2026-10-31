@@ -24,7 +24,7 @@ level, ILD, head shadow and the individual colouration that make the sound
 externalize. The composite also inherits normal ear statistics (donor detail RMS
 and notch depths, across-direction SD between the two individuals').
 
-CHOOSING THE DONOR — see :mod:`hrtf_relearning.hrtf.analysis.donor_selection`.
+CHOOSING THE DONOR — see :mod:`hrtf_relearning.experiment.learning_transfer.donor_selection`.
 Trapeau et al. (2016) validated their earmolds as physiologically plausible by
 showing that the free-vs-mold VSI dissimilarity fell inside the distribution of
 VSI dissimilarities between PAIRS OF PARTICIPANTS. A donor swap is that
@@ -44,7 +44,7 @@ same of a candidate. Do not: VSI is defined on diffuse-field-normalised DTFs and
 these recordings sample only the az=0 arc, so the quantity is not available here
 and the available proxies are too unstable to gate on (0.19-1.01 across seven
 listeners). VSI is reported; the ridge slope decides. See the constants block in
-:mod:`hrtf_relearning.hrtf.analysis.donor_selection`.
+:mod:`hrtf_relearning.experiment.learning_transfer.donor_selection`.
 """
 
 import copy
@@ -209,7 +209,7 @@ OUT_SUFFIX = 'donor'   # writes <SUB_ID>_donor_<DONOR>.sofa
 
 # Nothing else is set per participant. n_keep, the target dissimilarity, the
 # band, the filter bank and the eligibility guards all live in
-# hrtf.analysis.donor_selection as protocol constants and are identical for
+# experiment.learning_transfer.donor_selection as protocol constants and are identical for
 # everyone; the donor is the only per-subject choice, and it is made by the
 # rule in donor_selection.select_donor.
 
@@ -220,7 +220,7 @@ if __name__ == '__main__':
     import slab
 
     from hrtf_relearning.utils import paths
-    from hrtf_relearning.hrtf.analysis import donor_selection as selection
+    from hrtf_relearning.experiment.learning_transfer import donor_selection as selection
     from hrtf_relearning.hrtf.analysis.vsi import vsi as vsi_of
     from hrtf_relearning.hrtf.modify.plot_compare import plot_ears
     from hrtf_relearning.hrtf.modify.edge_shift import _embed_modification_params

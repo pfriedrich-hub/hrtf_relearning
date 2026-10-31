@@ -44,7 +44,7 @@ from matplotlib.lines import Line2D
 
 from hrtf_relearning.experiment.analysis.localization.plot.elevation_learning import (
     extract_day, extract_seq_meta, transfer_block, trained_hemifield)
-from hrtf_relearning.experiment.analysis.localization.plot import group_learning as gl
+from hrtf_relearning.experiment.learning_transfer.figures import group_learning as gl
 from hrtf_relearning.utils import paths
 
 # --- configuration -----------------------------------------------------------

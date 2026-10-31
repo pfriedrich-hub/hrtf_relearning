@@ -74,7 +74,7 @@ from hrtf_relearning.utils import paths
 # by this id. On day 1, write each subject's id into the 'subject' column of:
 #   learning_transfer_block_order.csv   (this folder; replace an '(assign)' cell)
 
-CSV_PATH = hr.PATH / "experiment" / "protocols" / "learning_transfer" / "learning_transfer_block_order.csv"
+CSV_PATH = hr.PATH / "experiment" / "learning_transfer" / "learning_transfer_block_order.csv"
 
 def _load_subject_params(subject_id, csv_path=CSV_PATH):
     """Look up trained_ear and final block order for this subject."""

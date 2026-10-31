@@ -110,7 +110,7 @@ INVALID_RUNS = {
     'SK_22.10_15-55_SK_donor_SH_env4_left':
         'response-button error in the final battery; A re-run at 16:03 (Paul)',
 }
-BLOCK_ORDER_CSV = (hr.PATH / 'experiment' / 'protocols' / 'learning_transfer'
+BLOCK_ORDER_CSV = (hr.PATH / 'experiment' / 'learning_transfer'
                    / 'learning_transfer_block_order.csv')
 SHOW = False
 

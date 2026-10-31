@@ -1,6 +1,6 @@
 # Day 1 — why each cell does what it does
 
-Moved out of `protocols/learning_transfer/learning_transfer.py` 2026-09-28 so
+Moved out of `experiment/learning_transfer/learning_transfer.py` 2026-09-28 so
 the cells are runnable without reading. Thresholds and mechanics live in
 `donor_screening.py` and `donor_selection.py` docstrings; this is the protocol
 reasoning only.

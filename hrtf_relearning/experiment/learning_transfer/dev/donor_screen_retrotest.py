@@ -32,7 +32,7 @@ import numpy
 
 from hrtf_relearning.experiment.analysis.localization.localization_analysis \
     import block_summary
-from hrtf_relearning.experiment.protocols.learning_transfer import donor_screening
+from hrtf_relearning.experiment.learning_transfer import donor_screening
 from hrtf_relearning.utils import paths
 
 # (label, subject, own-HRTF reference block, [(donor, shortlist rank, block)])

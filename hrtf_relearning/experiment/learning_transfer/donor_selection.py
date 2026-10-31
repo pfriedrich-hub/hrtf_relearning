@@ -65,7 +65,7 @@ Cost: the cepstral split is done once per subject-ear on the median-plane arc
 only (~19 spectra), then every pairing is an addition, one filter-bank pass and
 two correlation matrices. A full cohort scan is seconds, not minutes. Because
 correlation is invariant to a per-direction constant, the energy matching that
-:func:`~hrtf_relearning.hrtf.modify.donor_detail.donor_detail_dtf` applies does
+:func:`~hrtf_relearning.experiment.learning_transfer.donor_detail.donor_detail_dtf` applies does
 not change any of these scores — what is ranked here is what gets delivered.
 """
 
@@ -74,7 +74,7 @@ import logging
 import numpy
 
 from hrtf_relearning.hrtf.analysis import vsi as vsi_module
-from hrtf_relearning.hrtf.modify.donor_detail import DEFAULT_N_KEEP, split_log_magnitude
+from hrtf_relearning.experiment.learning_transfer.donor_detail import DEFAULT_N_KEEP, split_log_magnitude
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +94,7 @@ DEFAULT_RESOLUTION = 'filterbank'
 # ---------------------------------------------------------------------------
 N_KEEP = 4                    # envelope coefficients kept (Kulkarni & Colburn 1998)
 # RECOMPUTED 2026-10-27 on the 24-recording pool (+ DA, EM, MM, SK, LP), by
-# `experiment/protocols/dev/donor_pool_audit.py`. Measured, `pairwise_r_match`:
+# `experiment/learning_transfer/dev/donor_pool_audit.py`. Measured, `pairwise_r_match`:
 #
 #   per-EAR     n=1104 pairs | min -0.454 | Q1 0.378 | median 0.561 | Q3 0.693 | max 0.921
 #
@@ -218,7 +218,7 @@ N_KEEP = 4                    # envelope coefficients kept (Kulkarni & Colburn 1
 # RECOMPUTE WHENEVER THE POOL OR PER_EAR_SELECTION CHANGES:
 #   vals, _ = pairwise_r_match(load_candidates('__none__', pool=DONOR_POOL))
 #   numpy.median(vals)
-# `experiment/protocols/dev/donor_pool_audit.py` does this and the behavioural
+# `experiment/learning_transfer/dev/donor_pool_audit.py` does this and the behavioural
 # qualification together, and prints both edits ready to paste. Run it after a
 # recording week; it changes nothing by itself.
 TARGET_R_MATCH = 0.561        # perturbation size: the median r_match between
@@ -661,7 +661,7 @@ def detail_strength(split, bandwidth=DEFAULT_BAND, resolution=DEFAULT_RESOLUTION
     was the last ranking quantity with no per-ear path.
 
     The SD across directions of the in-band spectral DETAIL — i.e. of exactly
-    the quantity :func:`~hrtf_relearning.hrtf.modify.donor_detail.donor_detail_dtf`
+    the quantity :func:`~hrtf_relearning.experiment.learning_transfer.donor_detail.donor_detail_dtf`
     transplants. High means the donor's fine structure both is deep AND changes
     with elevation; a donor scoring low is handing over almost nothing, which is
     a cue REMOVAL dressed up as a cue replacement.
@@ -1332,7 +1332,7 @@ EXCLUDED_DONOR_EARS = frozenset({('GM', 'left')})
 #: check on the actual pairing: a recording whose owner could not use their own
 #: ears was "unproven, not unusable", and an unproven donor could not be caught
 #: before four days had been spent on it. There IS a check now -- the day-1
-#: behavioural screen (protocols/learning_transfer/donor_screening.py) rejects a
+#: behavioural screen (experiment/learning_transfer/donor_screening.py) rejects a
 #: bad pairing on the listener who will actually hear it, and it does so on
 #: elevation gain, the same quantity this floor is made of, measured where it
 #: matters. The pool's remaining job is only "this recording demonstrably

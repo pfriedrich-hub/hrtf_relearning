@@ -135,7 +135,7 @@ settings = dict(
     score_time=3,
     # pyBinSim runtime loudness ('/pyBinSimLoudness'). 0.07 is the level matched
     # by ear against the dome at Windows master volume 50% (see
-    # match_ar_dome_loudness.py and protocols/dev/expectation_transfer.py), and
+    # match_ar_dome_loudness.py and protocols/dev/expectation_transfer/expectation_transfer.py), and
     # it is also the only value with headroom: at 0.10 the score SFX rendered to
     # 1.25 at relative (0, 0) and drove pyBinSim past +-1 ("Clipping occurred:
     # Adjust loudnessFactor!"). check_gain below vets this against the limit the

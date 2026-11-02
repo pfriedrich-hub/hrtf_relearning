@@ -4,54 +4,17 @@
     "type": "split",
     "children": [
       {
-        "id": "0a5b829da42ba8aa",
-        "type": "tabs",
-        "dimension": 70.1067615658363,
-        "children": [
-          {
-            "id": "9f8f572e882480cf",
-            "type": "leaf",
-            "state": {
-              "type": "markdown",
-              "state": {
-                "file": "source_spectrum_isd_reading.md",
-                "mode": "source",
-                "source": false
-              },
-              "icon": "lucide-file",
-              "title": "source_spectrum_isd_reading"
-            }
-          },
-          {
-            "id": "b6421015436e8452",
-            "type": "leaf",
-            "state": {
-              "type": "markdown",
-              "state": {
-                "file": "design.md",
-                "mode": "source",
-                "source": false
-              },
-              "icon": "lucide-file",
-              "title": "design"
-            }
-          }
-        ],
-        "currentTab": 1
-      },
-      {
         "id": "b48eeb8122a93f55",
         "type": "tabs",
-        "dimension": 29.8932384341637,
         "children": [
           {
             "id": "96405dd1579cac04",
             "type": "leaf",
             "state": {
-              "type": "graph",
+              "type": "empty",
               "state": {},
-              "icon": "lucide-git-fork",
-              "title": "Graph view"
+              "icon": "lucide-file",
+              "title": "New tab"
             }
           }
         ]
@@ -221,11 +184,12 @@
       "bases:Create new base": false
     }
   },
-  "active": "b6421015436e8452",
+  "active": "2cc63a3002f9d439",
   "lastOpenFiles": [
-    "design.md",
-    "Untitled.md",
     "source_spectrum_isd_reading.md",
+    "Untitled.md",
+    "Untitled",
+    "design.md",
     "source_spectrum_isd_protocol.md",
     "source_spectrum_isd_design.md",
     "Welcome.md"

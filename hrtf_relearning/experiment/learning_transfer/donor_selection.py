@@ -1,0 +1,1755 @@
+"""
+donor_selection.py — pick the donor for a `donor_detail` composite.
+
+TWO STAGES, and they answer different questions.
+
+QUALIFICATION — who may be a donor at all — is BEHAVIOURAL: a candidate must
+have localized well with their own HRTF in the virtual environment. See the
+DONOR_POOL comment at the bottom for why every acoustic proxy tried for this
+failed (short version: detail strength predicts localization at rho = +0.09,
+and the recording with the deepest fine structure of all 31 belongs to someone
+with an elevation gain of 0.05).
+
+SELECTION — which qualified donor this listener gets — uses two pairing
+measures, both on the DETAIL domain (see :func:`pair_metrics` for why no other
+normalisation is available here):
+
+``r_match``
+    How big the perturbation is. Mean over elevations of the correlation
+    between the listener's own in-band detail and the composite's detail at the
+    SAME elevation — the quantity Van Wanrooij & Van Opstal's proposed
+    mechanism, a correlation against a stored representation of the listener's
+    own ears, says should drive performance.
+
+    WHAT IT DOES AND DOES NOT DO (measured 2026-10-31, see EVIDENCE below).
+    It orders donors by the size of the ACUTE effect, within a listener: mean
+    Spearman +0.33 against retained elevation gain over 6 listeners with 4-6
+    screened donors each, positive in 5 and zero in 1. That is a real effect and
+    it is why this quantity is still computed.
+
+    It does NOT grade a listener's prospects, and the mid-range TARGET below is
+    not supported by the only cohort in which relearning happened. The earmolds
+    sit at r_match ~0.24 -- roughly twice the perturbation targeted here -- and
+    recovered 47% of polar error and 81% of elevation gain; across 27 mold cells
+    no acoustic property of the perturbation predicts recovery (best |rho| 0.31
+    for r_match, nothing clearing the n=27 significance line). So read `target`
+    as "stage a perturbation of about this size", never as a prediction about
+    outcome, and do not restate the Van Wanrooij / Trapeau dose argument in a
+    methods section as though this rig had reproduced it.
+
+``ridge_slope``
+    Whether the perturbation is ABSORBABLE. Elevation of the best-matching own
+    detail regressed on true elevation; ~+1 means the old map can read the
+    composite as a coherent but displaced elevation and take up the change as a
+    constant bias.
+
+    "The case that never relearns" is the hypothesis this guard was built on and
+    it is NOT established. Two things stand against it. The mold cohort's day-1
+    RMSE is dominated by its bias term -- a coherent displacement -- and those
+    subjects recovered 47%/81%, so a coherent bias is the most learnable
+    perturbation on record here, not the least. And measured against the acute
+    effect (2026-10-31) ridge_slope -> retained gain is POSITIVE, mean +0.43
+    over 6 listeners, which is close to definitional: a coherently ordered
+    perturbation leaves the elevation mapping intact. So this is a
+    weak-perturbation exclusion wearing a mechanism's clothes, and it is the
+    least stable measure in the set (per-listener rho from -0.09 to +0.94).
+    Keep it as a crude upper bound on perturbation weakness; do not argue from
+    absorbability until something tests it.
+
+Neither substitutes for the other: across 1860 real donor pairings they
+correlate at rho = +0.14, and 31% of pairings with r_match <= 0.3 still have
+ridge_slope > 0.5.
+
+``detail_strength`` is still computed and reported, but it no longer qualifies
+or ranks anything.
+
+MEASURES KEPT ONLY AS DIAGNOSTICS: ``vsi``, ``vsi_dissimilarity``, ``i_sim``,
+``peak_r``. None of them may be reported as a similarity between the listener's
+own and modified transfer functions. VSI needs a reference built from
+directions other than those being correlated, which this geometry cannot
+supply; ``i_sim`` is the SD down each column of a correlation matrix, and SD is
+invariant to permuting the rows, so it scores a listener's own ear and their own
+ear relabelled by 17 degrees identically (measured: 0.542 for shifts of 0, 4, 8
+and 17 deg, while r_match falls 1.00 -> 0.69).
+
+TESTED 2026-10-31 AND STILL OUT, now on evidence rather than on principle:
+``peak_r`` is flat against the acute effect (+0.18 pooled, signs 5/0/1 but every
+value near zero) and absent from every mold correlation. ``i_sim`` tracks
+impairment (+0.34, 5 of 6 listeners) but `detail_strength` tracks it better
+(-0.45, 6 of 6) without being permutation-invariant, so i_sim adds nothing it
+does not also corrupt. ``vsi_dissimilarity`` is the interesting one: on this
+rig's geometry it is NOT redundant with r_match (rho -0.46) and predicts the
+acute effect about equally well (-0.34 within listener, 5 of 6) -- but on the
+mold cohort, in both of Trapeau's bands and against all six outcomes, it
+predicts NOTHING, including recovery (|rho| <= 0.31 vs %PE and %EG recovered).
+Its scalar cousin |VSI_own - VSI_composite| is pure noise here (means -0.05 and
+-0.02, signs 2/4 and 3/3). So VSI stays a diagnostic: it would duplicate, less
+accurately, what the day-1 screen measures directly.
+
+Method
+------
+Scoring follows the paper: the composite is built on the FFT grid (that is what
+the manipulation actually does) and then passed through the Middlebrooks (1999)
+filter bank before correlating — triangular filters spaced 0.0286 octaves (2%
+frequency steps), 36 points per octave, NOT a gammatone/ERB bank and not linear
+FFT bins. ``resolution='fft'`` is kept for comparison but weights the top of the
+band far more heavily, because linear bins pile up there.
+
+The one part of their method this rig cannot reproduce is the DTF
+normalisation: they divide each transfer function by the grand-average RMS over
+48 directions uniformly spaced 22.5 deg apart including the rear field. Only the
+az=0 arc is measured here, so use ``normalize='detail'`` for cross-subject work
+and ``'none'`` within a subject (see :mod:`hrtf_relearning.hrtf.analysis.vsi`).
+
+Cost: the cepstral split is done once per subject-ear on the median-plane arc
+only (~19 spectra), then every pairing is an addition, one filter-bank pass and
+two correlation matrices. A full cohort scan is seconds, not minutes. Because
+correlation is invariant to a per-direction constant, the energy matching that
+:func:`~hrtf_relearning.experiment.learning_transfer.donor_detail.donor_detail_dtf` applies does
+not change any of these scores — what is ranked here is what gets delivered.
+"""
+
+import logging
+
+import numpy
+
+from hrtf_relearning.hrtf.analysis import vsi as vsi_module
+from hrtf_relearning.experiment.learning_transfer.donor_detail import DEFAULT_N_KEEP, split_log_magnitude
+
+logger = logging.getLogger(__name__)
+
+EARS = ('left', 'right')
+
+# VSI dissimilarity correlated with the behavioural effect of the molds in the
+# 5.7-11.3 kHz OCTAVE band (Trapeau et al. 2016, Figs 5B/5C). That is a
+# different band from the one where plain VSI tracks RMSE (the 5657-8000
+# half-octave, vsi.BEHAVIOURAL_BAND) — different metric, different band.
+DEFAULT_BAND = (5657, 11314)
+DEFAULT_RESOLUTION = 'filterbank'
+
+# ---------------------------------------------------------------------------
+# Protocol constants — FIXED ACROSS PARTICIPANTS.
+# The donor is the only thing that varies per subject; everything else here is
+# the same for everyone, so the manipulation is one sentence in the methods.
+# ---------------------------------------------------------------------------
+N_KEEP = 4                    # envelope coefficients kept (Kulkarni & Colburn 1998)
+# RECOMPUTED 2026-10-27 on the 24-recording pool (+ DA, EM, MM, SK, LP), by
+# `experiment/learning_transfer/dev/donor_pool_audit.py`. Measured, `pairwise_r_match`:
+#
+#   per-EAR     n=1104 pairs | min -0.454 | Q1 0.378 | median 0.561 | Q3 0.693 | max 0.921
+#
+# Five recordings of 19-27.10, all qualifying comfortably: DA 0.75/6.7 deg,
+# EM 0.73/6.8, MM 1.01/7.4, SK 0.82/8.4, LP 0.67/7.3 (EG / polar error, n~130
+# each). The median moves +0.008 against the 19-member 0.553, well inside one
+# TOLERANCE band, so this adds candidates without re-centring selection. The
+# TAILS keep growing though -- Q1 0.392 -> 0.378 and max 0.887 -> 0.921 --
+# which is what a pool of 24 unrelated people should look like and is the
+# argument for having kept AM. (0.562 was the same-day value for the pool
+# without LP; it was never committed and nothing was selected against it.)
+#
+# LP qualified only after his pickle was repaired: results/LP/LP.pkl had been
+# destroyed by a UTF-8 text round-trip (every non-ASCII byte replaced by
+# U+FFFD, so unrecoverable from the pickle itself) and was rebuilt from the
+# append-only results/LP/LP.json -- see project_pkl_utf8_corruption. He reads
+# 3.27/3.48 dB of detail with decodability 0.95/0.92, the best-mapped of this
+# batch.
+#
+# EM's RECORDING WAS REBUILT the same day (frontal ITD of +290 to +350 us on
+# the three rows of dome speaker 23, from the phase-slope estimator being
+# pulled by a right-ear notch near 1.3-1.5 kHz; the old files are under
+# data/hrtf/superseded/EM_2026-10-26_frontal_itd/ with the full account). The
+# fix is PHASE ONLY and does not move anything in this module: detail strength
+# reads 3.68/2.98 dB on both the faulty and the rebuilt native, to two
+# decimals, so EM's contribution to every r_match and to this median is
+# unchanged. Re-deriving EM from either file gives the same answer.
+#
+# SK IS NOT pilot/SK. Two different people with the same initials, both with a
+# base recording on disk: the SK in this pool is the 19-27.10 participant
+# (EG 0.82, results/SK/SK.json), while pilot/SK is from 17.03 and localizes at
+# 0.10. `load_candidates` resolves a BARE name against the participant folders
+# first, so 'SK' here is the right one -- but never "simplify" it to pilot/SK,
+# and never add pilot/SK on the strength of this entry. Same trap as AS, LS and
+# PF, which also exist in both trees. The audit scores them as separate rows
+# and refuses to cross trees when it cannot tell which archive belongs to whom.
+#
+# MM's LEFT ear is 2.28 dB of detail, under the 2.66 dB the old acoustic floor
+# sat at (right 2.73). EM's RIGHT ear is the weakest-MAPPED ear of the four --
+# monotonicity 0.70, decodability 0.72, against 0.83/0.93 on his left. Neither
+# gates anything, and neither should: qualification is behavioural. Noted so a
+# shortlist that lands on MM-left or EM-right is read with it in mind.
+#
+# The pool grew by four in one day and the net move is -0.020, but that is a sum
+# of two opposite effects worth keeping apart. AB, TE and IK sit near the middle
+# of the pool's detail space and barely move it (15 -> 17 recordings: median
+# 0.573 -> 0.574; adding IK last: 0.536 -> 0.553, and she RAISES Q1 as well).
+# THE WHOLE -0.038 SHIFT IS AM, and
+# it was taken deliberately (Paul's call): she qualifies behaviourally (EG 0.68,
+# polar 10.7 deg, n=127) while her two ears are the 2nd and 4th LEAST correlated
+# of all 36 in the pool -- AM:L 0.158, AM:R 0.271 mean r_match against every
+# other ear, where the median ear sits near 0.55. Keeping outliers IN is the
+# point: they are the only candidates that can reach a listener whose own detail
+# is far from the pool centre, and the tier machinery already handles them (the
+# target is mid-range, so an anti-correlated ear is available without being
+# preferred). Her detail is the weakest of the three additions (2.57/2.73 dB,
+# monotonicity 0.59/0.68).
+#
+# WHAT THE SHIFT COSTS, stated so it is not rediscovered later. The band moves
+# from [0.524, 0.624] to [0.486, 0.586]. The two overlap across most of their
+# width, so a subject selected under 0.574 would mostly have been selected the
+# same way under 0.536 -- but not always, and SH/LGL/PA/GM and everyone before
+# them were selected against an EARLIER number. Re-derive an already-run
+# subject with the value from that date's commit, not this one. The ledger below
+# exists for exactly that.
+#
+# AM IS ALSO AN OUTLIER AS A LISTENER, which is a separate fact with its own
+# consequence: her own shortlist falls to the `widened` tier with a best r_match
+# of 0.30, i.e. every donor in the pool perturbs her harder than the pool
+# perturbs itself. Same pattern as PF (project_pf_outlier_r_match). Her day-1
+# screen should be read with that in mind rather than as a verdict on the donor.
+#
+# IK went in once her own-HRTF AR block was pulled off the rig later the same
+# day: EG 0.91, polar 5.5 deg, n=129 -- among the strongest own-HRTF results in
+# the pool, behind only LS (1.30), TE (1.19), PA (1.02) and AB (1.00). Detail
+# 2.79/2.77 dB, monotonicity 0.88/0.93, decodability 0.98/0.94, and a clean
+# head-radius fit (0.0615 m, 75 us residual, monotonic ITDs). Note for the next
+# time this happens: for a few hours she read as "needs block" in the audit
+# purely because the data had not been transferred, which is indistinguishable
+# from never having run one. The audit cannot tell those apart -- only the
+# archive can.
+#
+# RECOMPUTED 2026-09-29 on the 15-recording pool with PER-EAR candidates, which
+# is the population the rule draws from. Measured, `pairwise_r_match`:
+#
+#   per-person  n=105 pairs | min  0.091 | Q1 0.397 | median 0.542 | Q3 0.661 | max 0.820
+#   per-EAR     n=420 pairs | min -0.454 | Q1 0.417 | median 0.573 | Q3 0.671 | max 0.861
+#
+# Adding LGL/PA/SH moved the per-ear median 0.626 -> 0.573, more than one
+# tolerance band, so this genuinely re-centres selection: the new recordings
+# make the pool MORE heterogeneous, not less. The per-ear minimum also fell
+# from -0.189 to -0.454 -- there are now donor ears strongly anti-correlated
+# with some listeners. Not selected (the target is mid-range), but the tail is
+# real and grew with the pool.
+#
+# PREVIOUS VALUES, for anyone re-deriving an already-run subject:
+#   2026-10-13, 19 recordings, per-ear n=684: median 0.553  (+ IK) -- the value
+#                                                             SH..IK-era
+#                                                             shortlists used
+#   2026-10-13, 18 recordings, per-ear n=612: median 0.536  (+ AM)
+#   2026-10-13, 17 recordings, per-ear n=544: median 0.574  (+ AB, TE)
+#   Both of those were committed and superseded on the SAME DAY as the 19-member
+#   value above, in the order AB/TE -> AM -> IK. NO SUBJECT WAS SELECTED against
+#   either one; they are in this ledger for commit-history continuity only. The
+#   last value any subject was actually run against is 0.573 (2026-09-29).
+#   2026-09-29, 15 recordings, per-ear n=420: median 0.573
+#   2026-09-28, 12 recordings, per-ear n=264: median 0.626
+#   2026-08-xx,  7 recordings, per-person:    median 0.58
+#
+# The old 0.58 came from a SEVEN-member person-level pool (21 pairs). It was
+# 0.046 low -- just inside one tolerance band, so the band it defined,
+# [0.53, 0.63], overlapped the correct one, [0.576, 0.676], rather than missing
+# it. Not a disaster, but it was selecting off-centre.
+#
+# NOTE the per-ear minimum is NEGATIVE (-0.189) where the person-level minimum
+# was +0.103: some donor-EAR pairings are anti-correlated with the listener's
+# own detail at the same elevation. Averaging the two ears had been hiding the
+# most strongly perturbing pairings in the pool. They are not selected (the
+# target is mid-range) but they are real and the distribution now has a tail.
+#
+# RECOMPUTE WHENEVER THE POOL OR PER_EAR_SELECTION CHANGES:
+#   vals, _ = pairwise_r_match(load_candidates('__none__', pool=DONOR_POOL))
+#   numpy.median(vals)
+# `experiment/learning_transfer/dev/donor_pool_audit.py` does this and the behavioural
+# qualification together, and prints both edits ready to paste. Run it after a
+# recording week; it changes nothing by itself.
+TARGET_R_MATCH = 0.561        # perturbation size: the median r_match between
+                              # QUALIFIED donor ears, i.e. a typical difference
+                              # between two people whose own cue demonstrably
+                              # works.
+MAX_RIDGE_SLOPE = 0.5         # above this the old map can read the composite as
+                              # a coherent elevation and absorb it as a bias
+TOLERANCE = 0.05              # half-width of the band around the target
+
+# ---------------------------------------------------------------------------
+# EVIDENCE for the three paragraphs above (added 2026-10-31). Two analyses, and
+# the numbers are quoted here rather than only in a scratch file so this comment
+# stands on its own.
+#
+# 1. ACUTE EFFECT, WITHIN LISTENER. Every tagged day-1 screen on disk: 40
+#    pairings, 9 listeners, 4-6 donors each, 29-34 trials per block. Outcome =
+#    retained elevation gain (screen EG / own-HRTF EG) and impairment (screen
+#    polar error - own). Mean per-listener Spearman over the 6 listeners with
+#    >=4 donors:
+#
+#      r_match          +0.33  (signs 5/0/1)      vsi_diss (full)  -0.34  (1/5/0)
+#      ridge_slope      +0.43  (5/1/0)            vsi_diss (detail)-0.28  (0/5/1)
+#      detail_strength  +0.25  (4/2/0)            |dVSI|           -0.05  (2/4/0)
+#      cue_gradient     +0.31  (5/1/0)            peak_r           +0.18  (5/0/1)
+#
+#    vs IMPAIRMENT the same predictors give -0.42, -0.29, -0.45 (6/6), -0.47,
+#    and +0.43 for vsi_diss. Note retained gain and impairment are ONE axis
+#    here: rho -0.61 pooled and -0.77..-1.00 within every listener. So the
+#    "retained EG catches one end, impairment the other" rationale in
+#    project_retained_eg_criterion is one measurement twice, not two
+#    dimensions. Only 14 of 40 pairings land in the 0.30-0.55 retained band and
+#    5 of 40 abolish the cue (retained <= 0).
+#
+#    Caveat: SE on a 35-trial gain is ~0.14 and same-composite test-retest moves
+#    0.13, so the SIGN CONSISTENCY is the result; the magnitudes are not
+#    resolvable. IK and SK span only ~20 points of retained gain, so a null in
+#    those two is uninformative.
+#
+# 2. LEARNING, BETWEEN SUBJECTS. The earmold cohort, 27 cells with both
+#    acoustics and behaviour, `processed` DTFs (the only data here with a
+#    quasi-diffuse-field normalisation, so the closest this project gets to
+#    Trapeau's geometry), both of their bands, against day-1 impairment, day-1
+#    PE, day-1 EG, best EG, %PE recovered and %EG recovered. NOTHING predicts
+#    recovery. vsi_dissimilarity reaches |rho| 0.31 at best; r_match 0.31. The
+#    only coherent cluster is VSI OF THE MOLDED EARS against the day-1 measures
+#    (impairment +0.40, PE +0.41, EG -0.44 in the 5657-11314 octave), which is
+#    the acute axis again and does not survive correction for 30 tests
+#    (Bonferroni would need |rho| ~0.58 at n=27). Two further significant cells
+#    -- |dVSI| and VSI-of-free-ears against %PE recovered -- FLIP SIGN between
+#    the two bands and should be read as multiple-comparison artefacts.
+#
+# WHAT THIS LICENSES. Ordering donors by acute perturbation size: yes, weakly.
+# Predicting who relearns from any acoustic quantity: no, and this is now the
+# third independent negative (detail_strength rho +0.09/+0.18 vs own-HRTF
+# localization; the n=27 cue_gradient back-test; this one). The day-1 screen
+# measures the acute axis directly in 35 trials, which is why it, and not this
+# module, is the thing that chooses.
+#
+# STILL OPEN, and the one change these findings actually argue for: replace the
+# accept/reject band with a SPREAD rule -- stage 6 donors spanning the pool's
+# r_match range instead of 6 clustered within TOLERANCE of a target, so the
+# screen has something to discriminate. Six candidates matched on r_match to two
+# decimals produced retained gains of 52%, 61%, -5% and 30% for AB, so the band
+# is not controlling what it claims to. Not implemented: it changes which
+# composites get built, and that is Paul's call.
+# ---------------------------------------------------------------------------
+
+# A CANDIDATE IS A DONOR *EAR*, NOT A DONOR (2026-09-17, Paul's call).
+# The protocol is monaural: exactly one of a donor's two ears is transplanted,
+# onto the listener's trained ear. Scoring the ear AVERAGE -- which is what
+# pair_metrics returns at the top level -- puts half the ranking weight on an
+# ear whose composite is never built, and the two ears of one recording differ
+# a lot (pilot/VD cue gradient: left 0.45, right 1.09). Enumerating both ears
+# also doubles the candidate set at zero recruitment cost, which is the cheapest
+# extension available: the pool is limited by qualification blocks, not by
+# recordings (see project_donor_pool_extension).
+#
+# Legitimate acoustically: on the az=0 arc both ears see the same source, and
+# ILD/ITD are imposed downstream by expand_from_midline's spherical-head step,
+# not taken from the donor. So a donor's LEFT-ear detail on a listener's RIGHT
+# ear is another person's elevation cue, not a mirrored one.
+#
+# Set False to reproduce a pre-2026-09-17 ranking exactly.
+PER_EAR_SELECTION = True
+
+# How the BAND tier is ordered. 'strength' is what shortlist.__doc__ has
+# described since the tier was introduced and what the tier is for; 'distance'
+# is what the code actually did until 2026-09-17.
+#
+# CHANGED 'distance' -> 'strength' on 2026-10-31, and this moves rank-0 picks.
+# Inside the band every candidate is by construction the same perturbation size
+# to within TOLERANCE, so ordering by distance-to-target spends the only free
+# choice on a quantity that is already matched -- and it was measurably costing
+# cue depth: for both AB and IK it put AS-right (1.7 dB of detail) ahead of
+# FS-right (2.7 dB) on 0.01 of r_match, and for GM it put pilot/VD ahead of FD
+# on 0.0003. Depth is the thing a donor actually hands over, and
+# `detail_strength` is the most consistent acute predictor measured (-0.45
+# against impairment, the only 6-of-6 in the table).
+#
+# Set back to 'distance' to reproduce any ranking produced before this date.
+# Subjects already run are unaffected: their donors are pinned by
+# subject.active_donor, not recomputed.
+BAND_RANK_BY = 'strength'
+
+MIN_CUE_GRADIENT = None       # DELIBERATELY OFF. `cue_gradient` is reported for
+MIN_CUE_MONOTONICITY = None   # every candidate but gates nothing, because over
+                              # the 6 subjects run so far it does NOT predict who
+                              # relearned — see the table in cue_gradient(). A
+                              # threshold at 0.85 dB/10deg was drafted 2026-08-27
+                              # and rejected on back-test: it would have excluded
+                              # AS-left (0.52-0.70), the donor behind FS's
+                              # relearning, the only unambiguous one on record,
+                              # while admitting GS-left (1.04), whose composite
+                              # displaced AS by 2.5 deg and gave her nothing to
+                              # learn. Set these to floats only with data that
+                              # actually supports a cut.
+
+TARGET_DISSIMILARITY = 0.40   # DEPRECATED — the old full-spectrum VSI-dissimilarity
+                              # target. Kept only so older embedded modification
+                              # params still parse. Do not use: see pair_metrics
+                              # for why a correlation on un-normalised spectra
+                              # cannot be interpreted here.
+
+# WHY THE TARGET MOVED FROM 0.50 TO 0.40 (2026-08-13). The rule has always been
+# "the median of this cohort's between-subject distribution" — 0.50 was that
+# median when it could only be estimated from 7 listeners (21 pairs: median
+# 0.55). Measured over all 20 conforming recordings (190 pairs) the
+# distribution is min 0.157 | Q1 0.334 | median 0.403 | Q3 0.526 | max 0.942,
+# so 0.50 had drifted to roughly the 72nd percentile — a stronger perturbation
+# than intended, in the direction Trapeau found gives slower adaptation. 0.40
+# restores the stated rationale rather than changing it. On the 11 listeners
+# recorded so far this moves 2/11 in-band picks to 5/11 with no loss of donor
+# cue strength (median detail SD 3.0 dB either way).
+#
+# WHY A TOLERANCE BAND INSTEAD OF PLAIN ARGMIN. With a pool this size,
+# min |dissimilarity - target| is decided by differences of 0.01-0.02, which is
+# well inside the measurement noise of the metric — it selects on noise. The
+# band says "close enough to target" and then picks on a quantity that is
+# actually meaningful (donor detail strength). It also gives the in-session
+# swap a principled 2nd and 3rd choice instead of an arbitrary one.
+
+# VSI IS REPORTED BUT DOES NOT GATE ANYTHING HERE. Trapeau's VSI is defined on
+# diffuse-field-normalised DTFs; these recordings sample only the az=0 arc, so no
+# diffuse-field average exists and neither available proxy is that quantity.
+# Measured in the 5657-11314 band, ear-averaged, this cohort spreads 0.24-0.93
+# (SD 0.23) on raw transfer functions and 0.19-1.01 (SD 0.27) with the
+# per-direction envelope removed, against Trapeau's 0.76 +/- 0.02 on 30 properly
+# normalised listeners. A quantity that unstable cannot decide eligibility, so
+# the rule uses only the ridge slope, which asks a question about correlation
+# STRUCTURE rather than about absolute cue strength. (The ridge is not immune to
+# the missing normalisation either — a large shared direction-independent
+# component pulls every correlation toward 1 and makes the argmax noisier — but
+# it biases toward noise, not toward a wrong answer.)
+
+
+# ---------------------------------------------------------------------------
+# correlation helpers (numpy only, so they can be tested without slab)
+# ---------------------------------------------------------------------------
+
+def _correlate(a, b):
+    """Pearson correlation between every row of ``a`` and every row of ``b``."""
+    a = numpy.asarray(a, dtype=float)
+    b = numpy.asarray(b, dtype=float)
+    a = a - a.mean(axis=1, keepdims=True)
+    b = b - b.mean(axis=1, keepdims=True)
+    a = a / numpy.maximum(numpy.linalg.norm(a, axis=1, keepdims=True), 1e-30)
+    b = b / numpy.maximum(numpy.linalg.norm(b, axis=1, keepdims=True), 1e-30)
+    return a @ b.T
+
+
+def matrix_metrics(own, candidate, elevations):
+    """All five readouts for one ear, from two (n_elevation, n_bin) dB matrices.
+
+    ``own`` is the reference (the listener's unmodified DTFs), ``candidate`` the
+    manipulated set. Rows of the cross matrix are own elevations, columns are
+    candidate elevations — so column j is "what the old map makes of the
+    manipulated DTF for elevation j".
+    """
+    cross = _correlate(own, candidate)
+    auto = _correlate(own, own)
+    n = len(own)
+    candidate_auto = _correlate(candidate, candidate)
+
+    best = numpy.argmax(cross, axis=0)
+    ridge = numpy.asarray(elevations, dtype=float)[best]
+    slope, bias = numpy.polyfit(numpy.asarray(elevations, dtype=float), ridge, 1)
+
+    return {
+        'vsi': 1.0 - (candidate_auto.sum() - n) / (n * (n - 1)),
+        'vsi_dissimilarity': float(numpy.sqrt(numpy.mean((cross - auto) ** 2))),
+        'i_sim': float(numpy.mean(numpy.std(cross, axis=0))),
+        'peak_r': float(numpy.mean(cross.max(axis=0))),
+        'ridge_slope': float(slope),
+        'ridge_bias': float(bias),
+    }
+
+
+# ---------------------------------------------------------------------------
+# per-HRTF median-plane cache
+# ---------------------------------------------------------------------------
+
+def median_plane_split(hrtf, n_keep=DEFAULT_N_KEEP):
+    """Envelope / detail / full dB spectra on the median-plane arc, per ear.
+
+    Returns ``{'freqs', 'elevations', 'left': {...}, 'right': {...}}`` where each
+    ear holds ``full``, ``envelope`` and ``detail`` as (n_elevation, n_bin) dB.
+    Compute this ONCE per subject-ear and reuse it across every pairing — it is
+    the only expensive step (one least-squares cosine fit per direction).
+
+    Duplicate elevations are dropped via
+    :func:`~hrtf_relearning.hrtf.analysis.vsi.median_plane_sources` — some
+    recordings store the az=0 arc twice.
+    """
+    freqs, _ = hrtf[0].tf(show=False)
+    sources = vsi_module.median_plane_sources(hrtf)
+    elevations = numpy.asarray(hrtf.sources.vertical_polar[sources, 1], dtype=float)
+
+    out = {'freqs': numpy.asarray(freqs, dtype=float), 'elevations': elevations}
+    for ear in EARS:
+        # full spectrum, unnormalised dB: the split IS the normalisation here
+        full = vsi_module.dtf_matrix(hrtf, ear, sources=sources,
+                                     bandwidth=(freqs[0], freqs[-1]),
+                                     normalize='none')
+        mag = 10.0 ** (numpy.asarray(full, dtype=float).T / 20.0)   # (n_bin, n_dir)
+        envelope_db, detail_db = split_log_magnitude(mag, n_keep=n_keep)
+        out[ear] = {'full': numpy.asarray(full, dtype=float),
+                    'envelope': envelope_db.T, 'detail': detail_db.T}
+    return out
+
+
+def _reduce(matrix, freqs, bandwidth, resolution=DEFAULT_RESOLUTION,
+            octave_spacing=vsi_module.OCTAVE_SPACING):
+    """Band-limit a full-spectrum dB matrix, the paper's way by default.
+
+    ``'filterbank'`` runs the Middlebrooks (1999) 2%-spaced triangular bank
+    (36 points/octave, even in log frequency); ``'fft'`` just slices the linear
+    bins, which over-weights the top of the band.
+    """
+    if resolution == 'filterbank':
+        return vsi_module.filterbank_levels(freqs, matrix, bandwidth, octave_spacing)
+    if resolution != 'fft':
+        raise ValueError(f"resolution must be 'filterbank' or 'fft', got {resolution!r}")
+    idx = numpy.logical_and(freqs >= bandwidth[0], freqs <= bandwidth[1])
+    return matrix[:, idx]
+
+
+def score_pair(own_split, donor_split, bandwidth=DEFAULT_BAND, donor_ear=None,
+               resolution=DEFAULT_RESOLUTION):
+    """Score the composite built from ``own_split`` and ``donor_split``.
+
+    Returns the ear-averaged metrics plus the per-ear values. ``donor_ear``
+    ``None`` takes the donor's matching side for each of the listener's ears.
+    """
+    freqs = own_split['freqs']
+    elevations = own_split['elevations']
+    if len(donor_split['elevations']) != len(elevations):
+        raise ValueError(
+            f"median-plane grids differ: {len(elevations)} vs "
+            f"{len(donor_split['elevations'])} elevations")
+
+    per_ear = {}
+    for ear in EARS:
+        source_ear = ear if donor_ear is None else donor_ear
+        composite = own_split[ear]['envelope'] + donor_split[source_ear]['detail']
+        per_ear[ear] = matrix_metrics(
+            _reduce(own_split[ear]['full'], freqs, bandwidth, resolution),
+            _reduce(composite, freqs, bandwidth, resolution),
+            elevations)
+
+    keys = per_ear['left'].keys()
+    scores = {k: float(numpy.mean([per_ear[e][k] for e in EARS])) for k in keys}
+    scores['per_ear'] = per_ear
+    return scores
+
+
+# ---------------------------------------------------------------------------
+# cohort scan
+# ---------------------------------------------------------------------------
+
+def rank_donors(subject_hrtf, donors, n_keep=DEFAULT_N_KEEP,
+                bandwidth=DEFAULT_BAND, donor_ear=None,
+                resolution=DEFAULT_RESOLUTION):
+    """Rank candidate donors for one listener.
+
+    Parameters
+    ----------
+    subject_hrtf : slab.HRTF
+        The listener's own unmodified HRIR — the reference every candidate is
+        scored against.
+    donors : dict of {name: slab.HRTF}
+        Candidates. Anything with a matching median-plane grid.
+    donor_ear : {'left', 'right', None}
+        Which of the donor's ears supplies the detail. ``None`` = same side.
+
+    Returns
+    -------
+    list of dict
+        One row per donor, sorted by ``vsi_dissimilarity`` ASCENDING. Read it
+        with the target in mind: the useful candidates are mid-distribution,
+        not the extremes (see the module docstring).
+    """
+    own_split = median_plane_split(subject_hrtf, n_keep=n_keep)
+    rows = []
+    for name, donor in donors.items():
+        try:
+            donor_split = median_plane_split(donor, n_keep=n_keep)
+            scores = score_pair(own_split, donor_split, bandwidth=bandwidth,
+                                donor_ear=donor_ear, resolution=resolution)
+            strength = detail_strength(donor_split, bandwidth, resolution)
+        except Exception as exc:
+            logger.warning('skipping donor %s: %s', name, exc)
+            continue
+        scores.pop('per_ear')
+        rows.append({'donor': name, 'donor_strength': strength, **scores})
+    return sorted(rows, key=lambda row: row['vsi_dissimilarity'])
+
+
+def pairwise_reference(hrtfs, n_keep=DEFAULT_N_KEEP, bandwidth=DEFAULT_BAND,
+                       resolution=DEFAULT_RESOLUTION):
+    """VSI dissimilarity between every pair of listeners' own (unmodified) HRTFs.
+
+    This is Trapeau's plausibility yardstick: they argued their molds were
+    physiologically reasonable because free-vs-mold dissimilarity fell inside
+    this distribution. Use it to place a candidate composite — a donor near the
+    median of this spread is a typical between-person difference, which is the
+    magnitude their six-day adaptation was measured at.
+
+    Returns ``(values, {(a, b): value})``.
+    """
+    splits = {name: median_plane_split(hrtf, n_keep=n_keep)
+              for name, hrtf in hrtfs.items()}
+    names = list(splits)
+    pairs = {}
+    for i, a in enumerate(names):
+        for b in names[i + 1:]:
+            try:
+                per_ear = []
+                for ear in EARS:
+                    per_ear.append(matrix_metrics(
+                        _reduce(splits[a][ear]['full'], splits[a]['freqs'],
+                                bandwidth, resolution),
+                        _reduce(splits[b][ear]['full'], splits[b]['freqs'],
+                                bandwidth, resolution),
+                        splits[a]['elevations'])['vsi_dissimilarity'])
+                pairs[(a, b)] = float(numpy.mean(per_ear))
+            except Exception as exc:
+                logger.warning('skipping pair %s/%s: %s', a, b, exc)
+    return numpy.array(sorted(pairs.values())), pairs
+
+
+# ---------------------------------------------------------------------------
+# Van Wanrooij & Van Opstal (2005) I_sim — J Neurosci 25(22):5413-5424
+#
+# THE REASON THIS IS HERE. Trapeau's VSI needs DTFs normalised by a grand
+# average over directions distributed AROUND the listener, which this rig
+# cannot produce: only the az=0 arc is measured. Van Opstal's DTF (their Eq. 1)
+# is normalised by the grand average across the elevations OF THE ARC, which is
+# exactly what is measured here. So this is the published measure whose
+# normalisation is actually available with this geometry, and it comes from the
+# monaural perturbation study this experiment is modelled on.
+#
+# Their band is 4-20 kHz. Use 4-18 kHz here: the recordings are equalised
+# against the reference only up to 18 kHz (record_hrir, inversion_range_hz).
+#
+# ANCHORS, and the scale correction they imply. Their Fig 7A gives I_sim = 0.5
+# for a normal listener's own left ear against their own right, and Fig 7C
+# gives 0.3 for their molds. Measured here with the same definition: own left
+# vs own right = 0.37 (n=31, range 0.18-0.51), between listeners same ear =
+# 0.25 (465 pairs). Both come out ~0.74x their values, which is expected --
+# I_sim is an SD across correlations and therefore scales with the elevation
+# sampling (19 elevations over +-37.5 deg here against their 25 over a wider
+# arc). Because the ratio is the same at both anchors, their numbers can be
+# carried over by scaling rather than used raw. DO NOT compare a raw I_sim
+# computed here against 0.3 or 0.5 without that correction.
+# ---------------------------------------------------------------------------
+
+VANOPSTAL_BAND = (4000.0, 18000.0)
+
+
+def vanopstal_dtfs(hrtf, bandwidth=VANOPSTAL_BAND):
+    """DTFs per their Eq. 1: spectrum / grand average across the arc elevations.
+
+    Returns ``({'left': (n_el, n_bin) dB, 'right': ...}, elevations)``. The
+    normalisation is the whole point -- it removes the component common to all
+    directions (microphone, canal, any residual room), which is what makes a
+    correlation between two DTF sets interpretable. Without it, correlations
+    are dominated by that shared component.
+    """
+    sources = vsi_module.median_plane_sources(hrtf)
+    elevations = numpy.asarray(hrtf.sources.vertical_polar[sources, 1], dtype=float)
+    n_taps = hrtf[0].data.shape[0]
+    freqs = numpy.fft.rfftfreq(n_taps, 1.0 / float(hrtf[0].samplerate))
+    in_band = numpy.logical_and(freqs >= bandwidth[0], freqs <= bandwidth[1])
+
+    out = {}
+    for channel, ear in ((0, 'left'), (1, 'right')):
+        magnitude = numpy.stack([
+            numpy.abs(numpy.fft.rfft(
+                numpy.asarray(hrtf[index].data, dtype=float)[:, channel], n_taps))
+            for index in sources])
+        grand = magnitude.mean(axis=0, keepdims=True)
+        ratio = magnitude / numpy.maximum(grand, 1e-20)
+        out[ear] = 20.0 * numpy.log10(numpy.maximum(ratio, 1e-12))[:, in_band]
+    return out, elevations
+
+
+def isim(own_dtfs, candidate_dtfs):
+    """Their similarity index, for one ear.
+
+    ``C(e1, e2)`` is the correlation between the own DTF at ``e1`` and the
+    candidate DTF at ``e2``. For each candidate elevation, take the SD of its
+    correlations with all own DTFs; ``I_sim`` is the mean of those SDs.
+
+    High means the candidate still discriminates elevation the way the
+    listener's own ear does (correlation concentrated on the diagonal); low
+    means no elevation is well matched by any. Deliberately blind to WHERE the
+    match sits, so it does not distinguish a map that moved from one that
+    vanished -- pair it with ``matrix_metrics(...)['ridge_slope']`` if that
+    distinction matters.
+
+    In their data I_sim predicted acute pre-adaptation elevation gain with
+    r^2 = 0.94 (n=6), which is why it is the natural quantity to target: it is
+    a proxy for the acute degradation the manipulation is supposed to produce.
+    """
+    return float(numpy.mean(numpy.std(_correlate(own_dtfs, candidate_dtfs), axis=0)))
+
+
+def composite_isim(own_hrtf, donor_hrtf, bandwidth=VANOPSTAL_BAND):
+    """I_sim of the own-envelope + donor-detail composite against the own ears.
+
+    Ear-averaged. Because the cepstral split is linear in log magnitude, the
+    composite's detail is the donor's detail, so this is very close to scoring
+    the donor directly; it is computed on the actual composite anyway so that
+    what is reported is what is delivered.
+    """
+    own, _ = vanopstal_dtfs(own_hrtf, bandwidth)
+    donor, _ = vanopstal_dtfs(donor_hrtf, bandwidth)
+    values = []
+    for ear in EARS:
+        # own envelope + donor detail, in the normalised dB domain
+        own_env, _ = split_log_magnitude(10.0 ** (own[ear].T / 20.0), n_keep=N_KEEP)
+        _, donor_det = split_log_magnitude(10.0 ** (donor[ear].T / 20.0), n_keep=N_KEEP)
+        values.append(isim(own[ear], (own_env + donor_det).T))
+    return float(numpy.mean(values))
+
+
+def pair_metrics(own_split, donor_split, bandwidth=DEFAULT_BAND,
+                 resolution=DEFAULT_RESOLUTION, donor_ear=None):
+    """The two quantities the selection rule uses, on the DETAIL domain.
+
+    ``r_match``
+        Mean over elevations of the correlation between the listener's own
+        in-band spectral detail at that elevation and the composite's detail at
+        the SAME elevation. This is the quantity Van Wanrooij & Van Opstal's
+        proposed mechanism -- correlation of the input against a stored
+        representation of the listener's own ears -- predicts should drive
+        performance. Low means strongly perturbed.
+
+    ``ridge_slope``
+        Elevation of the best-matching own detail regressed on true elevation.
+        Near 1 means the old map reads the composite as a coherent, merely
+        displaced elevation and can absorb it as a constant bias.
+
+    BOTH ARE NEEDED, and it is not obvious: across 1860 real donor pairings the
+    two correlate at only rho = +0.14, and among pairings with r_match <= 0.3 --
+    a strong perturbation by any reading -- 31% still have ridge_slope > 0.5.
+    A large perturbation can therefore still be absorbable, which is precisely
+    the case Van Wanrooij's insufficiently-perturbed listeners fell into.
+
+    WHY THE DETAIL DOMAIN. Correlating transfer functions requires the
+    component common to all directions to be removed, or every correlation is
+    inflated toward 1. The textbook remedy is a diffuse-field average, which
+    needs directions this rig does not sample. A mean over the median-plane arc
+    cannot substitute: it is the mean of the very spectra being correlated, so
+    the residuals sum to zero by construction and the resulting index is a
+    constant (measured: 1.02 +- 0.02 against 1.056 predicted for N=19). The
+    cepstral residual has no such problem -- the envelope subtracted from each
+    direction is a smoothed copy of THAT direction, so directions stay
+    independent and nothing is forced to sum to zero.
+    """
+    freqs = own_split['freqs']
+    elevations = own_split['elevations']
+    per_ear = {}
+    for ear in EARS:
+        source_ear = ear if donor_ear is None else donor_ear
+        own = _reduce(own_split[ear]['detail'], freqs, bandwidth, resolution)
+        # the composite's detail IS the donor's detail: the cepstral split is
+        # linear in log magnitude, so adding the listener's envelope leaves the
+        # residual untouched
+        donor = _reduce(donor_split[source_ear]['detail'], freqs, bandwidth,
+                        resolution)
+        per_ear[ear] = {
+            'r_match': float(numpy.mean(numpy.diag(_correlate(own, donor)))),
+            'ridge_slope': matrix_metrics(own, donor, elevations)['ridge_slope'],
+        }
+    scores = {k: float(numpy.mean([per_ear[e][k] for e in EARS]))
+              for k in ('r_match', 'ridge_slope')}
+    scores['per_ear'] = per_ear
+    return scores
+
+
+def detail_strength(split, bandwidth=DEFAULT_BAND, resolution=DEFAULT_RESOLUTION,
+                    ear=None):
+    """How strong ONE recording's own elevation cue is, in dB.
+
+    ``ear`` selects one of :data:`EARS`; ``None`` (the default) returns the
+    ear-average, which is what every caller before 2026-09-17 got. **Pass the
+    ear explicitly in a monaural protocol** -- only one of a donor's two ears
+    is ever transplanted, and the two differ (see :func:`cue_gradient`). This
+    was the last ranking quantity with no per-ear path.
+
+    The SD across directions of the in-band spectral DETAIL — i.e. of exactly
+    the quantity :func:`~hrtf_relearning.experiment.learning_transfer.donor_detail.donor_detail_dtf`
+    transplants. High means the donor's fine structure both is deep AND changes
+    with elevation; a donor scoring low is handing over almost nothing, which is
+    a cue REMOVAL dressed up as a cue replacement.
+
+    Two components have to be there and only their product is a cue:
+    depth alone is not enough (a deep but elevation-INDEPENDENT ripple is
+    timbre, not a cue — pilot/AGV has 6.7 dB of detail and 2.1 dB of SD), and
+    elevation dependence of a shallow spectrum is not enough either. Taking the
+    SD across directions of the detail requires both.
+
+    Computed on the per-direction detail, so unlike VSI it does not depend on
+    the diffuse-field normalisation this rig cannot produce — the envelope,
+    which is where the un-normalised common component lives, has already been
+    subtracted direction by direction.
+    """
+    values = []
+    for side in (EARS if ear is None else (ear,)):
+        detail = _reduce(split[side]['detail'], split['freqs'], bandwidth, resolution)
+        values.append(float(numpy.mean(numpy.std(numpy.asarray(detail, dtype=float),
+                                                 axis=0))))
+    return float(numpy.mean(values))
+
+
+def _spearman(a, b):
+    """Spearman rho without scipy (no ties expected in either input here)."""
+    a = numpy.asarray(a, dtype=float)
+    b = numpy.asarray(b, dtype=float)
+    rank_a = numpy.argsort(numpy.argsort(a)).astype(float)
+    rank_b = numpy.argsort(numpy.argsort(b)).astype(float)
+    return float(numpy.corrcoef(rank_a, rank_b)[0, 1])
+
+
+def cue_gradient(split, bandwidth=DEFAULT_BAND, resolution=DEFAULT_RESOLUTION,
+                 ear=None):
+    r"""How READABLE a recording's elevation cue is, as a map. Per ear.
+
+    :func:`detail_strength` answers "how much does the detail vary across
+    directions"; this answers "does that variation carry elevation". The two
+    are not the same question, and the difference is not cosmetic:
+    **detail_strength is invariant to permuting the elevation labels.** Shuffle
+    which spectrum belongs to which direction and the SD across directions is
+    unchanged to the last decimal, while the map becomes unlearnable. A donor
+    can therefore hand over a deep, elevation-dependent, and completely
+    scrambled cue and score well on strength alone. This function is the
+    missing term.
+
+    Three numbers, all computed on the in-band detail of the median-plane arc
+    (the only arc that is measured — every other azimuth is synthesised from
+    it, see the pool comment below), with the across-direction mean removed so
+    what is left is each elevation's own deviation pattern:
+
+    ``gradient``
+        dB of spectral change per 10 deg of elevation — the OLS slope of
+        template RMS distance on |delta elevation| over every pair of
+        elevations. This is cue depth expressed per degree, which is what a
+        listener has to resolve.
+    ``monotonicity``
+        Spearman rho of the same two quantities. Near 1 means far-apart
+        elevations are reliably more different than near ones, i.e. the map has
+        a consistent direction. A high gradient with low monotonicity is a cue
+        that is strong but locally ambiguous.
+    ``decodability``
+        Leave-one-out: for each elevation, take the nearest OTHER elevation's
+        template and call that the estimate, then regress estimate on truth.
+        Slope near 1 means the arc can be read off the detail alone. This is
+        the closest thing here to an upper bound on the elevation gain a
+        listener could reach with this cue if they learned it perfectly.
+
+    ``ear`` selects one of ``EARS``; ``None`` returns the ear-average in
+    ``gradient``/``monotonicity``/``decodability`` and both sides under
+    ``per_ear``. **Pass the ear explicitly when screening a donor for a
+    monaural protocol** — the two ears of one recording can differ a lot
+    (pilot/AH: left 0.88, right 0.73), and only the TRAINED ear's cue is the
+    one the listener has to learn.
+
+    Listener-independent by construction: the cepstral split is linear in log
+    magnitude, so the composite's detail IS the donor's detail (see
+    :func:`pair_metrics`) and adding the listener's envelope cannot change any
+    of these three. Verified on every env4 composite on disk: the trained ear's
+    gradient/monotonicity/decodability equal the raw donor ear's to 2 d.p.
+    That is why this belongs beside :func:`detail_strength` as a property of a
+    recording, and why it could screen the pool before a participant is
+    recruited rather than only a pairing.
+
+    **IT DOES NOT PREDICT RELEARNING AND MUST NOT GATE SELECTION.** Drafted as
+    a gate 2026-08-27, back-tested, rejected. Trained-ear gradient against
+    outcome over the 6 subjects run:
+
+    ======  ========  ====  ===========  ==================================
+    subj    gradient  mono  impairment   outcome (polar error AND gain)
+    ======  ========  ====  ===========  ==================================
+    AS       1.04     0.92     +2.5      none; composite barely displaced her
+    FP       0.85     0.89     +9.3      polar 16.0 -> 13.5, gain flat
+    LS       0.77     0.76    +13.9      none
+    FS       0.70*    0.82    +13.6      polar 22.3 -> 9.8, gain 0.37 -> 0.75
+    IR       0.70*    0.82     +9.6      polar 17.7 -> 15.4 (within-noise)
+    NR       0.57     0.82    +13.4      none
+    ======  ========  ====  ===========  ==================================
+
+    \* v1 whole-donor pipeline, not an env4 composite. The ordering is not
+    monotonic in either direction: the ONLY unambiguous learner sits fourth of
+    six, and the top-ranked donor produced no learning because it produced no
+    perturbation. A cut at 0.85 would have removed the donor that worked.
+
+    What it IS good for is the gap it was built to fill, which is real:
+    :func:`detail_strength` is **invariant to permuting the elevation labels**
+    — shuffle which spectrum belongs to which direction and it returns the same
+    number to the last decimal (measured on GS: 3.6477 dB intact and shuffled),
+    while gradient/monotonicity/decodability collapse from 1.04/+0.92/0.97 to
+    ~0.0/~0.0/~0.0. So a recording CAN hand over a deep, elevation-dependent,
+    scrambled cue and pass on strength alone. Report all three; use them to
+    describe a composite and to catch a build that has genuinely destroyed the
+    map, not to choose between donors that all have one.
+    """
+    ears = EARS if ear is None else (ear,)
+    elevations = numpy.asarray(split['elevations'], dtype=float)
+    if len(elevations) < 4:
+        raise ValueError(f'need at least 4 elevations, got {len(elevations)}')
+
+    per_ear = {}
+    for side in ears:
+        detail = numpy.asarray(
+            _reduce(split[side]['detail'], split['freqs'], bandwidth, resolution),
+            dtype=float)
+        detail = detail - detail.mean(axis=0, keepdims=True)
+
+        diff = detail[:, None, :] - detail[None, :, :]
+        distance = numpy.sqrt(numpy.mean(diff ** 2, axis=-1))
+        separation = numpy.abs(elevations[:, None] - elevations[None, :])
+        upper = numpy.triu_indices(len(elevations), 1)
+
+        slope = numpy.polyfit(separation[upper], distance[upper], 1)[0]
+
+        # LOO nearest-other-template elevation estimate
+        masked = distance + numpy.diag(numpy.full(len(elevations), numpy.inf))
+        estimate = elevations[numpy.argmin(masked, axis=1)]
+
+        per_ear[side] = {
+            'gradient': float(slope * 10.0),
+            'monotonicity': _spearman(separation[upper], distance[upper]),
+            'decodability': float(numpy.polyfit(elevations, estimate, 1)[0]),
+        }
+
+    scores = {key: float(numpy.mean([per_ear[s][key] for s in ears]))
+              for key in ('gradient', 'monotonicity', 'decodability')}
+    scores['per_ear'] = per_ear
+    return scores
+
+
+def pairwise_r_match(hrtfs, n_keep=DEFAULT_N_KEEP, bandwidth=DEFAULT_BAND,
+                     resolution=DEFAULT_RESOLUTION, per_ear=PER_EAR_SELECTION):
+    """``r_match`` between every pair of unmodified recordings — the scale.
+
+    This is the distribution :data:`TARGET_R_MATCH` is defined from, and the
+    yardstick a chosen donor should be read against: a composite whose r_match
+    sits inside it is no further from the listener's own cue than one real
+    person is from another. Replaces :func:`pairwise_reference` for donor work —
+    that one is on full spectra and is kept only as a diagnostic.
+
+    Returns ``(values, {(a, b): value})``.
+    """
+    splits = {name: median_plane_split(hrtf, n_keep=n_keep)
+              for name, hrtf in hrtfs.items()}
+
+    def _r(a, ear_a, b, ear_b):
+        first = _reduce(splits[a][ear_a]['detail'], splits[a]['freqs'],
+                        bandwidth, resolution)
+        second = _reduce(splits[b][ear_b]['detail'], splits[b]['freqs'],
+                         bandwidth, resolution)
+        return float(numpy.mean(numpy.diag(_correlate(first, second))))
+
+    pairs = {}
+    if per_ear:
+        # Every donor EAR against every other donor ear, which is the
+        # population the per-ear rule draws candidates from. A person's own two
+        # ears are NOT a pair: they are never both candidates for one listener
+        # ear in the same sense, and including them would put a within-head
+        # correlation into a between-people yardstick.
+        keys = [(name, ear) for name in splits for ear in EARS]
+        for i, (a, ear_a) in enumerate(keys):
+            for b, ear_b in keys[i + 1:]:
+                if a == b:
+                    continue
+                try:
+                    pairs[(f'{a}:{ear_a[0].upper()}',
+                           f'{b}:{ear_b[0].upper()}')] = _r(a, ear_a, b, ear_b)
+                except Exception as exc:
+                    logger.warning('skipping pair %s/%s: %s', a, b, exc)
+    else:
+        names = list(splits)
+        for i, a in enumerate(names):
+            for b in names[i + 1:]:
+                try:
+                    pairs[(a, b)] = float(numpy.mean(
+                        [_r(a, ear, b, ear) for ear in EARS]))
+                except Exception as exc:
+                    logger.warning('skipping pair %s/%s: %s', a, b, exc)
+    return numpy.array(sorted(pairs.values())), pairs
+
+
+def own_vsi(split, bandwidth=DEFAULT_BAND, resolution=DEFAULT_RESOLUTION):
+    """VSI of an unmodified set, in the same band/resolution as the scores."""
+    values = [matrix_metrics(_reduce(split[ear]['full'], split['freqs'], bandwidth, resolution),
+                             _reduce(split[ear]['full'], split['freqs'], bandwidth, resolution),
+                             split['elevations'])['vsi'] for ear in EARS]
+    return float(numpy.mean(values))
+
+
+def shortlist(subject_hrtf, candidates, target=TARGET_R_MATCH,
+              n_keep=N_KEEP, bandwidth=DEFAULT_BAND,
+              resolution=DEFAULT_RESOLUTION, donor_ear=None,
+              max_ridge_slope=MAX_RIDGE_SLOPE, tolerance=TOLERANCE,
+              trained_ear=None, min_cue_gradient=MIN_CUE_GRADIENT,
+              min_cue_monotonicity=MIN_CUE_MONOTONICITY,
+              per_ear=PER_EAR_SELECTION, band_rank_by=BAND_RANK_BY):
+    """Every candidate, ranked best-first by the selection rule.
+
+    ``shortlist()[0]`` is the donor :func:`select_donor` returns; ``[1]`` and
+    ``[2]`` are the principled 2nd and 3rd choices the in-session swap uses when
+    a participant cannot localize at all with the first one. The ordering is a
+    RULE, not a preference, so a swap stays reportable: it moves down a list
+    that was fixed before the participant heard anything.
+
+    Three tiers, in order:
+
+    ``'band'``
+        Ridge collapsed (``ridge_slope <= max_ridge_slope``) AND dissimilarity
+        within ``tolerance`` of ``target``. Ranked by ``donor_strength``
+        DESCENDING — among donors that are all equally close to the intended
+        perturbation size, hand over the strongest cue.
+    ``'widened'``
+        Ridge collapsed but outside the band. Ranked by distance to target
+        ascending. This is the old rule, and it is what runs when the band is
+        empty.
+    ``'fallback'``
+        Ridge did not collapse for any candidate. Ranked by ridge slope
+        ascending. The composite may be partly absorbable as a bias; report it.
+
+    Cutting across all three: a donor whose cue is not READABLE as an elevation
+    map is demoted below every donor whose is, whatever its r_match. See
+    :func:`cue_gradient` -- ``r_match`` and ``ridge_slope`` both ask how far the
+    composite is from the listener's own cue, and ``donor_strength`` asks how
+    much detail there is; none of them asks whether that detail carries
+    elevation, and detail_strength cannot, because it is invariant to permuting
+    the elevation labels. Demoted rather than dropped, so the table stays
+    complete and :func:`select_donor` still resolves when nothing passes.
+
+    ``trained_ear``
+        The ear that will carry the donor's detail. The cue gate is applied to
+        THAT ear alone. Pass it for any monaural protocol: the two ears of one
+        recording routinely differ (pilot/AH gradient: left 0.88, right 0.73),
+        and an ear-averaged screen passes a donor the listener will never hear
+        the good side of. ``None`` falls back to the ear average and warns.
+
+    ``per_ear``
+        CHANGED 2026-09-17. When True (the default, :data:`PER_EAR_SELECTION`)
+        a candidate is a donor EAR, not a donor: each recording contributes two
+        rows, and ``r_match``/``ridge_slope``/``donor_strength``/the cue columns
+        are all measured on the ONE pairing that gets delivered -- the
+        listener's ``trained_ear`` against that donor ear. Rows carry
+        ``donor_ear``. Requires ``trained_ear`` and is mutually exclusive with
+        ``donor_ear``.
+
+        Until then these three were ear AVERAGES while the monaural composite
+        delivered a single donor ear, so half of every ranking quantity was
+        measured on an ear whose composite is never built. Set
+        ``per_ear=False`` to reproduce a pre-2026-09-17 ranking; it is the only
+        way to get the old numbers back, since the default has moved.
+
+    ``band_rank_by``
+        ``'distance'`` (default) or ``'strength'``. The band tier's description
+        above -- strongest cue among candidates equally close to target -- is
+        what ``'strength'`` does; ``'distance'`` is what the code did before
+        2026-09-17 and remains the default so that no subject already run has
+        their rank-0 pick moved. With a per-ear pool the band tier is populated
+        rather than usually holding one row, so this now decides something.
+
+    Every row carries ``tier``, ``rank``, ``distance``, ``eligible``
+    (ridge criterion), ``in_band``, ``donor_strength``, ``cue_gradient``,
+    ``cue_monotonicity``, ``cue_decodability``, ``cue_ok`` and the listener's
+    ``own_vsi``, so the whole table can go in a supplement.
+    """
+    own_split = median_plane_split(subject_hrtf, n_keep=n_keep)
+
+    if trained_ear is None:
+        logger.warning(
+            'shortlist() called without trained_ear — cue_gradient will be '
+            'reported as the ear AVERAGE. In a monaural protocol pass the ear '
+            "that carries the donor's detail; the two sides of one recording "
+            'routinely differ (pilot/AH: left 0.85, right 0.77; pilot/VD: left '
+            '0.45, right 1.09) and only the trained one is ever heard.')
+    elif trained_ear not in EARS:
+        raise ValueError(f'trained_ear must be one of {EARS}, got {trained_ear!r}')
+    cue_ear = trained_ear if donor_ear is None else donor_ear
+
+    if per_ear and trained_ear is None:
+        raise ValueError(
+            'per_ear=True needs trained_ear: a donor EAR is scored against the '
+            'listener ear that will actually hear it, so there is no such thing '
+            'as a per-ear score without knowing which ear that is.')
+    if per_ear and donor_ear is not None:
+        raise ValueError(
+            'per_ear=True enumerates both donor ears itself; donor_ear= pins '
+            'one and the two cannot both be set.')
+
+    rows = []
+    for name, donor in candidates.items():
+        try:
+            donor_split = median_plane_split(donor, n_keep=n_keep)
+        except Exception as exc:
+            logger.warning('skipping donor %s: %s', name, exc)
+            continue
+        for side in (EARS if per_ear else (donor_ear,)):
+            if per_ear and (name.split('/')[-1], side) in EXCLUDED_DONOR_EARS:
+                logger.info('donor ear %s/%s is excluded -- see '
+                            'EXCLUDED_DONOR_EARS', name, side)
+                continue
+            try:
+                scores = pair_metrics(own_split, donor_split, bandwidth=bandwidth,
+                                      resolution=resolution, donor_ear=side)
+                if per_ear:
+                    # THE DELIVERED PAIRING, and the whole point of per_ear:
+                    # the listener's trained ear against this ONE donor ear.
+                    # pair_metrics still averages its two listener ears into
+                    # the top-level scores; the untrained ear's composite is
+                    # never built, so averaging it in scores half of a file
+                    # that does not exist.
+                    delivered = scores['per_ear'][trained_ear]
+                    scores = {'r_match': delivered['r_match'],
+                              'ridge_slope': delivered['ridge_slope']}
+                else:
+                    scores.pop('per_ear')
+                strength = detail_strength(donor_split, bandwidth, resolution,
+                                           ear=side if per_ear else None)
+                cue = cue_gradient(donor_split, bandwidth=bandwidth,
+                                   resolution=resolution,
+                                   ear=side if per_ear else cue_ear)
+            except Exception as exc:
+                logger.warning('skipping donor %s (%s ear): %s', name, side, exc)
+                continue
+            rows.append({'donor': name,
+                         'donor_ear': side if per_ear else donor_ear,
+                         'donor_strength': strength,
+                         'cue_gradient': cue['gradient'],
+                         'cue_monotonicity': cue['monotonicity'],
+                         'cue_decodability': cue['decodability'],
+                         'cue_ear': (side if per_ear else cue_ear) or 'average',
+                         'cue_per_ear': cue['per_ear'], **scores})
+    if not rows:
+        raise ValueError('no candidate donor could be scored')
+    for row in rows:
+        row['distance'] = abs(row['r_match'] - target)
+        row['eligible'] = bool(row['ridge_slope'] <= max_ridge_slope)
+        row['in_band'] = bool(row['eligible'] and row['distance'] <= tolerance)
+        row['cue_ok'] = bool(
+            (min_cue_gradient is None
+             or row['cue_gradient'] >= min_cue_gradient)
+            and (min_cue_monotonicity is None
+                 or row['cue_monotonicity'] >= min_cue_monotonicity))
+
+    gate_on = not (min_cue_gradient is None and min_cue_monotonicity is None)
+    readable = [row for row in rows if row['cue_ok']]
+    unreadable = [row for row in rows if not row['cue_ok']]
+    if gate_on and not readable:
+        logger.error(
+            'NO candidate passed the cue gate (gradient >= %.2f dB/10deg and '
+            'monotonicity >= %.2f) on ear %s — best is %s at %.2f/%.2f. The '
+            'ordering below is the old rule only; this listener has no donor '
+            'that hands over a readable elevation map. Do not seat them.',
+            min_cue_gradient, min_cue_monotonicity, cue_ear or 'average',
+            max(rows, key=lambda r: r['cue_gradient'])['donor'],
+            max(rows, key=lambda r: r['cue_gradient'])['cue_gradient'],
+            max(rows, key=lambda r: r['cue_gradient'])['cue_monotonicity'])
+    elif gate_on and unreadable:
+        logger.info('cue gate demoted %d of %d candidates: %s',
+                    len(unreadable), len(rows),
+                    ', '.join(r['donor'] for r in unreadable))
+
+    gated = readable if readable else rows
+    band = [row for row in gated if row['in_band']]
+    ridge_only = [row for row in gated if row['eligible'] and not row['in_band']]
+    rejected = [row for row in gated if not row['eligible']]
+
+    if band:
+        # band_rank_by: 'distance' is what the code has always done;
+        # 'strength' is what this docstring described for months and what the
+        # band tier is FOR -- among candidates all equally close to the
+        # intended perturbation size, hand over the strongest cue. Left on
+        # 'distance' by default because flipping it moves the rank-0 pick of
+        # every subject already run. See the note in shortlist.__doc__.
+        band_key = ((lambda r: -r['donor_strength']) if band_rank_by == 'strength'
+                    else (lambda r: r['distance']))
+        if band_rank_by not in ('distance', 'strength'):
+            raise ValueError(f"band_rank_by must be 'distance' or 'strength', "
+                             f"got {band_rank_by!r}")
+        ordered = (sorted(band, key=band_key)
+                   + sorted(ridge_only, key=lambda r: r['distance'])
+                   + sorted(rejected, key=lambda r: r['ridge_slope']))
+        tier = 'band'
+    elif ridge_only:
+        ordered = (sorted(ridge_only, key=lambda r: r['distance'])
+                   + sorted(rejected, key=lambda r: r['ridge_slope']))
+        tier = 'widened'
+        logger.warning(
+            'no candidate landed within %.2f of target %.2f — falling back to '
+            'nearest-to-target among ridge-eligible donors', tolerance, target)
+    else:
+        ordered = sorted(rejected, key=lambda r: r['ridge_slope'])
+        tier = 'fallback'
+        logger.warning(
+            'no candidate reached ridge_slope <= %.2f (best %.2f, donor %s) — '
+            'falling back to the lowest slope', max_ridge_slope,
+            ordered[0]['ridge_slope'], ordered[0]['donor'])
+
+    # demoted, never dropped: they keep their scores and stay in the table so a
+    # supplement shows what was rejected and why, but they sit below every
+    # readable donor so select_donor() cannot land on one by accident.
+    if readable and unreadable:
+        ordered = ordered + sorted(unreadable,
+                                   key=lambda r: -r['cue_gradient'])
+
+    for rank, row in enumerate(ordered):
+        row['rank'] = rank
+        # the tier the CHOSEN donor sits in, so one field says how the pick was
+        # made; per-row membership is still readable from eligible/in_band
+        row['tier'] = 'cue_rejected' if not row['cue_ok'] else tier
+        row['fallback'] = bool(tier == 'fallback')
+    return ordered
+
+
+def select_donor(subject_hrtf, candidates, target=TARGET_R_MATCH,
+                 n_keep=N_KEEP, bandwidth=DEFAULT_BAND,
+                 resolution=DEFAULT_RESOLUTION, donor_ear=None,
+                 max_ridge_slope=MAX_RIDGE_SLOPE, tolerance=TOLERANCE,
+                 rank=0, trained_ear=None,
+                 min_cue_gradient=MIN_CUE_GRADIENT,
+                 min_cue_monotonicity=MIN_CUE_MONOTONICITY,
+                 per_ear=PER_EAR_SELECTION, band_rank_by=BAND_RANK_BY):
+    """The per-subject donor choice — the ONLY thing that varies between subjects.
+
+    Thin wrapper over :func:`shortlist`: returns ``(chosen_row, all_rows)`` with
+    ``all_rows`` already in rule order. ``rank=0`` is the protocol choice;
+    ``rank=1``/``rank=2`` are the documented alternates for an in-session swap
+    (see :func:`shortlist` for what defines the order).
+
+    Note ``vsi`` is diagnostic only — see the constants block above for why it
+    does not gate anything, and the pool comment for why ``donor_strength``
+    replaced it as the ranking quantity.
+    """
+    rows = shortlist(subject_hrtf, candidates, target=target, n_keep=n_keep,
+                     bandwidth=bandwidth, resolution=resolution,
+                     donor_ear=donor_ear, max_ridge_slope=max_ridge_slope,
+                     tolerance=tolerance, trained_ear=trained_ear,
+                     min_cue_gradient=min_cue_gradient,
+                     min_cue_monotonicity=min_cue_monotonicity,
+                     per_ear=per_ear, band_rank_by=band_rank_by)
+    if rank >= len(rows):
+        raise IndexError(f'requested donor rank {rank} but only {len(rows)} '
+                         f'candidates were scored')
+    return rows[rank], rows
+
+
+# ---------------------------------------------------------------------------
+# The donor pool — EDIT THIS LIST.
+#
+# The target grid is 475 sources, 512 taps, 48828 Hz, 19 median-plane
+# elevations from -38 to +38 deg. 30 of the 38 recordings on disk reach it:
+# 20 natively, and 10 more through `conform_recording` (zero-padding 256 taps
+# to 512, dropping the second az=0 arc where it was measured twice). The
+# remaining 8 have a genuinely coarser source grid and would need spatial
+# interpolation, which smooths the notches this manipulation transplants, so
+# they stay out. Use 'pilot/NAME' to force the pilot copy when an id exists in
+# both folders (AS, PF do).
+#
+# RANKED BY DETAIL STRENGTH, NOT BY VSI (changed 2026-08-13). The pool used to
+# be the 8 highest-VSI recordings. That was wrong: measured over all 20, VSI is
+# NEGATIVELY rank-correlated with how deep the spectral detail is (Spearman
+# -0.40). AS tops the VSI table at 0.93 and has the SHALLOWEST detail of all 20
+# (3.6 dB); GS scores 0.29 — 16th — on the deepest detail in the set (7.1 dB)
+# and the 4th most elevation-dependent, and localizes well with her own HRTF.
+# The reason is the one already documented above for why VSI cannot gate
+# eligibility: without the diffuse-field normalisation this rig cannot produce,
+# a large shared across-direction component drags every correlation toward 1,
+# so a listener with a strong common resonance reads as "all my spectra look
+# alike" no matter how much fine structure rides on top. `detail_strength`
+# is computed after the per-direction envelope has been subtracted, so it does
+# not have that failure mode — and it measures the exact quantity the donor
+# hands over. VSI is still reported everywhere; it just no longer ranks anything.
+#
+# SIZE IS NOT THE BINDING CONSTRAINT — the ridge guard is. Admitting every
+# recording raises in-band picks from 5/11 to 8/11, but only by selecting IM,
+# AGV, LS and JF, whose detail SD is 1.6-2.2 dB against 2.7-3.9 for the pool.
+# Those composites hand over almost nothing, i.e. they are a cue REMOVAL
+# dressed up as a cue replacement. So the pool is a STRENGTH FLOOR (>= 2.66 dB,
+# the weakest recording that was already in it), not a rank cut. Adding the
+# five padded recordings that clear that floor takes the pool from 12 to 17 and
+# buys one fewer fallback (2 -> 1) plus a much stronger donor for GLK and IR
+# (MB at 3.9 dB, against 2.7 and 3.2 before) at no cost to the floor.
+#
+# DO NOT READ THE ORDER BELOW AS MEANINGFUL AT RANK GRANULARITY. Adjacent
+# ranks differ by ~0.05 dB and THERE IS NO REPEATABILITY ESTIMATE to say
+# whether that is a real difference: every subject's arc is measured once.
+# (An earlier note here claimed a 0.42 dB test-retest from the six recordings
+# that carry the arc twice. That was wrong — the second arc is the azimuth
+# expansion's own processed copy, not a repeat measurement, so 0.42 dB is the
+# fidelity of that pipeline step, not measurement noise. See
+# `conform_recording`.) Until someone re-records a subject, treat only broad
+# differences as real — JF at 1.6 vs FD at 3.7 is a distinction, rank 12 vs
+# rank 13 is not. Hence a floor rather than a top-N.
+#
+# Elevation SD of in-band detail, dB, ear-averaged (`detail_strength`).
+# '*' = reaches the grid only via conform_recording (was 256-tap):
+#   MB* 3.9   FD  3.7   NKa 3.6   MSc 3.5   GS  3.3   SK* 3.3
+#   CO  3.3   TS  3.3   AS  3.2   GLK 3.2   JP* 3.2   VD  3.0
+#   PF  3.0   NK* 3.0   RK* 2.7   AH  2.7   FS  2.7
+#   --------------------------------------------- floor 2.66 dB
+#   SS  2.4   IR  2.3   UG  2.3   SW* 2.3   IM  2.2   PC  2.2
+#   PFo* 2.2  LS  2.1   AGV 2.1   JR* 2.1   VG* 2.0   CZ* 1.7   JF  1.6
+# ---------------------------------------------------------------------------
+#
+# QUALIFICATION IS BEHAVIOURAL, NOT ACOUSTIC (changed 2026-08-18).
+# A donor qualifies by having localized well with their OWN HRTF in the virtual
+# environment -- elevation gain from their first finished localization run with
+# their unmodified HRTF (experiment.analysis.database.vsi_rmse.baseline_run,
+# which already excludes *_dome runs, so what is scored is headphone rendering).
+#
+# WHY, and it is worth stating because the previous criterion was the opposite.
+# The pool used to be ranked by `detail_strength`. Measured against localization
+# on the 17 candidates that have both, detail strength does not predict it at
+# all: Spearman +0.09. The clearest case is MB -- the DEEPEST fine structure of
+# all 31 recordings, which a maximise-strength rule selected for 6 of 11
+# listeners -- whose own elevation gain is 0.05. AGV, near the BOTTOM on detail
+# strength, localizes at 0.96. An acoustic measure of how much structure a DTF
+# set contains says nothing about whether that structure works as a cue.
+#
+# This is an INCLUSION criterion and should not be read as an exclusion one.
+# Good localization proves the pattern is usable by a human auditory system,
+# which is exactly the guarantee wanted before handing it to someone else. Poor
+# localization is ambiguous -- a weak ear, a failed render, an inattentive
+# listener -- so a low-EG recording is "unproven", not "known bad".
+#
+# EG with own HRTF, virtual environment, |el| <= 30 deg, 27 recordings:
+#   CO  .98   AGV .96   SW  .93   VD  .89   AH  .86   FS  .86   FD  .82  <- pool
+#   AS  .63   TS  .54   IR  .51   NKa .39   SS  .32   NK  .31   PC  .28
+#   PF  .28   RK  .21   MD  .20*  JZ  .19*  JR  .17   JF  .16   OS  .11*
+#   SK  .10   JP  .08   PFo .06   MB  .05   VG  .02   CZ  .00
+#   (* off-grid recording, cannot be a donor regardless of EG)
+# No own-HRTF baseline run on file yet: GLK, IM, MSc, NW, UG -- each has other
+# runs, just none with their unmodified HRTF. One ~60-trial block qualifies them.
+#
+# The spread is closer to continuous than it first appeared: an earlier reading
+# of this as bimodal came from a lookup that silently dropped 6 subjects (see
+# vsi_rmse.find_participants). There is still a gap between 0.82 and 0.63 and a
+# lot of mass below 0.35, but the "suspicious cluster at zero" reading is not
+# supported by the fuller set.
+#
+# Detail strength STILL does not predict EG on the fuller set (Spearman +0.18,
+# n=24). MB remains the clearest case: deepest fine structure of all 31
+# recordings, EG 0.05. Note CO (.98/3.3 dB) and FD (.82/3.7 dB) show the two can
+# coincide -- the point is only that the acoustic measure cannot be relied on to
+# tell you so.
+#
+# EXTENDED 2026-09-17: + GM (own EG 0.82, n=131, GM/GM.json). She is the only
+# recording on disk that newly clears the floor -- everything else either has a
+# reproducible EG below 0.6 or still has no own-HRTF block at all. With per-ear
+# selection the pool is 12 recordings -> 24 donor ears, minus the one excluded
+# below, so 23 candidates per listener against 11 before.
+#
+# The EG column below was RE-DERIVED 2026-09-17 (and re-run 2026-09-29) from
+# the subject JSONs with baseline_run's own rule (first finished non-dome
+# own-HRTF run of >=50 trials) at |el| <= 30: AS 0.63, CO 0.98, FD 0.82,
+# FP 0.84, FS 0.86, GM 0.82, LS 1.30, NR 0.70, AGV 0.96, AH 0.86, and the
+# 2026-09-29 additions PA 1.02, LGL 0.87, SH 0.74 -- every legacy one within
+# +0.10 of the number quoted here, and AS/IR/PF/SS/TS to the second decimal. The small positive offsets are
+# the elevation-window convention (this table says |el| <= 30; vsi_rmse's
+# EL_LIMIT=None takes the narrowest span present instead). Do not read them as
+# disagreement.
+#
+# EXTENDED AGAIN 2026-09-29: + LGL (own EG 0.87), PA (1.02), SH (0.74), from the
+# HRIR recordings of 28-29.09. All three conform natively and all three are
+# current participants, which is fine -- load_candidates drops the listener's
+# own id, and AS/FP/LS/NR/GM are already in on the same basis. Their own runs
+# are pinned by subject.active_donor and are unaffected.
+#
+# Detail strength: PA 3.05 dB (L 3.00 / R 3.09), SH 2.94 (L 3.02 / R 2.85),
+# LGL 2.69 (L 2.63 / R 2.76). LGL sits just over the 2.66 dB floor.
+#
+# EXTENDED 2026-10-27: + DA (own EG 0.75, polar 6.7 deg, n=130), EM (0.73, 6.8,
+# n=131), MM (1.01, 7.4, n=128), SK (0.82, 8.4, n=129) and LP (0.67, 7.3,
+# n=127), from the recordings of 19-27.10. All five conform natively. See the TARGET_R_MATCH comment for
+# the SK / pilot/SK same-initials warning, which matters here because this
+# entry is the BARE name.
+#
+# EXTENDED 2026-10-13: + AB (own EG 1.00, polar 6.1 deg, n=130), TE (1.19,
+# 10.8 deg, n=129), AM (0.68, 10.7 deg, n=127) and IK (0.91, 5.5 deg, n=129),
+# from the recordings of 05-13.10. All four conform natively, and AB/TE/AM are
+# also enrolled participants (block_order pids 13, 12, 14) -- which is fine, and
+# the same basis AS/FP/LS/NR/GM/SH/PA/LGL came in on: `load_candidates` drops
+# the listener's own id, so none of them can be their own donor.
+#
+# AM was added ON PURPOSE despite being a detail-space outlier -- see the
+# TARGET_R_MATCH comment for the numbers and what the -0.038 re-centring costs.
+#
+# Found by `dev/donor_pool_audit.py`, which is now the way this list is kept
+# current: it applies the two rules below to every recording on disk and prints
+# the pool and target to paste. Run it after a recording week.
+#
+# CO WAS RE-RECORDED 2026-10-13 AND THIS ENTRY NOW POINTS AT THE NEW FILE.
+# RE-QUALIFIED ON IT the same day: CO_13.10_09-51_CO, 150 trials, EG 0.94 /
+# polar 5.0 deg at |el| <= 30 (results/CO/CO.json). So this entry no longer
+# rests on July's EG 0.98 measured on the OLD recording -- it has its own
+# number, on the file actually in the pool. July's 0.98 / 5.3 deg is now just
+# a test-retest comparison, and the two agree well inside the +-0.13 band that
+# n~130 carries (project_behavioural_noise_floor).
+#
+# WHICH SETTLES THE ACOUSTIC WORRY BEHAVIOURALLY, and that is worth recording
+# because the acoustic numbers looked bad: the October recording has detail
+# strength 2.68/2.55 dB against 3.3 dB in July, the right ear below the 2.66 dB
+# level the old acoustic floor sat at, and mean r_match 0.324/0.422 against a
+# pool whose median ear is near 0.55. Its head-radius fit came out at 0.115 m
+# on a 447 us residual with non-monotonic ITDs (-996 us at -17.5 deg, -1101 at
+# -52.5) -- the signature of a badly seated in-ear mic (cf.
+# project_gm_head_radius_fit, flagged at 87 us). CO then localized at 0.94 with
+# it. One more instance of the thing this pool is built around: an acoustic
+# proxy said the recording was poor and the listener's own performance said it
+# was not. The bad ITD fit did NOT propagate -- CO_donor_SW_env4_left was built
+# at head_radius 0.0812 (GLOBAL_ModificationParams), not 0.115 and not the
+# 0.0875 pipeline default, so the azimuth expansion is on a plausible radius.
+# Note `subject.head_radius` is None in his record even so; the value that was
+# used lives only in the composite's params.
+#
+# The two older composites from CO -- AB_donor_CO (06.10) and PA_donor_CO-R
+# (29.09) -- predate the re-record and so were built from the JULY recording.
+# Neither is in use (AB's active donor is FS right, PA's is pilot/AGV right).
+# The July sweeps survive as rec/CO/recordings_20260717_155512.npz.
+#
+# **LG IS NOT A CANDIDATE AND MUST NOT BE ADDED.** LG and LGL are the SAME
+# PERSON: the 29.09 recording was aborted and redone, and the id could not be
+# reused, so the first attempt lives under LG. It was deleted from the project
+# 2026-09-29. If it ever reappears, keep it out -- `load_candidates` drops the
+# listener's own id by STRING, so 'LG' in the pool would make LG a self-donor
+# for LGL: a near-zero perturbation that would look like a legitimate low
+# r_match. Same trap for any future re-record under a new id.
+DONOR_POOL = ('CO', 'pilot/AGV', 'pilot/SW', 'pilot/VD', 'pilot/AH', 'FS', 'FD',
+              'AS', 'FP', 'LS', 'NR', 'GM', 'LGL', 'PA', 'SH', 'AB', 'TE',
+              'AM', 'IK', 'DA', 'EM', 'MM', 'SK', 'LP')
+
+#: Donor EARS kept out of the pool while the recording itself stays in.
+#: Only meaningful with PER_EAR_SELECTION; a per-person pool cannot express it.
+#:
+#: This is for a recording with a known defect on ONE side, which the
+#: person-level qualification cannot catch: MIN_DONOR_ELEVATION_GAIN comes from
+#: a BINAURAL own-HRTF block, so "this person's cue works" is evidence about the
+#: pair of ears, not about each one. A listener can localize well on their good
+#: side while the other is compromised.
+#:
+#: GM left: a badly seated in-ear mic cost this ear 17% of its cue depth and
+#: gave a constant ITD offset that drove her head-radius fit to 0.0701 m before
+#: it was refitted to 0.079 m (project_gm_head_radius_fit). Her RIGHT ear is
+#: fine and is what she was trained on; it stays a candidate.
+EXCLUDED_DONOR_EARS = frozenset({('GM', 'left')})
+
+#: Elevation gain a donor must reach with their own HRTF to enter the pool.
+#: RELAXED 0.8 -> 0.6 on 2026-08-31 (Paul's call), which adds AS 0.63, FP 0.79,
+#: LS 1.20 and NR 0.65 from recordings already on disk.
+#:
+#: Why it is safe to relax. The floor existed because there was no downstream
+#: check on the actual pairing: a recording whose owner could not use their own
+#: ears was "unproven, not unusable", and an unproven donor could not be caught
+#: before four days had been spent on it. There IS a check now -- the day-1
+#: behavioural screen (experiment/learning_transfer/donor_screening.py) rejects a
+#: bad pairing on the listener who will actually hear it, and it does so on
+#: elevation gain, the same quantity this floor is made of, measured where it
+#: matters. The pool's remaining job is only "this recording demonstrably
+#: encodes a usable cue", which does not need 0.8.
+#:
+#: The floor also sits inside its own noise: the own-HRTF AR block is n=150,
+#: where the 95% band on elevation gain is +-0.13 (see
+#: project_behavioural_noise_floor), so FD at 0.81 and FS at 0.84 were never
+#: meaningfully above a 0.8 cut.
+#:
+#: PROVENANCE. NARROWED 2026-09-17 from four unverifiable members to TWO.
+#: pilot/AGV and pilot/AH DO have json after all -- pilot/AGV.json and
+#: pilot/backup/AH.json -- and both reproduce the numbers quoted here exactly
+#: (AGV 0.96 n=64, AH 0.86 n=62). An earlier audit looked only for
+#: pilot/<id>/<id>.json and missed both spellings.
+#:
+#: CORRECTED 2026-10-13: pilot/SW and pilot/VD are NOT unverifiable either.
+#: Both reproduce to two decimals from the FLAT pilot pickles --
+#: results/pilot/SW.pkl gives 0.934 (n=128) and results/pilot/VD.pkl gives
+#: 0.889 (n=45), against the 0.93 and 0.89 quoted here. This is the same lookup
+#: shape that hid AGV and AH until 2026-09-17: results/pilot/ has four layouts
+#: (<id>/<id>, flat <id>, backup/<id>, _corrected) and an audit that checks one
+#: of them reports the others as missing data. `dev/donor_pool_audit.py`
+#: searches all four. EVERY pool member is now re-derivable; nothing in this
+#: list rests on a number nobody can reproduce.
+#:
+#: Qualified from data that still exists: CO 0.97, FS 0.84, FD 0.81, FP 0.79,
+#: NR 0.65, AS 0.63, LS 1.20 (LS's >1 gain is itself anomalous -- see
+#: project_cohort_2408_learning_diagnosis -- but she is admissible as a donor).
+#: Legacy, unverifiable: AGV 0.96, SW 0.93, VD 0.89, AH 0.86.
+#:
+#: 34 of the 38 recordings on disk conform to the grid; the pool is small
+#: because only 13 owners have ever been localization-tested with their own
+#: HRTF in AR, not because the rest are unfit. Qualifying one costs a single
+#: ~150-trial block. See project_donor_pool_extension for the list of 21.
+MIN_DONOR_ELEVATION_GAIN = 0.6
+
+# what a recording must match to be usable without resampling
+REQUIRED_TAPS = 512
+REQUIRED_SAMPLERATE = 48828.0
+REQUIRED_ELEVATIONS = 19
+
+
+def conforms(hrtf, taps=REQUIRED_TAPS, samplerate=REQUIRED_SAMPLERATE,
+             elevations=REQUIRED_ELEVATIONS):
+    """True if a recording matches the current measurement setup.
+
+    Composites are built sample-by-sample against the listener's own HRIR, so a
+    donor with a different tap count, sample rate or median-plane grid cannot be
+    used as it stands. Run :func:`conform_recording` first — it fixes the two
+    differences that are lossless to fix (short tap count, duplicated az=0 arc)
+    and leaves everything else to fail here.
+    """
+    try:
+        return bool(hrtf[0].data.shape[0] == taps
+                    and abs(float(hrtf[0].samplerate) - samplerate) < 50
+                    and len(vsi_module.median_plane_sources(hrtf)) == elevations)
+    except Exception:
+        return False
+
+
+def conform_recording(hrtf, taps=REQUIRED_TAPS, samplerate=REQUIRED_SAMPLERATE):
+    """Bring a recording onto the current grid where that is LOSSLESS, else None.
+
+    Two differences among the recordings on disk can be repaired exactly, and
+    only those two are attempted:
+
+    ``256 taps instead of 512``
+        Zero-padded. Padding an impulse response interpolates its spectrum onto
+        a finer frequency grid; it invents nothing. Whether 256 taps RESOLVE the
+        detail is a separate question, and it was measured: truncating the
+        512-tap recordings to 256 and padding back moves detail strength and
+        notch depth by <= 0.01 dB (against a 2.7-3.7 dB spread across donors)
+        and VSI dissimilarity by <= 0.001 (against a +-0.05 tolerance band).
+        99.98% of the energy is in the first 256 samples and 191 Hz bin spacing
+        is far finer than the in-band notches. The one quantity that does move
+        is ``ridge_slope``, by up to 0.087 — it is an argmax statistic, so it
+        steps rather than drifts. A candidate sitting within ~0.09 of the
+        MAX_RIDGE_SLOPE cutoff can therefore flip on tap count alone; treat
+        those as ties rather than as decisions.
+
+    ``494 sources instead of 475``
+        These files carry the az=0 arc twice, at 0 and at 360. The two copies
+        are NOT two measurements. Only the median-plane arc is ever recorded;
+        `record_hrir.expand_azimuths_with_binaural_cues` generates every other
+        azimuth from it, and older versions of that function did not exclude
+        360, so the second arc is the pipeline's own processed copy of the
+        first. Current recordings have 475 sources because that function now
+        skips 0/360 explicitly.
+
+        The FIRST occurrence is kept, i.e. the measured arc, and the generated
+        copy is discarded. That is deliberate: the generated one has been
+        through the spherical-head ITD step, which time-shifts the RIGHT ear —
+        measured against the arc it was derived from, the right ear moves by up
+        to 11 samples and correlates at r 0.72-0.94, while the left ear stays
+        at r 0.86-0.98 with no onset shift. Verified: after dedup the source
+        set matches the 475-source grid exactly.
+
+    Anything else — a different sample rate, a coarser source grid, a shorter
+    median-plane arc — is NOT repaired, because the only repair available is
+    interpolation, and interpolating an HRTF across direction smooths precisely
+    the notches this manipulation transplants. Those return ``None``.
+    """
+    import slab
+
+    if abs(float(hrtf[0].samplerate) - samplerate) >= 50:
+        return None
+
+    sources = numpy.asarray(hrtf.sources.vertical_polar, dtype=float)
+    n_taps = hrtf[0].data.shape[0]
+    if n_taps > taps:
+        return None
+
+    # duplicate rows: same (azimuth mod 360, elevation) to 0.1 deg
+    key = numpy.stack([numpy.mod(numpy.round(sources[:, 0], 1), 360.0),
+                       numpy.round(sources[:, 1], 1)], axis=1)
+    seen, keep = set(), []
+    for index, row in enumerate(map(tuple, key)):
+        if row in seen:
+            continue
+        seen.add(row)
+        keep.append(index)
+
+    if len(keep) == hrtf.n_sources and n_taps == taps:
+        return hrtf
+
+    data = numpy.zeros((len(keep), 2, taps), dtype=float)
+    for new_index, old_index in enumerate(keep):
+        ir = numpy.asarray(hrtf[old_index].data, dtype=float)   # (taps, 2)
+        data[new_index, :, :n_taps] = ir.T
+
+    conformed = slab.HRTF(data, datatype='FIR', samplerate=hrtf[0].samplerate,
+                          sources=sources[keep], listener=hrtf.listener)
+    conformed.name = getattr(hrtf, 'name', None)
+    logger.info('conformed %s: %d sources x %d taps -> %d x %d',
+                conformed.name, hrtf.n_sources, n_taps, len(keep), taps)
+    return conformed
+
+
+def resolve_donor_id(name, pool=DONOR_POOL):
+    """Map a bare id to its pool spelling: ``'VD'`` -> ``'pilot/VD'``.
+
+    An exact pool entry always wins, so a bare id that is in the pool as itself
+    (``'CO'``) is never redirected to a pilot copy. Names not in the pool, or
+    matching several pool entries, are returned unchanged and left to the
+    caller's own error.
+    """
+    if name is None or name in pool:
+        return name
+    # set(): with per-ear selection the shortlist lists each donor twice
+    # (once per ear), which must not count as two different matches.
+    hits = sorted({entry for entry in pool if entry.split('/')[-1] == name})
+    return hits[0] if len(hits) == 1 else name
+
+
+def load_candidates(subject_id, pool=DONOR_POOL, sofa_dir=None, suffix='',
+                    check_conformance=True):
+    """Load the donor pool as ``{id: slab.HRTF}``.
+
+    ``pool`` names the candidates explicitly — that is the point, the pool is a
+    curated list rather than "whoever happens to be on disk". Names resolve
+    against the participant folders first and the ``pilot`` folder second;
+    prefix with ``pilot/`` to force the pilot copy. ``pool=None`` falls back to
+    every conforming recording in both folders, which is useful for building the
+    candidate gallery but not for running a subject.
+
+    The listener's own id is dropped if it appears. Non-conforming recordings
+    are skipped with a warning rather than silently.
+    """
+    import slab
+    from hrtf_relearning.utils import paths
+
+    sofa_dir = paths.SOFA_DIR if sofa_dir is None else sofa_dir
+    pilot_dir = sofa_dir / 'pilot'
+
+    def _path(name):
+        if name.startswith('pilot/'):
+            stem = name.split('/', 1)[1]
+            return pilot_dir / stem / f'{stem}{suffix}.sofa'
+        for base in (sofa_dir, pilot_dir):
+            candidate = base / name / f'{name}{suffix}.sofa'
+            if candidate.exists():
+                return candidate
+        return sofa_dir / name / f'{name}{suffix}.sofa'
+
+    if pool is None:
+        pool = []
+        for base, prefix in ((sofa_dir, ''), (pilot_dir, 'pilot/')):
+            if not base.exists():
+                continue
+            for folder in sorted(p for p in base.iterdir() if p.is_dir()):
+                if folder.name in ('database', 'pilot'):
+                    continue
+                if (folder / f'{folder.name}{suffix}.sofa').exists():
+                    pool.append(f'{prefix}{folder.name}')
+
+    candidates = {}
+    for name in pool:
+        key = name.split('/')[-1]
+        if key == subject_id or name == subject_id:
+            continue
+        path = _path(name)
+        if not path.exists():
+            logger.warning('donor %s not found at %s', name, path)
+            continue
+        try:
+            hrtf = slab.HRTF(str(path))
+        except Exception as exc:
+            logger.warning('could not load donor %s: %s', name, exc)
+            continue
+        hrtf.name = name
+        if check_conformance:
+            hrtf = conform_recording(hrtf)
+            if hrtf is None or not conforms(hrtf):
+                logger.warning(
+                    'donor %s does not match the current setup and cannot be '
+                    'conformed losslessly — skipped', name)
+                continue
+        candidates[name] = hrtf
+    return candidates
+
+
+def report(rows, reference=None):
+    """Print a donor ranking, with the between-subject distribution for scale.
+
+    Rows are expected in :func:`shortlist` order, so the top line is the pick
+    and the next two are the alternates an in-session swap would move to.
+    """
+    tier = rows[0].get('tier') if rows else None
+    if tier == 'band':
+        print(f'selection tier: BAND — ridge collapsed AND r_match within '
+              f'{TOLERANCE:.2f} of target {TARGET_R_MATCH:.2f}')
+    elif tier == 'widened':
+        print(f'selection tier: WIDENED — ridge collapsed but nothing within '
+              f'{TOLERANCE:.2f} of target r_match {TARGET_R_MATCH:.2f}')
+    elif tier == 'fallback':
+        print(f'selection tier: FALLBACK — no candidate collapsed the ridge '
+              f'(<= {MAX_RIDGE_SLOPE:.2f}); ranked by ridge slope. REPORT THIS.')
+    # PER-EAR: every row's cue columns are measured on THAT row's donor ear, so
+    # there is no single ear to name. Taking rows[0]['cue_ear'] here announced
+    # the top row's ear as if it applied to the whole table -- and with a
+    # right-trained listener whose rank 0 is a left donor ear, it printed
+    # "measured on the left ear" under a right-ear protocol. Say what is true.
+    per_ear_rows = any(row.get('donor_ear') for row in rows)
+    cue_ear = None if per_ear_rows else (rows[0].get('cue_ear') if rows else None)
+    if per_ear_rows:
+        print('cue columns measured on each row\'s OWN donor ear (the ear column) '
+              '-- REPORT-ONLY, no cue gate is enforced')
+    if cue_ear:
+        # MIN_CUE_* are None by design -- the back-test rejected the cue metric
+        # as a SELECTION gate, so the columns are reported and never enforced.
+        # Formatting them unconditionally is a TypeError; see the note on
+        # MIN_CUE_GRADIENT before switching either back on.
+        limits = [name + ' >= ' + f'{value:.2f}' + unit
+                  for name, value, unit in
+                  (('gradient', MIN_CUE_GRADIENT, ' dB/10deg'),
+                   ('monotonicity', MIN_CUE_MONOTONICITY, ''))
+                  if value is not None]
+        if limits:
+            print(f'cue gate on the {cue_ear} ear: ' + ', '.join(limits))
+        else:
+            print(f'cue columns measured on the {cue_ear} ear '
+                  f'(REPORT-ONLY -- no cue gate is enforced)')
+    per_ear = per_ear_rows
+    if per_ear:
+        print('candidates are donor EARS: every column is the delivered '
+              'pairing (listener trained ear vs that donor ear)')
+    print(f'{"":>4}{"donor":>14} {"ear":>6} {"r_match":>8} {"ridge":>8} '
+          f'{"strength":>9} {"grad":>6} {"mono":>6} {"decod":>6}  {"":>6}')
+    for row in rows:
+        if 'eligible' not in row:
+            mark = ''
+        elif not row.get('cue_ok', True):
+            mark = 'CUE!'
+        elif row.get('in_band'):
+            mark = 'band'
+        elif row['eligible']:
+            mark = 'ok'
+        else:
+            mark = 'x'
+        arrow = '-->' if row.get('rank') == 0 else (
+            f'{row["rank"]}.' if 'rank' in row else '')
+        nan = float('nan')
+        ear = row.get('donor_ear') or ('same' if per_ear else '-')
+        print(f'{arrow:>4}{row["donor"]:>14} {ear:>6} {row["r_match"]:8.2f} '
+              f'{row["ridge_slope"]:+8.2f} {row.get("donor_strength", nan):9.1f} '
+              f'{row.get("cue_gradient", nan):6.2f} '
+              f'{row.get("cue_monotonicity", nan):+6.2f} '
+              f'{row.get("cue_decodability", nan):6.2f} '
+              f'{mark:>6}')
+    if reference is not None and len(reference):
+        quartiles = numpy.percentile(reference, [25, 50, 75])
+        print(f'\nbetween-donor r_match, the yardstick '
+              f'(n={len(reference)} pairs, listener excluded): '
+              f'min {reference.min():.3f} | Q1 {quartiles[0]:.3f} | '
+              f'median {quartiles[1]:.3f} | Q3 {quartiles[2]:.3f} | '
+              f'max {reference.max():.3f}')
+        print('target a donor near the middle of that spread — Trapeau found '
+              'stronger disruption gave slower adaptation, Van Wanrooij found '
+              'weaker disruption gave none')
+        best = max(row['r_match'] for row in rows)
+        below = float((reference < best).mean())
+        if below < 0.25:
+            print(f'!! this listener is UNLIKE the pool: the best available '
+                  f'r_match ({best:.2f}) sits at the {100*below:.0f}th '
+                  f'percentile of person-to-person differences. Every donor '
+                  f'perturbs them harder than two arbitrary people differ. '
+                  f'Check that their own recording was built on the same '
+                  f'reference era as the pool before reading this as anatomy.')

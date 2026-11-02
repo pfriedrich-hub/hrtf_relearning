@@ -10,6 +10,7 @@ COMMANDS = {
 
 BUILTINS = {
     "backend": "report the matplotlib backend and open a test plot window",
+    "restore": "rebuild a broken subject pkl from its JSON:  hrtf restore LP",
 }
 
 
@@ -55,6 +56,16 @@ def main():
     if cmd == "backend":
         sys.exit(_backend())
 
+    if cmd == "restore":
+        args = sys.argv[2:]
+        ids = [a for a in args if not a.startswith("-")]
+        if len(ids) != 1:
+            print("usage: hrtf restore <subject id> [--force]")
+            sys.exit(1)
+        from hrtf_relearning.experiment.analysis.subject.restore_from_json import (
+            restore_subject)
+        sys.exit(restore_subject(ids[0], force="--force" in args))
+
     if cmd not in COMMANDS:
         print(f"Unknown command: {cmd}")
         sys.exit(1)
@@ -63,3 +74,7 @@ def main():
     sys.argv = [cmd] + sys.argv[2:]
 
     runpy.run_module(COMMANDS[cmd], run_name="__main__")
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,1117 @@
+"""
+learning_transfer.py
+
+Adaptation-transfer experiment protocol — DONOR-DETAIL cue manipulation.
+
+This is the current protocol. The previous version, which translated the
+participant's own spectral detail along the ERB axis, is kept for reference at
+experiment/learning_transfer/dev/old/learning_transfer_erbshift.py; design, grid, counterbalancing
+and the final-day 2x2 are unchanged from it, only the cue manipulation differs.
+Instead of moving the participant's own detail, it is REPLACED with a donor's:
+
+
+    log|H_modified(direction)| = envelope_4( log|H_own| ) + detail( log|H_donor| )
+
+with the participant's own phase and own per-direction broadband level, so ITD
+and broadband ILD are exactly as measured and only the spectral shape above the
+envelope scale changes. See experiment.learning_transfer.donor_detail.
+
+WHY NOT THE ERB SHIFT. A constant translation keeps the participant's own
+pattern intact, so the existing spectral-to-spatial map can still match each
+modified DTF to one of its own templates and read out a coherent — merely
+displaced — elevation. Van Wanrooij & Van Opstal (2005) saw exactly that: the
+listeners whose molds only shifted the main notch showed a bias with preserved
+gain and never adapted over the whole study, while those whose spectral cues
+were decorrelated did adapt. Measured here, a 1-ERB shift leaves the
+own-vs-modified correlation ridge at slope ~1.0, i.e. fully absorbable as a
+bias; a donor's detail collapses it.
+
+DONOR SELECTION is the only thing that varies between participants, and it is
+made by a fixed rule in experiment.learning_transfer.donor_selection — see
+DONOR_POOL / TARGET_R_MATCH / TOLERANCE / MAX_RIDGE_SLOPE there, and
+docs/methods_donor_detail.md for the paragraph this becomes in a paper.
+Everything else (n_keep, band, filter bank, target) is identical for everyone.
+
+DONOR SWAPS. The rule produces a ranked shortlist, not a single name, so a
+participant who is at floor with the first donor can be moved to the second
+without inventing a criterion on the spot. Stage the alternates before the
+session with prepare_donor_shortlist(), swap with use_donor(rank=1, reason=...).
+WHERE THE DONOR LIVES. The choice is made once, on day 1, and written into the
+participant's own file as subject.active_donor (data/results/<id>/<id>.pkl, and
+<id>.json alongside it) -- by prepare_donor_shortlist() and build_donor_sofa(),
+which leave rank 0 active, or by use_donor() when it is deliberately changed.
+Every later session reads it back from there when the config cell runs, so the
+participant is always on the donor they were actually trained on rather than
+whatever the rule ranks first once the pool has grown. Nothing in this file has
+to be edited between sessions and nothing has to be remembered. Only the current
+donor is kept in the record; the candidate ranking behind the choice is embedded
+in the composite SOFA as GLOBAL_ModificationParams.
+
+The monaural ear treatment is orthogonal and selectable via OTHER_EAR
+('flat' | 'envelope' | 'native'); which one to use is still an open question,
+tested per participant by the ladder in experiment/learning_transfer/dev/ladder.py.
+
+Counterbalancing is read from learning_transfer_block_order.csv IN THIS FOLDER.
+Write each subject's id into the 'subject' column before running.
+
+RUN ORDER. Cells top to bottom are the protocol proper, in the order they are
+performed:
+    day 1            status -> native reference -> build donor -> baselines
+                     A/B/C/D, in the subject's final-day order
+    adaptation days  PRE test -> train -> POST test   (three cells, in order)
+    final day        the counterbalanced 2x2
+Everything under MISC at the bottom is diagnostic and is NOT run as a matter of
+course -- the externalization ladder, the cepstral-split QC, the n_keep=8 build
+and the other-ear probe live there.
+
+The OS master volume is forced to OS_VOLUME (50%) at the start of every
+localization block and every training run, because the pybinsim gain was
+matched to the dome at that setting. Off Windows this is a logged no-op.
+
+Run cell by cell (# %%) in an IDE/console -- do NOT run top-to-bottom.
+
+------------------------------------------------------------------------------
+EDIT THE CONFIG BLOCK BELOW PER PARTICIPANT.
+------------------------------------------------------------------------------
+"""
+
+SUBJECT_ID = ("JO")   # put this id into an open row of learning_transfer_block_order.csv
+
+# %% imports and config #------------------------------------------------------
+import csv  # only for the block-order table below; the modification
+            # workflow now lives in donor_modification.py next door
+import json
+import os
+import subprocess
+import sys
+import slab
+import hrtf_relearning as hr
+from hrtf_relearning.experiment.localization.Localization_AR import Localization
+from hrtf_relearning.experiment.learning_transfer import donor_selection as selection
+from hrtf_relearning.experiment.protocols.protocol_helpers import (
+    collect_demographics, collect_externalization_rating, externalization_check,
+    externalization_ladder, review_block)
+from hrtf_relearning.experiment.misc.system_volume import set_windows_volume
+from hrtf_relearning.experiment.learning_transfer.donor_modification import DonorModification
+from hrtf_relearning.experiment.learning_transfer import donor_screening
+from hrtf_relearning.hrtf.modify.plot_compare import plot_split_qc
+from hrtf_relearning.utils import paths
+
+CSV_PATH = hr.PATH / "experiment" / "learning_transfer" / "learning_transfer_block_order.csv"
+
+
+def _load_subject_params(subject_id, csv_path=CSV_PATH):
+    """Look up trained_ear and final block order for this subject."""
+    with open(csv_path, newline="") as f:
+        for row in csv.DictReader(f):
+            if row.get("subject", "").strip() == subject_id:
+                ear   = row["trained_ear"].strip()
+                order = [c.strip() for c in row["block_order"].split("-")]
+                return ear, order
+    raise ValueError(
+        f"Subject '{subject_id}' not found in the 'subject' column of\n  {csv_path}\n"
+        f"Add its id to a row there (replacing an '(assign)' cell) before running.")
+
+
+TRAINED_EAR, FINAL_ORDER = _load_subject_params(SUBJECT_ID)
+
+NATIVE_SOFA = f"{SUBJECT_ID}"      # individual measured HRTF
+
+# The donor is chosen ONCE, on day 1, by prepare_donor_shortlist() or
+# build_donor_sofa() -- rank 0 unless use_donor() is called deliberately -- and
+# written into the participant's own file (subject.active_donor in
+# data/results/<id>/<id>.pkl, mirrored into <id>.json). Every later session
+# reads it back from there when `donor` is constructed a few cells down. There
+# is nothing to set here and nothing to remember between sessions.
+#
+# DONOR_OVERRIDE is an escape hatch for rebuilding a subject whose record was
+# lost, or for re-deriving an old composite in analysis. Leave it None to run
+# the experiment.
+DONOR_OVERRIDE = None
+DONOR_ID = None                    # resolved from the subject file below
+DONOR_EAR = None                   # which of the donor's ears supplies the
+                                   # detail; None = the same side as the
+                                   # trained ear, i.e. every pre-2026-09-17
+                                   # build. Set by _sync from the record.
+
+# Set by the day-1 SCREEN cell. Pre-declared so the selection cell below reads
+# "no screen yet" instead of raising NameError -- that NameError is what made
+# skipping the screen look like a broken cell rather than a missing step.
+screen_rows = None
+MODIFIED_SOFA = None               # <SUBJECT_ID>_donor_<DONOR_ID>, set below
+
+HP = "DT990"
+
+# --- training breaks ---------------------------------------------------------
+# Games per block within one training run. After every BREAK_EVERY-th game the
+# game UI shows the scoreboard as usual and then asks for a short break before
+# the next block, so a long sitting is not left to the participant to pace.
+# 0 disables it.
+BREAK_EVERY = 5
+
+# --- what the non-listening ear gets in monaural blocks ----------------------
+# 'flat' | 'envelope' | 'native' -- hrtf.processing.{flatten,envelope,native}
+OTHER_EAR = "envelope"
+ENV_NKEEP = selection.N_KEEP
+PROBE_OTHER_EAR = "envelope"
+
+# --- which build this subject's filters were made with -----------------------
+# 'v1'  Donor detail applied to the finished 475-direction SOFA; the monaural
+#       reduction applied again at RENDER time by hrtf2binsim. Every build
+#       before 2026-08.
+# 'v2'  Donor detail AND the monaural reduction applied to the 19 MEASURED
+#       az=0 DTFs, then re-expanded through the spherical head model
+#       (hrtf.processing.midline). Three things follow: the ITD comes from the
+#       model's interaural phase so native and modified sets share it exactly;
+#       the envelope is fitted to the pinna response rather than to the pinna
+#       response times the head shadow; and it is averaged over elevation, so
+#       the untrained ear carries no elevation-dependent spectral structure at
+#       all -- measured, v1 left about half of it there.
+#
+# Subjects already run stay on v1. The change alters the untrained ear, and
+# swapping builds mid-cohort would put a discontinuity in the middle of their
+# own pre/post comparison, which is worse than the bias itself.
+LEGACY_V1_SUBJECTS = ("FS", "GS", "IR", "TS", "PF")
+PIPELINE = "v1" if SUBJECT_ID in LEGACY_V1_SUBJECTS else "v2"
+
+# --- shared localization sampling grid (do not change) -----------------------
+SECTOR_SIZE        = (7, 14)
+ELEVATION_RANGE    = (-35, 35)
+TARGETS_PER_SECTOR = 3
+MIN_DISTANCE       = 20
+GAIN               = 0.2
+# Every block in this file inherits STIM, and that is the point: baselines,
+# daily tests and the final 2x2 must all be measured with the SAME stimulus or
+# the change scores are meaningless. What must never happen is a mixture within
+# a subject.
+#   !! TS (10.08) and IR (11.08) had their day-1 blocks run with STIM='uso'
+#      because this was left set to 'uso'. See docs/stimulus_spectral_variation.md.
+#
+# 'ripple' since 2026-08-17. Plain noise has essentially no across-trial source
+# variation (0.4 dB SD at 1/6 oct against a ~3.3 dB elevation cue), so the sound
+# at the eardrum carries a fixed map from absolute spectrum to elevation and the
+# task can be solved by template matching, without ever separating source from
+# filter. That cannot distinguish a spectral-to-spatial recalibration from a
+# learned timbre->elevation lookup, which is what FS reported doing. The test
+# stimulus therefore varies its source spectrum on every trial, in EVERY block,
+# so the measure is source-invariant throughout rather than only on the last day.
+# Training follows TRAINING_STIM below (ripple since 2026-09-30; noise before).
+#
+# Subjects run before this date were tested on noise. They are pilots and are
+# not pooled with what follows.
+STIM               = "ripple"
+# Envelope parameters for STIM='ripple'. Empty dict = inherit the defaults in
+# localization_helpers.stimulus (the single source of truth); set rms_tilt here
+# only to override for a specific cohort, and it is recorded per block in
+# sequence.stim_settings either way.
+#
+# DEPTH SETTLED 2026-09-28 (Paul): rms_tilt=3, deliberately NOT the module
+# default. Measured over 400 draws of shape_from_coefficients:
+#
+#   rms_tilt=3  ->  3.00 dB envelope SD, peak-to-trough 10.1 median / 12.6 max
+#   rms_tilt=8  ->  8.00 dB envelope SD, peak-to-trough 27.0 median / 33.6 max
+#
+# Macpherson & Middlebrooks (2003) see no degradation below ~20 dB
+# peak-to-trough, so the default sits above it and rms_tilt=3 sits at half it,
+# worst draw included. The point is to make the source vary enough that the
+# elevation cue cannot be read as a fixed absolute spectrum -- 3 dB of source
+# variation against 2.7-4.0 dB of cue detail SD does that -- NOT to run
+# participants at the edge of degradation.
+#
+# HRIR_Recording.py carries the same STIM and STIM_SETTINGS. Keep them in step:
+# it runs the day-1 dome block and the day-1 AR check, and a mismatch puts a
+# stimulus difference inside the AR-vs-dome comparison the laser correction uses.
+STIM_SETTINGS      = {'rms_tilt': 3}
+# Training stimulus (Training_AR). 'ripple' = the localization ripple at
+# STIM_SETTINGS, one new source spectrum per trial shared by all its pulses and
+# the target sound, so training cannot be solved by learning the timbre of a
+# fixed stimulus (added 2026-09-30, on trial). Set to 'noise' to go back to the
+# fixed-spectrum pink noise used by every subject before that date. Recorded
+# per trial as trial['stim'] / trial['stim_params'].
+TRAINING_STIM      = STIM
+MIDLINE_TOL        = 1.0
+FULL_FIELD = (-35, 35)
+
+if TRAINED_EAR == "left":
+    UNTRAINED_EAR, TRAINED_HEMI, MIRRORED_HEMI = "right", (-35, 0), (0, 35)
+elif TRAINED_EAR == "right":
+    UNTRAINED_EAR, TRAINED_HEMI, MIRRORED_HEMI = "left", (0, 35), (-35, 0)
+else:
+    raise ValueError("TRAINED_EAR must be 'left' or 'right'.")
+
+
+# The ladder compares two composite strengths, so more than one modified SOFA
+# can exist per subject. n_keep=N_KEEP (4) keeps the plain name; anything else
+# gets an _n<k> suffix, so the training/testing SOFA is never ambiguous.
+LADDER_N_KEEP = (4, 8)
+
+
+def loc_settings(azimuth_range, exclude_midline=False):
+    return {
+        "kind": "sectors",
+        "azimuth_range": azimuth_range,
+        "elevation_range": ELEVATION_RANGE,
+        "targets_per_speaker": 3,
+        "targets_per_sector": TARGETS_PER_SECTOR,
+        "min_distance": MIN_DISTANCE,
+        "gain": GAIN,
+        "stim": STIM,
+        "stim_settings": STIM_SETTINGS,
+        "sector_size": SECTOR_SIZE,
+        "replace": False,
+        "exclude_midline": exclude_midline,
+        "midline_tol": MIDLINE_TOL,
+    }
+
+# ---------------------------------------------------------------------------
+# Donor manipulation
+#
+# The machinery moved to donor_modification.DonorModification (next door) on
+# 2026-08-19 -- it was ~550 lines of module-level functions reading nine module
+# globals and writing three of them back with `global`, which is state that
+# belongs to a participant, not to a module.
+#
+# The thin wrappers below exist so every cell in this file, and every habit
+# built around them, keep working unchanged. `donor` is the object; reach for
+# it directly (donor.shortlist(), donor.build(), donor.discard_unused()) in
+# anything new.
+# ---------------------------------------------------------------------------
+
+donor = DonorModification(
+    SUBJECT_ID,
+    trained_ear=TRAINED_EAR,
+    native_sofa=NATIVE_SOFA,
+    other_ear=OTHER_EAR,
+    env_n_keep=ENV_NKEEP,
+    pipeline=PIPELINE,
+    donor_id=DONOR_OVERRIDE,
+    hp=HP,
+)
+
+
+def _sync():
+    """Mirror the object's active donor back onto the module globals.
+
+    DONOR_ID / MODIFIED_SOFA are read by phases() and printed in status lines,
+    and re-running the config cell resets them. `donor` is the authority; these
+    two follow it.
+    """
+    global DONOR_ID, DONOR_EAR, MODIFIED_SOFA
+    DONOR_ID, MODIFIED_SOFA = donor.donor_id, donor.modified_sofa
+    DONOR_EAR = donor.donor_ear
+
+
+def hrir_settings(sofa_name, ear=None, mirror=False, other_ear=None):
+    return donor.hrir_settings(sofa_name, ear=ear, mirror=mirror,
+                               other_ear=other_ear)
+
+
+def donor_shortlist(refresh=False, quiet=False):
+    return donor.shortlist(refresh=refresh, quiet=quiet)
+
+
+def build_donor_sofa(overwrite=False, show_qc=True, n_keep=None, rank=0,
+                     donor_id=None, donor_ear=None, set_active=True,
+                     quiet=False, override_reason=None):
+    # override_reason is accepted so old cells still run; nothing is blocked.
+    if set_active:
+        row = donor._pick(donor.shortlist(quiet=True), rank=rank,
+                          donor_id=donor_id, donor_ear=donor_ear)
+        _screen_note(row)
+    out = donor.build(overwrite=overwrite, show_qc=show_qc, n_keep=n_keep,
+                      rank=rank, donor_id=donor_id, donor_ear=donor_ear,
+                      set_active=set_active, quiet=quiet)
+    _sync()
+    return out
+
+
+def prepare_donor_shortlist(n=None, mirrored=True, overwrite=False, screen=False):
+    n = SCREEN_N if n is None else n
+    out = donor.prepare_shortlist(n=n, mirrored=mirrored, overwrite=overwrite,
+                                  screen=screen)
+    _sync()
+    return out
+
+
+def use_donor(rank=None, donor_id=None, donor_ear=None,
+              reason="seems learnable",
+              override_reason=None):
+    # Never blocks. A donor with no screen block on file gets a warning and a
+    # note in the reason. override_reason is kept so old cells still run.
+    row = donor._pick(donor.shortlist(quiet=True), rank=rank,
+                      donor_id=donor_id, donor_ear=donor_ear)
+    if override_reason:
+        reason = f"{reason} [override: {override_reason}]".strip()
+    reason = _screen_note(row, reason)
+    out = donor.use_donor(rank=rank, donor_id=donor_id, donor_ear=donor_ear,
+                          reason=reason)
+    donor_screening.record_choice(SUBJECT_ID, row["donor"], row.get("donor_ear"))
+    _sync()
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Day-1 donor screening -- see donor_screening for why this REJECTS and does
+# not rank, and where every threshold comes from.
+# ---------------------------------------------------------------------------
+
+SCREEN_SECTOR_SIZE = (7, 10)    # -> 5 azimuth x 7 elevation sectors over
+                                # TRAINED_HEMI, i.e. 35 trials at tps=1, ~3 min.
+                                # Same azimuth columns as baseline A's (7,14);
+                                # finer in elevation so 35 trials still spread
+                                # over 7 elevation rows for the gain fit.
+                                # (Before 2026-10-07: (10,14) over FULL_FIELD,
+                                # binaural.)
+SCREEN_TPS = 1
+
+# Why 35 and not 50 or 75. The azimuth gate — the only one with a demonstrated
+# effect size — is already saturated: at n=35 the azimuth-gain SD is 0.058, so
+# a healthy donor is falsely rejected by the 0.80-1.20 band 0.06% of the time
+# and LS's 1.38 or NR's 1.60 is caught every time. The impairment gate is weak
+# at ANY feasible length (P(missing an AS-like +2.5 deg against the +6 floor) =
+# 16% at n=35, 12% at n=50, 9% at n=75, 2% at n=400), so buying trials does not
+# fix it — the MARGINAL verdict does, by sending borderline calls to a re-check
+# against baseline A. 35 keeps the grid symmetric about the midline
+# (-30..+30 in 10 deg steps), which 30 trials would not.
+# No externalization ratings on the day-1 baselines A/B/C/D (Paul, 2026-10-13):
+# the donor screen already asks for one on the same composite, so a second
+# rating adds nothing. The native anchor still defines the top of the scale.
+
+SCREEN_N = 6       # donors staged AND screened by default (Paul, 2026-10-06).
+                   # ~3 min and 35 trials of donor exposure each before baseline A.
+
+
+def screen_loc_settings():
+    """The TEST CONDITION's geometry: trained hemifield, midline excluded.
+
+    Changed 2026-10-07 (Paul, after AB lost externalization on the composite he
+    had been screened binaurally on). The screen used to play the binaural
+    composite over the full field so it matched `native` like-for-like; it now
+    plays what baseline A and the daily test play, so the EG, polar error and
+    externalization rating it reports are the ones the participant will
+    actually start from. Only the grid is coarser (35 vs 75 trials).
+    """
+    settings = loc_settings(TRAINED_HEMI, exclude_midline=True)
+    settings.update(sector_size=SCREEN_SECTOR_SIZE,
+                    targets_per_sector=SCREEN_TPS)
+    return settings
+
+
+def screen_hrir_settings(donor_id, donor_ear=None):
+    """hrir_settings for one screen block = baseline A's renderer for that donor.
+
+    The monaural composite on TRAINED_EAR with the protocol's OTHER_EAR
+    treatment, un-mirrored. prepare_donor_shortlist() already builds this
+    database for every staged donor, so the binaural `screen=True` builds are
+    no longer needed.
+    """
+    return hrir_settings(donor.modified_name(donor_id, donor_ear=donor_ear),
+                         ear=TRAINED_EAR)
+
+
+def _settings_of(seq):
+    s = getattr(seq, "settings", None) or {}
+    return s if isinstance(s, dict) else {}
+
+
+def load_native(quiet=False, subject=None):
+    """The day-1 native reference block, read from the subject file.
+
+    Own HRTF, binaural, full field, finished, longer than an anchor (>12
+    trials); the most recent one if there are several. Every localization
+    block is written to disk trial by trial, so this survives console restarts
+    and crashes -- there is no `native` variable to keep alive.
+    Returns the sequence, or None if there is none on file.
+    """
+    subject = subject or hr.Subject(SUBJECT_ID)
+    hits = [(name, seq) for name, seq in subject.localization.items()
+            if getattr(seq, "hrir", None) == NATIVE_SOFA
+            and getattr(seq, "ear", None) is None
+            and getattr(seq, "finished", False)
+            and tuple(_settings_of(seq).get("azimuth_range") or ()) == tuple(FULL_FIELD)
+            and int(getattr(seq, "n_trials", 0) or 0) > 12]
+    if not hits:
+        return None
+    name, seq = hits[-1]
+    if not quiet:
+        older = f"  ({len(hits) - 1} older ignored)" if len(hits) > 1 else ""
+        print(f"native reference: {name}  (n={seq.n_trials}){older}")
+    return seq
+
+
+def screen_block(donor_id, donor_ear=None, subject=None):
+    """The latest FINISHED screen block for this donor ear, or None.
+
+    Recognised by the tag screen_donors() puts on the sequence
+    (seq.phase == "screen", seq.screen_donor), NOT by the HRIR name: the screen
+    now plays the same composite as baseline A, so the name alone cannot tell
+    them apart. Half-run blocks never count. This IS the screen record --
+    nothing else is stored.
+
+    Binaural screen blocks from before 2026-10-07 carry no tag and are not
+    found here; they stay on disk untouched.
+    """
+    subject = subject or hr.Subject(SUBJECT_ID)
+    want = dict(donor=selection.resolve_donor_id(donor_id), donor_ear=donor_ear)
+    hits = [seq for seq in subject.localization.values()
+            if getattr(seq, "phase", None) == "screen"
+            and getattr(seq, "screen_donor", None) == want
+            and getattr(seq, "finished", False)]
+    return hits[-1] if hits else None
+
+
+def rate_screen_block(donor_id, donor_ear=None):
+    """Add or redo the externalization rating of a finished screen block.
+
+    For the case where the console died between the end of a block and its
+    rating. Asks the same 0-10 question and stores it on that block.
+    """
+    subject = hr.Subject(SUBJECT_ID)
+    seq = screen_block(donor_id, donor_ear, subject)
+    if seq is None:
+        print(f"no finished screen block on file for {donor_id} ({donor_ear})")
+        return None
+    raw = None
+    while raw is None:
+        try:
+            raw = float(input(f"Externalization for {seq.name} (0-10): ").strip())
+        except ValueError:
+            print("Please enter a number 0-10.")
+    subject.localization[seq.name].externalization_rating = raw
+    subject.write()
+    print(f"Recorded: externalization={raw} on {seq.name}")
+    return raw
+
+
+def _label(row):
+    ear = row.get("donor_ear")
+    return f"{row['donor']}({ear} ear)" if ear else row["donor"]
+
+
+def show_screen():
+    """Print the screen table, computed from the blocks on disk. Run any time.
+
+    One row per shortlist candidate that has a finished screen block, in rank
+    order, measured against the native block on disk. Returns the rows, and
+    stores them on the subject record (Subject.donor_screen) -- rerun it on an
+    older subject to fill that field in.
+    """
+    from hrtf_relearning.experiment.analysis.localization.localization_analysis \
+        import block_summary
+    native = load_native()
+    if native is None:
+        print("no native reference on file -- run the native reference cell")
+        return []
+    ref = block_summary(native)
+    reference = dict(pe=ref["polar_error"], eg=ref["elevation_gain"],
+                     az_rmse=ref["azimuth_rmse"], n=ref["n"])
+    subject = hr.Subject(SUBJECT_ID)
+    rows, blocks = [], {}
+    for row in sorted(donor.shortlist(quiet=True), key=lambda r: r["rank"]):
+        seq = screen_block(row["donor"], row.get("donor_ear"), subject)
+        if seq is None:
+            continue
+        m = block_summary(seq)
+        blocks[(row["donor"], row.get("donor_ear"))] = seq.name
+        rows.append(dict(donor=row["donor"], donor_ear=row.get("donor_ear"),
+                         rank=row["rank"], n=m["n"],
+                         pe=m["polar_error"], eg=m["elevation_gain"],
+                         az_gain=m["azimuth_gain"], az_rmse=m["azimuth_rmse"],
+                         ext=getattr(seq, "externalization_rating", None)))
+    if not rows:
+        print("no finished screen blocks on file yet")
+        return []
+    out = donor_screening.measure(reference, rows)
+    donor_screening.report(out, reference)
+    # keep the table on the subject record too (Subject.donor_screen); the
+    # tagged blocks stay the primary record, this never raises
+    donor_screening.record_screen(SUBJECT_ID, native.name, reference, out,
+                                  blocks)
+    return out
+
+
+def screen_donors(subject=None, native=None, n=SCREEN_N, shuffle=True, review=True):
+    """Screen the top `n` shortlist donors, then print the table.
+
+    One block per donor ear in the TEST CONDITION -- monaural composite,
+    trained hemifield (35 trials) -- followed by the 0-10 externalization
+    rating. Donors that
+    already have a finished screen block on disk are SKIPPED, so after a crash
+    or console restart just run this again: only what is missing runs. A block
+    interrupted half-way does not count and is run again.
+
+    `subject` and `native` are accepted so old cells still run, and ignored:
+    the subject and the native reference are read from disk.
+
+    Presentation order is shuffled deterministically from the subject id
+    (reproducible, and rank 0 is not always heard first). Nothing is selected:
+    read the table, then use_donor(donor_id=..., donor_ear=..., reason=...).
+    To screen more candidates later: screen_donors(n=8) (stage them first).
+
+    `review=True` pauses after every donor with that block's plots on screen:
+    press n in the plot window for the next donor, q to stop there. Rerunning
+    later picks up the donors that did not run. `review=False` runs straight
+    through.
+    """
+    import random
+    import matplotlib.pyplot as plt
+    if load_native(quiet=True) is None:
+        raise RuntimeError("no native reference on file for "
+                           f"{SUBJECT_ID} -- run the native reference cell first")
+    subject = hr.Subject(SUBJECT_ID)
+    candidates = sorted(donor.shortlist(quiet=True), key=lambda r: r["rank"])[:n]
+    todo = [r for r in candidates
+            if screen_block(r["donor"], r.get("donor_ear"), subject) is None]
+    done = [_label(r) for r in candidates if r not in todo]
+    if done:
+        print(f"already screened (skipped): {', '.join(done)}")
+    if not todo:
+        print("nothing left to screen")
+        return show_screen()
+    order = list(todo)
+    if shuffle:
+        random.Random(SUBJECT_ID).shuffle(order)
+    print(f"\nscreening {len(order)} donor ears, order: "
+          f"{', '.join(_label(r) for r in order)}")
+    for i_row, row in enumerate(order):
+        ear = row.get("donor_ear")
+        print("\n" + "=" * 70)
+        print(f"SCREEN {i_row + 1}/{len(order)}: {_label(row)}  (rank {row['rank']}) "
+              f"-- {donor.modified_name(row['donor'], donor_ear=ear)} "
+              f"on the {TRAINED_EAR} ear, {TRAINED_HEMI}")
+        print("=" * 70)
+        _fix_output_level()
+        test = Localization(subject,
+                            screen_hrir_settings(row["donor"], donor_ear=ear),
+                            loc_settings=screen_loc_settings())
+        # the tag is what screen_block() and the analysis filter read: this
+        # block has the same HRIR, ear and hemifield as baseline A
+        test.sequence.phase = "screen"
+        test.sequence.screen_donor = dict(donor=row["donor"], donor_ear=ear)
+        figs_before = set(plt.get_fignums())
+        test.run()     # writes the subject file trial by trial
+        print(f"Done: {test.filename}")
+        collect_externalization_rating(test)
+        if review and i_row < len(order) - 1:
+            new_figs = sorted(set(plt.get_fignums()) - figs_before)
+            if not review_block(new_figs, label=f"screen {_label(row)} "
+                                f"({i_row + 1}/{len(order)})"):
+                print(f"screen stopped; not run: "
+                      f"{', '.join(_label(r) for r in order[i_row + 1:])}")
+                break
+    return show_screen()
+
+
+#: Marks of a `reason` left as the choose-the-donor cell's template. Paul does
+#: not write prose at the rig (2026-10-15) and should not be nagged for it, so
+#: an unfilled reason is DROPPED rather than recorded: the numbers below are a
+#: better record than "EG ... (..% retained)" ever was.
+_UNFILLED_REASON_MARKS = ("...", "..%", "+..", "??")
+
+
+def _reason_is_unfilled(reason):
+    text = (reason or "").strip()
+    return (not text
+            or text == "seems learnable"          # the function's own default
+            or any(mark in text for mark in _UNFILLED_REASON_MARKS))
+
+
+def _screen_facts(row):
+    """The chosen donor's own screen numbers as record text, or "".
+
+    Goes through `donor_screening.measure` on the same block `show_screen`
+    tabulates, so this string carries exactly the numbers that were on screen
+    when the choice was made -- no second definition of "retained" or
+    "impairment" to drift from the table. Never raises and never blocks: if
+    anything is missing the reason simply carries no numbers.
+    """
+    try:
+        from hrtf_relearning.experiment.analysis.localization.localization_analysis \
+            import block_summary
+        native = load_native()
+        seq = screen_block(row["donor"], row.get("donor_ear"))
+        if native is None or seq is None:
+            return ""
+        ref, m = block_summary(native), block_summary(seq)
+        out = donor_screening.measure(
+            dict(pe=ref["polar_error"], eg=ref["elevation_gain"],
+                 az_rmse=ref["azimuth_rmse"], n=ref["n"]),
+            [dict(donor=row["donor"], donor_ear=row.get("donor_ear"),
+                  rank=row["rank"], n=m["n"], pe=m["polar_error"],
+                  eg=m["elevation_gain"], az_gain=m["azimuth_gain"],
+                  az_rmse=m["azimuth_rmse"])])[0]
+        import math
+        retained = out.get("eg_retained")
+        kept = (f"{retained * 100:.0f}% retained"
+                if retained is not None and math.isfinite(retained)
+                else "retained n/a")
+        return (f"[screen rank {out['rank']}: EG {out['eg']:.2f} ({kept}), "
+                f"PE {out['pe']:.1f} deg, impairment {out['impairment']:+.1f} "
+                f"deg, n={out['n']}]")
+    except Exception as exc:                      # provenance must never block
+        print(f"  [!] could not read the screen numbers for the record "
+              f"({type(exc).__name__}: {exc})")
+        return ""
+
+
+def _screen_note(row, reason=""):
+    """Build what gets stored as WHY this donor was chosen. Never blocks.
+
+    `reason` is the only record of this choice -- the screen record itself is
+    just the tagged sequences, and for a non-default rank nothing else says why
+    that rank was taken. Three things can happen to it:
+
+    no screen block on file
+        warned about, and said so on the record.
+
+    the cell's template, unedited
+        dropped. It commits verbatim otherwise -- donor_id="??" fails loudly
+        but free text does not -- and reads like a justification with the
+        numbers missing, which is harder to spot later than an empty field.
+        AB (2026-10-08) and CO (2026-10-14) are both stored that way.
+
+    anything else
+        kept as written.
+
+    In every case the donor's own screen numbers are appended when they can be
+    read, so the record stands on the measurement whether or not anyone typed
+    a sentence.
+    """
+    notes = []
+    if screen_block(row["donor"], row.get("donor_ear")) is None:
+        print(f"  [!] {_label(row)} has no finished screen block on file for "
+              f"{SUBJECT_ID} -- committing anyway; noted in the reason")
+        notes.append("[no screen block on file]")
+    else:
+        facts = _screen_facts(row)
+        if facts:
+            notes.append(facts)
+    if _reason_is_unfilled(reason):
+        reason = ""
+    return " ".join([reason, *notes]).strip()
+
+
+def load_existing_donor():
+    out = donor.load_existing()
+    _sync()
+    return out
+
+
+def discard_unused_donors(dry_run=True, keep=None):
+    return donor.discard_unused(dry_run=dry_run, keep=keep)
+
+
+def show_donor_log():
+    return donor.show_log()
+
+
+# Take whatever the participant's file says into the module globals, so every
+# cell below is on this subject's donor the moment the config cell has run --
+# no build, no load_existing_donor(), no DONOR_ID to remember. Before day 1
+# there is nothing recorded yet and both stay None, which is what the build
+# cell is for.
+_sync()
+if DONOR_ID and donor.donor_from_record:
+    _sofa = paths.SOFA_DIR / SUBJECT_ID / f"{MODIFIED_SOFA}.sofa"
+    print(f"donor {DONOR_ID} (from {SUBJECT_ID}'s subject file) -> "
+          f"{MODIFIED_SOFA}" + ("" if _sofa.exists() else "   [!] SOFA MISSING"))
+elif DONOR_ID:
+    print(f"donor {DONOR_ID} (DONOR_OVERRIDE) -> {MODIFIED_SOFA}")
+else:
+    print(f"no donor recorded for {SUBJECT_ID} yet -- run the day-1 build cell")
+
+
+# ---------------------------------------------------------------------------
+# Phases
+# ---------------------------------------------------------------------------
+
+def phases():
+    """Built on demand so MODIFIED_SOFA is picked up after the build cell."""
+    return {
+        "native":     ("Native reference",         "Day 1", NATIVE_SOFA,   None,        False, FULL_FIELD,    "binaural, native HRTF, full field"),
+        "baseline_A": ("Baseline A: trained/same", "Day 1", MODIFIED_SOFA, TRAINED_EAR, False, TRAINED_HEMI,  "naive trained ear, modified filter (matches final A)"),
+        "baseline_B": ("Baseline B: trained/mirr", "Day 1", MODIFIED_SOFA, TRAINED_EAR, False, MIRRORED_HEMI, "naive trained ear, modified filter, mirrored locations (matches final B)"),
+        "baseline_C": ("Baseline C: untrnd/same",  "Day 1", MODIFIED_SOFA, TRAINED_EAR, True,  TRAINED_HEMI,  "naive untrained ear, MIRRORED modified filter, same locations (matches final C)"),
+        "baseline_D": ("Baseline D: untrnd/mirr",  "Day 1", MODIFIED_SOFA, TRAINED_EAR, True,  MIRRORED_HEMI, "naive untrained ear, MIRRORED modified filter (matches final D)"),
+        "daily":      ("Daily training test",      "Adaptation days", MODIFIED_SOFA, TRAINED_EAR, False, TRAINED_HEMI,  "monaural trained ear, trained hemifield"),
+        "A":          ("Final A: trained/same",    "Final day", MODIFIED_SOFA, TRAINED_EAR, False, TRAINED_HEMI,  "trained ear, same locations (baseline retest)"),
+        "B":          ("Final B: trained/mirr",    "Final day", MODIFIED_SOFA, TRAINED_EAR, False, MIRRORED_HEMI, "trained ear, mirrored locations"),
+        "C":          ("Final C: untrnd/same",     "Final day", MODIFIED_SOFA, TRAINED_EAR, True,  TRAINED_HEMI,  "untrained ear (mirrored modified HRIR), same locations"),
+        "D":          ("Final D: untrnd/mirr",     "Final day", MODIFIED_SOFA, TRAINED_EAR, True,  MIRRORED_HEMI, "untrained ear (mirrored modified HRIR), mirrored locations  [MAIN]"),
+    }
+
+
+def _n_sectors(rng, size):
+    import numpy
+    return len(numpy.arange(rng[0] + size / 2, rng[1], size))
+
+
+def _est_trials(az_range):
+    return (_n_sectors(az_range, SECTOR_SIZE[0])
+            * _n_sectors(ELEVATION_RANGE, SECTOR_SIZE[1]) * TARGETS_PER_SECTOR)
+
+
+def _describe(key):
+    label, when, sofa, ear, mirror, az, desc = phases()[key]
+    midline = "excluded" if tuple(az) != tuple(FULL_FIELD) else "kept"
+    other = f"{OTHER_EAR}" if ear else "-"
+    return (f"{label}  [{when}]\n      {desc}\n"
+            f"      SOFA={sofa}  ear={ear or 'binaural'}  other ear={other}  mirror={mirror}\n"
+            f"      azimuth={az}  elevation={ELEVATION_RANGE}  sector={SECTOR_SIZE}  "
+            f"tps={TARGETS_PER_SECTOR}  midline az=0 {midline}\n"
+            f"      ~{_est_trials(az)} trials")
+
+
+OS_VOLUME = 50   # Windows master slider, %. The pybinsim gain was matched to the
+                 # dome at this setting (match_ar_dome_loudness.py), so every
+                 # localization test and training run forces it before starting;
+                 # a moved slider silently invalidates the presentation level.
+
+
+def _fix_output_level():
+    """Force the OS master volume to OS_VOLUME. No-op off Windows."""
+    if not set_windows_volume(OS_VOLUME):
+        print(f"  [!] OS volume NOT set programmatically — check the slider is "
+              f"at {OS_VOLUME}% before continuing")
+
+
+def run_phase(key, subject, other_ear=None):
+    label, when, sofa, ear, mirror, az, desc = phases()[key]
+    if sofa is None:
+        raise RuntimeError("MODIFIED_SOFA is not set — run build_donor_sofa() "
+                           "or load_existing_donor() first")
+    print("\n" + "=" * 70)
+    print(f"RUNNING:  {_describe(key)}"
+          + (f"\n      OTHER EAR OVERRIDE: {other_ear}" if other_ear else ""))
+    print("=" * 70)
+    _fix_output_level()
+    one_sided = tuple(az) != tuple(FULL_FIELD)
+    test = Localization(subject,
+                        hrir_settings(sofa, ear=ear, mirror=mirror, other_ear=other_ear),
+                        loc_settings=loc_settings(az, exclude_midline=one_sided))
+    test.sequence.phase = key     # -> test name in the plot file (native, day1-A, daily, final-D)
+    test.run()
+    print(f"Done: {test.filename}")
+    return test
+
+
+def run_anchor(subject):
+    """Short native-HRTF block + rating -- the top of the 0-10 scale.
+
+    'A real external loudspeaker' is not a sound the participant has heard over
+    these headphones, so an unanchored rating is a number about their
+    imagination. This is the participant's OWN unmodified HRTF played
+    binaurally: the ceiling of the whole delivery chain, and the closest thing
+    to a 10 the setup can produce. ~10 trials, about a minute.
+
+    DAY 1 ONLY as of 2026-08-19. It used to run every day so ratings stayed
+    comparable across days; the protocol now takes only the day-1 ratings
+    (native reference + the two baselines), so there is nothing left on the
+    later days for a same-day anchor to make comparable. Paul's call: if
+    externalization holds for the modified ears on day 2 it holds to the end,
+    and a daily ~1-minute block plus rating is not worth what it buys.
+
+    On day 1 the `native` phase serves this purpose -- same own-HRTF binaural
+    block, more trials -- so this function is no longer called by the protocol
+    proper. Kept, and reachable from MISC, for the case it was also good at:
+    if you suspect the delivery chain (headphone seat, HP filter, OS volume)
+    has moved mid-experiment, run it and compare against day 1. A drop there is
+    a chain problem, not adaptation.
+    """
+    settings = loc_settings(FULL_FIELD)
+    settings.update(sector_size=(14, 14), targets_per_sector=1)   # ~10 trials
+    return externalization_check(subject, hrir_settings(NATIVE_SOFA, ear=None),
+                                 settings, label=f"{SUBJECT_ID} anchor (own HRTF, binaural)")
+
+
+def ladder_settings(rung):
+    """(hrir_settings, loc_settings) for one rung of the externalization ladder.
+
+    Coarse grid on purpose (~10 trials): these blocks are for the rating, not
+    for elevation-gain statistics. 'anchor' is the participant's own unmodified
+    HRTF played binaurally — the ceiling of the whole delivery chain, which is
+    what gives the 0-10 scale a top.
+    """
+    settings = loc_settings(TRAINED_HEMI, exclude_midline=True)
+    settings.update(sector_size=(14, 14), targets_per_sector=1)   # ~10 trials
+    if rung == "anchor":
+        return hrir_settings(NATIVE_SOFA, ear=None), settings
+    if rung.startswith("donor_n"):
+        # composite STRENGTH: same donor, same other-ear treatment, only n_keep
+        # differs. Lower n_keep hands over more of the cue.
+        n_keep = int(rung.split("_n")[1])
+        return (hrir_settings(donor.modified_name(DONOR_ID, n_keep), ear=TRAINED_EAR),
+                settings)
+    # ear TREATMENT: n_keep=4 composite on the trained ear, other ear varies
+    return hrir_settings(MODIFIED_SOFA, ear=TRAINED_EAR, other_ear=rung), settings
+
+
+TRAINING_SCRIPT = hr.PATH / "experiment" / "training" / "Training_AR.py"
+
+
+def run_training(hrir_name=None, ear=None, az_range=None):
+    """Launch Training_AR.py with this subject's modified HRIR and ear settings."""
+    hrir_name = MODIFIED_SOFA if hrir_name is None else hrir_name
+    if hrir_name is None:
+        raise RuntimeError("MODIFIED_SOFA is not set — build or load the donor SOFA first")
+    ear = TRAINED_EAR if ear is None else ear
+    az_range = TRAINED_HEMI if az_range is None else az_range
+
+    sofa_path = paths.SOFA_DIR / SUBJECT_ID / f"{hrir_name}.sofa"
+    if not sofa_path.exists():
+        raise FileNotFoundError(f"Modified HRIR not found:\n  {sofa_path}")
+
+    print("-" * 64)
+    print(f"TRAINING   subject={SUBJECT_ID}   ear={ear}   az_range={az_range}")
+    print(f"           HRIR={hrir_name}.sofa   HP={HP}")
+    print(f"           other ear={OTHER_EAR} (n_keep={ENV_NKEEP})")
+    print(f"           stim={TRAINING_STIM} {STIM_SETTINGS if TRAINING_STIM == 'ripple' else ''}")
+    print("-" * 64)
+    _fix_output_level()
+
+    env = dict(os.environ,
+               TRAINING_SUBJECT_ID=SUBJECT_ID,
+               TRAINING_HRIR_NAME=hrir_name,
+               TRAINING_EAR=ear,
+               TRAINING_OTHER_EAR=OTHER_EAR,
+               TRAINING_ENV_NKEEP=str(ENV_NKEEP),
+               TRAINING_NATIVE_SOFA=NATIVE_SOFA,
+               TRAINING_AZ_RANGE=f"{az_range[0]},{az_range[1]}",
+               TRAINING_HP=HP,
+               TRAINING_BREAK_EVERY=str(BREAK_EVERY),
+               TRAINING_STIM=TRAINING_STIM,
+               TRAINING_STIM_SETTINGS=json.dumps(STIM_SETTINGS))
+    subprocess.run(
+        [sys.executable, "-m", "hrtf_relearning.experiment.training.Training_AR"],
+        env=env, cwd=str(hr.PATH.parent), check=False)
+
+
+def show_status(subject):
+    print("\n" + "-" * 70)
+    print(f"SUBJECT: {SUBJECT_ID}    TRAINED EAR: {TRAINED_EAR}    UNTRAINED: {UNTRAINED_EAR}")
+    print(f"manipulation: donor detail (n_keep={selection.N_KEEP}), donor="
+          f"{DONOR_ID or '(not selected yet)'}   other ear={OTHER_EAR}")
+    print(f"hemifields -> trained {TRAINED_HEMI}, mirrored {MIRRORED_HEMI}")
+    print(f"modified SOFA: {MODIFIED_SOFA}    final-day order: {'-'.join(FINAL_ORDER)}")
+    native_seq = load_native(quiet=True, subject=subject)
+    print(f"native reference on file: {'yes' if native_seq is not None else 'NO'}")
+    # Read straight off the subject file -- NOT via donor.shortlist(), which
+    # scores the whole pool (~20 s) whenever the config cell has been rerun.
+    # Same recognition rule as screen_block(): phase tag + finished.
+    screened = sorted({_label(seq.screen_donor)
+                       for seq in subject.localization.values()
+                       if getattr(seq, "phase", None) == "screen"
+                       and isinstance(getattr(seq, "screen_donor", None), dict)
+                       and getattr(seq, "finished", False)})
+    print(f"day-1 screen on file: {', '.join(screened) if screened else 'none'}"
+          f"   (table: show_screen())")
+    done = list(getattr(subject, "localization", {}).keys())
+    if done:
+        print(f"\nLocalization runs on file for {SUBJECT_ID} ({len(done)}):")
+        for k in done:
+            print(f"   - {k}")
+    else:
+        print(f"\nNo localization runs on file yet for {SUBJECT_ID}.")
+    print("-" * 70)
+
+
+
+
+
+
+
+
+# %% status check (rerun anytime) --------------------------------------------
+subject = hr.Subject(SUBJECT_ID)
+collect_demographics(subject)      # once per participant; skipped if on file
+show_status(subject)
+
+# %% day 1: native reference (original HRIR, full field) ---------------------
+native = run_phase("native", subject)
+collect_externalization_rating(native)
+
+# %% BEFORE THE SESSION: stage donors (minutes per donor -- nobody in the rig)
+prepare_donor_shortlist(n=6)    # screen=True (binaural builds) no longer needed
+
+# %% day 1: SCREEN -- run after the native reference -------------------------
+# Screens the top SCREEN_N (6) donors. Everything is read from disk: after a
+# crash or console restart just rerun this cell -- donors with a finished
+# screen block are skipped, and `native` is not needed.
+screen_rows = screen_donors()
+# screen_rows = screen_donors(n=8)    # more candidates (stage them first)
+# rate_screen_block("GM", "right")     # rating lost to a crash after the block
+
+# %% day 1: screen table again (from disk, any time) -------------------------
+screen_rows = show_screen()
+
+# %% day 1: CHOOSE the donor -- edit both fields, run ONCE -------------------
+# Pick on elevation gain and polar error from the table above. `reason` is the
+# only record of why this participant got this composite. Do NOT also call
+# build_donor_sofa() -- it defaults to rank=0 and would undo this choice.
+# FILL IN from the screen table, then run (left as a template in this copy so
+# the previous participant's choice cannot be applied by accident):
+use_donor(donor_id="??", donor_ear="??",
+          reason="EG ... (..% retained), impairment +.. deg -- ...")
+subject = hr.Subject(SUBJECT_ID)
+
+# %% day 1: ONLY if the donor was never staged -------------------------------
+# build_donor_sofa(overwrite=False, donor_id="GM", donor_ear="right")
+
+# %% later sessions: OPTIONAL -- confirm which composite is on disk ----------
+# load_existing_donor()
+
+# %% IN SESSION: participant is at floor -- swap donor -----------------------
+# Only when the cue is abolished, not merely degraded. Write what you saw.
+# use_donor(rank=1, reason="EG 0.03 on baseline A, responses at chance")
+# After a swap on day 1, re-run ALL four baselines: B/C/D must match A's composite.
+
+# %% day 1: baselines A/B/C/D in this subject's counterbalanced order --------
+subject = hr.Subject(SUBJECT_ID)
+print(f"Running day-1 baselines in order: {FINAL_ORDER}")
+baselines = {}
+for key in FINAL_ORDER:
+    baselines[key] = run_phase(f"baseline_{key}", subject)
+    if key == "A":   # printed the moment A is done, so a swap costs the fewest blocks
+        donor_screening.check_baseline_A(baselines[key], subject)
+
+# %% day 1: baseline A -- trained ear, same loc (redo individually) -----------
+baseline_A = run_phase("baseline_A", subject)
+donor_screening.check_baseline_A(baseline_A, subject)
+
+# -----------------------------------------------
+# ADAPTATION DAYS1
+# anchor -> PRE test -> train -> POST test, so within-session change is
+# separable from overnight consolidation and every rating has a same-day top.
+# Run the four cells in order.
+# ---------------------------------------------------------------------------
+
+# %% adaptation day: 1. PRE-training test -------------------------------------
+subject = hr.Subject(SUBJECT_ID)
+daily_pre = run_phase("daily", subject)
+
+# %% adaptation day: 2. TRAIN --------------------------------------------------
+run_training()
+
+# %% adaptation day: 3. POST-training test ------------------------------------
+subject = hr.Subject(SUBJECT_ID)
+daily_post = run_phase("daily", subject)
+
+# %% final day: all 4 conditions in this subject's counterbalanced order -------
+subject = hr.Subject(SUBJECT_ID)
+print(f"Running final tests in order: {FINAL_ORDER}")
+for key in FINAL_ORDER:
+    run_phase(key, subject)
+
+# %% final day: A -- trained ear, same locations (redo individually) -----------
+run_phase("D", subject)
+
+# ===========================================================================
+# MISC — diagnostics, not part of the per-participant protocol.
+# Nothing below runs as a matter of course. Reach for it when something looks
+# wrong, or on the odd participant where the extra measurement is worth the
+# time. Each cell stands alone; the config cell at the top must have been run.
+# ===========================================================================
+
+# %% misc: QC the cepstral split the manipulation depends on ------------------
+# Envelope (red) should be smooth and roughly elevation-invariant; if it tracks
+# elevation, the split is freezing part of the cue instead of separating it.
+# Worth a look on the first few participants and whenever a donor composite
+# looks odd in the before/after figure.
+plot_split_qc(slab.HRTF(str(paths.SOFA_DIR / SUBJECT_ID / f"{NATIVE_SOFA}.sofa")),
+              envelope_n_keep=selection.N_KEEP, ear=TRAINED_EAR,
+              band=selection.DEFAULT_BAND)
+
+# %% misc: monaural OWN-HRTF ear test -- run after the final battery -----------
+# Can this listener use spectral detail on each ear at all? Her OWN unmodified
+# DTF on one ear, the other ear reduced to its n_keep envelope averaged over
+# elevation (the same treatment the composites give the untrained ear), each
+# ear tested in its own near hemifield, as baseline A. No donor involved.
+# Added 2026-10-15 for AM: donor detail worked on her left ear (0.29-0.39) and
+# failed on her right for all six donors (<=0.21). If her OWN detail also fails
+# on the right, the asymmetry is hers (hearing / ear weighting), not the donors'.
+# Order R then L; 50 trials, ripple only, ~3 min per block.
+def run_own_monaural(subject, ear):
+    hemi = (-35, 0) if ear == "left" else (0, 35)
+    settings_h = hrir_settings(NATIVE_SOFA, ear=ear, other_ear="envelope")
+    settings_h["env_elevation_average"] = True   # match the composites' other ear
+    print(f"\nOWN-HRTF MONAURAL: own detail on the {ear} ear only, hemifield {hemi}")
+    _fix_output_level()
+    loc = loc_settings(hemi, exclude_midline=True)
+    loc.update(stim="ripple", targets_per_sector=2)   # ripple only, 5x5 sectors x 2 = 50 trials
+    test = Localization(
+        subject, settings_h, loc_settings=loc)
+    test.sequence.phase = f"monaural_own_{ear}"
+    test.run()
+    return test
+
+subject = hr.Subject(SUBJECT_ID)
+mono_R = run_own_monaural(subject, "right")
+mono_L = run_own_monaural(subject, "left")
+
+# %% misc: build the second composite strength (n_keep=8) ---------------------
+# Half as much of the cue handed over. Only needed as a rung of the
+# externalization ladder below; the training/testing SOFA stays the n_keep=4 one.
+build_donor_sofa(overwrite=False, show_qc=False, n_keep=8)
+
+# %% misc: externalization + acute-degradation ladder -------------------------
+# ~50 trials plus ratings, so it is NOT run on every participant. Use it when
+# externalization is in doubt, when picking OTHER_EAR for a new cohort, or to
+# check that a donor composite lands in the intended acute-degradation range.
+# Requires the n_keep=8 SOFA from the cell above.
+#
+# Blocks of ~10 trials in a per-subject RANDOM order, each followed by the 0-10
+# rating; elevation gain is reported alongside.
+#   anchor     own unmodified HRTF, binaural      <- ceiling of the whole chain
+#   flat       other ear = delta impulse          }
+#   native     other ear = own full DTF           } ear treatment
+#   donor_n4   composite n_keep=4, other ear = OTHER_EAR   }
+#   donor_n8   composite n_keep=8, other ear = OTHER_EAR   } composite strength
+# donor_n4 is the condition the experiment actually runs. Read the EG column for
+# the acute degradation (target 0.3-0.5) and the rating column for
+# externalization -- but see the caveat the summary prints about 10-trial EG.
+subject = hr.Subject(SUBJECT_ID)
+externalization_ladder(
+    subject, ladder_settings, seed=SUBJECT_ID,
+    rungs=("anchor", "flat", "native", "donor_n4", "donor_n8"))
+
+# %% misc: daily PROBE (only meaningful when OTHER_EAR = 'native') ------------
+# Repeats the daily test with the other ear reduced, so relearning of the
+# modified cue can be told apart from reweighting toward the intact ear.
+subject = hr.Subject(SUBJECT_ID)
+run_phase("daily", subject, other_ear=PROBE_OTHER_EAR)
+
+# %% misc: externalization ratings so far, in order ---------------------------
+# Every rating on file for this participant, with its block, so drift in the
+# anchor can be told apart from drift in the conditions. Anchors are the
+# ~10-trial native binaural blocks; they should stay roughly flat across days.
+subject = hr.Subject(SUBJECT_ID)
+print(f"{'run':46s} {'n':>4s} {'ear':6s} {'mir':5s} {'rating':>6s}")
+for _name, _seq in subject.localization.items():
+    _rating = getattr(_seq, "externalization_rating", None)
+    if _rating is None:
+        continue
+    _n = len(getattr(_seq, "data", []) or [])
+    _tag = " <- anchor" if (_n <= 12 and getattr(_seq, "hrir", "") == NATIVE_SOFA) else ""
+    print(f"{_name:46s} {_n:4d} {str(getattr(_seq, 'ear', None)):6s} "
+          f"{str(getattr(_seq, 'mirrored', None)):5s} {_rating:6.1f}{_tag}")
+
+# %% misc: which donors this participant has been on --------------------------
+# The full swap history from the subject pickle: every donor this participant
+# was on, when, and the reason recorded at the time. Read it before comparing
+# blocks across days -- a swap mid-experiment means the two are not the same
+# manipulation.
+show_donor_log()
+
+# %% misc: re-anchor the externalization scale mid-experiment -----------------
+# ~10 trials of the participant's own HRTF, binaural, plus a rating. NOT part
+# of the protocol any more (day-1 ratings only). Use it if you suspect the
+# delivery chain has drifted -- headphone seating, HP filter, OS volume -- and
+# compare the number against day 1. A drop here is a chain problem, not
+# adaptation.
+subject = hr.Subject(SUBJECT_ID)
+run_anchor(subject)
+
+# %% misc: force the OS output level on its own -------------------------------
+# run_phase() and run_training() already do this. Use it when checking levels
+# by ear outside a block, or after someone has touched the volume slider.
+_fix_output_level()

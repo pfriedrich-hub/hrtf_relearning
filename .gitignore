@@ -63,3 +63,10 @@ writing/**/*.pdf
 
 # pre-migration copies from pack_pose_traces.py — delete once verified
 *.pkl.prepack.bak
+
+# --- Claude working output / local scratch -----------------------------------
+/Claude outputs/
+/_to_delete/
+/hrtf_relearning/analysis_results/
+*.bak_20*
+*.tex.bak

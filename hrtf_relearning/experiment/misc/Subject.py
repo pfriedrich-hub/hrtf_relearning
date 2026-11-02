@@ -144,10 +144,10 @@ class Subject:
                 raise OSError(
                     f"{self.file_path.name} was destroyed by a text editor: it "
                     f"decodes as UTF-8 and is full of U+FFFD, so the original "
-                    f"bytes are gone. Recover from git history (git log --follow "
-                    f"-- {self.file_path}) or rebuild from {self.backup_path.name} "
-                    f"with experiment/analysis/subject/restore_from_json.py. See "
-                    f"hrtf_relearning/utils/integrity.py."
+                    f"bytes are gone. Rebuild it from {self.backup_path.name} by "
+                    f"running in a terminal:  hrtf restore {self.id}   "
+                    f"(README: 'Broken subject pkl'; older good copies are in git "
+                    f"history: git log --follow -- {self.file_path})."
                 ) from exc
             raise
         self.id = data.get("id", self.id)

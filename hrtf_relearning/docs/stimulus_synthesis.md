@@ -177,7 +177,7 @@ five bursts, head movement, or the interaural difference, in which the source
 cancels exactly at every density.
 
 That is why the below-band stimulus is a manipulation check and the in-band one
-is the experiment. See `experiment/protocols/dev/source_spectrum_isd_design.md`.
+is the experiment. See `experiment/protocols/dev/source_spectrum_isd/source_spectrum_isd_design.md`.
 
 ## 6. Gotchas
 

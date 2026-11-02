@@ -3,7 +3,15 @@
 Used when the pkl is missing but a JSON backup exists, and/or when the
 subject id in the JSON is wrong and needs to be remapped.
 
-Usage:
+QUICK FIX for a broken pkl (the one to remember):
+
+    hrtf restore LP
+
+rebuilds RESULTS_DIR/LP/LP.pkl from LP.json, keeping the broken file next to it
+as LP.pkl.broken_<timestamp>. Does nothing if the pkl still loads (add --force
+to rebuild anyway). See restore_subject() below.
+
+Usage (merge / id-remap, the older general tool):
     python restore_from_json.py JSON_FILE TARGET_PKL [--id-remap OLD NEW] [--dry-run]
 
 Example (remap UG → JS and merge into JS.pkl):
@@ -100,6 +108,86 @@ def save_pkl(path: Path, data: dict) -> None:
     with open(tmp, "wb") as f:
         pickle.dump(data, f)
     tmp.replace(path)
+
+
+def restore_subject(subject_id: str, force: bool = False) -> int:
+    """Rebuild RESULTS_DIR/<id>/<id>.pkl from <id>.json in one go.
+
+    For the case where the pkl is destroyed (text-editor UTF-8 round-trip, see
+    hrtf_relearning/utils/integrity.py) and has to be usable again NOW, e.g.
+    with the participant waiting. Unlike main(), this restores every field the
+    archive carries -- including donor_screen and head_radius -- and never
+    rewrites the JSON, which is the only intact copy at that point.
+
+    The broken pkl is moved aside, not deleted. Lost for good: only the raw
+    pose_trace of training trials (the archive holds pose_metrics instead).
+    """
+    import datetime
+    from hrtf_relearning.utils import paths
+    from hrtf_relearning.utils.integrity import is_mangled_pickle
+
+    pkl = paths.subject_pkl(subject_id)
+    json_path = paths.subject_backup(subject_id)
+    if not json_path.exists():
+        print(f"No JSON archive at {json_path} -- nothing to restore from.")
+        return 1
+
+    if pkl.exists():
+        if is_mangled_pickle(pkl):
+            state = "destroyed by a text editor (UTF-8 round-trip)"
+        else:
+            try:
+                load_pkl(pkl)
+                state = None
+            except Exception as exc:
+                state = f"unreadable ({type(exc).__name__}: {exc})"
+        if state is None and not force:
+            print(f"{pkl.name} loads fine -- nothing to do. "
+                  f"(hrtf restore {subject_id} --force rebuilds it anyway.)")
+            return 0
+        stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        aside = pkl.with_name(f"{pkl.name}.broken_{stamp}")
+        pkl.rename(aside)
+        print(f"{pkl.name}: {state or 'healthy, rebuilt on --force'}")
+        print(f"  moved aside -> {aside.name}")
+    else:
+        print(f"{pkl.name} missing -- creating it from {json_path.name}")
+
+    with open(json_path, encoding="utf-8") as f:
+        raw = json.load(f)
+    _, localization = load_json_localization(json_path)
+    trials = []
+    for t in raw.get("trials") or []:
+        t = dict(t)
+        if isinstance(t.get("target"), list):
+            t["target"] = tuple(t["target"])    # pickle schema stores a tuple
+        trials.append(t)
+    data = {
+        "id": raw.get("id", subject_id),
+        "localization": localization,
+        "trials": trials,
+        "last_sequence": localization.get(raw.get("last_sequence")),
+        "highscore": raw.get("highscore", 0),
+        "demographics": raw.get("demographics") or {},
+        "active_donor": raw.get("active_donor") or {},
+        "donor_screen": raw.get("donor_screen") or {},
+        "head_radius": raw.get("head_radius"),
+    }
+    save_pkl(pkl, data)
+
+    # prove it: load through the same class the experiment uses
+    from hrtf_relearning.experiment.misc.Subject import Subject
+    s = Subject(subject_id)
+    donor = s.active_donor or {}
+    print(f"Rebuilt {pkl.name}: {len(s.localization)} runs, {len(s.trials)} "
+          f"training trials, highscore {s.highscore}")
+    print(f"  last run:    {next(reversed(s.localization), None)}")
+    print(f"  donor:       {donor.get('donor', '-')} ({donor.get('donor_ear', '-')} ear)")
+    print(f"  donor screen {'on record' if s.donor_screen else 'NOT on record'}")
+    if raw.get("trials") is None:
+        print("  [!] archive predates trial backup -- training record is EMPTY")
+    print("  lost: raw head-tracker traces of training trials (pose_metrics kept)")
+    return 0
 
 
 def main():

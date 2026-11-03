@@ -64,6 +64,19 @@ because `expand_azimuths_with_binaural_cues` imposes ITD via the same phase
 measure -- the fitted radius then reproduces the ITD the pipeline will actually
 synthesise. Read `xcorr` as the cross-check, not as a competing answer.
 
+**Changed 2026-11-03: on HUMAN heads the protocol uses `xcorr`.** The phase slope
+reproduces KEMAR, but on listeners in this rig the 200-1500 Hz interaural phase of
+the windowed IR is corrupted by late energy inside the 512-tap window: on SHE it
+moves by up to +-200 us with window length while the 10 repeats agree to 2-5 us,
+and across 21 participants the phase fit lands anywhere in 5.5-11.5 cm (7 at the
+bound, residuals up to 557 us) where xcorr gives 7.3-8.4 cm at 6-43 us (EM 73).
+`record_head_radius` therefore defaults to `estimator='xcorr'`, and `usable_radius`
+no longer lets the phase cross-check veto an xcorr fit. Caveat, unresolved: on
+KEMAR the xcorr radius is ~1 cm LARGER than the phase-matched one (0.0824 vs
+0.0722), so if humans behave like KEMAR the imposed phase ITD is ~10% too large at
+an xcorr radius. That is still far closer than the 0.0875 fallback, and it is the
+radius EM, CO, PA, SK, SHE and JO were built at.
+
 Caveat the fit reports for you
 ------------------------------
 `residual_us` is the RMS mismatch between the fitted sphere and the
@@ -385,7 +398,7 @@ def report(fit, label=""):
 
 def record_head_radius(subject_id, azimuth_range=(-60, 60), elevation=(-1, 1),
                        n_recordings=10, hp_freq=120, fs=48828,
-                       estimator="phase", band=ITD_BAND_HZ,
+                       estimator="xcorr", band=ITD_BAND_HZ,
                        distance_m=DEFAULT_DISTANCE_M, base_dir=None,
                        overwrite=False, show=True, save=None):
     """Measure the horizontal row and fit this listener's effective head radius.
@@ -400,9 +413,10 @@ def record_head_radius(subject_id, azimuth_range=(-60, 60), elevation=(-1, 1),
     doubled the number of entries in `rec/` for no benefit.
 
     Returns the fit dict from `fit_head_radius`, with `fit['cross_check']`
-    holding the same fit made with the other estimator. If the two disagree by
-    much more than ~10 mm, something is wrong with the measurement rather than
-    with the choice of estimator.
+    holding the same fit made with the other estimator. `estimator` defaults to
+    'xcorr' since 2026-11-03 (see the module docstring): the phase cross-check is
+    printed and stored, but on human heads it is not reliable enough to judge
+    the xcorr fit by.
     """
     from hrtf_relearning.hrtf.record.recordings import Recordings
     from hrtf_relearning.hrtf.record import processing
@@ -483,27 +497,35 @@ def record_head_radius(subject_id, azimuth_range=(-60, 60), elevation=(-1, 1),
     return fit
 
 
-def usable_radius(fit, fallback=FALLBACK_RADIUS_M, max_residual_us=150.0,
+MAX_RESIDUAL_US = {"phase": 150.0, "xcorr": 80.0}   # xcorr on people: 6-43 us, EM 73
+
+
+def usable_radius(fit, fallback=FALLBACK_RADIUS_M, max_residual_us=None,
                   max_cross_check_m=0.025):
     """The fitted radius if the fit is trustworthy, else `fallback`, loudly.
 
     Use this rather than `fit['head_radius']` when the value feeds straight into
     a build, so a bad measurement cannot silently set every synthesised ITD in
-    the SOFA. Rejects a solution that hit the bounds, one whose residual is far
-    above the ~30 us a real head gives, and one the other ITD estimator
-    disagrees with by more than `max_cross_check_m`.
+    the SOFA. Rejects a solution that hit the bounds and one whose residual is far
+    above the ~30 us a real head gives (`MAX_RESIDUAL_US`: 150 us for a phase fit,
+    80 us for xcorr -- a single bad speaker at +250 us gives ~100). The cross-check gate (the other estimator
+    disagreeing by more than `max_cross_check_m`) applies only to a PHASE fit:
+    for an xcorr fit the cross-check is the phase fit, which is the unreliable
+    one on human heads (2026-11-03), so it is reported but cannot veto.
 
     For scale: KEMAR returns 0.0722 m with a 27 us residual and a 10 mm
     cross-check gap. The pre-2026-08-19 sign bug returned 0.055 m AT BOUND with
     a 1104 us residual.
     """
+    if max_residual_us is None:
+        max_residual_us = MAX_RESIDUAL_US.get(fit.get("estimator", "phase"), 150.0)
     reasons = []
     if fit.get("at_bound"):
         reasons.append(f"solution sits on the bound ({fit['head_radius']:.4f} m)")
     if fit.get("residual_us", 0) > max_residual_us:
         reasons.append(f"residual {fit['residual_us']:.0f} us > {max_residual_us:.0f}")
     cross = fit.get("cross_check")
-    if cross is not None:
+    if cross is not None and fit.get("estimator", "phase") == "phase":
         gap = abs(cross["head_radius"] - fit["head_radius"])
         if gap > max_cross_check_m:
             reasons.append(f"the two ITD estimators disagree by {gap*1000:.0f} mm")
@@ -513,8 +535,12 @@ def usable_radius(fit, fallback=FALLBACK_RADIUS_M, max_residual_us=150.0,
             "Record that the radius was not measured for this subject.",
             "; ".join(reasons), fallback)
         return fallback
-    logging.info("head-radius fit accepted: %.4f m (residual %.0f us)",
-                 fit["head_radius"], fit["residual_us"])
+    logging.info("head-radius fit accepted: %.4f m (residual %.0f us, %s)",
+                 fit["head_radius"], fit["residual_us"], fit.get("estimator", "phase"))
+    if cross is not None and fit.get("estimator") == "xcorr":
+        logging.info("  phase cross-check %.4f m (residual %.0f us%s) -- reported only",
+                     cross["head_radius"], cross["residual_us"],
+                     ", at bound" if cross.get("at_bound") else "")
     return fit["head_radius"]
 
 

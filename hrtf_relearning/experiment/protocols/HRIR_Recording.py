@@ -82,9 +82,12 @@ az_fit = record_head_radius(
     SUBJECT_ID, azimuth_range=AZ_RANGE, elevation=AZ_ELEVATION,
     n_recordings=N_REC_AZ, hp_freq=HP_FREQ, fs=FS, show=SHOW, save=subject,
     overwrite=REDO_HEAD_RADIUS)
-# usable_radius returns the fitted value, or falls back to 0.0875 with a loud
-# error if the fit hit a bound / has a huge residual / the two ITD estimators
-# disagree. Read the printed table anyway: KEMAR gives 0.0722 m, residual 27 us.
+# Fitted on the cross-correlation ITD (estimator='xcorr', the default since
+# 2026-11-03 -- the phase-slope fit is unreliable on human heads in this rig and
+# is printed as the cross-check only). usable_radius returns the fitted value, or
+# falls back to 0.0875 with a loud error if the fit hit a bound or has a huge
+# residual. Read the printed table anyway: KEMAR gives 0.0824 m, residual 25 us;
+# participants so far 0.073-0.084 m at 6-43 us.
 HEAD_RADIUS = usable_radius(az_fit)
 # the radius the native SOFA is built with (step 1 passes HEAD_RADIUS), on the
 # subject record so it travels with the behavioural data. Set on THIS `subject`

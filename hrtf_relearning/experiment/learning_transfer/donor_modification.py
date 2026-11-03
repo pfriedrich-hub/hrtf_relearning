@@ -63,7 +63,8 @@ from hrtf_relearning.experiment.learning_transfer.donor_detail import donor_deta
 from hrtf_relearning.hrtf.modify.edge_shift import (embed_modification_params,
                                                     read_modification_params)
 from hrtf_relearning.hrtf.modify.plot_compare import plot_ears
-from hrtf_relearning.hrtf.processing.envelope import envelope_dtf, ENVELOPE_BAND
+from hrtf_relearning.hrtf.processing.envelope import (envelope_dtf, ENVELOPE_BAND,
+                                                      LEVEL_SPLIT_HZ)
 from hrtf_relearning.hrtf.processing.midline import (midline_arc, expand_from_midline,
                                                      qc_midline, format_qc)
 from hrtf_relearning.hrtf.record.fit_head_radius import (usable_radius, fit_from_sofa,
@@ -565,7 +566,8 @@ class DonorModification:
             own_arc = midline_arc(own)
             donor_arc = midline_arc(candidates[donor_id])
             detail_arc = donor_detail_dtf(own_arc, donor_arc, n_keep=n_keep,
-                                          donor_ear=donor_ear)
+                                          donor_ear=donor_ear,
+                                          split_hz=LEVEL_SPLIT_HZ)
             # The binaural composite (QC reference, and the ladder's input) is
             # this arc expanded. It is NAMED here and built and written further
             # down, next to its embed_modification_params call: qc_midline
@@ -578,7 +580,7 @@ class DonorModification:
                 f".sofa")
 
             arc = envelope_dtf(detail_arc, ear=self.trained_ear,
-                               n_keep=self.env_n_keep)
+                               n_keep=self.env_n_keep, split_hz=LEVEL_SPLIT_HZ)
             # Warn, don't raise: a failed QC must not stop staging mid-session.
             # The report (incl. passed=False) is embedded in the SOFA below.
             report = qc_midline(own_arc, arc, processed_ear=self.untrained_ear,
@@ -601,6 +603,10 @@ class DonorModification:
                              "env_n_keep": self.env_n_keep,
                              "env_band_hz": list(ENVELOPE_BAND),
                              "elevation_average": True},
+                "level_match": {"split_hz": LEVEL_SPLIT_HZ,
+                                "trained_ear": "own energy per band, per direction",
+                                "processed_ear": "own total per direction, "
+                                                 "low-band share = elevation mean"},
                 "midline_qc": {k: v for k, v in report.items()},
             }
 

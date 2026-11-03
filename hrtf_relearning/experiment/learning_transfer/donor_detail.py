@@ -54,6 +54,7 @@ import numpy
 
 from hrtf_relearning.hrtf.modify.shift_spectral_detail import smooth_magnitude
 from hrtf_relearning.hrtf.processing.native import source_index_map
+from hrtf_relearning.hrtf.processing.envelope import band_energy, match_two_band_energy
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +89,7 @@ def compose_magnitude(own_mag, donor_mag, n_keep=DEFAULT_N_KEEP):
 
 
 def donor_detail_dtf(hrtf, donor, n_keep=DEFAULT_N_KEEP, target_ear=None,
-                     donor_ear=None, match_level=True):
+                     donor_ear=None, match_level=True, split_hz=None):
     """Give one or both ears the donor's fine spectral detail.
 
     Parameters
@@ -111,6 +112,13 @@ def donor_detail_dtf(hrtf, donor, n_keep=DEFAULT_N_KEEP, target_ear=None,
     match_level : bool, default True
         Rescale each direction to the listener's own broadband energy, making
         the per-direction ILD exactly what it was.
+    split_hz : float or None, default None
+        With ``match_level``: match the listener's own energy separately below
+        and above ``split_hz`` (normally ``envelope.LEVEL_SPLIT_HZ``), so the
+        low-band ILD is the listener's own per direction too. The donor detail
+        is taken over the whole spectrum, and with a broadband-only match it
+        moved the 200-2000 Hz level of the receiving ear by up to 4 dB.
+        None = broadband only, the behaviour before 2026-11-03.
 
     Returns
     -------
@@ -155,7 +163,12 @@ def donor_detail_dtf(hrtf, donor, n_keep=DEFAULT_N_KEEP, target_ear=None,
             new_ir = numpy.fft.irfft(
                 mag * numpy.exp(1j * numpy.angle(own_spectrum[:, own_ch])),
                 n=n_taps)
-            if match_level:
+            if match_level and split_hz is not None:
+                e_total, e_low = band_energy(own_ir[:, own_ch],
+                                             out[source_idx].samplerate, split_hz)
+                new_ir = match_two_band_energy(new_ir, out[source_idx].samplerate,
+                                               e_total, e_low, split_hz=split_hz)
+            elif match_level:
                 own_energy = float(numpy.linalg.norm(own_ir[:, own_ch]))
                 new_energy = float(numpy.linalg.norm(new_ir))
                 if new_energy > _EPS:

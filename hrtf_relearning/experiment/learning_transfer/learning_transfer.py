@@ -75,7 +75,7 @@ EDIT THE CONFIG BLOCK BELOW PER PARTICIPANT.
 ------------------------------------------------------------------------------
 """
 
-SUBJECT_ID = ("JO")   # put this id into an open row of learning_transfer_block_order.csv
+SUBJECT_ID = ("SHE")   # put this id into an open row of learning_transfer_block_order.csv
 
 # %% imports and config #------------------------------------------------------
 import csv  # only for the block-order table below; the modification
@@ -602,6 +602,80 @@ def screen_donors(subject=None, native=None, n=SCREEN_N, shuffle=True, review=Tr
     return show_screen()
 
 
+def confirm_donor(donor_id, donor_ear):
+    """Run one more screen block for a donor ear and compare it to the first.
+
+    Same block as the screen (screen_hrir_settings / screen_loc_settings: the
+    monaural composite on TRAINED_EAR, trained hemifield, 35 trials) plus the
+    externalization rating. Meant for after the screen, to check that a
+    promising donor was not carried by the native block just before it.
+
+    Tagged phase="screen" so it stays off the learning curve and its plots go
+    to plots/screen/, with ``repeat=k`` in ``screen_donor`` so screen_block(),
+    show_screen() and the stored table keep using the FIRST block. Run it
+    again for a third block. Prints every block for this donor ear and their
+    mean against the native reference.
+    """
+    from hrtf_relearning.experiment.analysis.localization.localization_analysis \
+        import block_summary
+    donor_id = selection.resolve_donor_id(donor_id)
+    subject = hr.Subject(SUBJECT_ID)
+
+    def _blocks(subj):
+        return [seq for seq in subj.localization.values()
+                if getattr(seq, "phase", None) == "screen"
+                and getattr(seq, "finished", False)
+                and isinstance(getattr(seq, "screen_donor", None), dict)
+                and seq.screen_donor.get("donor") == donor_id
+                and seq.screen_donor.get("donor_ear") == donor_ear]
+
+    previous = _blocks(subject)
+    if not previous:
+        print(f"[!] no screen block on file for {donor_id} ({donor_ear} ear) "
+              f"-- this will be its first")
+    k = 1 + max([0] + [int(seq.screen_donor.get("repeat") or 0)
+                       for seq in previous])
+    print(f"CONFIRM {donor_id} ({donor_ear} ear), repeat {k}: "
+          f"{donor.modified_name(donor_id, donor_ear=donor_ear)} on the "
+          f"{TRAINED_EAR} ear, {TRAINED_HEMI}")
+    _fix_output_level()
+    test = Localization(subject, screen_hrir_settings(donor_id, donor_ear=donor_ear),
+                        loc_settings=screen_loc_settings())
+    test.sequence.phase = "screen"
+    test.sequence.screen_donor = dict(donor=donor_id, donor_ear=donor_ear,
+                                      repeat=k)
+    test.run()
+    print(f"Done: {test.filename}")
+    collect_externalization_rating(test)
+
+    native = load_native(quiet=True)
+    ref = block_summary(native) if native is not None else None
+    rows = [(seq, block_summary(seq)) for seq in _blocks(hr.Subject(SUBJECT_ID))]
+    print(f"\n{donor_id} ({donor_ear} ear) on the {TRAINED_EAR} ear"
+          + (f" -- native EG {ref['elevation_gain']:.2f}, "
+             f"PE {ref['polar_error']:.1f} deg" if ref else ""))
+    for seq, m in rows:
+        tag = f"repeat {seq.screen_donor.get('repeat')}" \
+            if seq.screen_donor.get("repeat") else "screen"
+        line = (f"  {tag:9s} {seq.name}:  EG {m['elevation_gain']:.2f}  "
+                f"PE {m['polar_error']:.1f}  n={m['n']}")
+        if ref and ref["elevation_gain"] > 0.1:
+            line += (f"  retained {m['elevation_gain'] / ref['elevation_gain']:.0%}"
+                     f"  impairment {m['polar_error'] - ref['polar_error']:+.1f}")
+        print(line)
+    if len(rows) > 1:
+        eg = sum(m["elevation_gain"] for _, m in rows) / len(rows)
+        pe = sum(m["polar_error"] for _, m in rows) / len(rows)
+        line = f"  mean of {len(rows)}:  EG {eg:.2f}  PE {pe:.1f}"
+        if ref and ref["elevation_gain"] > 0.1:
+            line += (f"  retained {eg / ref['elevation_gain']:.0%}"
+                     f"  impairment {pe - ref['polar_error']:+.1f}")
+        print(line)
+        print("  (one 35-trial block: EG SE ~0.14 -- blocks ~0.4 apart differ "
+              "beyond noise)")
+    return test
+
+
 #: Marks of a `reason` left as the choose-the-donor cell's template. Paul does
 #: not write prose at the rig (2026-10-15) and should not be nagged for it, so
 #: an unfilled reason is DROPPED rather than recorded: the numbers below are a
@@ -940,6 +1014,11 @@ prepare_donor_shortlist(n=6)    # screen=True (binaural builds) no longer needed
 screen_rows = screen_donors()
 # screen_rows = screen_donors(n=8)    # more candidates (stage them first)
 # rate_screen_block("GM", "right")     # rating lost to a crash after the block
+
+# %% day 1: CONFIRM a promising donor -- second screen block ----------------
+# Repeats that donor's screen block and prints both against native, to check
+# the first was not carried by the native block. Rerun for a third block.
+# confirm_donor("SH", "right")
 
 # %% day 1: screen table again (from disk, any time) -------------------------
 screen_rows = show_screen()

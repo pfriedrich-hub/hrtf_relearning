@@ -579,9 +579,14 @@ class DonorModification:
 
             arc = envelope_dtf(detail_arc, ear=self.trained_ear,
                                n_keep=self.env_n_keep)
+            # Warn, don't raise: a failed QC must not stop staging mid-session.
+            # The report (incl. passed=False) is embedded in the SOFA below.
             report = qc_midline(own_arc, arc, processed_ear=self.untrained_ear,
-                                raise_on_fail=True)
+                                raise_on_fail=False)
             print(format_qc(report))
+            if not report['passed']:
+                print(f"!! {donor_id}{f'-{donor_ear}' if donor_ear else ''}: "
+                      f"midline QC FAILED -- built anyway, prefer a donor that passed")
             modified = expand_from_midline(arc, head_radius=radius)
 
             pipeline_params = {

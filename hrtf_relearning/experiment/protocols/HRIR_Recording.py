@@ -42,7 +42,8 @@ from hrtf_relearning.utils import paths
 from hrtf_relearning.experiment.misc.system_volume import set_windows_volume
 import json
 
-SUBJECT_ID   = ('AB')          # edit per participant
+SUBJECT_ID   = ('SHE'
+                )          # edit per participant
 REFERENCE_ID = 'ref_31.08'   # fresh id -> step 0b records it; reused id -> loaded
 EQUALIZE_DOME = False        # subject AND reference; they must match. See step 0b.
 HEAD_RADIUS = FALLBACK_RADIUS_M   # fallback if step 0 is skipped -- MUST be
@@ -122,6 +123,7 @@ dome_loc = LocalizationDome(subject, {'targets_per_speaker': 3, 'min_distance': 
 
     'stim': STIM, 'stim_settings': STIM_SETTINGS})
 dome_loc.run(n_runs=3)
+
 
 # %% step 4b: OPTIONAL dome training -- only if step 4 is at floor ---------------
 # TRAINING_STIM: 'ripple' = one new source spectrum per trial (as in

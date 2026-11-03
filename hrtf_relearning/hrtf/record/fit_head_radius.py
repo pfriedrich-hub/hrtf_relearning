@@ -131,9 +131,9 @@ def interaural_delay_us(spectrum, freqs, band=ITD_BAND_HZ):
 
     Slope of the unwrapped interaural phase difference over `band`. Positive
     means the right ear is later. `spectrum` is (2, n_freq), left ear first.
-    Same estimator and sign convention as
-    `processing._interaural_delay_s` and `expand_azimuths_with_binaural_cues`
-    step 3a, so a fit made here is consistent with what the pipeline imposes.
+    Same estimator and sign convention as `processing._interaural_phase_slope_s`.
+    (The pipeline's MIDLINE zeroing uses GCC-PHAT since 2026-11-03 -- see
+    `processing._interaural_delay_s`.)
 
     Requires a signal whose interaural transfer function IS a delay: an
     anechoic or windowed impulse response. See `window_direct`.
@@ -359,6 +359,14 @@ def fit_from_sofa(sofa_file, elevation_tol_deg=1.0, min_abs_azimuth=5.0,
 
     No azimuth conversion here: SOFA azimuths are already in the SOFA
     convention. No windowing either: SOFA IRs are already short.
+
+    Each lateral ITD is measured RELATIVE to the frontal direction at the same
+    elevation (when the SOFA has one). The expansion imposes the model ITD
+    relative to frontal, so this recovers the radius exactly whatever estimator
+    zeroed the midline: since 2026-11-03 the midline is zeroed with GCC-PHAT, so
+    its 200-1500 Hz phase slope is no longer exactly 0 and an absolute
+    measurement would carry that offset into the fit. For older SOFAs (midline
+    zeroed on the phase slope itself) the frontal term is 0 and nothing changes.
     """
     import h5py
     sofa_file = Path(sofa_file)
@@ -374,7 +382,14 @@ def fit_from_sofa(sofa_file, elevation_tol_deg=1.0, min_abs_azimuth=5.0,
     order = numpy.argsort(azimuth[keep])
     idx = numpy.where(keep)[0][order]
 
-    itds = numpy.array([_measure(ir[i], fs, estimator, band) for i in idx])
+    frontal = {round(float(pos[i, 1]), 3): i for i in numpy.where(numpy.abs(azimuth) < 0.5)[0]}
+
+    def relative_itd(i):
+        itd = _measure(ir[i], fs, estimator, band)
+        i0 = frontal.get(round(float(pos[i, 1]), 3))
+        return itd - _measure(ir[i0], fs, estimator, band) if i0 is not None else itd
+
+    itds = numpy.array([relative_itd(i) for i in idx])
     return fit_head_radius(azimuth[idx], itds, elevations_deg=pos[idx, 1],
                            distance_m=float(numpy.mean(pos[idx, 2])),
                            n_samples=ir.shape[-1], fs=fs, band=band, bounds=bounds,

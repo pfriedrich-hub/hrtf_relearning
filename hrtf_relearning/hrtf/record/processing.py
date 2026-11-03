@@ -43,6 +43,10 @@ import warnings
 import logging
 warnings.filterwarnings("ignore", category=pyfar._utils.PyfarDeprecationWarning)
 from .recordings import Recordings, SpeakerGridBase
+
+# Band for the frontal (midline) ITD estimate. Broadband since 2026-11-03 -- see
+# _interaural_delay_s for why 200-1500 Hz is not usable on human heads.
+FRONTAL_ITD_BAND = (200.0, 16000.0)
 import slab
 
 # =====================================================================
@@ -472,7 +476,7 @@ def equalize(
     onset_threshold_db: float = 20.0,
     align_interaural: bool = False,
     ild_band: tuple[float, float] = (200.0, 16000.0),
-    itd_band: tuple[float, float] = (200.0, 1500.0),
+    itd_band: tuple[float, float] = FRONTAL_ITD_BAND,
 ) -> "ImpulseResponses":
     """
     Loudspeaker-wise equalization using reference IRs.
@@ -951,19 +955,82 @@ def _pyfar_to_irs(template: ImpulseResponses, keys, time_data, fs):
         out.data[key] = pyfar.Signal(td, fs)
     return out
 
-def _interaural_delay_s(freq_bin, freqs, band=(200.0, 1500.0)):
-    """Broadband interaural delay of one binaural spectrum, in seconds.
+_PHAT_UPSAMPLE = 32          # sub-sample peak resolution: 1/(48828*32) s ~ 0.6 us
+_PHAT_MAX_LAG_S = 1e-3       # search |ITD| <= 1 ms
 
-    Taken from the slope of the unwrapped interaural phase difference over
-    `band`: tau = -d(IPD)/d(omega). Positive means the right ear is later.
 
-    Deterministic and fractional -- unlike an onset threshold, it does not
-    depend on the magnitude spectrum, so a magnitude-only edit (the donor
-    composite, the monaural envelope) cannot change it.
+def _interaural_phase_slope_s(freq_bin, freqs, band=(200.0, 1500.0)):
+    """The pre-2026-11-03 estimator, kept for diagnostics only.
+
+    Slope of the unwrapped interaural phase over `band`. Exact on KEMAR, but on
+    human heads in this rig the 200-1500 Hz interaural phase of the measured IR is
+    corrupted by late energy (repeats agree to 2-5 us, yet the slope is off by up to
+    +-120 us per loudspeaker). Zeroing on it SHIFTED the real frontal timing by that
+    error -- JO's natives carried -111..+65 us of elevation-dependent frontal ITD
+    and his azimuth responses tilted with elevation in every headphone block.
     """
     ipd = numpy.unwrap(numpy.angle(freq_bin[1] * numpy.conj(freq_bin[0])))
     mask = (freqs >= band[0]) & (freqs <= band[1])
     return -numpy.polyfit(2 * numpy.pi * freqs[mask], ipd[mask], 1)[0]
+
+
+def _interaural_delay_s(freq_bin, freqs, band=FRONTAL_ITD_BAND):
+    """Interaural delay of one binaural spectrum, in seconds (GCC-PHAT).
+
+    Peak of the band-limited, magnitude-NORMALISED interaural cross-spectrum
+    (generalised cross-correlation with phase transform), parabolic-interpolated
+    on a 32x upsampled lag grid. Positive means the right ear is later.
+
+    Why this estimator (2026-11-03):
+    * Robust to the late energy that breaks the phase slope on human heads -- it
+      picks the delay at which the interaural phase is most coherent across the
+      band instead of least-squares fitting an unwrapped phase, so a corrupted
+      sub-band cannot drag it. On raw midline IRs it agrees with broadband
+      cross-correlation to 4-6 us (JO, SHE) where the 200-1500 Hz slope was off by
+      up to 140 us. Restricted to 200-1500 Hz it inherits the corruption, hence the
+      broadband FRONTAL_ITD_BAND.
+    * Phase-only, like the slope it replaces: a magnitude-only edit (donor
+      composite, monaural envelope) cannot change it -- measured 0.00 us under a
+      +-6 dB random magnitude edit of one ear (plain cross-correlation: 0.7 us).
+    * Deterministic and fractional; removing the returned delay as an exact
+      frequency-domain shift makes a repeat call return ~0 (idempotent).
+    """
+    cross = freq_bin[1] * numpy.conj(freq_bin[0])
+    in_band = (freqs >= band[0]) & (freqs <= band[1])
+    if in_band.sum() < 3:
+        raise ValueError(f"band {band} covers only {in_band.sum()} bins")
+    cross = numpy.where(in_band, cross / (numpy.abs(cross) + 1e-30), 0.0)
+    n = 2 * (len(freqs) - 1)
+    fs = 2 * float(freqs[-1])
+    n_up = n * _PHAT_UPSAMPLE
+    padded = numpy.zeros(n_up // 2 + 1, dtype=complex)
+    padded[:len(cross)] = cross
+    cc = numpy.fft.irfft(padded, n_up)
+    cc = numpy.concatenate([cc[-n_up // 2:], cc[:n_up // 2]])
+    lags = numpy.arange(-n_up // 2, n_up // 2)
+    allowed = numpy.where(numpy.abs(lags) <= int(_PHAT_MAX_LAG_S * fs * _PHAT_UPSAMPLE))[0]
+    k = int(allowed[numpy.argmax(cc[allowed])])
+    y0, y1, y2 = cc[k - 1], cc[k], cc[k + 1]
+    denominator = y0 - 2 * y1 + y2
+    shift = 0.5 * (y0 - y2) / denominator if denominator != 0 else 0.0
+    return float((lags[k] + shift) / (fs * _PHAT_UPSAMPLE))
+
+
+def _frontal_ild_gains(freq_bin, freqs, band=(200.0, 16000.0), eps=1e-30):
+    """(gain_left, gain_right) that zero the broadband-ENERGY ILD of one binaural
+    spectrum over `band` while preserving its total power. The criterion of
+    `zero_frontal_interaural` (see there for why energy, and why one scalar)."""
+    in_band = (freqs >= band[0]) & (freqs <= band[1])
+    if not in_band.any():
+        raise ValueError(f"ild_band {band} selects no frequency bins")
+    ild_db = 10 * numpy.log10(
+        (numpy.mean(numpy.abs(freq_bin[0, in_band]) ** 2) + eps)
+        / (numpy.mean(numpy.abs(freq_bin[1, in_band]) ** 2) + eps))
+    ratio = 10 ** (-ild_db / 20.0)                     # = gain_L / gain_R
+    p_l = float(numpy.mean(numpy.abs(freq_bin[0]) ** 2))
+    p_r = float(numpy.mean(numpy.abs(freq_bin[1]) ** 2))
+    gain_r = numpy.sqrt((p_l + p_r) / (ratio ** 2 * p_l + p_r))
+    return ratio * gain_r, gain_r
 
 
 def zero_frontal_interaural(
@@ -972,7 +1039,7 @@ def zero_frontal_interaural(
     align_itd: bool = True,
     align_ild: bool = True,
     ild_band: tuple[float, float] = (200.0, 16000.0),
-    itd_band: tuple[float, float] = (200.0, 1500.0),
+    itd_band: tuple[float, float] = FRONTAL_ITD_BAND,
     frontal_az_deg: float = 0.0,
     frontal_tol_deg: float = 1e-6,
 ) -> "ImpulseResponses":
@@ -1005,7 +1072,9 @@ def zero_frontal_interaural(
     and measures larger (SD 2.6-3.6 dB) than the elevation-invariant part it
     would be removing.
 
-    ITD criterion: interaural phase slope over `itd_band`, removed as an exact
+    ITD criterion: GCC-PHAT interaural delay over `itd_band` (broadband since
+    2026-11-03; the 200-1500 Hz phase slope used before is corrupted on human
+    heads, see `_interaural_delay_s`), removed as an exact
     fractional frequency-domain delay -- same estimator, band and sign
     convention as `expand_azimuths_with_binaural_cues` step 3a, which repeats
     this operation when `itd_method='phase'`. The repeat is a no-op, and doing
@@ -1038,18 +1107,8 @@ def zero_frontal_interaural(
             spectrum[1] *= numpy.exp(1j * 2 * numpy.pi * freqs * tau)
 
         if align_ild:
-            band = (freqs >= ild_band[0]) & (freqs <= ild_band[1])
-            if not band.any():
-                raise ValueError(f"ild_band {ild_band} selects no frequency bins")
-            ild_db = 10 * numpy.log10(
-                (numpy.mean(numpy.abs(spectrum[0, band]) ** 2) + eps)
-                / (numpy.mean(numpy.abs(spectrum[1, band]) ** 2) + eps))
-
-            ratio = 10 ** (-ild_db / 20.0)             # = gain_L / gain_R
-            p_l = float(numpy.mean(numpy.abs(spectrum[0]) ** 2))
-            p_r = float(numpy.mean(numpy.abs(spectrum[1]) ** 2))
-            gain_r = numpy.sqrt((p_l + p_r) / (ratio ** 2 * p_l + p_r))
-            spectrum[0] *= ratio * gain_r              # total power preserved
+            gain_l, gain_r = _frontal_ild_gains(spectrum, freqs, ild_band, eps)
+            spectrum[0] *= gain_l                      # total power preserved
             spectrum[1] *= gain_r
 
         # DC and Nyquist must stay real for a real impulse response
@@ -1088,7 +1147,9 @@ def expand_azimuths_with_binaural_cues(
     show: bool = False,
     probe_az: float = 45.0,
     itd_method: str = "phase",
-    itd_band: tuple[float, float] = (200.0, 1500.0),
+    itd_band: tuple[float, float] = FRONTAL_ITD_BAND,
+    align_ild: bool = True,
+    ild_band: tuple[float, float] = (200.0, 16000.0),
 ):
     """
     Extend frontal vertical-arc HRIRs across azimuth and impose binaural cues.
@@ -1142,8 +1203,8 @@ def expand_azimuths_with_binaural_cues(
             midline "zeroing" leaves ~108 us of interaural phase delay behind
             while reading 0.0 us by its own onset metric.
     itd_band : (float, float)
-        Band used for the midline interaural-delay estimate under
-        ``itd_method='phase'``.
+        Band used for the midline interaural-delay estimate (GCC-PHAT, see
+        ``_interaural_delay_s``) under ``itd_method='phase'``.
 
     Returns
     -------
@@ -1322,15 +1383,24 @@ def expand_azimuths_with_binaural_cues(
             if numpy.isclose(numpy.mod(az_all[i], 360.0), 0.0, atol=1e-6):
                 frontal_of[round(float(el_all[i]), 6)] = i
 
-        # 3a) zero the measured midline ITD, from the interaural phase slope.
-        #     One pure delay per elevation, removed from the right ear of that
-        #     elevation's whole azimuth column (they are all copies of it).
+        # 3a) zero the measured midline ITD (GCC-PHAT, see _interaural_delay_s)
+        #     and, since 2026-11-03, the midline broadband-energy ILD (same rule
+        #     as zero_frontal_interaural). One delay and one gain pair per
+        #     elevation, applied to that elevation's whole azimuth column: step 2
+        #     shaped the column RELATIVE to frontal, so the lateral directions keep
+        #     exactly the model's ITD/ILD. For a native this is a near no-op (its
+        #     midline was zeroed at equalize time); for a donor composite it is what
+        #     zeroes the midline ILD that the magnitude-only edit leaves behind
+        #     (up to 0.6 dB per row, JO LP-L) -- nothing else in that chain does.
         for elevation, i0 in frontal_of.items():
             tau = _interaural_delay_s(spectrum[i0], freqs, band=itd_band)
             advance = numpy.exp(1j * 2 * numpy.pi * freqs * tau)
+            gain_l, gain_r = (_frontal_ild_gains(spectrum[i0], freqs, ild_band)
+                              if align_ild else (1.0, 1.0))
             for i in range(n_pos):
                 if round(float(el_all[i]), 6) == elevation:
-                    spectrum[i, 1, :] *= advance
+                    spectrum[i, 1, :] *= advance * gain_r
+                    spectrum[i, 0, :] *= gain_l
 
         # 3b) impose the model's interaural phase, relative to frontal at the
         #     same elevation. Zero at az=0 by symmetry, so 3a survives intact.
@@ -1403,6 +1473,9 @@ def expand_azimuths_with_binaural_cues(
         "magnitude_shaping": "relative_to_frontal_same_elevation",
         "itd_method": str(itd_method),
         "itd_band": [float(itd_band[0]), float(itd_band[1])],
+        "itd_estimator": "gcc-phat",
+        "align_ild": bool(align_ild),
+        "ild_band": [float(ild_band[0]), float(ild_band[1])],
         "date": datetime.now().isoformat(),
     }
     return out_final

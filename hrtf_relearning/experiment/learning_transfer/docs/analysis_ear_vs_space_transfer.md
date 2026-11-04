@@ -52,3 +52,40 @@ low for B/C (day-1 B/C gains 0.07-0.28). Compare B with C, not with A.
 - Far-ear usability check: own-HRTF detail in one ear only, tested on the far
   side, day 1 (+ final day). Decides per subject whether a null C is interpretable.
 - Check which directions the training game samples (trained hemifield only?).
+
+## Weighting model fitted to the 2x2 (2026-11-02/03)
+Cell gain = weight of the cue-carrying ear x that ear's mapping; the own-envelope
+ear is assumed to add no elevation slope. Near-ear weight w, extra trained-ear
+weight d (reweighting), mappings gT/gU, trained-side factor s:
+
+| cell | cue in | gain |
+|---|---|---|
+| A | trained ear, near | s (w + d) gT |
+| B | trained ear, far | (1 - w + d) gT |
+| C | untrained ear, far | s (1 - w - d) gU |
+| D | untrained ear, near | (w - d) gU |
+
+Day 1: gT = gU (same donor detail, mirrored), so the day-1 2x2 measures w.
+Fitted per azimuth bin (|az| < 18 / > 18 deg, own w per bin), day-1 side
+asymmetry s1 free, 16 observations per participant (SH, SK, DA, LP, PA).
+
+Fingerprints: trained-ear mapping -> dA:dB = w:(1-w), C/D flat; untrained-ear
+mapping -> C/D up, D more; reweighting -> dA = dB > 0, dC = dD < 0;
+side of space -> A and C up together.
+
+Results:
+- w_med < w_lat in all five (SH .56/.76, LP .61/.72, PA .72/.97, DA .83/.92,
+  SK .49/.54) -- the expected azimuth dependence, read from day 1 alone.
+- Reweighting never improves the fit (all p >= .2). PA = ear-specific mapping
+  (gT .24 -> .64, gU flat); her medial-D drop is within noise.
+- D transfer follows gU: roughly doubles in SH/SK/DA, small in LP, flat in PA.
+- Trained-side advantage grows in SH (x1.5, p=.02) and LP (x1.7, p=.06),
+  shrinks in SK (day-1 x1.75 -> x1.1); DA fit degenerate (day-1 B/C at 0).
+- Day-1 side asymmetries x0.6-1.75 exist before training -- unexplained,
+  check laser / tracker zero.
+- Fit within noise: SK, SH, PA; misfit: DA, LP (chi2 17-20 on 7 dof).
+
+Limits: a constrained description, not a mechanism. Shared cue learning and a
+general change in response scaling both raise gT and gU and cannot be
+separated here. Gain only; polar error not modelled. Explanatory (discussion),
+not pre-registered. Fit scripts were scratch-only, not yet in the repo.

@@ -53,7 +53,7 @@ from hrtf_relearning.utils import paths
 
 # --- configuration -----------------------------------------------------------
 #: the learning-curve group. New participants go here as soon as they start.
-SUBJECT_IDS = ('FS', 'IR', 'SH', 'PA', 'SK', 'DA', 'LP')
+SUBJECT_IDS = ('FS', 'IR', 'SH', 'PA', 'SK', 'DA', 'LP', 'JO', 'AB', 'SHE', 'KH')
 #: participants deliberately kept off the curve, with the reason (printed on run)
 EXCLUDED = {
     'LGL': 'not counted as a learner — EG trend only, polar error flat (2026-10-22)',

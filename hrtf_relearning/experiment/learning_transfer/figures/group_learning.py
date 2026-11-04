@@ -110,6 +110,10 @@ INVALID_RUNS = {
     'SK_22.10_15-55_SK_donor_SH_env4_left':
         'response-button error in the final battery; A re-run at 16:03 (Paul)',
 }
+# Participants run twice under one ID: only runs from this day on count.
+RUN_START = {
+    'AB': (11, 3),   # rerun from 03.11, left ear; the 06.-08.10 right-ear run is separate
+}
 BLOCK_ORDER_CSV = (hr.PATH / 'experiment' / 'learning_transfer'
                    / 'learning_transfer_block_order.csv')
 SHOW = False
@@ -127,8 +131,17 @@ def _runs(subject_id):
     localization = hr.Subject(subject_id).localization
     items = sorted(localization.items(), key=lambda kv: parse_loc_key(kv[0]))
     return [(key, seq) for key, seq in items
-            if key not in INVALID_RUNS
+            if key not in INVALID_RUNS and _after_start(subject_id, key)
             and _is_analysable(seq) and not is_degenerate(seq)]
+
+
+def _after_start(subject_id, key):
+    """False for runs before RUN_START[subject_id] (key day 'dd.mm')."""
+    start = RUN_START.get(subject_id)
+    if start is None:
+        return True
+    day, month = (int(x) for x in key.split('_')[1].split('.'))
+    return (month, day) >= start
 
 
 def _learning_runs(runs):
@@ -181,11 +194,17 @@ def _curve_n_trials(runs):
     return Counter(counts).most_common(1)[0][0] if counts else 0
 
 
-def _training_ends(subject_id):
-    """End time of every logged AR training trial, lab-local and naive."""
+def _training_ends(subject_id, donor_only=False):
+    """End time of every logged AR training trial, lab-local and naive.
+
+    donor_only: only trials logged on a donor composite (hrir_name contains
+    'donor') -- day 1 opens with a few own-HRTF familiarisation games, which
+    are not training on the manipulation.
+    """
     trials = getattr(hr.Subject(subject_id), 'trials', None) or []
     return [datetime.datetime.fromtimestamp(t['t_end'], LOCAL_TZ).replace(tzinfo=None)
-            for t in trials if t.get('t_end')]
+            for t in trials if t.get('t_end')
+            and (not donor_only or 'donor' in (t.get('hrir_name') or ''))]
 
 
 def test_phase(key, curve_times, training_ends):
@@ -281,9 +300,14 @@ def subject_series(subject_id, aggregate=AGGREGATE, off_stimulus=OFF_STIMULUS,
     tests = TESTS if tests is None else tests
     battery_a = _final_battery_a(runs, metas, hrir, field, subject_id)
     final_a = battery_a if EXCLUDE_FINAL_2X2 else None
-    first_day = extract_day(runs[0][0]) if runs else None
+    # Day 1 = the first day on the manipulation, not the first visit: KH's own
+    # HRTF was recorded a day before his donor screen and 2x2 baseline.
+    family = {hrir, f'{hrir}_mirrored'}
+    first_day = next((extract_day(k) for (k, _s), m in zip(runs, metas)
+                      if m.get('hrir') in family), None)
     if tests != 'all':
         training_ends = _training_ends(subject_id)
+        donor_training_ends = _training_ends(subject_id, donor_only=True)
         curve_times = [parse_loc_key(k) for (k, _s), m in zip(runs, metas)
                        if m.get('hrir') == hrir]
 
@@ -329,6 +353,15 @@ def subject_series(subject_id, aggregate=AGGREGATE, off_stimulus=OFF_STIMULUS,
                 battery_fallback = (day, key, seq)
             excluded.append((key, 'final 2x2 block A (separate result)'))
             continue
+        if tests != 'all' and day == first_day:
+            # Day 1 is the baseline. Only LOGGED training counts here: the screen
+            # blocks precede the 2x2 by more than TRAINING_GAP, so the gap rule
+            # would call every day-1 baseline post-training. A test after the
+            # day-1 training (KH 03.11 16:21) stays off the curve.
+            t = parse_loc_key(key)
+            if any(e.date() == t.date() and e < t for e in donor_training_ends):
+                excluded.append((key, 'day-1 post-training test (day 1 = baseline)'))
+                continue
         if tests != 'all' and day != first_day:
             phase = test_phase(key, curve_times, training_ends)
             if phase != tests:
@@ -408,6 +441,8 @@ def subject_series(subject_id, aggregate=AGGREGATE, off_stimulus=OFF_STIMULUS,
     # trained-condition blocks were all excluded leaves a visible gap in x
     # rather than silently closing up.
     all_days = list(by_day)
+    if first_day in all_days:          # visits before day 1 do not count
+        all_days = all_days[all_days.index(first_day):]
     series['days'] = numpy.array([all_days.index(d) + 1 for d in days], dtype=float)
     series['uso_days'] = numpy.array([all_days.index(d) + 1 for d in uso_days],
                                      dtype=float)

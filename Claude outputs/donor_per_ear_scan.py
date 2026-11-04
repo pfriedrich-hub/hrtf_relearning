@@ -24,7 +24,7 @@ blocked from both the cloud container and the desktop VM, so no slab there).
     python "Claude outputs/donor_per_ear_scan.py"
 """
 import numpy
-from hrtf_relearning.hrtf.analysis import donor_selection as sel
+from hrtf_relearning.experiment.learning_transfer import donor_selection as sel
 
 
 # ---------------------------------------------------------------- step 1

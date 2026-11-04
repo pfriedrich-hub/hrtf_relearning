@@ -20,7 +20,7 @@ another person's elevation cue, not a mirrored one.
 
 ## Changed
 
-### `hrtf/analysis/donor_selection.py`
+### `experiment/learning_transfer/donor_selection.py`
 - `PER_EAR_SELECTION = True`. Set False to reproduce any pre-2026-09-17 ranking
   exactly — that is the only way to get the old numbers back.
 - `shortlist(..., per_ear=)` enumerates both donor ears and scores each on the
@@ -42,7 +42,7 @@ another person's elevation cue, not a mirrored one.
   17% of its cue depth to a badly seated mic.
 - `DONOR_POOL` += `'GM'`.
 
-### `protocols/learning_transfer/donor_modification.py`
+### `experiment/learning_transfer/donor_modification.py`
 `donor_ear` threaded through `__init__` / `shortlist` / `_pick` / `build` /
 `prepare_shortlist` / `use_donor` / `screen_name` / `screen_settings` /
 `load_existing` / `discard_unused`; stored on

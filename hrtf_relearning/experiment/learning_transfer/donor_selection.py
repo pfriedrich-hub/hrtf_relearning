@@ -133,6 +133,31 @@ DEFAULT_RESOLUTION = 'filterbank'
 # the same for everyone, so the manipulation is one sentence in the methods.
 # ---------------------------------------------------------------------------
 N_KEEP = 4                    # envelope coefficients kept (Kulkarni & Colburn 1998)
+# EXTENDED 2026-11-04 to 26 recordings (+ JO, SHE) and THE TARGET DID NOT MOVE:
+# median 0.561 before and after, n=1104 -> 1300 pairs, Q1 0.378 -> 0.396, Q3 and
+# max unchanged. Worth noting as a property of the pool rather than of these two
+# recordings: at 26 members a single addition no longer shifts the median, so
+# from here the constant is stable and the audit's recompute is a check rather
+# than a re-centring. JO 0.79/8.4 deg (n=129), SHE 0.84/5.7 (n=127).
+#
+# Both were rebuilt for the frontal-ITD fault before being added, which does NOT
+# affect anything this module reads: the fault and its fix are phase-only, and
+# the rebuild notes measure the magnitude change at 0.000 dB (EM) and <= 0.004
+# dB (SHE). Detail, r_match and the median are identical either way. See
+# data/hrtf/superseded/{EM,JO,SHE}_*/README.txt -- three participants in nine
+# days, so treat the 200-1500 Hz interaural phase-slope estimator as unreliable
+# on human heads in this rig, not as an occasional miss.
+#
+# CAVEAT ON JO, because it is his qualifying number: only his COMPOSITE was
+# replaced, so sofa/JO/JO.sofa is still the 02.11 native with the uncorrected
+# frontal ITD, and his head_radius_fit.json reads the 0.055 m lower bound on a
+# 557 us residual against an xcorr cross-check of 0.08064. His magnitudes are
+# unaffected, so he is sound AS A DONOR. But his own-HRTF block was run through
+# that native, and the fault makes azimuth error tilt with elevation
+# (~-0.2 deg/deg), which inflates polar error. Read his 8.4 deg as an upper
+# bound; his EG 0.79 is a slope on elevation and is not touched by an azimuth
+# artefact.
+#
 # RECOMPUTED 2026-10-27 on the 24-recording pool (+ DA, EM, MM, SK, LP), by
 # `experiment/learning_transfer/dev/donor_pool_audit.py`. Measured, `pairwise_r_match`:
 #
@@ -1360,6 +1385,11 @@ def select_donor(subject_hrtf, candidates, target=TARGET_R_MATCH,
 # Detail strength: PA 3.05 dB (L 3.00 / R 3.09), SH 2.94 (L 3.02 / R 2.85),
 # LGL 2.69 (L 2.63 / R 2.76). LGL sits just over the 2.66 dB floor.
 #
+# EXTENDED 2026-11-04: + JO (own EG 0.79, polar 8.4 deg, n=129) and SHE (0.84,
+# 5.7, n=127), from the recordings of 02-03.11. Both conform natively; both had
+# their frontal ITD rebuilt first, which leaves the detail domain untouched.
+# TARGET_R_MATCH is unchanged at 0.561 -- see the note above.
+#
 # EXTENDED 2026-10-27: + DA (own EG 0.75, polar 6.7 deg, n=130), EM (0.73, 6.8,
 # n=131), MM (1.01, 7.4, n=128), SK (0.82, 8.4, n=129) and LP (0.67, 7.3,
 # n=127), from the recordings of 19-27.10. All five conform natively. See the TARGET_R_MATCH comment for
@@ -1418,7 +1448,7 @@ def select_donor(subject_hrtf, candidates, target=TARGET_R_MATCH,
 # r_match. Same trap for any future re-record under a new id.
 DONOR_POOL = ('CO', 'pilot/AGV', 'pilot/SW', 'pilot/VD', 'pilot/AH', 'FS', 'FD',
               'AS', 'FP', 'LS', 'NR', 'GM', 'LGL', 'PA', 'SH', 'AB', 'TE',
-              'AM', 'IK', 'DA', 'EM', 'MM', 'SK', 'LP')
+              'AM', 'IK', 'DA', 'EM', 'MM', 'SK', 'LP', 'JO', 'SHE')
 
 #: Donor EARS kept out of the pool while the recording itself stays in.
 #: Only meaningful with PER_EAR_SELECTION; a per-person pool cannot express it.

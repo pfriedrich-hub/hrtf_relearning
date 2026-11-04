@@ -70,6 +70,79 @@ DEFAULT_N_KEEP = 4
 #: is the listener's own.
 ENVELOPE_BAND = (700.0, 18000.0)
 
+#: Split frequency for the two-band level match (``split_hz``). The upper edge
+#: of qc_midline's low ILD band: below it the level is pinned per band, so the
+#: low-frequency ILD cannot be dragged around by what the spectral edit does to
+#: the high band (a broadband-only match moved it 1-6 dB, always toward the
+#: processed ear -- see match_two_band_energy).
+LEVEL_SPLIT_HZ = 2000.0
+
+
+def _parseval_power(spectrum, n):
+    """Per-bin contribution to the time-domain energy of an rfft spectrum."""
+    weight = numpy.full(spectrum.shape[0], 2.0)
+    weight[0] = 1.0
+    if n % 2 == 0:
+        weight[-1] = 1.0
+    return weight * numpy.abs(spectrum) ** 2 / n
+
+
+def match_two_band_energy(ir, samplerate, e_total, e_low, split_hz=LEVEL_SPLIT_HZ,
+                          width_octaves=1.0):
+    """Rescale ``ir`` so its energy below ``split_hz`` is ``e_low`` and its total
+    energy is ``e_total``.
+
+    WHY. A single broadband scalar keeps the broadband ILD exact but not the ILD
+    in any band: when an edit removes or adds energy in the high band (envelope
+    smoothing flattens the concha peak; donor detail differs in how much energy
+    its peaks carry), the broadband rescale pushes the low band the other way.
+    Measured over all 77 monaural composites on disk (2026-11-03) that moved the
+    200-2000 Hz midline ILD by 1-6 dB, always toward the processed ear.
+
+    HOW. Zero-phase gain whose POWER is a partition of unity between two
+    levels, ``G^2(f) = a (1 - w(f)) + b w(f)``, ``w`` a raised cosine over
+    ``width_octaves`` centred on ``split_hz``. Energies are linear in (a, b), so
+    the two targets are met exactly by a 2x2 solve -- no iteration, broadband
+    energy exact by construction. The gain is real and positive, so phase,
+    onset and ITD are untouched, and it is a single smooth shelf: two numbers
+    per IR, far coarser than an ``n_keep=4`` envelope, so it carries no detail.
+
+    Falls back to a broadband scalar (and warns) if the solve is degenerate or
+    asks for a non-positive power, which cannot happen for any physical HRIR.
+    """
+    ir = numpy.asarray(ir, dtype=float)
+    n = ir.size
+    spectrum = numpy.fft.rfft(ir)
+    freqs = numpy.fft.rfftfreq(n, d=1.0 / float(samplerate))
+    position = numpy.log2(numpy.maximum(freqs, 1e-9) / float(split_hz)) / float(width_octaves)
+    w = numpy.clip(position + 0.5, 0.0, 1.0)
+    w = 0.5 - 0.5 * numpy.cos(numpy.pi * w)          # 0 below, 1 above, smooth
+    power = _parseval_power(spectrum, n)
+    low = freqs < float(split_hz)
+    m = numpy.array([[numpy.sum(power[low] * (1 - w[low])), numpy.sum(power[low] * w[low])],
+                     [numpy.sum(power[~low] * (1 - w[~low])), numpy.sum(power[~low] * w[~low])]])
+    target = numpy.array([float(e_low), float(e_total) - float(e_low)])
+    try:
+        a, b = numpy.linalg.solve(m, target)
+    except numpy.linalg.LinAlgError:
+        a = b = -1.0
+    if not (a > 0 and b > 0 and target[1] > 0):
+        logger.warning('two-band level match degenerate (a=%.3g, b=%.3g) -- '
+                       'falling back to a broadband scalar', a, b)
+        current = float(power.sum())
+        return ir * numpy.sqrt(float(e_total) / current) if current > 0 else ir
+    gain = numpy.sqrt(a * (1 - w) + b * w)
+    return numpy.fft.irfft(spectrum * gain, n=n)
+
+
+def band_energy(ir, samplerate, split_hz=LEVEL_SPLIT_HZ):
+    """(total, below ``split_hz``) time-domain energy of one IR."""
+    ir = numpy.asarray(ir, dtype=float)
+    spectrum = numpy.fft.rfft(ir)
+    freqs = numpy.fft.rfftfreq(ir.size, d=1.0 / float(samplerate))
+    power = _parseval_power(spectrum, ir.size)
+    return float(power.sum()), float(power[freqs < float(split_hz)].sum())
+
 
 def _erb_rate(frequencies):
     """Glasberg & Moore (1990) ERB-rate: Hz -> ERB number."""
@@ -149,7 +222,7 @@ def envelope_spectrum(mag, n_keep=DEFAULT_N_KEEP, freqs=None, band=ENVELOPE_BAND
 
 
 def envelope_dtf(hrir, ear='left', n_keep=DEFAULT_N_KEEP, match_level='energy',
-                 band=ENVELOPE_BAND, elevation_average=True):
+                 band=ENVELOPE_BAND, elevation_average=True, split_hz=None):
     """Replace the OTHER ear's DTF with its coarse spectral envelope.
 
     Drop-in alternative to
@@ -205,6 +278,17 @@ def envelope_dtf(hrir, ear='left', n_keep=DEFAULT_N_KEEP, match_level='energy',
 
         ``match_level`` is applied after, per direction, so broadband ILD is
         still exact even though the shape no longer varies.
+    split_hz : float or None, default None
+        With ``match_level='energy'``: match energy in two bands, split here
+        (normally ``LEVEL_SPLIT_HZ``), instead of broadband only. Total energy
+        stays the input's per direction (broadband ILD exact, as before); the
+        share below ``split_hz`` is set to the input's share AVERAGED OVER
+        ELEVATION at that azimuth (per direction if ``elevation_average`` is
+        False). So the low-band level follows the listener's own on average --
+        no 1-6 dB low-frequency ILD error -- but carries no elevation dependence
+        beyond the broadband level the plain energy match already keeps: none of
+        the processed ear's own detail comes back. None = broadband only, the
+        behaviour before 2026-11-03.
 
     Returns
     -------
@@ -265,6 +349,30 @@ def envelope_dtf(hrir, ear='left', n_keep=DEFAULT_N_KEEP, match_level='energy',
                     if (i, channel) in log_envelope:
                         log_envelope[(i, channel)] = mean_log
 
+    # low-band share target per (direction, ear) for the two-band match: the
+    # input's share, averaged over elevation within each azimuth group so it
+    # adds no elevation dependence of its own
+    share_target = {}
+    if match_level == 'energy' and split_hz is not None:
+        share = {}
+        for key in log_envelope:
+            total, low = band_energy(hrir[key[0]].data[:, key[1]],
+                                     hrir[key[0]].samplerate, split_hz)
+            if total > eps and low > eps:
+                share[key] = 10.0 * numpy.log10(low / total)
+        if elevation_average:
+            azimuth = numpy.round(numpy.mod(
+                numpy.asarray(hrir.sources.vertical_polar[:, 0], dtype=float), 360.0), 3)
+            for value in numpy.unique(azimuth):
+                group = numpy.where(azimuth == value)[0]
+                for channel in channels:
+                    values = [share[(i, channel)] for i in group if (i, channel) in share]
+                    for i in group:
+                        if (i, channel) in share:
+                            share_target[(i, channel)] = float(numpy.mean(values))
+        else:
+            share_target = share
+
     # pass 3 -- back to the time domain, per-direction level restored
     for (source_idx, channel), log_env in log_envelope.items():
         ir = numpy.asarray(hrir[source_idx].data[:, channel], dtype=float)
@@ -276,10 +384,16 @@ def envelope_dtf(hrir, ear='left', n_keep=DEFAULT_N_KEEP, match_level='energy',
             # applied AFTER the averaging, so each direction keeps its own
             # broadband level and the per-direction ILD stays exact even though
             # every elevation now shares one spectral shape
-            e_original = float(numpy.linalg.norm(ir, ord=2))
-            e_env = float(numpy.linalg.norm(ir_env, ord=2))
-            if e_env > eps:
-                ir_env *= e_original / e_env
+            if (source_idx, channel) in share_target:
+                e_total = float(numpy.sum(ir ** 2))
+                e_low = e_total * 10.0 ** (share_target[(source_idx, channel)] / 10.0)
+                ir_env = match_two_band_energy(ir_env, hrir[source_idx].samplerate,
+                                               e_total, e_low, split_hz=split_hz)
+            else:
+                e_original = float(numpy.linalg.norm(ir, ord=2))
+                e_env = float(numpy.linalg.norm(ir_env, ord=2))
+                if e_env > eps:
+                    ir_env *= e_original / e_env
         out[source_idx].data[:, channel] = ir_env
     return out
 

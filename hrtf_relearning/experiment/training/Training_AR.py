@@ -78,6 +78,14 @@ RIPPLE_CUE = float(STIM_SETTINGS.get("rms_cue", 0.0))
 # directly; the learning_transfer protocol sets it to 5.
 BREAK_EVERY = int(os.environ.get("TRAINING_BREAK_EVERY", "0"))
 AZ_RANGE   = tuple(int(x) for x in os.environ.get("TRAINING_AZ_RANGE", "-35,0").split(","))
+# Exp 2 (linear_decoder): relative gap with gated filter + masker, start markers.
+# Off unless TRAINING_LD=1; with it off nothing below changes (Exp 1 path).
+# The database is then experiment/linear_decoder/binsim_db's <ID>_ld_cue (cue +
+# gated + masker channel) instead of hrtf2binsim(HRIR_NAME); see design.md.
+LD = os.environ.get("TRAINING_LD", "0").strip().lower() in ("1", "true", "yes")
+if LD:
+    from hrtf_relearning.experiment.linear_decoder import gap as ld_gap
+    from hrtf_relearning.experiment.linear_decoder import binsim_db as ld_db
 
 # Sound
 SOUND_FILE = None if STIM in ("noise", "ripple", "mixed") else STIM   # wav name in <database>/sounds
@@ -89,6 +97,9 @@ SOUND_FILE = None if STIM in ("noise", "ripple", "mixed") else STIM   # wav name
 # Onset spacing is 2 * interval, re-read on every poll, so moving towards the
 # target shortens the pending gap immediately (see pulse_maker).
 PULSE_MAX_BURST = 0.15    # s, cap on the length of one pulse
+# Wall clock at which the last goal SFX (coin/coins) finishes. The trial no longer
+# sleeps through the coin; the next trial's pulses wait for this instead.
+_sfx_until = 0.0
 PULSE_RAMP  = 0.005       # s, ramp at each end of a pulse
 TARGET_RAMP = 0.03        # s, ramp at each end of the continuous target sound
 # Bump whenever the feedback the participant hears changes. Stored on every
@@ -142,7 +153,8 @@ settings = dict(
     # build measured, so a database whose loudest direction cannot take 0.07
     # says so at startup rather than mid-session.
     gain=.07,
-    azimuth_range=AZ_RANGE, elevation_range=(-35, 35)
+    azimuth_range=AZ_RANGE,
+    elevation_range=(tuple(ld_gap.FIELD_EL) if LD else (-35, 35))
 )
 
 
@@ -179,7 +191,14 @@ if __name__ == "__main__":
 # module, so this line runs once per process. Only the parent (__main__) needs
 # to build the pyBinSim database/settings on disk; spawned workers
 # (__mp_main__) just reconstruct the in-memory HRIR object.
-hrir = hrtf2binsim(hrir_settings, build=(__name__ == "__main__"))
+if LD:
+    hrir, LD_META = ld_db.training_hrir(
+        SUBJECT_ID, build=(__name__ == "__main__"), hp=HP, reverb=hrir_settings["reverb"],
+        drr=hrir_settings["drr"], convolution=hrir_settings["convolution"],
+        storage=hrir_settings["storage"])
+else:
+    LD_META = None
+    hrir = hrtf2binsim(hrir_settings, build=(__name__ == "__main__"))
 slab.set_default_samplerate(hrir.samplerate)
 HRIR_DIR = paths.BINSIM_DIR / hrir.name
 # The target sound is written once by build_stimuli() in the parent. Pulses are
@@ -275,6 +294,25 @@ def _write_stimulus(duration, ramp, path, shape=None):
         sound = slab.Sound.pinknoise(duration, level=77)
     if shape is not None:
         sound = apply_spectral_shape(sound, shape)   # level kept, set after filtering
+    if LD:
+        # Exp 2: the masker is the SECOND channel of every stimulus file, pyBinSim
+        # channel 1. Always present; whether it is heard is decided by channel 1's
+        # filter (pass-through / zero), switched by the tracker together with the
+        # gated filter. Same ramp as the target, so it pulses with it.
+        src = sound.data[:, 0]
+        rms = float(numpy.sqrt(numpy.mean(src ** 2)))
+        masker = ld_gap.masker_segment(len(src), hrir.samplerate, LD_META["masker_edge_hz"],
+                                       LD_META["masker_rms_per_source_rms"] * rms)
+        sound = slab.Sound(numpy.column_stack([src, masker[:, 0]]), samplerate=hrir.samplerate)
+        sound = sound.ramp(duration=ramp)
+        # Normalise to the TARGET's peak, as slab.write does for an Exp 1 file
+        # (so the target plays at the Exp 1 level), not to the joint peak (the
+        # masker would then set the scale and turn the target down). Float WAV,
+        # because the masker channel may exceed 1 after that.
+        import soundfile
+        data = sound.data / max(float(numpy.abs(sound.data[:, 0]).max()), 1e-12)
+        soundfile.write(str(path), data, int(hrir.samplerate), subtype="FLOAT")
+        return path
     sound.ramp(duration=ramp).write(path)
     return path
 
@@ -284,7 +322,7 @@ def new_trial_stimulus(shape_shared):
 
     Publishes the coefficients to the pulse worker through `shape_shared` and
     rewrites the target sound with them. Called between trials, while the worker
-    is muted (state 0) and touches no files. Returns the params to log.
+    is muted or idle (state 0/1) and touches no files. Returns the params to log.
     """
     coeffs, params = draw_ripple_shape(rms_tilt=RIPPLE_TILT, rms_cue=RIPPLE_CUE)
     shape_shared[:] = coeffs
@@ -489,11 +527,23 @@ def pulse_maker(pulse_interval, pulse_state, on_target, shape=None):
         last_state = state
         time.sleep(0.005)
 
+def _ld_masker_off(osc, osc_late):
+    """Exp 2: channel 1 (masker) silent and without reverb -- at startup and every
+    trial start, before any pulse can play."""
+    osc.send_message('/pyBinSim_ds_Filter',
+                     [ld_gap.MASKER_CHANNEL, *ld_gap.filter_key(0, 0, ld_gap.CUSTOM_MASKER_OFF)])
+    osc_late.send_message('/pyBinSim_late_Filter',
+                          [ld_gap.MASKER_CHANNEL, *ld_gap.filter_key(0, 0, ld_gap.CUSTOM_MASKER_ON)])
+
+
 def head_tracker(distance, target, sensor_state, pose_queue, current_trial, plot_filter_idx,
-                 calib_info=None):
+                 calib_info=None, ld_shared=None):
     import logging
     logging.getLogger().setLevel('INFO')
     osc = make_osc_client(port=10000)
+    # Exp 2: ld_shared = dict(pose_offset=mp.Array, gate_queue=mp.Queue)
+    osc_late = make_osc_client(port=10002) if LD else None
+    gate = None
     hrtf_sources = hrir.sources.vertical_polar
     #init motion sensor
     device = meta_motion.get_device()
@@ -523,8 +573,16 @@ def head_tracker(distance, target, sensor_state, pose_queue, current_trial, plot
                                  float(info['attempts'])]
             sensor_state.value = 1  # ack: calibration done (play_trial waits for this)
             last_idx = -1
+            if LD:
+                gate = ld_gap.Gate()          # fresh gate state per trial
+                was_gated = False
+                _ld_masker_off(osc, osc_late)
         elif sensor_state.value == 3:
             pose = motion_sensor.get_pose()
+            if LD:
+                # the tracker was zeroed while the participant faced this trial's
+                # start marker: add its measured direction -> world coordinates
+                pose = pose + numpy.asarray(ld_shared["pose_offset"][:], dtype=float)
             pose_raw = numpy.array((motion_sensor.state.pose.yaw, motion_sensor.state.pose.roll))
             logging.debug(f'raw sensor headpose read out: {pose_raw}')
             # set distance for play_session
@@ -544,7 +602,22 @@ def head_tracker(distance, target, sensor_state, pose_queue, current_trial, plot
             rel_target = numpy.array((rel[0], rel[1], hrtf_sources[0, 2]))
             filter_idx = nearest_filter_idx(hrtf_sources, rel_target[0], rel_target[1])
             rel_hrtf_coords = hrtf_sources[filter_idx]
-            if filter_idx != last_idx:
+            if LD:
+                # gate on the continuous relative elevation (target - head); the
+                # rule itself looks at the filter that would be rendered
+                gated = gate.update(float(target[1] - pose[1]), time.time())
+                if filter_idx != last_idx or gated != was_gated:
+                    for channel, key in ld_gap.gate_messages(
+                            rel_hrtf_coords[0], rel_hrtf_coords[1], gated, was_gated):
+                        osc.send_message('/pyBinSim_ds_Filter', [channel, *key])
+                    last_idx = filter_idx
+                    was_gated = gated
+                try:
+                    ld_shared["gate_queue"].put((time.time(), int(current_trial.value), int(gated),
+                                                 float(target[1] - pose[1])))
+                except Exception:
+                    pass
+            elif filter_idx != last_idx:
                 osc.send_message('/pyBinSim_ds_Filter', [0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                                                          float(rel_hrtf_coords[0]), float(rel_hrtf_coords[1]), 0,
                                                          0, 0, 0])
@@ -556,15 +629,18 @@ def head_tracker(distance, target, sensor_state, pose_queue, current_trial, plot
 def play_trial(subject, trial_idx, current_trial, target, distance, pulse_interval, pulse_state, sensor_state,
                game_time_left, game_timer, session_total, last_goal_points, pose_queue, on_target,
                game_idx, trial_in_game, game_start_wall, session_id, stim_params=None,
-               calib_info=None):
+               calib_info=None, ld_trial=None, ld_shared=None, ui_state=None, enter_pressed=None):
     """
     Returns: (game_timer, score)
     """
+    global _sfx_until
     # Wait-for-Enter phase handled outside this function.
     current_trial.value = int(trial_idx)
 
     # optional: clear old samples so we only keep this trial's data
     _ = _drain_pose_queue(pose_queue)
+    if LD:
+        _ = _drain_pose_queue(ld_shared["gate_queue"])
 
     # Start tracking
     score = 0
@@ -593,6 +669,9 @@ def play_trial(subject, trial_idx, current_trial, target, distance, pulse_interv
     # Start pulser
     pulse_interval.value = distance_to_interval(distance.value)
     time.sleep(0.2)
+    # let the previous trial's coin finish -- a fast A press must not cut it off
+    if _sfx_until > time.time():
+        time.sleep(_sfx_until - time.time())
     pulse_state.value = 2
 
     logging.debug("Starting trial")
@@ -649,10 +728,11 @@ def play_trial(subject, trial_idx, current_trial, target, distance, pulse_interv
             # Non-blocking SFX trigger
             play_sound(osc_client, soundfile=sfile, duration=None, sleep=False)
 
-            # 3) Give the SFX a short head-start before we exit/mute
-            # read actual duration (safe if file is present)
-            actual_dur = slab.Sound(HRIR_DIR / 'sounds' / sfile).duration
-            time.sleep( actual_dur)
+            # 3) Don't sit out the coin here (that blocked the next prompt for
+            # 0.9-1.2 s): it plays out in pulse state 1 (audible idle) while
+            # the next prompt is already up, and the next trial's pulses wait
+            # for _sfx_until.
+            _sfx_until = time.time() + slab.Sound(HRIR_DIR / 'sounds' / sfile).duration
 
             break
 
@@ -661,10 +741,19 @@ def play_trial(subject, trial_idx, current_trial, target, distance, pulse_interv
     t1 = time.time()
     logging.info(f"Score: {score}")
     game_timer += trial_timer
-    pulse_state.value = 0
+    if score == 0:
+        pulse_state.value = 0  # mute. On a hit stay in 1 (set above): 0 would cut the coin
     on_target.value = 0
     sensor_state.value = 1
     current_trial.value = -1  # anything queued from here on is tagged -1 and dropped
+
+    # Put the next "press A" prompt up NOW, before the bookkeeping below (pose
+    # drain + subject.write, ~0.5 s on a long record), so a press during it is
+    # latched instead of ignored. Not in Exp 2: its prompt names the next start
+    # marker, which play_session draws after this returns.
+    if ui_state is not None and not LD and game_timer < settings['game_time']:
+        enter_pressed.value = 0
+        ui_state.value = 1
 
     # Collect pose samples; keep those for our trial id & time window. The
     # producer has stopped (sensor_state 1), so give samples still in the
@@ -675,6 +764,19 @@ def play_trial(subject, trial_idx, current_trial, target, distance, pulse_interv
              if (tid == trial_idx) and (t0 <= t <= t1)]
     # float32 (t - pose_t0, yaw, pitch); read back with utils.pose_trace.get_trace
     pose, pose_t0 = pack_trace(trace)
+    ld_log = None
+    if LD:
+        g = [(t, gated, rel) for (t, tid, gated, rel) in _drain_pose_queue(ld_shared["gate_queue"], timeout=0.05)
+             if tid == trial_idx and t0 <= t <= t1]
+        changes = [(round(t - t0, 3), gated, round(rel, 2)) for i, (t, gated, rel) in enumerate(g)
+                   if i == 0 or gated != g[i - 1][1]]
+        ld_log = dict(ld_trial or {},
+                      gate_changes=changes,                       # (s re t_start, gated, relative el)
+                      gated_fraction=(float(numpy.mean([x[1] for x in g])) if g else None),
+                      n_gate_samples=len(g),
+                      database=hrir.name,
+                      masker_rms_per_source_rms=LD_META["masker_rms_per_source_rms"],
+                      gap=list(ld_gap.GAP), hysteresis_deg=ld_gap.HYSTERESIS_DEG)
 
     # Store on subject. Trials are appended sequentially (no index padding):
     # trial_idx is set to the position this trial will occupy, so it is a
@@ -717,6 +819,8 @@ def play_trial(subject, trial_idx, current_trial, target, distance, pulse_interv
             ("offset_az", "offset_el", "spread_az", "spread_el", "stable",
              "residual", "attempts"), (float(v) for v in calib_info[:])))),
     }
+    if LD:
+        trial_dict["linear_decoder"] = ld_log      # Exp 2 only; Exp 1 records unchanged
     if 0 <= trial_idx < len(subject.trials):
         # defensive: overwrite if a slot already exists (e.g. resumed run)
         subject.trials[trial_idx] = trial_dict
@@ -775,6 +879,19 @@ def play_session():
     # last calibration, written by the tracker: offset_az, offset_el,
     # spread_az, spread_el, stable, residual, attempts
     calib_info = mp.Array("d", [float("nan")] * 7)
+    # Exp 2: this trial's start-marker direction (added to the tracker pose) and
+    # the per-sample gate state; marker text for the UI prompt
+    ld_shared = (dict(pose_offset=mp.Array("f", [0.0, 0.0]), gate_queue=mp.Queue(maxsize=10000))
+                 if LD else None)
+    marker_label = mp.Array("c", 48) if LD else None
+    if LD:
+        ld_markers = ld_gap.load_markers()
+        vp = hrir.sources.vertical_polar
+        ld_sources = numpy.column_stack([(vp[:, 0] + 180) % 360 - 180, vp[:, 1]])
+        ld_rng = numpy.random.default_rng()
+        ld_prev = None
+        logging.info("Exp 2: gap %s, markers %s", ld_gap.GAP,
+                     {k: (m["colour"], m["el"], round(m["p"], 2)) for k, m in ld_markers.items()})
 
     # UI shared state
     current_score   = mp.Value("i", 0)   # optional (not used directly)
@@ -802,13 +919,15 @@ def play_session():
         ui_state=ui_state,
         highscore=highscore,
         quit_pressed=quit_pressed,
-        break_due=break_due)
+        break_due=break_due,
+        marker_label=marker_label)
     ui_proc = mp.Process(target=game_ui.run_ui, args=(shared, SUBJECT_ID))
     ui_proc.start()
 
     # Start workers
     tracking_worker = mp.Process(target=head_tracker, args=(distance, target, sensor_state, pose_queue,
-                                                            current_trial, plot_filter_idx, calib_info))
+                                                            current_trial, plot_filter_idx, calib_info,
+                                                            ld_shared))
     tracking_worker.start()
     binsim_worker = mp.Process(target=binsim_stream, args=())
     binsim_worker.start()
@@ -868,12 +987,30 @@ def play_session():
                 # pick next target. On failure fall back to uniform sampling --
                 # never run the trial with the target left at its (0,0) initial
                 # value (= the calibration pose -> instant hit).
-                try:
-                    set_target_probabilistic(target, settings, sequence, hrir, note=kind)
-                except AttributeError:
-                    logging.warning("Could not load target probabilities; "
-                                    "sampling uniformly.")
-                    set_target(target, settings, hrir, note=kind)
+                ld_trial = None
+                if LD:
+                    # Exp 2 draw: start marker by its probability, target uniform over
+                    # the grid sources allowed from it (gap.allowed_targets)
+                    mname, tgt = ld_gap.draw_trial(ld_sources, ld_markers, prev_target=ld_prev,
+                                                   rng=ld_rng, field_az=settings["az_range"],
+                                                   field_el=settings["ele_range"])
+                    m = ld_markers[mname]
+                    target[:] = tgt
+                    ld_shared["pose_offset"][:] = [m["az"], m["el"]]
+                    marker_label.value = m["colour"].upper().encode()[:47]
+                    ld_prev = tgt
+                    ld_trial = dict(start_marker=mname, marker_colour=m["colour"],
+                                    marker_dir=(m["az"], m["el"]),
+                                    onset_offset=(round(tgt[0] - m["az"], 2), round(tgt[1] - m["el"], 2)))
+                    logging.info("Set Target (Exp 2) to [%.1f, %.1f] from %s marker (%s)  | stim: %s",
+                                 tgt[0], tgt[1], mname, m["colour"], kind)
+                else:
+                    try:
+                        set_target_probabilistic(target, settings, sequence, hrir, note=kind)
+                    except AttributeError:
+                        logging.warning("Could not load target probabilities; "
+                                        "sampling uniformly.")
+                        set_target(target, settings, hrir, note=kind)
                 # new source spectrum for this trial, written before the prompt
                 if MIXED:
                     stim_params = (new_trial_stimulus(shape_shared) if kind == "ripple"
@@ -881,9 +1018,12 @@ def play_session():
                 else:
                     stim_params = new_trial_stimulus(shape_shared) if RIPPLE else None
 
-                # show "Press Enter" overlay and wait for user
-                ui_state.value = 1
-                enter_pressed.value = 0
+                # show the prompt and wait. After a trial, play_trial has usually
+                # put it up already and may hold a latched A press -- only arm it
+                # here if it isn't showing (first trial of a game, Exp 2).
+                if ui_state.value != 1:
+                    ui_state.value = 1
+                    enter_pressed.value = 0
 
                 def _update_timer():  # keep updating UI timer while we wait
                     game_time_left.value = max(0.0, float(settings["game_time"]) - game_timer)
@@ -903,7 +1043,9 @@ def play_session():
                                                last_goal_points, pose_queue, on_target,
                                                game_idx=games_played, trial_in_game=trial_in_game,
                                                game_start_wall=game_start_wall, session_id=session_id,
-                                               stim_params=stim_params, calib_info=calib_info)
+                                               stim_params=stim_params, calib_info=calib_info,
+                                               ld_trial=ld_trial, ld_shared=ld_shared,
+                                               ui_state=ui_state, enter_pressed=enter_pressed)
                 scores.append(score)
 
                 # if time is up, break
@@ -934,7 +1076,7 @@ def play_session():
             # its state-1 unmute can lag by an iteration, so relying on it alone
             # would still leave the odd game-over sound inaudible. The short
             # sleep lets any in-flight pulse finish before we take over the file.
-            time.sleep(0.05)
+            time.sleep(max(0.05, _sfx_until - time.time()))  # also let a last coin finish
             osc_client.send_message('/pyBinSimLoudness', settings['gain'])
             play_sound(osc_client,
                        soundfile='hi_score.wav' if new_high else 'buzzer.wav',

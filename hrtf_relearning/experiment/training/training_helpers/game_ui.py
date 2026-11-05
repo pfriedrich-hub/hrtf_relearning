@@ -45,6 +45,9 @@ class UIShared:
     # learning_transfer protocol). The game-over screen then asks for a short
     # break alongside the scoreboard. Optional: None -> breaks never shown.
     break_due: Any = None
+    # Exp 2 (Training_AR LD mode): mp.Array('c') with the colour of this trial's
+    # start marker; the trial prompt then names it. None -> prompt unchanged.
+    marker_label: Any = None
 
 
 def fmt_time(seconds: float) -> str:
@@ -1350,7 +1353,10 @@ class GameWindow(QtWidgets.QMainWindow):
             if state == 4:
                 self.overlay_btn.setText("PRESS START TO PLAY" if pad else "PRESS ENTER TO START")
             elif state == 1:
-                self.overlay_btn.setText("PRESS A TO START" if pad else "PRESS ENTER TO START")
+                marker = getattr(self.shared, "marker_label", None)
+                colour = marker.value.decode(errors="ignore").strip() if marker is not None else ""
+                prompt = "PRESS A TO START" if pad else "PRESS ENTER TO START"
+                self.overlay_btn.setText(f"LOOK AT THE {colour} MARKER  ·  {prompt}" if colour else prompt)
             elif self._break_due:
                 self.overlay_btn.setText(f"{start} WHEN YOU'RE READY  ·  ESC: QUIT")
             else:

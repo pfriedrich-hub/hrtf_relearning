@@ -53,7 +53,7 @@ from hrtf_relearning.utils import paths
 
 # --- configuration -----------------------------------------------------------
 #: the learning-curve group. New participants go here as soon as they start.
-SUBJECT_IDS = ('FS', 'IR', 'SH', 'PA', 'SK', 'DA', 'LP', 'JO', 'AB', 'SHE', 'KH')
+SUBJECT_IDS = ('FS', 'IR', 'SH', 'PA', 'SK', 'DA', 'LP', 'JO')
 #: participants deliberately kept off the curve, with the reason (printed on run)
 EXCLUDED = {
     'LGL': 'not counted as a learner — EG trend only, polar error flat (2026-10-22)',
@@ -66,6 +66,9 @@ EXCLUDED = {
     # week of 26.10 (Paul, 2026-10-30): only LP makes it
     'EM': 'not counted (Paul): no gain change over 3 days (.27 -> .23); HRTF rebuilt after day 1, day-1 baselines on the old file',
     'MM': 'not counted (Paul): got worse, gain .27 -> .18 after day 2; composite kept only 28% of her own gain',
+    'KH': 'not counted (Paul): no gain change over 3 days (.22 -> .22); day-1 impairment +4.8 deg below the manipulation check; weak own-HRTF baseline (.41); laser offset +15 to +27 deg from day 1',
+    'SHE': 'not counted (Paul): stopped after day 3 -- no improvement (pre-tests .57/13.1 and .57/13.8 deg, post-tests worse: .49, .40); kept 74% of her own gain on the rebuilt composite (high start, like LGL)',
+    'AB': 'not counted (Paul): dropped after day 3 -- post-tests .29 -> .40 -> .38 (inside the noise band), initial elevation direction in training at chance (44-51%); rerun of an October participant',
 }
 #: the paper figure uses only participants who have completed the final 2x2
 PAPER_COMPLETE_ONLY = True

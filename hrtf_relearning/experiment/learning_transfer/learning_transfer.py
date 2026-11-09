@@ -94,6 +94,7 @@ from hrtf_relearning.experiment.protocols.protocol_helpers import (
 from hrtf_relearning.experiment.misc.system_volume import set_windows_volume
 from hrtf_relearning.experiment.learning_transfer.donor_modification import DonorModification
 from hrtf_relearning.experiment.learning_transfer import donor_screening
+from hrtf_relearning.experiment.learning_transfer import session_checks   # print-only reminders
 from hrtf_relearning.hrtf.modify.plot_compare import plot_split_qc
 from hrtf_relearning.utils import paths
 
@@ -866,6 +867,7 @@ def run_phase(key, subject, other_ear=None):
     test.sequence.phase = key     # -> test name in the plot file (native, day1-A, daily, final-D)
     test.run()
     print(f"Done: {test.filename}")
+    session_checks.block_check(test.sequence)   # laser / offset reminder, every block
     return test
 
 
@@ -1002,6 +1004,7 @@ show_status(subject)
 
 # %% day 1: native reference (original HRIR, full field) ---------------------
 native = run_phase("native", subject)
+session_checks.baseline_check(native.sequence, 'own HRTF')   # train only if EG >= 0.5
 collect_externalization_rating(native)
 
 # %% BEFORE THE SESSION: stage donors (minutes per donor -- nobody in the rig)
@@ -1074,6 +1077,7 @@ run_training()
 # %% adaptation day: 3. POST-training test ------------------------------------
 subject = hr.Subject(SUBJECT_ID)
 daily_post = run_phase("daily", subject)
+session_checks.progress_check(subject, daily_post.sequence)   # day-2 rule: +0.15 over day-1 A
 
 # %% final day: all 4 conditions in this subject's counterbalanced order -------
 subject = hr.Subject(SUBJECT_ID)

@@ -39,6 +39,7 @@ from hrtf_relearning.hrtf.record.fit_head_radius import (
     record_head_radius, usable_radius, fit_from_sofa, FALLBACK_RADIUS_M)
 from hrtf_relearning.hrtf.record.calibration.calibrate_headphones import calibrate_headphones
 from hrtf_relearning.utils import paths
+from hrtf_relearning.experiment.learning_transfer import session_checks   # print-only reminders
 from hrtf_relearning.experiment.misc.system_volume import set_windows_volume
 import json
 
@@ -89,6 +90,7 @@ az_fit = record_head_radius(
 # residual. Read the printed table anyway: KEMAR gives 0.0824 m, residual 25 us;
 # participants so far 0.073-0.084 m at 6-43 us.
 HEAD_RADIUS = usable_radius(az_fit)
+session_checks.head_radius_check(HEAD_RADIUS, FALLBACK_RADIUS_M)
 # the radius the native SOFA is built with (step 1 passes HEAD_RADIUS), on the
 # subject record so it travels with the behavioural data. Set on THIS `subject`
 # because every later step writes through it.
@@ -126,6 +128,7 @@ dome_loc = LocalizationDome(subject, {'targets_per_speaker': 3, 'min_distance': 
 
     'stim': STIM, 'stim_settings': STIM_SETTINGS})
 dome_loc.run(n_runs=3)
+session_checks.dome_check(subject)   # do not train if free-field EG < 0.5
 
 
 # %% step 4b: OPTIONAL dome training -- only if step 4 is at floor ---------------
@@ -150,6 +153,7 @@ ar_loc = Localization(subject, dt990_hrir_settings, ar_loc_settings)
 if not set_windows_volume(OS_VOLUME):
     print(f'  [!] OS volume NOT set programmatically -- set the slider to {OS_VOLUME}%')
 ar_loc.run()
+session_checks.baseline_check(ar_loc.sequence, 'own HRTF')   # do not train if EG < 0.5
 
 # %% step 5c: virtual localization -- native LEFT/RIGHT SWAP (DT990, midline) -----
 # Same block as step 5b (same midline grid, stimulus, gain, headphone filter),

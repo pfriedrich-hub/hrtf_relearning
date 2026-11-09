@@ -23,7 +23,7 @@ MIN_OWN_GAIN = 0.5
 CALIB_PITCH_RANGE = (-17.0, 0.0)
 #: mean response elevation minus target elevation; KH +13..+27, GM +13
 MAX_ELEVATION_BIAS = 10.0
-#: day-2 post-training gain minus the day-1 A baseline: learners +0.18..+0.39,
+#: first-training-day post gain minus baseline A (day-1 A, before 2026-11-09): learners +0.18..+0.39,
 #: non-learners <= +0.11 (IK +0.22 the one exception)
 DAY2_MIN_GAIN_STEP = 0.15
 
@@ -108,11 +108,16 @@ def _key_date(key):
 
 
 def progress_check(subject, post_seq):
-    """Post-training test vs the day-1 A baseline, with the day-2 stopping rule."""
+    """Post-training test vs baseline A, with the first-training-day stopping rule.
+
+    Baseline A ran on day 1 until 2026-11-09 and runs at the start of day 2
+    (before training) since, so the comparison is either across days or within
+    one session. The rule is applied after every post test either way.
+    """
     base = [(k, s) for k, s in subject.localization.items()
             if getattr(s, 'phase', None) == 'baseline_A']
     if not base:
-        print("  no day-1 baseline A on file (phase 'baseline_A') -- cannot compare")
+        print("  no baseline A on file (phase 'baseline_A') -- cannot compare")
         return None
     key0, seq0 = min(base, key=lambda ks: _key_date(ks[0]) + (ks[0],))
     g0, p0, *_ = _summary(seq0)
@@ -120,15 +125,19 @@ def progress_check(subject, post_seq):
     d0 = datetime.date(datetime.date.today().year, *_key_date(key0))
     name = getattr(post_seq, 'name', None) or ''
     d1 = datetime.date(datetime.date.today().year, *_key_date(name)) if name.count('_') >= 2 else datetime.date.today()
-    day = (d1 - d0).days + 1
+    days = (d1 - d0).days
+    when = "same session as baseline A" if days == 0 else f"{days} day(s) after baseline A"
     step = g1 - g0
-    print(f"  progress, day {day}: post-training EG {g1:.2f} / PE {p1:.1f} deg vs day-1 A "
+    print(f"  progress ({when}): post-training EG {g1:.2f} / PE {p1:.1f} deg vs baseline A "
           f"EG {g0:.2f} / PE {p0:.1f} deg -> gain {step:+.2f}, PE {p0 - p1:+.1f} deg (positive = better)")
-    if day >= 2:
-        if step < DAY2_MIN_GAIN_STEP:
-            print(f"  [!] gain step {step:+.2f} < +{DAY2_MIN_GAIN_STEP:.2f}: every learner so far "
-                  f"was at +0.18 or more by day 2, 9 of 10 non-learners at +0.11 or less "
-                  f"-- consider stopping this participant")
-        else:
-            print(f"  on track: learners so far +0.18..+0.39 by day 2")
+    if step < DAY2_MIN_GAIN_STEP:
+        print(f"  [!] gain step {step:+.2f} < +{DAY2_MIN_GAIN_STEP:.2f}: every learner so far "
+              f"was at +0.18 or more after the first training day, 9 of 10 non-learners at "
+              f"+0.11 or less -- consider stopping this participant")
+    else:
+        print(f"  on track: learners so far +0.18..+0.39 after the first training day")
+    if days == 0:
+        print("  note: the threshold comes from day-1 baselines run after 450-700 trials; a fresh "
+              "day-2 baseline A is probably higher (day-1 A ran 0.08 below the screen block), so "
+              "+0.15 is likely stricter than before")
     return step

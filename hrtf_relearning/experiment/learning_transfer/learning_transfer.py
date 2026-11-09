@@ -56,10 +56,16 @@ Write each subject's id into the 'subject' column before running.
 
 RUN ORDER. Cells top to bottom are the protocol proper, in the order they are
 performed:
-    day 1            status -> native reference -> build donor -> baselines
-                     A/B/C/D, in the subject's final-day order
-    adaptation days  PRE test -> train -> POST test   (three cells, in order)
+    day 1            status -> native reference -> screen -> choose donor
+    day 2            baselines A/B/C/D (in the subject's final-day order)
+                     -> train -> POST test. The 2x2 replaces the PRE test:
+                     baseline A IS the daily test condition.
+    days 3..         PRE test -> train -> POST test   (three cells, in order)
     final day        the counterbalanced 2x2
+    (Since 2026-11-09, Paul: the 2x2 moved off day 1, which ran 450-700 trials
+    before baseline A; A came out 0.08 EG below the screen block on the same
+    composite in 10 of 13 participants, PT -0.34. Day 1 and day 2 ~1.5 h each.
+    Native stays full field -- it is the own-HRTF comparison for D as well.)
 Everything under MISC at the bottom is diagnostic and is NOT run as a matter of
 course -- the externalization ladder, the cepstral-split QC, the n_keep=8 build
 and the other-ear probe live there.
@@ -374,12 +380,13 @@ SCREEN_TPS = 1
 # fix it — the MARGINAL verdict does, by sending borderline calls to a re-check
 # against baseline A. 35 keeps the grid symmetric about the midline
 # (-30..+30 in 10 deg steps), which 30 trials would not.
-# No externalization ratings on the day-1 baselines A/B/C/D (Paul, 2026-10-13):
+# No externalization ratings on the baselines A/B/C/D (Paul, 2026-10-13):
 # the donor screen already asks for one on the same composite, so a second
 # rating adds nothing. The native anchor still defines the top of the scale.
 
 SCREEN_N = 6       # donors staged AND screened by default (Paul, 2026-10-06).
-                   # ~3 min and 35 trials of donor exposure each before baseline A.
+                   # ~3 min and 35 trials of donor exposure each. Kept at 6 on
+                   # 2026-11-09: stop early once a donor lands in the band.
 
 
 def screen_loc_settings():
@@ -804,10 +811,10 @@ def phases():
     """Built on demand so MODIFIED_SOFA is picked up after the build cell."""
     return {
         "native":     ("Native reference",         "Day 1", NATIVE_SOFA,   None,        False, FULL_FIELD,    "binaural, native HRTF, full field"),
-        "baseline_A": ("Baseline A: trained/same", "Day 1", MODIFIED_SOFA, TRAINED_EAR, False, TRAINED_HEMI,  "naive trained ear, modified filter (matches final A)"),
-        "baseline_B": ("Baseline B: trained/mirr", "Day 1", MODIFIED_SOFA, TRAINED_EAR, False, MIRRORED_HEMI, "naive trained ear, modified filter, mirrored locations (matches final B)"),
-        "baseline_C": ("Baseline C: untrnd/same",  "Day 1", MODIFIED_SOFA, TRAINED_EAR, True,  TRAINED_HEMI,  "naive untrained ear, MIRRORED modified filter, same locations (matches final C)"),
-        "baseline_D": ("Baseline D: untrnd/mirr",  "Day 1", MODIFIED_SOFA, TRAINED_EAR, True,  MIRRORED_HEMI, "naive untrained ear, MIRRORED modified filter (matches final D)"),
+        "baseline_A": ("Baseline A: trained/same", "Day 2, before training", MODIFIED_SOFA, TRAINED_EAR, False, TRAINED_HEMI,  "naive trained ear, modified filter (matches final A)"),
+        "baseline_B": ("Baseline B: trained/mirr", "Day 2, before training", MODIFIED_SOFA, TRAINED_EAR, False, MIRRORED_HEMI, "naive trained ear, modified filter, mirrored locations (matches final B)"),
+        "baseline_C": ("Baseline C: untrnd/same",  "Day 2, before training", MODIFIED_SOFA, TRAINED_EAR, True,  TRAINED_HEMI,  "naive untrained ear, MIRRORED modified filter, same locations (matches final C)"),
+        "baseline_D": ("Baseline D: untrnd/mirr",  "Day 2, before training", MODIFIED_SOFA, TRAINED_EAR, True,  MIRRORED_HEMI, "naive untrained ear, MIRRORED modified filter (matches final D)"),
         "daily":      ("Daily training test",      "Adaptation days", MODIFIED_SOFA, TRAINED_EAR, False, TRAINED_HEMI,  "monaural trained ear, trained hemifield"),
         "A":          ("Final A: trained/same",    "Final day", MODIFIED_SOFA, TRAINED_EAR, False, TRAINED_HEMI,  "trained ear, same locations (baseline retest)"),
         "B":          ("Final B: trained/mirr",    "Final day", MODIFIED_SOFA, TRAINED_EAR, False, MIRRORED_HEMI, "trained ear, mirrored locations"),
@@ -1045,39 +1052,40 @@ subject = hr.Subject(SUBJECT_ID)
 # %% IN SESSION: participant is at floor -- swap donor -----------------------
 # Only when the cue is abolished, not merely degraded. Write what you saw.
 # use_donor(rank=1, reason="EG 0.03 on baseline A, responses at chance")
-# After a swap on day 1, re-run ALL four baselines: B/C/D must match A's composite.
+# After a swap during the baselines, re-run ALL four: B/C/D must match A's composite.
 
-# %% day 1: baselines A/B/C/D in this subject's counterbalanced order --------
+# -----------------------------------------------
+# ADAPTATION DAYS
+# Day 2: baselines A/B/C/D -> train -> POST test. Days 3..: PRE test -> train
+# -> POST test, so within-session change is separable from overnight
+# consolidation. Baseline A is the same condition as the daily test, so on
+# day 2 it IS the PRE test -- do not run both.
+# ---------------------------------------------------------------------------
+
+# %% DAY 2 ONLY: 1. baselines A/B/C/D, counterbalanced -- replaces the PRE test
 subject = hr.Subject(SUBJECT_ID)
-print(f"Running day-1 baselines in order: {FINAL_ORDER}")
+print(f"Running baselines in order: {FINAL_ORDER}")
 baselines = {}
 for key in FINAL_ORDER:
     baselines[key] = run_phase(f"baseline_{key}", subject)
     if key == "A":   # printed the moment A is done, so a swap costs the fewest blocks
         donor_screening.check_baseline_A(baselines[key], subject)
 
-# %% day 1: baseline A -- trained ear, same loc (redo individually) -----------
+# %% DAY 2 ONLY: baseline A -- trained ear, same loc (redo individually) -----
 baseline_A = run_phase("baseline_A", subject)
 donor_screening.check_baseline_A(baseline_A, subject)
 
-# -----------------------------------------------
-# ADAPTATION DAYS1
-# anchor -> PRE test -> train -> POST test, so within-session change is
-# separable from overnight consolidation and every rating has a same-day top.
-# Run the four cells in order.
-# ---------------------------------------------------------------------------
-
-# %% adaptation day: 1. PRE-training test -------------------------------------
+# %% days 3..: 1. PRE-training test --------------------------------------------
 subject = hr.Subject(SUBJECT_ID)
 daily_pre = run_phase("daily", subject)
 
-# %% adaptation day: 2. TRAIN --------------------------------------------------
+# %% adaptation day: 2. TRAIN (day 2: after the baselines) ---------------------
 run_training()
 
 # %% adaptation day: 3. POST-training test ------------------------------------
 subject = hr.Subject(SUBJECT_ID)
 daily_post = run_phase("daily", subject)
-session_checks.progress_check(subject, daily_post.sequence)   # day-2 rule: +0.15 over day-1 A
+session_checks.progress_check(subject, daily_post.sequence)   # +0.15 over baseline A after the first training day
 
 # %% final day: all 4 conditions in this subject's counterbalanced order -------
 subject = hr.Subject(SUBJECT_ID)

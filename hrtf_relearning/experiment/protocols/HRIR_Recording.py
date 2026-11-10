@@ -43,7 +43,7 @@ from hrtf_relearning.experiment.learning_transfer import session_checks   # prin
 from hrtf_relearning.experiment.misc.system_volume import set_windows_volume
 import json
 
-SUBJECT_ID   = ('ABO')          # edit per participant
+SUBJECT_ID   = ('IS')          # edit per participant
 REFERENCE_ID = 'ref_31.08'   # fresh id -> step 0b records it; reused id -> loaded
 EQUALIZE_DOME = False        # subject AND reference; they must match. See step 0b.
 HEAD_RADIUS = FALLBACK_RADIUS_M   # fallback if step 0 is skipped -- MUST be
@@ -51,6 +51,10 @@ HEAD_RADIUS = FALLBACK_RADIUS_M   # fallback if step 0 is skipped -- MUST be
 # with no head_radius_fit.json gets a native built at one radius and composites
 # built at another, which is exactly the bug fixed on 2026-08-31. Never hardcode
 # a second value here. (FALLBACK_RADIUS_M is 0.0875, Woodworth; note
+
+
+
+
 # reference_head_radius_fit argues ~0.0725 is right for the phase-slope ITD this
 # pipeline imposes -- if that is changed, change it in fit_head_radius, once.)
 N_DIRECTIONS = 3              # directions for the HRIR recording
@@ -74,6 +78,11 @@ ROOT = hr.PATH
 slab.set_default_samplerate(FS)
 freefield.set_logger('info')
 subject = hr.Subject(SUBJECT_ID)
+
+
+
+
+
 
 # %% step 0: acoustic head radius ----------------------------------------------
 # Mics already in the ears. Records the horizontal row, fits the sphere whose ITDs match this listener

@@ -44,7 +44,7 @@ from hrtf_relearning.experiment.misc.system_volume import set_windows_volume
 import json
 
 SUBJECT_ID   = ('IS')          # edit per participant
-REFERENCE_ID = 'ref_31.08'   # fresh id -> step 0b records it; reused id -> loaded
+REFERENCE_ID = 'ref_10.11'   # fresh id -> step 0b records it; reused id -> loaded
 EQUALIZE_DOME = False        # subject AND reference; they must match. See step 0b.
 HEAD_RADIUS = FALLBACK_RADIUS_M   # fallback if step 0 is skipped -- MUST be
 # the same constant DonorModification.head_radius() falls back to, or a subject

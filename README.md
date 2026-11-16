@@ -105,10 +105,14 @@ CUDA build of torch (RTX 30xx and newer):
 pip uninstall -y torch && pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
 ```
 
-Freefield recording with TDT hardware:
+Freefield recording with TDT hardware -- pinned to commit `9b096fe` (21 Dec 2025, the end of
+the play_and_record fix series). Do NOT install unpinned master: the 16 Oct 2026 merge breaks
+`initialize(..., default=...)` and rewrites `play_and_record` (97656 Hz default, per-speaker
+distance, `equalize=False`). pip does not install `calibration_dome.pkl`; copy it from
+`freefield/data/` in a clone into the installed package's `data/` folder.
 
 ```bash
-pip install git+https://github.com/pfriedrich-hub/freefield.git
+pip install git+https://github.com/pfriedrich-hub/freefield.git@9b096fe1a6e18ed92569bb14a9e4217ea2fdae87
 ```
 
 ```bash

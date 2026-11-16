@@ -53,7 +53,7 @@ from hrtf_relearning.utils import paths
 
 # --- configuration -----------------------------------------------------------
 #: the learning-curve group. New participants go here as soon as they start.
-SUBJECT_IDS = ('FS', 'IR', 'SH', 'PA', 'SK', 'DA', 'LP', 'JO')
+SUBJECT_IDS = ('FS', 'IR', 'SH', 'PA', 'SK', 'DA', 'LP', 'JO', 'PT')
 #: participants deliberately kept off the curve, with the reason (printed on run)
 EXCLUDED = {
     'LGL': 'not counted as a learner — EG trend only, polar error flat (2026-10-22)',
@@ -69,6 +69,7 @@ EXCLUDED = {
     'KH': 'not counted (Paul): no gain change over 3 days (.22 -> .22); day-1 impairment +4.8 deg below the manipulation check; weak own-HRTF baseline (.41); laser offset +15 to +27 deg from day 1',
     'SHE': 'not counted (Paul): stopped after day 3 -- no improvement (pre-tests .57/13.1 and .57/13.8 deg, post-tests worse: .49, .40); kept 74% of her own gain on the rebuilt composite (high start, like LGL)',
     'AB': 'not counted (Paul): dropped after day 3 -- post-tests .29 -> .40 -> .38 (inside the noise band), initial elevation direction in training at chance (44-51%); rerun of an October participant',
+    'ABO': 'not counted (Paul): manipulation check failed -- donor FD-R kept 104% of his own gain (screen impairment -0.2 deg), so there was nothing to relearn; A .30 -> .37 / 14.4 -> 13.4 deg (inside the noise band), final A at his own-HRTF level (.37); own-HRTF baseline below criterion (.37, lower field flat)',
 }
 #: the paper figure uses only participants who have completed the final 2x2
 PAPER_COMPLETE_ONLY = True
@@ -90,6 +91,15 @@ CELL_MEANING = {'A': 'trained ear, trained side', 'D': 'other ear, other side',
 #: SH: told right after her 17:40 post-training test that the battery probes the
 #: other ear/side; the battery's A (17:47, first block) took the uncertainty.
 FINAL_OVERRIDE = {'SH': {'A': 'SH_01.10_17-40'}}
+#: Day-1 2x2 run fatigued: {subject: (key prefix of the first FRESH A test,
+#: cells to correct)}. The recovery A shows from day-1 A to that test (per
+#: metric) is added to the listed day-1 cells before the change to the final
+#: battery is taken -- Paul's assumption (2026-11-13) that D lost as much to
+#: fatigue as A. PT ran his day-1 2x2 after ~600 trials in the order B-C-A-D:
+#: A .10 / 22.6 deg there, .48 / 16.7 deg fresh on day 2 (screen on the same
+#: composite: .43). Only A and D are corrected: D ran after A, so it was at
+#: least as tired; B and C ran before A, so A's offset would over-correct them.
+FATIGUE_REFERENCE = {'PT': ('PT_10.11_16-02', 'AD')}
 #: change-score noise band, two 75-trial blocks (behavioural noise floor)
 NOISE_BAND = {'gain': 0.25, 'polar': 5.9}
 HIGHER_IS_BETTER = {'gain': True, 'polar': False}
@@ -342,6 +352,13 @@ def transfer_cells(subject_id):
     for name, _label in PANELS:
         extract = gl.METRICS[name][1]
         out['day1'][name] = {c: extract(by_key[k]) for c, k in day1_keys.items()}
+        prefix, fix_cells = FATIGUE_REFERENCE.get(subject_id, ('\0', ''))
+        fresh = [k for k in by_key if k.startswith(prefix)]
+        if fresh and 'A' in out['day1'][name]:
+            offset = extract(by_key[fresh[0]]) - out['day1'][name]['A']
+            out.setdefault('fatigue_offset', {})[name] = offset
+            out['day1'][name] = {c: v + offset if c in fix_cells else v
+                                 for c, v in out['day1'][name].items()}
         out['final'][name] = {c: extract(by_key[k]) for c, k in final_keys.items()}
         sign = 1.0 if HIGHER_IS_BETTER[name] else -1.0
         out['change'][name] = {c: sign * (out['final'][name][c] - out['day1'][name][c])

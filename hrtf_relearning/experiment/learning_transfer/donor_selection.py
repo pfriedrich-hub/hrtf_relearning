@@ -1448,7 +1448,9 @@ def select_donor(subject_hrtf, candidates, target=TARGET_R_MATCH,
 # r_match. Same trap for any future re-record under a new id.
 DONOR_POOL = ('CO', 'pilot/AGV', 'pilot/SW', 'pilot/VD', 'pilot/AH', 'FS', 'FD',
               'AS', 'FP', 'LS', 'NR', 'GM', 'LGL', 'PA', 'SH', 'AB', 'TE',
-              'AM', 'IK', 'DA', 'EM', 'MM', 'SK', 'LP', 'JO', 'SHE')
+              'AM', 'IK', 'DA', 'EM', 'MM', 'SK', 'LP', 'JO', 'SHE',
+              'DG')   # DG added 2026-11-16 for ME (Paul); own-HRTF native
+                      # block 16.11 15-22, n=150: EG ~0.91 (plain fit)
 
 #: Donor EARS kept out of the pool while the recording itself stays in.
 #: Only meaningful with PER_EAR_SELECTION; a per-person pool cannot express it.

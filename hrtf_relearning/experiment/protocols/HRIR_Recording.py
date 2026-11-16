@@ -43,7 +43,7 @@ from hrtf_relearning.experiment.learning_transfer import session_checks   # prin
 from hrtf_relearning.experiment.misc.system_volume import set_windows_volume
 import json
 
-SUBJECT_ID   = ('PT')          # edit per participant
+SUBJECT_ID   = ('DG')          # edit per participant
 REFERENCE_ID = 'ref_10.11'   # fresh id -> step 0b records it; reused id -> loaded
 EQUALIZE_DOME = False        # subject AND reference; they must match. See step 0b.
 HEAD_RADIUS = FALLBACK_RADIUS_M   # fallback if step 0 is skipped -- MUST be
@@ -51,10 +51,6 @@ HEAD_RADIUS = FALLBACK_RADIUS_M   # fallback if step 0 is skipped -- MUST be
 # with no head_radius_fit.json gets a native built at one radius and composites
 # built at another, which is exactly the bug fixed on 2026-08-31. Never hardcode
 # a second value here. (FALLBACK_RADIUS_M is 0.0875, Woodworth; note
-
-
-
-
 # reference_head_radius_fit argues ~0.0725 is right for the phase-slope ITD this
 # pipeline imposes -- if that is changed, change it in fit_head_radius, once.)
 N_DIRECTIONS = 3              # directions for the HRIR recording
@@ -80,17 +76,13 @@ freefield.set_logger('info')
 subject = hr.Subject(SUBJECT_ID)
 
 
-
-
-
-
 # %% step 0: acoustic head radius ----------------------------------------------
 # Mics already in the ears. Records the horizontal row, fits the sphere whose ITDs match this listener
 logging.info('--- Step 0: acoustic head radius ---')
 az_fit = record_head_radius(
     SUBJECT_ID, azimuth_range=AZ_RANGE, elevation=AZ_ELEVATION,
     n_recordings=N_REC_AZ, hp_freq=HP_FREQ, fs=FS, show=SHOW, save=subject,
-    overwrite=REDO_HEAD_RADIUS)
+    overwrite=False)
 # Fitted on the cross-correlation ITD (estimator='xcorr', the default since
 # 2026-11-03 -- the phase-slope fit is unreliable on human heads in this rig and
 # is printed as the cross-check only). usable_radius returns the fitted value, or
@@ -137,6 +129,7 @@ dome_loc = LocalizationDome(subject, {'targets_per_speaker': 3, 'min_distance': 
     'stim': STIM, 'stim_settings': STIM_SETTINGS})
 dome_loc.run(n_runs=3)
 session_checks.dome_check(subject)   # do not train if free-field EG < 0.5
+
 
 
 # %% step 4b: OPTIONAL dome training -- only if step 4 is at floor ---------------

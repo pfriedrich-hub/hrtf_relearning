@@ -262,9 +262,13 @@ def final_battery(runs, metas, hrir, field, subject_id):
                       if meta.get('hrir') in family]
     if not composite_days or last_day == composite_days[0]:
         return {}
+    # Since 2026-11-09 the 2x2 baselines run at the start of day 2, so while
+    # day 2 is the last day on file they are the last day's four cells in the
+    # sheet's order. Their phase tag ('baseline_A'...) keeps them out.
     seq_cells = [(key, transfer_block({**meta, 'stim': None}, field))
-                 for (key, _seq), meta in zip(runs, metas)
-                 if extract_day(key) == last_day and meta.get('hrir') in family]
+                 for (key, seq), meta in zip(runs, metas)
+                 if extract_day(key) == last_day and meta.get('hrir') in family
+                 and not str(getattr(seq, 'phase', '') or '').startswith('baseline_')]
     order = _block_order(subject_id)
     for i in range(len(seq_cells) - 3):
         window = seq_cells[i:i + 4]
@@ -272,6 +276,30 @@ def final_battery(runs, metas, hrir, field, subject_id):
         if (cells == order) if order else (sorted(cells) == list('ABCD')):
             return {cell: key for key, cell in window}
     return {}
+
+
+def _baseline_slot(subject_id):
+    """(date, slot key) of baseline A when it ran after day 1, else (None, None).
+
+    'After day 1' = the participant's last donor-screen block before baseline A
+    is on an EARLIER date (the schedule from 2026-11-09 on). Under the old
+    schedule the screen and the baselines share a date -- also for KH, whose
+    native was recorded the day before, and for AB's rerun. Runs before
+    RUN_START are ignored. The slot key is only a dict key placed in front of
+    the date's own key in subject_series.
+    """
+    loc = {k: s for k, s in hr.Subject(subject_id).localization.items()
+           if _after_start(subject_id, k)}
+    base = sorted((parse_loc_key(k), k) for k, s in loc.items()
+                  if getattr(s, 'phase', None) == 'baseline_A')
+    if not base:
+        return None, None
+    screens = [parse_loc_key(k) for k, s in loc.items()
+               if getattr(s, 'phase', None) == 'screen' and parse_loc_key(k) < base[0][0]]
+    if not screens or max(screens).date() >= base[0][0].date():
+        return None, None
+    date = extract_day(base[0][1])
+    return date, f'{date} baseline'
 
 
 def _final_battery_a(runs, metas, hrir, field, subject_id):
@@ -305,6 +333,15 @@ def subject_series(subject_id, aggregate=AGGREGATE, off_stimulus=OFF_STIMULUS,
     family = {hrir, f'{hrir}_mirrored'}
     first_day = next((extract_day(k) for (k, _s), m in zip(runs, metas)
                       if m.get('hrir') in family), None)
+    # Since 2026-11-09 the 2x2 baselines run at the start of day 2, before
+    # training, and baseline A replaces that day's pre-training test. Baseline A
+    # is still the curve's day-1 point, so it gets a slot of its own ahead of
+    # its date: x = 1 is the baseline, x = 2 the day-2 post-training test. Only
+    # when the day-1 native/screen precede baseline A by a day -- the old
+    # schedule (everything on day 1) is untouched.
+    baseline_date, baseline_slot = _baseline_slot(subject_id)
+    if baseline_slot is not None:
+        first_day = baseline_slot
     if tests != 'all':
         training_ends = _training_ends(subject_id)
         donor_training_ends = _training_ends(subject_id, donor_only=True)
@@ -316,6 +353,10 @@ def subject_series(subject_id, aggregate=AGGREGATE, off_stimulus=OFF_STIMULUS,
     own_reference, dome_reference, post_reference = None, None, None
     for (key, seq), meta in zip(runs, metas):
         day = extract_day(key)
+        if baseline_slot is not None and day == baseline_date:
+            by_day.setdefault(baseline_slot, [])          # keeps the slot before its date
+            if getattr(seq, 'phase', None) == 'baseline_A':
+                day = baseline_slot
         by_day.setdefault(day, [])
         run_stim = (meta.get('stim') or '').lower()
 

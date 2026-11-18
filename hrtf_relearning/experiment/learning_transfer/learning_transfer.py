@@ -1104,7 +1104,7 @@ for key in FINAL_ORDER:
     baselines[key] = run_phase(f"baseline_{key}", subject)
     if key == "A":   # printed the moment A is done, so a swap costs the fewest blocks
         donor_screening.check_baseline_A(baselines[key], subject)
-bhj,
+
 # %% DAY 2 ONLY: baseline A -- trained ear, same loc (redo individually) -----
 baseline_A = run_phase("baseline_A", subject)
 donor_screening.check_baseline_A(baseline_A, subject)

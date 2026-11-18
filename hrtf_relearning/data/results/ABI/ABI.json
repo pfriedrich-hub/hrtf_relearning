@@ -8,11 +8,11 @@
     "recorded": "2026-11-18T12:31:49"
   },
   "active_donor": {
-    "donor": "FD",
+    "donor": "pilot/AH",
     "donor_ear": "right",
-    "rank": 0,
-    "reason": "band",
-    "timestamp": "2026-11-18T12:50:11"
+    "rank": 3,
+    "reason": "[screen rank 3: EG 0.16 (26% retained), PE 21.0 deg, impairment +11.1 deg, n=35]",
+    "timestamp": "2026-11-18T14:03:52"
   },
   "donor_screen": {
     "reference": {
@@ -162,10 +162,10 @@
     ],
     "timestamp": "2026-11-18T13:23:23",
     "chosen": {
-      "donor": "FD",
+      "donor": "pilot/AH",
       "donor_ear": "right",
-      "timestamp": "2026-11-18T12:50:11",
-      "screened": true
+      "screened": true,
+      "timestamp": "2026-11-18T14:03:52"
     }
   },
   "head_radius": 0.0832823801164106,

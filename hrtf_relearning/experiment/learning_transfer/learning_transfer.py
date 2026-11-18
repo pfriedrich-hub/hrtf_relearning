@@ -81,7 +81,7 @@ EDIT THE CONFIG BLOCK BELOW PER PARTICIPANT.
 ------------------------------------------------------------------------------
 """
 
-SUBJECT_ID = ("ABI")   # put this id into an open row of learning_transfer_block_order.csv
+SUBJECT_ID = ("DG")   # put this id into an open row of learning_transfer_block_order.csv
 
 # %% imports and config #------------------------------------------------------
 import csv  # only for the block-order table below; the modification
@@ -1108,6 +1108,8 @@ for key in FINAL_ORDER:
 # %% DAY 2 ONLY: baseline A -- trained ear, same loc (redo individually) -----
 baseline_A = run_phase("baseline_A", subject)
 donor_screening.check_baseline_A(baseline_A, subject)
+
+
 
 # %% days 3..: 1. PRE-training test --------------------------------------------
 subject = hr.Subject(SUBJECT_ID)

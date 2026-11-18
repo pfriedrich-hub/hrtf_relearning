@@ -81,7 +81,7 @@ EDIT THE CONFIG BLOCK BELOW PER PARTICIPANT.
 ------------------------------------------------------------------------------
 """
 
-SUBJECT_ID = ("ME")   # put this id into an open row of learning_transfer_block_order.csv
+SUBJECT_ID = ("ABI")   # put this id into an open row of learning_transfer_block_order.csv
 
 # %% imports and config #------------------------------------------------------
 import csv  # only for the block-order table below; the modification
@@ -538,7 +538,26 @@ def show_screen():
     return out
 
 
-def screen_donors(subject=None, native=None, n=SCREEN_N, shuffle=True, review=True):
+def _stage_for_screen(donor_id, donor_ear):
+    """Build the composite + un-mirrored binsim database one screen block plays.
+
+    What prepare_donor_shortlist() does for the top n, for a single named donor
+    ear. Never touches the active donor. Skips whatever already exists.
+    """
+    from hrtf_relearning.hrtf.binsim.hrtf2binsim import hrtf2binsim
+    donor.build(overwrite=False, show_qc=False, donor_id=donor_id,
+                donor_ear=donor_ear, set_active=False, quiet=True)
+    name = donor.modified_name(donor_id, donor_ear=donor_ear)
+    db = paths.BINSIM_DIR / donor.binsim_names(name, False)
+    if db.exists():
+        return
+    print(f"    building binsim {db.name} ...")
+    hrtf2binsim(donor.hrir_settings(name, ear=TRAINED_EAR, mirror=False),
+                overwrite=False, build=True)
+
+
+def screen_donors(subject=None, native=None, n=SCREEN_N, shuffle=True, review=True,
+                  donors=None):
     """Screen the top `n` shortlist donors, then print the table.
 
     One block per donor ear in the TEST CONDITION -- monaural composite,
@@ -560,6 +579,11 @@ def screen_donors(subject=None, native=None, n=SCREEN_N, shuffle=True, review=Tr
     press n in the plot window for the next donor, q to stop there. Rerunning
     later picks up the donors that did not run. `review=False` runs straight
     through.
+
+    `donors` screens NAMED donor ears instead of the top `n`, e.g.
+    donors=[("JO", "left"), ("JO", "right")]. Each must be in this subject's
+    pool (selection.DONOR_POOL); missing composites / binsim databases are
+    built first (minutes each), then screened like any other screen block.
     """
     import random
     import matplotlib.pyplot as plt
@@ -567,7 +591,15 @@ def screen_donors(subject=None, native=None, n=SCREEN_N, shuffle=True, review=Tr
         raise RuntimeError("no native reference on file for "
                            f"{SUBJECT_ID} -- run the native reference cell first")
     subject = hr.Subject(SUBJECT_ID)
-    candidates = sorted(donor.shortlist(quiet=True), key=lambda r: r["rank"])[:n]
+    if donors:
+        rows = donor.shortlist(quiet=True)
+        candidates = [donor._pick(rows, donor_id=d, donor_ear=e) for d, e in donors]
+        for row in candidates:
+            if screen_block(row["donor"], row.get("donor_ear"), subject) is None:
+                _stage_for_screen(row["donor"], row.get("donor_ear"))
+    else:
+        candidates = sorted(donor.shortlist(quiet=True),
+                            key=lambda r: r["rank"])[:n]
     todo = [r for r in candidates
             if screen_block(r["donor"], r.get("donor_ear"), subject) is None]
     done = [_label(r) for r in candidates if r not in todo]
@@ -1023,6 +1055,8 @@ prepare_donor_shortlist(n=6)    # screen=True (binaural builds) no longer needed
 # screen block are skipped, and `native` is not needed.
 screen_rows = screen_donors()
 # screen_rows = screen_donors(n=8)    # more candidates (stage them first)
+# screen_rows = screen_donors(donors=[("JO", "left"), ("JO", "right"),
+#                                     ("PT", "left"), ("PT", "right")])  # named
 # rate_screen_block("GM", "right")     # rating lost to a crash after the block
 
 # %% day 1: CONFIRM a promising donor -- second screen block ----------------
@@ -1070,7 +1104,7 @@ for key in FINAL_ORDER:
     baselines[key] = run_phase(f"baseline_{key}", subject)
     if key == "A":   # printed the moment A is done, so a swap costs the fewest blocks
         donor_screening.check_baseline_A(baselines[key], subject)
-
+bhj,
 # %% DAY 2 ONLY: baseline A -- trained ear, same loc (redo individually) -----
 baseline_A = run_phase("baseline_A", subject)
 donor_screening.check_baseline_A(baseline_A, subject)

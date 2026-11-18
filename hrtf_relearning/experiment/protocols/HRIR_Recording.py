@@ -43,8 +43,10 @@ from hrtf_relearning.experiment.learning_transfer import session_checks   # prin
 from hrtf_relearning.experiment.misc.system_volume import set_windows_volume
 import json
 
-SUBJECT_ID   = ('ME')          # edit per participant
-REFERENCE_ID = 'ref_10.11'   # fresh id -> step 0b records it; reused id -> loaded
+SUBJECT_ID   = ('ABI')          # edit per participant
+REFERENCE_ID = 'ref_17.11'   # fresh id -> step 0b records it; reused id -> loaded
+# ref_17.11: new left mic (replaced 2026-11-17), ~4 dB less sensitive than the
+# right one, flat in shape. Participants recorded before that stay on ref_10.11.
 EQUALIZE_DOME = False        # subject AND reference; they must match. See step 0b.
 HEAD_RADIUS = FALLBACK_RADIUS_M   # fallback if step 0 is skipped -- MUST be
 # the same constant DonorModification.head_radius() falls back to, or a subject
@@ -125,11 +127,9 @@ STIM_SETTINGS = {'rms_tilt': 3}        # empty = inherit localization_helpers.st
 # %% step 4: dome localization ---------------------------------------------------
 logging.info('--- Step 4: Dome localization ---')
 dome_loc = LocalizationDome(subject, {'targets_per_speaker': 3, 'min_distance': 15,
-
-    'stim': STIM, 'stim_settings': STIM_SETTINGS})
+                                      'stim': STIM, 'stim_settings': STIM_SETTINGS})
 dome_loc.run(n_runs=3)
 session_checks.dome_check(subject)   # do not train if free-field EG < 0.5
-
 
 
 # %% step 4b: OPTIONAL dome training -- only if step 4 is at floor ---------------

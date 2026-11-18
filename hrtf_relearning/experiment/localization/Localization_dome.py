@@ -170,7 +170,7 @@ class LocalizationDome:
                                       return_params=True)
         self.sequence.stim_params.append(params)
         speaker = freefield.pick_speakers((float(self.target[0]), float(self.target[1])))[0]
-        freefield.set_signal_and_speaker(signal=stim, speaker=speaker.index, equalize=True)
+        freefield.set_signal_and_speaker(signal=stim, speaker=speaker.index, equalize=False)
         freefield.play()
         freefield.wait_to_finish_playing()
         self.wait_for_enter()
@@ -195,7 +195,7 @@ class LocalizationDome:
             beep = beep.resample(SAMPLERATE)
         beep.level = level
         speaker = freefield.pick_speakers((0.0, 0.0))[0]
-        freefield.set_signal_and_speaker(signal=beep, speaker=speaker.index, equalize=True)
+        freefield.set_signal_and_speaker(signal=beep, speaker=speaker.index, equalize=False)
         freefield.play()
         freefield.wait_to_finish_playing()
 
